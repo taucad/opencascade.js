@@ -86,4 +86,8 @@ def filterIncludeFile(filename):
   if filename == "math_Householder.hxx":
     return False
 
+  # Precompiled header markers
+  if filename.endswith("_pch.hxx"):
+    return False
+
   return True

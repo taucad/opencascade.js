@@ -37,22 +37,22 @@ WORKDIR /freetype/
 RUN \
   git clone -b VER-2-13-0 https://github.com/freetype/freetype.git .
 
-ENV OCCT_COMMIT_HASH_FULL bb368e271e24f63078129283148ce83db6b9670a
+ENV OCCT_TAG=V7_6_2
 WORKDIR /occt/
 RUN \
-  curl "https://git.dev.opencascade.org/gitweb/?p=occt.git;a=snapshot;h=${OCCT_COMMIT_HASH_FULL};sf=tgz" -o occt.tar.gz && \
-  tar -xvf occt.tar.gz && \
-  export OCCT_COMMIT_HASH=$(echo ${OCCT_COMMIT_HASH_FULL} | cut -c 1-7) && \
-  mv occt-$OCCT_COMMIT_HASH/* . && \
-  mv occt-$OCCT_COMMIT_HASH/.* . || true && \
-  rm occt-$OCCT_COMMIT_HASH -r
+  curl -L "https://github.com/Open-Cascade-SAS/OCCT/archive/refs/tags/${OCCT_TAG}.tar.gz" -o occt.tar.gz && \
+  tar -xzf occt.tar.gz && \
+  OCCT_DIR=$(ls -d OCCT-*) && \
+  mv ${OCCT_DIR}/* . && \
+  (mv ${OCCT_DIR}/.* . || true) && \
+  rm -rf ${OCCT_DIR} occt.tar.gz
 
 WORKDIR /opencascade.js/
 COPY src ./src
 WORKDIR /src/
 
 ARG threading=single-threaded
-ENV threading=$threading
+ENV threading=${threading}
 
 FROM base-image AS test-image
 

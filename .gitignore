@@ -5,3 +5,16 @@ node_modules
 build-output.log
 pull-stages-output.log
 /occt-src/
+
+# Build artifacts (output of build-wasm.sh placed alongside YAML configs)
+*.wasm
+*.wasm.symbols
+replicad_single
+replicad_single.js
+replicad_single.d.ts
+replicad_with_exceptions
+replicad_with_exceptions.js
+replicad_with_exceptions.d.ts
+replicad_multi
+replicad_multi.js
+replicad_multi.d.ts

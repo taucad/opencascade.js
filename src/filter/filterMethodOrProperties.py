@@ -128,9 +128,42 @@ def filterMethodOrProperty(theClass, methodOrProperty):
     print("Using declarations are not supported! (" + theClass.spelling + ", " + methodOrProperty.spelling + ")")
     return False
 
+  result_type = methodOrProperty.result_type.spelling
+  type_spelling = methodOrProperty.type.spelling
+
+  # Filter out methods using unresolvable nested container types.
+  # Split into two categories:
+  # 1) Types that are never bindable (iterators, internal container types)
+  # 2) Types that resolve to concrete types in template specializations (value_type, reference)
+  #    - For these, check the canonical (fully-resolved) type: if the nested name disappears
+  #      in canonical form, the type is concrete and the method can be bound.
+  _UNBINDABLE_TYPES = {"iterator", "const_iterator", "Iterator", "size_type",
+                       "difference_type", "pointer", "const_pointer", "allocator_type",
+                       "ItemsView", "ConstItemsView"}
+  _RESOLVABLE_TYPES = {"value_type", "reference", "const_reference", "Array1Type", "Array2Type", "SequenceType"}
+  combined = result_type + " " + type_spelling
+  for nt in _UNBINDABLE_TYPES:
+    if nt in combined:
+      return False
+  for nt in _RESOLVABLE_TYPES:
+    if nt in combined:
+      canonical_combined = methodOrProperty.result_type.get_canonical().spelling + " " + methodOrProperty.type.get_canonical().spelling
+      if nt in canonical_combined:
+        return False
   if (
-    methodOrProperty.result_type.spelling.startswith("Standard_OStream") or
-    methodOrProperty.type.spelling == "std::ifstream"
+    result_type.startswith("Standard_OStream") or
+    result_type.startswith("std::ostream") or
+    "Standard_OStream" in type_spelling or
+    "std::ostream" in type_spelling or
+    "std::istream" in type_spelling or
+    "Standard_IStream" in type_spelling or
+    "std::ifstream" in type_spelling or
+    "std::ofstream" in type_spelling or
+    "std::stringstream" in type_spelling or
+    "std::ostringstream" in type_spelling or
+    "std::istringstream" in type_spelling or
+    "void *" in type_spelling or
+    "void *" in result_type
   ):
     return False
 
@@ -303,8 +336,160 @@ def filterMethodOrProperty(theClass, methodOrProperty):
   if (
     theClass.spelling == "XCAFDoc_GeomTolerance" and
     methodOrProperty.kind == clang.cindex.CursorKind.CONSTRUCTOR and
-    methodOrProperty.type.spelling == "void (const opencascade::handle<XCAFDoc_GeomTolerance> &)"
+    "handle<XCAFDoc_GeomTolerance>" in methodOrProperty.type.spelling
   ):
+    return False
+
+  # OCCT V8: classes with deleted copy/move constructors
+  if theClass.spelling in [
+    "BRepAlgoAPI_BuilderAlgo", "BRepMesh_IncrementalMesh",
+    "BRepMesh_Delaun", "BRepMesh_Triangle",
+    "CSLib_Class2d",
+  ]:
+    if methodOrProperty.kind == clang.cindex.CursorKind.CONSTRUCTOR:
+      for arg in methodOrProperty.get_arguments():
+        if theClass.spelling in arg.type.spelling and "&" in arg.type.spelling:
+          return False
+
+  # OCCT V8: methods with non-const enum/value output parameters that Embind can't handle
+  if methodOrProperty.kind == clang.cindex.CursorKind.CXX_METHOD:
+    for arg in methodOrProperty.get_arguments():
+      if arg.type.kind == clang.cindex.TypeKind.LVALUEREFERENCE:
+        pointee = arg.type.get_pointee()
+        if pointee.kind == clang.cindex.TypeKind.ENUM and not pointee.is_const_qualified():
+          return False
+
+  # OCCT V8: nested type names that need class-qualified access
+  if theClass.spelling == "gp_Dir" and methodOrProperty.spelling == "D":
+    return False
+  if theClass.spelling == "gp_Dir2d" and methodOrProperty.spelling == "D":
+    return False
+  if theClass.spelling == "SelectMgr_SelectableObjectSet" and methodOrProperty.spelling == "BVHSubset":
+    return False
+  if theClass.spelling == "AIS_Manipulator" and methodOrProperty.spelling == "OptionsForAttach":
+    return False
+  if theClass.spelling == "Graphic3d_ShaderObject" and methodOrProperty.spelling == "ShaderVariableList":
+    return False
+  if theClass.spelling == "Message_ProgressScope" and methodOrProperty.spelling == "NullString":
+    return False
+  if theClass.spelling == "PCDM_ReaderFilter" and methodOrProperty.spelling == "AppendMode":
+    return False
+  if theClass.spelling == "BRepGProp_MeshProps" and methodOrProperty.spelling == "BRepGProp_MeshObjType":
+    return False
+  if theClass.spelling == "ShapeProcess" and methodOrProperty.spelling == "OperationsFlags":
+    return False
+  if theClass.spelling == "XSAlgo_ShapeProcessor" and methodOrProperty.spelling == "ParameterMap":
+    return False
+
+  # OCCT V8: Message_Gravity is now an enum class, not a value
+  if theClass.spelling == "Message_Messenger" and methodOrProperty.spelling == "GetTraceLevel":
+    return False
+
+  # OCCT V8: 'Limits' was removed (deprecated math globals)
+  if methodOrProperty.spelling == "Limits":
+    return False
+
+  # OCCT V8: ReadStreamList was removed
+  if methodOrProperty.spelling == "ReadStreamList":
+    return False
+
+  # OCCT V8: NCollection_PackedMap requires template arguments
+  if theClass.spelling == "TColStd_PackedMapOfInteger" and methodOrProperty.spelling == "GetPackedMap":
+    return False
+
+  # OCCT V8: NCollection_ItemsView::Iterator not directly accessible
+  if "NCollection_ItemsView" in str(getattr(methodOrProperty, 'displayname', '')):
+    return False
+
+  # OCCT V8: gp_Dir::D / gp_Dir2d::D enum constructors are legitimate V8 API.
+  # These constexpr constructors allow convenient axis-aligned direction construction.
+  # The nested enums are exposed alongside their parent class bindings.
+
+  # OCCT V8: BSplCLib methods with non-const enum output params
+  if theClass.spelling == "BSplCLib":
+    if methodOrProperty.kind == clang.cindex.CursorKind.CXX_METHOD:
+      for arg in methodOrProperty.get_arguments():
+        if arg.type.kind == clang.cindex.TypeKind.LVALUEREFERENCE:
+          pointee = arg.type.get_pointee()
+          if pointee.kind == clang.cindex.TypeKind.ENUM and not pointee.is_const_qualified():
+            return False
+
+  # OCCT V8: Bnd_Box / Bnd_Box2d methods with non-const output refs
+  if theClass.spelling in ["Bnd_Box", "Bnd_Box2d"] and methodOrProperty.spelling in [
+    "Get", "GetGap",
+  ]:
+    return False
+
+  # OCCT V8: CSLib methods with non-const enum output params
+  if theClass.spelling == "CSLib" and methodOrProperty.spelling in [
+    "Normal", "DNNormal",
+  ]:
+    return False
+
+  # OCCT V8: BlendFunc methods with non-const output params
+  if theClass.spelling == "BlendFunc" and methodOrProperty.spelling == "GetShape":
+    return False
+
+  # OCCT V8: ChFi3d methods with non-const output params
+  if theClass.spelling == "ChFi3d" and methodOrProperty.spelling in [
+    "ConcaveSide", "NextSide", "SameSide",
+  ]:
+    return False
+
+  # OCCT V8: GeomFill methods with non-const output params
+  if theClass.spelling == "GeomFill" and methodOrProperty.spelling == "GetShape":
+    return False
+
+  # OCCT V8: PrsDim methods with non-const output params
+  if theClass.spelling in ["PrsDim", "PrsDim_EqualDistanceRelation"] and methodOrProperty.spelling in [
+    "ComputeGeometry", "ComputeProjEdgePresentation", "ComputeProjVertexPresentation",
+  ]:
+    return False
+
+  # OCCT V8: Quantity_Color non-const output params
+  if theClass.spelling == "Quantity_Color" and methodOrProperty.spelling in [
+    "Values", "ColorFromName",
+  ]:
+    return False
+
+  # OCCT V8: TopAbs non-const enum output params
+  if theClass.spelling == "TopAbs" and methodOrProperty.spelling in [
+    "Compose", "Reverse",
+  ]:
+    return False
+
+  # OCCT V8: V3d non-const output params
+  if theClass.spelling == "V3d" and methodOrProperty.spelling == "GetProjAxis":
+    return False
+
+  # OCCT V8: Graphic3d_MaterialAspect non-const output params
+  if theClass.spelling == "Graphic3d_MaterialAspect" and methodOrProperty.spelling == "MaterialName":
+    return False
+
+  # OCCT V8: Font_FontMgr methods
+  if theClass.spelling == "Font_FontMgr" and methodOrProperty.spelling == "FindFont":
+    return False
+
+  # OCCT V8: OSD_Protection non-const output params
+  if theClass.spelling == "OSD_Protection" and methodOrProperty.spelling in [
+    "User", "System", "Group", "World",
+  ]:
+    return False
+
+  # OCCT V8: Message class issues
+  if theClass.spelling == "Message" and methodOrProperty.spelling == "MetricFromString":
+    return False
+  if theClass.spelling == "Message_Messenger" and methodOrProperty.spelling in [
+    "GetTraceLevel", "ChangePrinters",
+  ]:
+    return False
+
+  # OCCT V8: StepData_StepReaderData / STEPCAFControl_GDTProperty
+  if theClass.spelling == "StepData_StepReaderData" and methodOrProperty.spelling in [
+    "ReadEnumParam", "ReadTypedParam",
+  ]:
+    return False
+  if theClass.spelling == "STEPCAFControl_GDTProperty":
     return False
 
   return True

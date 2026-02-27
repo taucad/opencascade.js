@@ -6,19 +6,9 @@ class SkipException(Exception):
 def getPureVirtualMethods(theClass):
   return list(filter(lambda x: x.is_pure_virtual_method(), list(theClass.get_children())))
 
-def isAbstractClass(theClass, tu):
-  allClasses = list(filter(lambda x:
-    (
-      x.kind == clang.cindex.CursorKind.CLASS_DECL or
-      x.kind == clang.cindex.CursorKind.STRUCT_DECL
-    ) and
-    not (
-      x.get_definition() is None or
-      not x == x.get_definition()
-    ),
-    tu.cursor.get_children()))
+def isAbstractClass(theClass, classDict):
   baseSpec = list(filter(lambda x: x.kind == clang.cindex.CursorKind.CXX_BASE_SPECIFIER and x.access_specifier == clang.cindex.AccessSpecifier.PUBLIC, list(theClass.get_children())))
-  baseClasses = list(map(lambda y: next((x for x in allClasses if x.spelling == y.type.spelling)), baseSpec))
+  baseClasses = [classDict[y.type.spelling] for y in baseSpec if y.type.spelling in classDict]
 
   pureVirtualMethods = getPureVirtualMethods(theClass)
   if len(pureVirtualMethods) > 0:
@@ -113,6 +103,7 @@ def ignoreDuplicateTypedef(typedef):
     "struct _XOC *",
     "Standard_Byte *",
     "Standard_Boolean (*)(const opencascade::handle<TCollection_HAsciiString> &)",
+    "bool (*)(const occ::handle<TCollection_HAsciiString> &)",
     "Standard_Real"
   ]:
     return True
@@ -126,7 +117,10 @@ def ignoreDuplicateTypedef(typedef):
   # ----> TDF_HAllocator
   # ----> IntSurf_Allocator
   if (
-    typedef.underlying_typedef_type.spelling == "opencascade::handle<NCollection_BaseAllocator>" and
+    typedef.underlying_typedef_type.spelling in [
+      "opencascade::handle<NCollection_BaseAllocator>",
+      "occ::handle<NCollection_BaseAllocator>",
+    ] and
     typedef.spelling in ["TDF_HAllocator", "IntSurf_Allocator"]
   ):
     return True
@@ -163,8 +157,11 @@ def ignoreDuplicateTypedef(typedef):
   # ----> NCollection_DelMapNode
   # ----> NCollection_DelListNode
   if (
-    typedef.underlying_typedef_type.spelling == "void (*)(NCollection_ListNode *, opencascade::handle<NCollection_BaseAllocator> &)" and
-    typedef.spelling in ["NCollection_DelMapNode"]
+    typedef.underlying_typedef_type.spelling in [
+      "void (*)(NCollection_ListNode *, opencascade::handle<NCollection_BaseAllocator> &)",
+      "void (*)(NCollection_ListNode *, occ::handle<NCollection_BaseAllocator> &)",
+    ] and
+    typedef.spelling in ["NCollection_DelMapNode", "NCollection_DelListNode"]
   ):
     return True
 
