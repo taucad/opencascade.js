@@ -1,16 +1,21 @@
 #!/usr/bin/python3
 
+import hashlib
 import os
 import subprocess
 import json
+import time
 import multiprocessing
 from itertools import chain
 import yaml
 import shutil
 from cerberus import Validator
 from argparse import ArgumentParser
-from Common import OCJS_ROOT, getFlatIncludePaths, PCH_FILE, USE_EXCEPTIONS
+from Common import OCJS_ROOT, getFlatIncludePaths, PCH_FILE, WASM_EXCEPTION_FLAGS, USE_WASM_EXCEPTIONS
 from filter.filterPackages import filterPackages
+import provenance as prov
+
+_yaml_config_hash = ""
 
 
 def verifyBinding(binding, libraryBasePath) -> bool:
@@ -47,7 +52,7 @@ def runBuild(build, libraryBasePath):
       print("building " + additionalBindCodeFileName)
       OPT_LEVEL = os.environ.get("OCJS_OPT", "-O0")
       USE_LTO = os.environ.get("OCJS_LTO", "0") == "1"
-      exception_flags = ["-fexceptions", "-sDISABLE_EXCEPTION_CATCHING=0"] if USE_EXCEPTIONS else ["-fexceptions", "-sDISABLE_EXCEPTION_CATCHING=1"]
+      exception_flags = WASM_EXCEPTION_FLAGS
       command = [
         "emcc",
         "-std=c++17",
@@ -105,22 +110,51 @@ def runBuild(build, libraryBasePath):
     *build["emccFlags"],
   ]
   print(f"Linking {len(bindingsO)} bindings + {len(sourcesO)} sources ...", flush=True)
+  link_start = time.time()
   subprocess.check_call(linkCmd)
+  link_duration = time.time() - link_start
 
   wasmFile = os.getcwd() + "/" + os.path.splitext(build["name"])[0] + ".wasm"
   emsdk = os.environ.get("EMSDK", "")
   wasmOptPath = shutil.which("wasm-opt") or (os.path.join(emsdk, "upstream", "bin", "wasm-opt") if emsdk else None)
+
+  sizeBefore = os.path.getsize(wasmFile) if os.path.exists(wasmFile) else 0
+  sizeAfter = sizeBefore
+  wasm_opt_duration = 0
+  wasm_opt_flag_list = []
+
   if os.path.exists(wasmFile) and wasmOptPath and os.path.exists(wasmOptPath):
-    sizeBefore = os.path.getsize(wasmFile)
     print(f"Running wasm-opt on {wasmFile} ({sizeBefore / (1024*1024):.1f} MB)...", flush=True)
-    wasmOptFlags = [wasmOptPath, "-O3", "--strip-debug", "--strip-producers", "--enable-mutable-globals", "--enable-bulk-memory", "--enable-sign-ext", "--enable-nontrapping-float-to-int"]
+    wasm_opt_level = os.environ.get("OCJS_WASM_OPT_LEVEL", "-O3")
+    wasm_opt_flag_list = [wasm_opt_level, "--strip-debug", "--strip-producers", "--enable-mutable-globals", "--enable-bulk-memory", "--enable-sign-ext", "--enable-nontrapping-float-to-int"]
+    wasmOptCmd = [wasmOptPath] + wasm_opt_flag_list
+    if USE_WASM_EXCEPTIONS:
+      wasmOptCmd.append("--enable-exception-handling")
+      wasm_opt_flag_list.append("--enable-exception-handling")
     if os.environ.get("threading") == "multi-threaded":
-      wasmOptFlags.append("--enable-threads")
-    wasmOptFlags.extend([wasmFile, "-o", wasmFile])
-    subprocess.check_call(wasmOptFlags)
+      wasmOptCmd.append("--enable-threads")
+      wasm_opt_flag_list.append("--enable-threads")
+    wasmOptCmd.extend([wasmFile, "-o", wasmFile])
+    opt_start = time.time()
+    subprocess.check_call(wasmOptCmd)
+    wasm_opt_duration = time.time() - opt_start
     sizeAfter = os.path.getsize(wasmFile)
     reduction = (1 - sizeAfter / sizeBefore) * 100 if sizeBefore > 0 else 0
     print(f"wasm-opt: {sizeBefore / (1024*1024):.1f} MB -> {sizeAfter / (1024*1024):.1f} MB ({reduction:.1f}% reduction)", flush=True)
+
+  symbol_list = [b["symbol"] for b in build["bindings"]]
+  prov.add_linking(
+    yaml_config=os.path.basename(build["name"]),
+    yaml_hash=_yaml_config_hash,
+    bound_symbols=len(symbol_list),
+    symbol_list=symbol_list,
+    emcc_flags=build.get("emccFlags", []),
+    link_duration=link_duration,
+    wasm_opt_flags=wasm_opt_flag_list,
+    pre_opt_size=sizeBefore,
+    post_opt_size=sizeAfter,
+    wasm_opt_duration=wasm_opt_duration,
+  )
 
   print("Build finished", flush=True)
 
@@ -134,6 +168,9 @@ def main():
   args = parser.parse_args()
   libraryBasePath = OCJS_ROOT + "/build"
 
+  global _yaml_config_hash
+  with open(args.filename, "rb") as yf:
+    _yaml_config_hash = hashlib.sha256(yf.read()).hexdigest()[:12]
   buildConfig = yaml.safe_load(open(args.filename, "r"))
   schema = eval(open(OCJS_ROOT + "/src/customBuildSchema.py", "r").read())
   v = Validator(schema)

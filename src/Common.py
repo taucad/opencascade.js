@@ -10,7 +10,8 @@ OCCT_ROOT = os.environ.get("OCCT_ROOT", "/occt")
 RAPIDJSON_ROOT = os.environ.get("RAPIDJSON_ROOT", "/rapidjson")
 FREETYPE_ROOT = os.environ.get("FREETYPE_ROOT", "/freetype")
 EMSDK_ROOT = os.environ.get("EMSDK", "/emsdk")
-WASM_EXCEPTION_FLAGS = ["-fwasm-exceptions"]
+USE_WASM_EXCEPTIONS = os.environ.get("OCJS_EXCEPTIONS", "0") == "1"
+WASM_EXCEPTION_FLAGS = ["-fwasm-exceptions"] if USE_WASM_EXCEPTIONS else []
 
 occtBasePath = OCCT_ROOT + "/src/"
 
@@ -117,6 +118,7 @@ def _get_emsdk_include_paths():
 
 includePathArgs = list(dict.fromkeys(
   ["-I" + p for p in ocIncludePaths] +
+  ["-I" + FLAT_INCLUDE_DIR] +
   ["-I" + p for p in _get_emsdk_include_paths()] +
   ["-I" + p for p in additionalIncludePaths]
 ))
