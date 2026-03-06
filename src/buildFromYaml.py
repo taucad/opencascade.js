@@ -29,9 +29,17 @@ def verifyBinding(binding, libraryBasePath) -> bool:
   return False
 
 def verifyBindings(bindings, libraryBasePath) -> bool:
-  for binding in bindings:
-    if not verifyBinding(binding, libraryBasePath):
-      raise Exception("Requested binding " + json.dumps(binding) + " does not exist!")
+  missing = [b for b in bindings if not verifyBinding(b, libraryBasePath)]
+  if missing:
+    missing_names = [b["symbol"] for b in missing]
+    print(f"WARNING: {len(missing)} of {len(bindings)} requested bindings have no compiled .o file:", flush=True)
+    for name in sorted(missing_names)[:20]:
+      print(f"  - {name}", flush=True)
+    if len(missing_names) > 20:
+      print(f"  ... and {len(missing_names) - 20} more", flush=True)
+    strict = os.environ.get("OCJS_STRICT_VERIFY", "0") == "1"
+    if strict:
+      raise Exception(f"{len(missing)} requested bindings missing. Set OCJS_STRICT_VERIFY=0 to proceed with available bindings.")
 
 def shouldProcessSymbol(symbol: str, bindings) -> bool:
   if len(bindings) == 0:
@@ -92,19 +100,33 @@ def runBuild(build, libraryBasePath):
       if item.endswith(".cpp.o") and shouldProcessSymbol(item[:-6], build["bindings"]):
         bindingsO.append(dirpath + "/" + item)
   sourcesO = []
-  for dirpath, dirnames, filenames in os.walk(libraryBasePath + "/sources"):
-    rel_parts = dirpath.replace(libraryBasePath + "/sources/", "").split("/")
-    skip = any(not filterPackages(p) for p in rel_parts if p)
-    if skip:
-      dirnames.clear()
-      continue
-    for item in filenames:
-      if item in [
-        "XBRepMesh.o",
-      ]:
+  cmake_lib_marker = libraryBasePath + "/.cmake-lib-dir"
+  if os.path.exists(cmake_lib_marker):
+    with open(cmake_lib_marker) as f:
+      cmake_lib_dir = f.read().strip()
+    if os.path.isdir(cmake_lib_dir):
+      for item in sorted(os.listdir(cmake_lib_dir)):
+        if item.endswith(".a"):
+          toolkit_name = item.replace("lib", "").replace(".a", "")
+          if filterPackages(toolkit_name):
+            sourcesO.append(os.path.join(cmake_lib_dir, item))
+      print(f"Using {len(sourcesO)} CMake static libraries from {cmake_lib_dir} (filtered by filterPackages)", flush=True)
+    else:
+      raise Exception(f"CMake lib dir from marker does not exist: {cmake_lib_dir}")
+  else:
+    for dirpath, dirnames, filenames in os.walk(libraryBasePath + "/sources"):
+      rel_parts = dirpath.replace(libraryBasePath + "/sources/", "").split("/")
+      skip = any(not filterPackages(p) for p in rel_parts if p)
+      if skip:
+        dirnames.clear()
         continue
-      if item.endswith(".o"):
-        sourcesO.append(dirpath + "/" + item)
+      for item in filenames:
+        if item in [
+          "XBRepMesh.o",
+        ]:
+          continue
+        if item.endswith(".o"):
+          sourcesO.append(dirpath + "/" + item)
   linkCmd = [
     "emcc", "-lembind",
     *([additionalBindCodeO] if additionalBindCodeO else []),

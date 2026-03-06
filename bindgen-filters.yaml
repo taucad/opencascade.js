@@ -1,0 +1,669 @@
+# OpenCascade.js Binding Generator Filter Configuration
+# This file drives which OCCT symbols are included/excluded during binding generation.
+# Semantic rules (abstract classes, deleted constructors, etc.) remain in code.
+#
+# The bindgen filter config controls which symbols are GENERATED (binding code produced).
+# The build YAML config (e.g. custom_build_single_v8.yml) controls which symbols are LINKED.
+# A consumer overlay is simply a link-time YAML listing the symbols needed.
+
+exclude:
+  classes:
+    # Platform-specific
+    - prefix: D3DHost
+    - prefix: IVtk
+    - prefix: Cocoa
+    - prefix: AdvApp2Var
+    - prefix: BRepMeshData_
+    - prefix: BRepTest
+    - prefix: Media
+    - prefix: GeomGridEval_
+    - prefix: Geom2dGridEval_
+    - prefix: ShapePersistent_
+    # Undefined symbols
+    - GCPnts_DistFunction2d
+    - GCPnts_DistFunction
+    - GeomFill_SweepSectionGenerator
+    - Geom2dGcc_FunctionTanCuCuCu
+    - CDF_DirectoryIterator
+    - Geom2dEvaluator
+    - BRepApprox_Approx
+    - BRepGProp_VinertGK
+    - BRepOffset_MakeOffset
+    - BRepOffsetAPI_FindContigousEdges
+    - BRepApprox_ResConstraintOfMyGradientbisOfTheComputeLineOfApprox
+    - BRepApprox_ResConstraintOfMyGradientOfTheComputeLineBezierOfApprox
+    - BRepFeat_MakeLinearForm
+    - TopOpeBRepBuild_Builder
+    - TopOpeBRepBuild_Builder1
+    - STEPSelections_Counter
+    - DrawDim_PlanarDimension
+    - GeomFill_NSections
+    - IntPatch_Polyhedron
+    - IntPatch_RLine
+    - Xw_Window
+    - TransferBRep
+    - HLRBRep_BSurfaceTool
+    - HLRBRep_TheCurveLocatorOfTheProjPCurOfCInter
+    - HLRBRep_ThePolyhedronOfInterCSurf
+    - HLRBRep_Surface
+    - IntCurveSurface_ThePolyhedronOfHInter
+    - IntPolyh_MaillageAffinage
+    - IGESSelect_SelectBasicGeom
+    - ShapeFix_WireSegment
+    - StepFEA_SymmetricTensor43d
+    - IFSelect_EditForm
+    - IFSelect_IntParam
+    - IFSelect_ContextModif
+    - IntTools_PntOnFace
+    - IntImpParGen_ImpTool
+    - IGESData_IGESReaderData
+    - IGESToBRep_TopoSurface
+    - StepData_FreeFormEntity
+    - StepData_UndefinedEntity
+    # Abstract / deleted / private constructors
+    - PrsDim_Dimension
+    - FSD_BinaryFile
+    - FSD_File
+    - Font_BRepFont
+    - Message_LazyProgressScope
+    - Standard_ErrorHandler
+    - BOPAlgo_PaveFiller
+    - Graphic3d_CubeMap
+    - Storage_BaseDriver
+    - AIS_Dimension
+    # Misc compilation errors
+    - DsgPrs_RadiusPresentation
+    - Standard_Dump
+    - WNT_HIDSpaceMouse
+    - gp_VectorWithNullMagnitude
+    - BRepTest_Objects
+    - BRepGProp_Gauss
+    - BRepFeat
+    - GeomTools_UndefinedTypeHandler
+    - Interface_Graph
+    - Interface_FileReaderData
+    - Interface_GeneralModule
+    - Interface_HGraph
+    - RWHeaderSection_GeneralModule
+    - Prs3d_ToolQuadric
+    - OSD_FileNode
+    - OSD_File
+    - NCollection_ListNode
+    - NCollection_SeqNode
+    - RWStepAP214_GeneralModule
+    - RWStepShape_RWBrepWithVoids
+    - RWStepShape_RWEdgeCurve
+    - RWStepShape_RWEdgeLoop
+    - RWStepShape_RWFaceBound
+    - LocOpe_Revol
+    - QANCollection
+    - MAT2d_CutCurve
+    - Law_Interpolate
+    - LocOpe_RevolutionForm
+    - MeshTest_CheckTopology
+    - ProjLib_ProjectOnSurface
+    - QABugs_PresentableObject
+    - QABugs
+    - QADraw
+    - MeshTest
+    - OSD_Path
+    - QADNaming
+    - Geom_HSequenceOfBSplineSurface
+    - Poly_CoherentTriPtr
+    - StepData_DefaultGeneral
+    - TDF_LabelNode
+    - StepData_GeneralModule
+    - TopClass_SolidExplorer
+    - UTL
+    - VrmlData_IndexedFaceSet
+    - VrmlData_IndexedLineSet
+    - VrmlData_Scene
+    - XBRepMesh
+    - math_NewtonMinimum
+    - math_NewtonFunctionSetRoot
+    - math_IntegerVector
+    - math_Matrix
+    - math_Vector
+    - HLRBRep_CLProps
+    - HLRBRep_Intersector
+    - BOPTest_Objects
+    - BOPTest_DrawableShape
+    - BOPTest
+    - Draw_Drawable3D
+    - DBRep_DrawableShape
+    - StepKinematics_UnconstrainedPair
+    - StepKinematics_UnconstrainedPairValue
+    - StdPersistent_TopLoc
+    # OCCT V8 specific
+    - BSplCLib_CacheParams
+    - LDOM_XmlReader
+    - TDF_DerivedAttribute
+    - HLRAlgo_PolyInternalData
+    - HLRAlgo_Coincidence
+    - Poly_MakeLoops2D
+    - Poly_MakeLoops3D
+    - Handle_math_NotSquare
+    - Handle_math_SingularMatrix
+    - BSplCLib
+    - BRepMesh_IncrementalMesh
+    - BRepMesh_Triangle
+    - BRepMesh_Delaun
+    - AIS_GraphicTool
+    - AIS_Manipulator
+    - BRepApprox_TheFunctionOfTheInt2SOfThePrmPrmSvSurfacesOfApprox
+    - BRepBlend_Walking
+    - BRepClass3d_SolidExplorer
+    - BRepClass_FaceExplorer
+    - BRepExtrema_ProximityDistTool
+    - BRepExtrema_ProximityValueTool
+    - BRepFeat_MakeRevolutionForm
+    - BRepFill_TrimSurfaceTool
+    - BRepGProp_MeshProps
+    - BRepOffset
+    - BRepOffset_Tool
+    - BRepTopAdaptor_FClass2d
+    - DESTEP_Provider
+    - DESTL_Provider
+    - DEVRML_Provider
+    - DE_Provider
+    - DE_Wrapper
+    - FairCurve_Batten
+    - FairCurve_MinimalVariation
+    - GccAna_Circ2d2TanOn
+    - GccAna_Circ2d2TanRad
+    - GccAna_Circ2d3Tan
+    - GccAna_Circ2dTanCen
+    - GccAna_Circ2dTanOnRad
+    - GccAna_Lin2d2Tan
+    - GccAna_Lin2dTanObl
+    - GccAna_Lin2dTanPar
+    - GccAna_Lin2dTanPer
+    - GccEnt
+    - Geom2dGcc_Circ2d2TanOn
+    - Geom2dGcc_Circ2d2TanOnGeo
+    - Geom2dGcc_Circ2d2TanOnIter
+    - Geom2dGcc_Circ2d2TanRad
+    - Geom2dGcc_Circ2d2TanRadGeo
+    - Geom2dGcc_Circ2d3Tan
+    - Geom2dGcc_Circ2d3TanIter
+    - Geom2dGcc_Circ2dTanCen
+    - Geom2dGcc_Circ2dTanCenGeo
+    - Geom2dGcc_Circ2dTanOnRad
+    - Geom2dGcc_Circ2dTanOnRadGeo
+    - Geom2dGcc_Lin2d2Tan
+    - Geom2dGcc_Lin2d2TanIter
+    - Geom2dGcc_Lin2dTanObl
+    - Geom2dGcc_Lin2dTanOblIter
+    - Geom2dHatch_Elements
+    - GeomInt_TheFunctionOfTheInt2SOfThePrmPrmSvSurfacesOfWLApprox
+    - Graphic3d_Layer
+    - Graphic3d_SequenceOfHClipPlane
+    - Graphic3d_ShaderObject
+    - HLRBRep_Data
+    - HLRBRep_TheCSFunctionOfInterCSurf
+    - HelixGeom_BuilderApproxCurve
+    - IGESData_FreeFormatEntity
+    - IGESData_ParamReader
+    - IntCurveSurface_IntersectionPoint
+    - IntImpParGen
+    - IntWalk_PWalking
+    - IntWalk_TheFunctionOfTheInt2S
+    - Interface_UndefinedContent
+    - Intf_SectionPoint
+    - LocOpe_CSIntersector
+    - LocOpe_CurveShapeIntersector
+    - Message_ProgressScope
+    - PCDM_ReaderFilter
+    - Select3D_SensitiveCircle
+    - SelectMgr_SelectableObjectSet
+    - ShapeProcess
+    - ShapeProcess_ShapeContext
+    - StepToTopoDS_TranslateFace
+    - TColStd_PackedMapOfInteger
+    - TopOpeBRepBuild_GIter
+    - TopOpeBRepBuild_GTopo
+    - TopOpeBRepDS_HDataStructure
+    - TopOpeBRepDS_Interference
+    - TopOpeBRepDS_TKI
+    - TopOpeBRepTool_TOOL
+    - TopOpeBRepTool_makeTransition
+    - TopOpeBRep_FacesFiller
+    - VrmlData_Node
+    - XCAFDimTolObjects_DatumObject
+    - XCAFDimTolObjects_DimensionObject
+    - XSAlgo_ShapeProcessor
+    - Graphic3d_MaterialAspect
+    - Message
+    - Message_Messenger
+    - OSD_Protection
+    - PrsDim
+    - PrsDim_EqualDistanceRelation
+    - StepData_StepReaderData
+    - TopAbs
+    - V3d
+    - STEPCAFControl_GDTProperty
+
+  methods:
+    AppDef_MultiLine: [SetParameter]
+    BSplCLib: [DN]
+    BlendFunc: [Knots, Mults, GetShape]
+    AppDef_TheResol: [Error]
+    AppDef_ResConstraintOfTheGradient: [Error]
+    AppDef_ResConstraintOfMyGradientOfCompute: [Error]
+    AppDef_ResConstraintOfMyGradientbisOfBSplineCompute: [Error]
+    BinTools_Curve2dSet: [Dump, ReadCurve2d]
+    BinObjMgt_Persistent: [Read]
+    BinTools: [GetReal, GetShortReal, GetInteger, GetBool, GetExtChar]
+    BinTools_SurfaceSet: [ReadSurface]
+    BinTools_CurveSet: [ReadCurve]
+    BinTools_IStream: [Stream]
+    MeshVS_DataSource: [GetGeom, GetGeomType, GetGroup]
+    MeshVS_DeformedDataSource: [GetGeom, GetGeomType]
+    Interface_STAT: [Description, Phase]
+    VrmlData_Node: [Scene]
+    Font_FTFont: [GlyphImage]
+    LDOMString: [getOwnerDocument]
+    LDOM_MemManager: [Self]
+    LDOM_Node: [getOwnerDocument]
+    Aspect_VKeySet: [Mutex]
+    Image_VideoRecorder: [ChangeFrame]
+    StdPrs_BRepFont: [Mutex]
+    AdvApp2Var_Network: [ChangePatch, Patch]
+    AdvApp2Var_Framework: [IsoU, IsoV]
+    Resource_Unicode: []  # entire class methods filtered
+    OSD_Thread: [Wait]
+    TCollection_ExtendedString: [ToUTF8CString]
+    Message: [ToOSDMetric, MetricFromString]
+    OSD: [RealToCString]
+    XmlObjMgt: [GetInteger, GetReal]
+    BOPAlgo_Tools: [PerformCommonBlocks]
+    Transfer_Finder: [GetStringAttribute]
+    MoniTool_TypedValue: [Internals]
+    MoniTool_AttrList: [GetStringAttribute]
+    MoniTool_CaseData: [Text]
+    StepData_StepReaderData: [ReadEnumParam, ReadTypedParam]
+    XSControl_Vars: []  # entire class methods filtered
+    Graphic3d_GraduatedTrihedron: [CubicAxesCallback]
+    AIS_ViewController: [Keys, ChangeKeys]
+    Aspect_WindowInputListener: [Keys, ChangeKeys]
+    BRepClass3d_SolidExplorer: [GetTree]
+    NCollection_Lerp: [Interpolate]
+    Geom2dHatch_Hatcher: [IsDone]
+    Geom2dAPI_Interpolate: [ClearTangents]
+    Geom2dGcc_Lin2dTanObl: [IsParallel2]
+    Geom2dInt_Geom2dCurveTool: [IsComposite]
+    Geom2dInt_TheCurveLocatorOfTheProjPCurOfGInter: [Locate]
+    GeomInt_IntSS: [SetTolFixTangents, TolFixTangents]
+    GeomAPI_Interpolate: [ClearTangents]
+    GeomFill_FunctionGuide: [Deriv2T]
+    GeomFill_SweepSectionGenerator: [Init]
+    GeomInt_ResConstraintOfMyGradientOfTheComputeLineBezierOfWLApprox: [Error]
+    GeomInt_ResConstraintOfMyGradientbisOfTheComputeLineOfWLApprox: [Error]
+    GeomInt_WLApprox: [Perform]
+    GeomAPI_ExtremaCurveSurface: [Extrema]
+    GeomAPI_ExtremaCurveCurve: [Extrema]
+    GeomAPI_ProjectPointOnSurf: [Extrema]
+    Select3D_SensitiveTriangulation: [LastDetectedTriangle]
+    IntTools_Context: [FClass2d, ProjPS, SolidClassifier]
+    Message_AttributeStream: [Stream]
+    OpenGl_Context: [ChangeClipping, Clipping]
+    OpenGl_GraphicDriver: [Options, ChangeOptions]
+    OpenGl_ShaderProgram: [compileShaderVerbose]
+    OpenGl_View: [SetTextureEnv, SetBackgroundTextureStyle, SetBackgroundGradient, SetBackgroundGradientType]
+    NCollection_Vec2: [cwiseAbs]
+    NCollection_Vec3: [cwiseAbs]
+    NCollection_Vec4: [cwiseAbs]
+    Graphic3d_CStructure: [IsInfinite, stick, highlight, visible, HLRValidation, IsForHighlight, IsMutable, Is2dText]
+    gp_Dir: [D]
+    gp_Dir2d: [D]
+    SelectMgr_SelectableObjectSet: [BVHSubset]
+    AIS_Manipulator: [OptionsForAttach]
+    Graphic3d_ShaderObject: [ShaderVariableList]
+    Message_ProgressScope: [NullString]
+    PCDM_ReaderFilter: [AppendMode]
+    BRepGProp_MeshProps: [BRepGProp_MeshObjType]
+    ShapeProcess: [OperationsFlags]
+    XSAlgo_ShapeProcessor: [ParameterMap]
+    Message_Messenger: [GetTraceLevel, ChangePrinters]
+    Bnd_Box: [Get, GetGap]
+    Bnd_Box2d: [Get, GetGap]
+    CSLib: [Normal, DNNormal]
+    ChFi3d: [ConcaveSide, NextSide, SameSide]
+    GeomFill: [GetShape]
+    PrsDim: [ComputeGeometry, ComputeProjEdgePresentation, ComputeProjVertexPresentation]
+    PrsDim_EqualDistanceRelation: [ComputeGeometry, ComputeProjEdgePresentation, ComputeProjVertexPresentation]
+    Quantity_Color: [Values, ColorFromName]
+    TopAbs: [Compose, Reverse]
+    V3d: [GetProjAxis]
+    Graphic3d_MaterialAspect: [MaterialName]
+    Font_FontMgr: [FindFont]
+    OSD_Protection: [User, System, Group, World]
+    TColStd_PackedMapOfInteger: [GetPackedMap]
+    STEPCAFControl_GDTProperty: []  # entire class methods filtered
+    NCollection_DataMap: [Find]  # non-const lvalue reference output param
+    NCollection_IndexedDataMap: [FindFromKey]  # non-const lvalue reference output param
+
+  # Methods excluded across ALL classes (any class containing these methods)
+  global_methods:
+    - Limits        # OCCT V8: deprecated math globals, removed
+    - ReadStreamList  # OCCT V8: removed API
+
+  typedefs:
+    - SelectMgr_Vec3
+    - SelectMgr_Mat4
+    - Handle_Cocoa_Window
+    - Handle_Font_BRepFont
+    - Handle_PCDM_Reader
+    - Handle_PCDM_ReadWriter_1
+    - TColQuantity_Array1OfLength
+    - TopoDS_ListOfShape
+    - Handle_Graphic3d_Structure
+    - PCDM_BaseDriverPointer
+    - Handle_Xw_Window
+    - MoniTool_ValueInterpret
+    - Interface_ValueInterpret
+    - TopOpeBRepTool_IndexedDataMapOfSolidClassifier
+    - NCollection_Utf8Iter
+    - NCollection_Utf16Iter
+    - NCollection_Utf32Iter
+    - NCollection_UtfWideIter
+    - Extrema_UBTreeFillerOfSphere
+    - Graphic3d_Mat4
+    - Graphic3d_Mat4d
+    - TObj_TIntSparseArray_VecOfData
+    - TObj_TIntSparseArray_MapOfData
+    - XCAFDimTolObjects_DatumModifiersSequence
+    - BRepBuilderAPI_BndBoxTree
+    - Extrema_UBTreeOfSphere
+    - ShapeAnalysis_BoxBndTree
+    - BRepClass3d_BndBoxTree
+    - BRepBuilderAPI_CellFilter
+    - IntSurf_Allocator
+    - TDF_HAllocator
+    - Interface_VectorOfFileParameter
+    - Handle_StepKinematics_UnconstrainedPair
+    - Handle_StepKinematics_UnconstrainedPairValue
+    - OpenGl_ListOfStructure
+    - Graphic3d_Vec2
+    - Graphic3d_Vec3
+
+  template_typedefs:
+    - Handle_math_NotSquare
+    - Handle_math_SingularMatrix
+    - TColStd_PackedMapOfInteger
+    - TColStd_SequenceOfAddress
+    - TopTools_IndexedDataMapOfShapeAddress
+
+  headers:
+    - AIS_DataMapOfSelStat.hxx
+    - AIS_DataMapIteratorOfDataMapOfSelStat.hxx
+    - InterfaceGraphic.hxx
+    - Aspect_XWD.hxx
+    - IVtkDraw_Interactor.hxx
+    - BVH_IndexedBoxSet.hxx
+    - BOPDS_Iterator.hxx
+    - BOPDS_IteratorSI.hxx
+    - BOPTools_BoxTree
+    - BOPTools_BoxTree.hxx
+    - BVH_LinearBuilder.hxx
+    - BVH_RadixSorter.hxx
+    - OSD_Parallel.hxx
+    - OSD_ThreadPool.hxx
+    - Standard_Atomic.hxx
+    - BOPTools_Parallel.hxx
+    - BVH_DistanceField.hxx
+    - IVtk_Types.hxx
+    - IVtk_IShape.hxx
+    - IVtk_IShapeData.hxx
+    - IVtk_IShapeMesher.hxx
+    - IVtk_IShapePickerAlgo.hxx
+    - IVtkOCC_SelectableObject.hxx
+    - IVtkOCC_Shape.hxx
+    - IVtkOCC_ShapeMesher.hxx
+    - IVtkOCC_ShapePickerAlgo.hxx
+    - IVtkTools.hxx
+    - IVtkTools_DisplayModeFilter.hxx
+    - IVtkTools_ShapeDataSource.hxx
+    - IVtkTools_ShapeObject.hxx
+    - IVtkTools_ShapePicker.hxx
+    - IVtkTools_SubPolyDataFilter.hxx
+    - IVtkVTK_ShapeData.hxx
+    - IVtkVTK_View.hxx
+    - OSD_WNT.hxx
+    - WNT_Dword.hxx
+    - IVtkDraw_HighlightAndSelectionPipeline.hxx
+    - math_Householder.hxx
+
+
+  packages:
+    ## Module Draw (interactive testing tools, not needed in WASM)
+    - Draw
+    - TKDraw
+    - DBRep
+    - DrawTrSurf
+    - TKD3DHostTest
+    - D3DHostTest
+    - TKIVtkDraw
+    - IVtkDraw
+    - TKTopTest
+    - BOPTest
+    - BRepTest
+    - DrawFairCurve
+    - GeometryTest
+    - GeomliteTest
+    - HLRTest
+    - MeshTest
+    - SWDRAW
+    - TKViewerTest
+    - ViewerTest
+    - TKOpenGlTest
+    - OpenGlTest
+    - TKOpenGlesTest
+    - TKDCAF
+    - DDF
+    - DDataStd
+    - DDocStd
+    - DNaming
+    - DPrsStd
+    - DrawDim
+    - TKTObjDRAW
+    - TObjDRAW
+    - TKXSDRAW
+    - TKXSDRAWDE
+    - TKXSDRAWGLTF
+    - TKXSDRAWIGES
+    - TKXSDRAWOBJ
+    - TKXSDRAWPLY
+    - TKXSDRAWSTEP
+    - TKXSDRAWSTL
+    - TKXSDRAWVRML
+    - XSDRAW
+    - XSDRAWIGES
+    - XSDRAWSTEP
+    - XSDRAWSTLVRML
+    - TKQADraw
+    - QABugs
+    - QADNaming
+    - QADraw
+    - QANCollection
+    - TKXDEDRAW
+    - XDEDRAW
+    - DRAWEXE
+
+    ## Module Visualization (rendering is done in Three.js)
+    - TKD3DHost
+    - D3DHost
+    - TKIVtk
+    - IVtk
+    - IVtkOCC
+    - IVtkTools
+    - IVtkVTK
+    - TKMeshVS
+    - MeshVS
+    - TKOpenGl
+    - OpenGl
+    - TKOpenGles
+    - TKService
+    - Aspect
+    - Cocoa
+    - Font
+    - Graphic3d
+    - Image
+    - Media
+    - WNT
+    - Wasm
+    - Xw
+    - Shaders
+    - TKV3d
+    - AIS
+    - DsgPrs
+    - Prs3d
+    - PrsDim
+    - PrsMgr
+    - Select3D
+    - SelectBasics
+    - SelectMgr
+    - StdPrs
+    - StdSelect
+    - V3d
+    - TKVCAF
+    - TPrsStd
+
+    ## Data Exchange — only keep STEP + STL
+    # IGES
+    - TKDEIGES
+    - IGESCAFControl
+    - IGESData
+    - IGESFile
+    - IGESBasic
+    - IGESGraph
+    - IGESGeom
+    - IGESDimen
+    - IGESDraw
+    - IGESSolid
+    - IGESDefs
+    - IGESAppli
+    - IGESConvGeom
+    - IGESSelect
+    - IGESToBRep
+    - GeomToIGES
+    - Geom2dToIGES
+    - BRepToIGES
+    - BRepToIGESBRep
+    - IGESControl
+    - DEIGES
+    # VRML
+    - TKDEVRML
+    - VrmlConverter
+    - VrmlAPI
+    - Vrml
+    - VrmlData
+    - DEVRML
+    # GLTF
+    - TKDEGLTF
+    - RWGltf
+    - DEGLTF
+    # OBJ
+    - TKDEOBJ
+    - RWObj
+    - DEOBJ
+    # PLY
+    - TKDEPLY
+    - RWPly
+    - DEPLY
+    # Cascade native format
+    - TKDECascade
+    - DEBRepCascade
+    - DEXCAFCascade
+    - DEBREP
+    - DEXCAF
+    # Mesh I/O
+    - TKRWMesh
+    - RWMesh
+
+    ## Persistence/serialization drivers (not needed in WASM)
+    - TKBin
+    - BinDrivers
+    - BinMDataXtd
+    - BinMNaming
+    - TKBinL
+    - BinMDF
+    - BinMDataStd
+    - BinMFunction
+    - BinMDocStd
+    - BinObjMgt
+    - BinLDrivers
+    - TKBinTObj
+    - BinTObjDrivers
+    - TKBinXCAF
+    - BinXCAFDrivers
+    - BinMXCAFDoc
+    - TKStd
+    - StdDrivers
+    - StdObject
+    - StdPersistent
+    - StdStorage
+    - ShapePersistent
+    - TKStdL
+    - StdLDrivers
+    - StdLPersistent
+    - StdObjMgt
+    - TKTObj
+    - TObj
+    - TKXml
+    - XmlDrivers
+    - XmlMDataXtd
+    - XmlMNaming
+    - TKXmlL
+    - XmlLDrivers
+    - XmlMDF
+    - XmlMDataStd
+    - XmlMDocStd
+    - XmlMFunction
+    - XmlObjMgt
+    - TKXmlTObj
+    - XmlTObjDrivers
+    - TKXmlXCAF
+    - XmlXCAFDrivers
+    - XmlMXCAFDoc
+
+    ## Expression parser (not needed)
+    - TKExpress
+    - Expr
+    - ExprIntrp
+
+    ## Helix geometry (not bound, not used)
+    - TKHelix
+    - HelixBRep
+    - HelixGeom
+
+    ## Naming clash with BRepMesh
+    - XBRepMesh
+
+    ## TKDE plugin framework (no bindings, no transitive deps)
+    ## NOTE: DESTEP is NOT filtered — STEPCAFControl uses DESTEP_Parameters at runtime
+    - TKDE
+    - DE
+    - DEBRep
+
+  # Semantic rules that remain in code (not configurable):
+  # - Methods with void*, istream/ostream params (type-based)
+  # - Methods with non-const lvalue enum ref params (OCCT V8)
+  # - Copy/move constructors for classes with deleted copy/move
+  # - Using declarations (AST-based)
+  # - Bit-field properties
+  # - Unbindable nested container types (iterator, size_type, etc.)
+  # - Template arguments with empty type spelling
+  # - ::Iterator typedef patterns (memory growth issue)
+
+# ── Deprecation layer ─────────────────────────────────────────────────────
+# Symbols marked deprecated in OCCT. When deprecated.include is true (default),
+# these symbols are left alone (they may still be excluded by rules above).
+# When deprecated.include is false (or --no-deprecated is passed), every symbol
+# listed here is added to the class and global-method exclusion sets.
+deprecated:
+  include: true
+  symbols:
+    - Limits             # OCCT V8: removed deprecated math globals
+    - ReadStreamList     # OCCT V8: removed deprecated API
+    - OSD_Protection     # OCCT V8: deprecated protection class

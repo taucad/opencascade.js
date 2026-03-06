@@ -89,7 +89,11 @@ def buildObjectFiles(args, file):
     *(["-Wno-error=implicit-function-declaration"] if is_c_file else []),
     "-DHAVE_RAPIDJSON",
     OPT_LEVEL,
-    "-w",
+    "-Wno-unused-parameter",
+    "-Wno-unused-variable",
+    "-Wno-deprecated-declarations",
+    "-Wno-non-virtual-dtor",
+    "-Werror=return-type",
     "-pthread" if args["threading"] == "multi-threaded" else "",
     *["-I" + p for p in _flat_include_paths],
     "-c", file,
@@ -116,7 +120,7 @@ if __name__ == "__main__":
 
   print(f"Using flat includes: {FLAT_INCLUDE_DIR}")
 
-  nproc = min(multiprocessing.cpu_count(), 8)
+  nproc = min(multiprocessing.cpu_count(), 16)
   print(f"Compiling {len(filesToBuild)} source files with {nproc} workers...", flush=True)
   with multiprocessing.Pool(processes=nproc) as p:
     results = p.map(partial(buildObjectFiles, {"threading": args.threading}), filesToBuild)

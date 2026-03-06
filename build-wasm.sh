@@ -231,7 +231,12 @@ buildPch(threading='$THREADING')
 
 step_generate() {
   echo "═══ Generating bindings from OCCT headers ═══"
-  python3 src/generateBindings.py
+  local config="${OCJS_BINDGEN_CONFIG:-$OCJS_ROOT/bindgen-filters.yaml}"
+  if [ -f "$config" ]; then
+    echo "  Using bindgen config: $config"
+    export OCJS_BINDGEN_CONFIG="$config"
+  fi
+  python3 -m ocjs_bindgen --config "$config"
   echo ""
 }
 
@@ -242,9 +247,99 @@ step_bindings() {
 }
 
 step_sources() {
-  echo "═══ Compiling OCCT sources ═══"
+  echo "═══ Compiling OCCT sources (CMake) ═══"
+  step_sources_cmake
+  echo ""
+}
+
+step_sources_legacy() {
+  echo "═══ Compiling OCCT sources (legacy Python) ═══"
   python3 src/compileSources.py "$THREADING"
   echo ""
+}
+
+step_sources_cmake() {
+  local cmake_build_dir="$OCJS_ROOT/build/occt-cmake"
+  local lib_dir="$cmake_build_dir/lin32/clang/lib"
+
+  if [ -d "$lib_dir" ] && [ "$(ls "$lib_dir"/*.a 2>/dev/null | wc -l)" -gt 0 ]; then
+    echo "  CMake build directory exists with $(ls "$lib_dir"/*.a | wc -l | tr -d ' ') libraries, checking if rebuild needed..."
+  fi
+
+  local cmake_flags=(
+    -DCMAKE_BUILD_TYPE=Release
+    -DBUILD_LIBRARY_TYPE=Static
+    -DBUILD_MODULE_FoundationClasses=ON
+    -DBUILD_MODULE_ModelingData=ON
+    -DBUILD_MODULE_ModelingAlgorithms=ON
+    -DBUILD_MODULE_DataExchange=ON
+    -DBUILD_MODULE_ApplicationFramework=ON
+    -DBUILD_MODULE_Visualization=OFF
+    -DBUILD_MODULE_Draw=OFF
+    -DBUILD_DOC_Overview=OFF
+    -DUSE_TCL=OFF
+    -DUSE_TK=OFF
+    -DUSE_RAPIDJSON=ON
+    "-D3RDPARTY_RAPIDJSON_DIR=$RAPIDJSON_ROOT"
+    "-D3RDPARTY_RAPIDJSON_INCLUDE_DIR=$RAPIDJSON_ROOT/include"
+    "-D3RDPARTY_FREETYPE_DIR=$FREETYPE_ROOT"
+    "-D3RDPARTY_FREETYPE_INCLUDE_DIR_freetype2=$FREETYPE_ROOT/include"
+    "-D3RDPARTY_FREETYPE_INCLUDE_DIR_ft2build=$FREETYPE_ROOT/include"
+  )
+
+  local cflags="$OCJS_OPT -DIGNORE_NO_ATOMICS=1 -DOCCT_NO_PLUGINS -DHAVE_RAPIDJSON"
+  local cxxflags="$cflags -frtti"
+
+  if [ "$OCJS_LTO" = "1" ]; then
+    cflags="$cflags -flto"
+    cxxflags="$cxxflags -flto"
+  fi
+
+  if [ "$OCJS_EXCEPTIONS" = "1" ]; then
+    cxxflags="$cxxflags -fwasm-exceptions"
+  fi
+
+  if [ "$THREADING" = "multi-threaded" ]; then
+    cflags="$cflags -pthread"
+    cxxflags="$cxxflags -pthread"
+  fi
+
+  if [ -n "$OCJS_DEFINES" ]; then
+    IFS=',' read -ra defines <<< "$OCJS_DEFINES"
+    for d in "${defines[@]}"; do
+      d="$(echo "$d" | xargs)"
+      [ -n "$d" ] && cflags="$cflags -D$d" && cxxflags="$cxxflags -D$d"
+    done
+  fi
+  if [ -n "$OCJS_UNDEFINES" ]; then
+    IFS=',' read -ra undefines <<< "$OCJS_UNDEFINES"
+    for u in "${undefines[@]}"; do
+      u="$(echo "$u" | xargs)"
+      [ -n "$u" ] && cflags="$cflags -U$u" && cxxflags="$cxxflags -U$u"
+    done
+  fi
+
+  cmake_flags+=(
+    "-DCMAKE_C_FLAGS=$cflags"
+    "-DCMAKE_CXX_FLAGS=$cxxflags"
+  )
+
+  echo "  Configuring OCCT via CMake..."
+  emcmake cmake -B "$cmake_build_dir" \
+    "${cmake_flags[@]}" \
+    -Wno-dev \
+    "$OCCT_ROOT" 2>&1 | tail -5
+
+  local nproc
+  nproc=$(sysctl -n hw.ncpu 2>/dev/null || nproc 2>/dev/null || echo 4)
+  echo "  Building OCCT with $nproc parallel jobs..."
+  cmake --build "$cmake_build_dir" -j"$nproc" 2>&1 | tail -5
+
+  local lib_count
+  lib_count=$(ls "$lib_dir"/*.a 2>/dev/null | wc -l | tr -d ' ')
+  echo "  CMake produced $lib_count static libraries in $lib_dir"
+
+  echo "$lib_dir" > "$OCJS_ROOT/build/.cmake-lib-dir"
 }
 
 step_link() {
@@ -285,7 +380,7 @@ step_compile_all() {
     step_pch
     step_generate
     step_bindings
-    step_sources
+    step_sources_cmake
 
     local compile_end
     compile_end=$(date +%s)
@@ -331,7 +426,7 @@ while [ $# -gt 0 ]; do
       PRESET="$1"
       shift
       ;;
-    pch|generate|bindings|sources)
+    pch|generate|bindings|sources|sources-legacy)
       COMMANDS+=("$1")
       shift
       ;;
@@ -414,6 +509,7 @@ for cmd in "${COMMANDS[@]}"; do
     generate)  step_generate ;;
     bindings)  step_bindings ;;
     sources)   step_sources ;;
+    sources-legacy) step_sources_legacy ;;
     link)      step_link "$YAML_CONFIG" ;;
     validate)
       echo "═══ Validating YAML config: $YAML_CONFIG ═══"
@@ -441,6 +537,9 @@ else:
     full)
       step_compile_all "$CACHE_KEY"
       step_link "$YAML_CONFIG"
+      echo "═══ Post-build validation ═══"
+      python3 "$OCJS_ROOT/scripts/validate-build.py" "$YAML_CONFIG" "$(dirname "$YAML_CONFIG")" --build-dir "$OCJS_ROOT/build" || true
+      echo ""
       ;;
   esac
 done

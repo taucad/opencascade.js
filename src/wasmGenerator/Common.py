@@ -6,6 +6,29 @@ class SkipException(Exception):
 def getPureVirtualMethods(theClass):
   return list(filter(lambda x: x.is_pure_virtual_method(), list(theClass.get_children())))
 
+def isTransientDerived(theClass, classDict, _visited=None):
+  if _visited is None:
+    _visited = set()
+  name = theClass.spelling
+  if name in _visited:
+    return False
+  _visited.add(name)
+  if name == "Standard_Transient":
+    return True
+  baseSpec = list(filter(
+    lambda x: x.kind == clang.cindex.CursorKind.CXX_BASE_SPECIFIER
+      and x.access_specifier == clang.cindex.AccessSpecifier.PUBLIC,
+    list(theClass.get_children())
+  ))
+  for bs in baseSpec:
+    baseName = bs.type.spelling
+    if baseName == "Standard_Transient":
+      return True
+    if baseName in classDict:
+      if isTransientDerived(classDict[baseName], classDict, _visited):
+        return True
+  return False
+
 def isAbstractClass(theClass, classDict):
   baseSpec = list(filter(lambda x: x.kind == clang.cindex.CursorKind.CXX_BASE_SPECIFIER and x.access_specifier == clang.cindex.AccessSpecifier.PUBLIC, list(theClass.get_children())))
   baseClasses = [classDict[y.type.spelling] for y in baseSpec if y.type.spelling in classDict]

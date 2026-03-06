@@ -33,6 +33,21 @@ PCH_FILE = OCJS_ROOT + "/build/pch.h.pch"
 
 _DEPRECATED_DIR = "Deprecated"
 
+def _load_excluded_includes() -> Set[str]:
+  """Load excluded include files from bindgen-filters.yaml."""
+  config_path = os.environ.get("OCJS_BINDGEN_CONFIG", os.path.join(OCJS_ROOT, "bindgen-filters.yaml"))
+  if not os.path.isfile(config_path):
+    return set()
+  try:
+    import yaml
+    with open(config_path) as f:
+      cfg = yaml.safe_load(f)
+    return set(cfg.get("exclude", {}).get("headers", []))
+  except Exception:
+    return set()
+
+_EXCLUDED_INCLUDES = _load_excluded_includes()
+
 def getGlobalIncludes() -> Tuple[List[str], List[str], List[str]]:
   """Discover OCCT headers from non-filtered packages for PCH generation.
 
@@ -52,7 +67,7 @@ def getGlobalIncludes() -> Tuple[List[str], List[str], List[str]]:
     additionalIncludePaths.append(str(dirpath))
     is_deprecated = ("/" + _DEPRECATED_DIR + "/") in dirpath or dirpath.endswith("/" + _DEPRECATED_DIR)
     for item in filenames:
-      if filterIncludeFile(item):
+      if filterIncludeFile(item) and item not in _EXCLUDED_INCLUDES:
         filepath = str(os.path.join(dirpath, item))
         if is_deprecated:
           deprecatedIncludeFiles.append(filepath)
@@ -66,6 +81,7 @@ additionalIncludePaths = [
   RAPIDJSON_ROOT + "/include",
   FREETYPE_ROOT + "/include/freetype",
   FREETYPE_ROOT + "/include",
+  OCJS_ROOT + "/src",
 ]
 
 def _get_system_cxx_include_paths():
@@ -169,9 +185,24 @@ def buildFlatIncludes():
   print(f"Flat includes: {count} files symlinked into {FLAT_INCLUDE_DIR}/")
   return FLAT_INCLUDE_DIR
 
+def _get_cmake_include_dir():
+  """Return the CMake-collected OCCT include directory if it exists."""
+  cmake_inc = os.path.join(OCJS_ROOT, "build", "occt-cmake", "include", "opencascade")
+  if os.path.isdir(cmake_inc):
+    return cmake_inc
+  return None
+
 def getFlatIncludePaths():
-  """Return the minimal set of -I paths using the flat include directory."""
-  return [FLAT_INCLUDE_DIR] + additionalIncludePaths
+  """Return the minimal set of -I paths using the flat include directory.
+
+  Prefers CMake-collected headers when available (from emcmake cmake build),
+  falling back to the symlink-based flat include directory.
+  """
+  cmake_inc = _get_cmake_include_dir()
+  paths = [FLAT_INCLUDE_DIR] + additionalIncludePaths
+  if cmake_inc:
+    paths.insert(0, cmake_inc)
+  return paths
 
 def _get_safe_deprecated_headers():
   """Return deprecated headers that compile cleanly with the PCH.
@@ -224,7 +255,11 @@ def buildPch(threading="single-threaded"):
     "-frtti",
     "-DHAVE_RAPIDJSON",
     OPT_LEVEL,
-    "-w",
+    "-Wno-unused-parameter",
+    "-Wno-unused-variable",
+    "-Wno-non-virtual-dtor",
+    "-Wno-deprecated-declarations",
+    "-Werror=return-type",
     "-pthread" if threading == "multi-threaded" else "",
     *["-I" + p for p in flat_paths],
     "-x", "c++-header",

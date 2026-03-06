@@ -27,11 +27,11 @@ def mkdirp(name: str) -> None:
 def filterClasses(child, customBuild):
   if customBuild:
     return (
-      child.location.file.name == "myMain.h" and
+      child.location.file is not None and child.location.file.name == "myMain.h" and
       shouldProcessClass(child, occtBasePath)
     )
   return (
-    child.extent.start.file.name.startswith(occtBasePath) and
+    child.extent.start.file is not None and child.extent.start.file.name.startswith(occtBasePath) and
     filterPackages(os.path.basename(os.path.dirname(child.location.file.name))) and
     shouldProcessClass(child, occtBasePath)
   )
@@ -49,7 +49,7 @@ def filterTemplates(child, customBuild):
     return False
   if customBuild:
     return (
-      child.location.file.name == "myMain.h" and
+      child.location.file is not None and child.location.file.name == "myMain.h" and
       child.kind == clang.cindex.CursorKind.TYPEDEF_DECL and
       (
         child.underlying_typedef_type.kind == clang.cindex.TypeKind.ELABORATED or
@@ -57,7 +57,7 @@ def filterTemplates(child, customBuild):
       )
     )
   return ((
-      child.extent.start.file.name.startswith(occtBasePath) and
+      child.extent.start.file is not None and child.extent.start.file.name.startswith(occtBasePath) and
       filterPackages(os.path.basename(os.path.dirname(child.location.file.name)))
     ) and
     child.kind == clang.cindex.CursorKind.TYPEDEF_DECL and
@@ -69,9 +69,9 @@ def filterTemplates(child, customBuild):
 
 def filterEnums(child, customBuild):
   if customBuild:
-    return child.location.file.name == "myMain.h"
+    return child.location.file is not None and child.location.file.name == "myMain.h"
   return ((
-      child.extent.start.file.name.startswith(occtBasePath) and
+      child.extent.start.file is not None and child.extent.start.file.name.startswith(occtBasePath) and
       filterPackages(os.path.basename(os.path.dirname(child.location.file.name)))
     ) and
     child.kind == clang.cindex.CursorKind.ENUM_DECL
@@ -180,6 +180,7 @@ referenceTypeTemplateDefs = \
   "#include <emscripten/bind.h>\n" + \
   "using namespace emscripten;\n" + \
   "#include <functional>\n" + \
+  "#include \"ocjs_smart_ptr.h\"\n" + \
   "\n" + \
   "template<typename T>\n" + \
   "T getReferenceValue(const emscripten::val& v) {\n" + \
@@ -212,6 +213,19 @@ def generateCustomCodeBindings(customCode):
   process(tuInfo, ".d.ts.json", typescriptGenerationFuncClasses, typescriptGenerationFuncTemplates, typescriptGenerationFuncEnums, "", True)
 
 if __name__ == "__main__":
+  import argparse
+  parser = argparse.ArgumentParser(description="Generate OCCT Embind/TypeScript bindings")
+  parser.add_argument("--config", default=None, help="Path to bindgen-filters.yaml for config-driven filtering")
+  args = parser.parse_args()
+
+  if args.config:
+    from ocjs_bindgen.config import get_config
+    from ocjs_bindgen import filters
+    config = get_config(args.config)
+    filters.install(config)
+    if config.excluded_template_typedefs:
+      _FILTERED_TEMPLATE_TYPEDEFS = _FILTERED_TEMPLATE_TYPEDEFS | config.excluded_template_typedefs
+
   try:
     os.makedirs(libraryBasePath)
   except Exception:

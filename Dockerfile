@@ -74,7 +74,7 @@ import sys; sys.path.insert(0, 'src'); \
 from Common import buildFlatIncludes, buildPch; \
 buildFlatIncludes(); \
 buildPch(threading='single-threaded')" && \
-    python3 src/generateBindings.py
+    python3 -m ocjs_bindgen --config bindgen-filters.yaml
 
 ENTRYPOINT ["/opencascade.js/build-wasm.sh"]
 CMD ["full", "build-configs/full.yml"]

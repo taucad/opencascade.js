@@ -1,7 +1,7 @@
 import clang.cindex
 import re
 
-from wasmGenerator.Common import SkipException, isAbstractClass, getMethodOverloadPostfix
+from wasmGenerator.Common import SkipException, isAbstractClass, isTransientDerived, getMethodOverloadPostfix
 from filter.filterClasses import filterClass
 from filter.filterMethodOrProperties import filterMethodOrProperty
 from typing import Tuple, List
@@ -86,6 +86,39 @@ class Bindings:
   _MEMBER_TYPEDEFS = {"value_type", "const_reference", "reference", "Array1Type", "Array2Type", "SequenceType"}
   _TYPE_PARAM_RE = None
 
+  _UNBINDABLE_PATTERNS = [
+    "std::istream", "std::ostream", "std::ifstream", "std::ofstream",
+    "std::istringstream", "std::ostringstream", "std::stringstream",
+    "std::streambuf", "std::basic_istream", "std::basic_ostream",
+    "void *", "void*",
+    "NCollection_Vec2", "NCollection_Vec3", "NCollection_Vec4",
+  ]
+
+  _UNBINDABLE_SUFFIX_PATTERNS = [
+    "::Iterator", "::iterator",
+  ]
+
+  def _checkUnbindableArgs(self, methodName, className, args):
+    """Raise SkipException if any argument type is known to be unbindable."""
+    for arg in args:
+      spelling = arg.type.spelling
+      canonical = arg.type.get_canonical().spelling
+      for pat in self._UNBINDABLE_PATTERNS:
+        if pat in spelling or pat in canonical:
+          raise SkipException(
+            f"Skipping {className}::{methodName}: arg \"{arg.spelling}\" has unbindable type \"{spelling}\""
+          )
+      for suffix in self._UNBINDABLE_SUFFIX_PATTERNS:
+        if spelling.endswith(suffix) or canonical.endswith(suffix):
+          raise SkipException(
+            f"Skipping {className}::{methodName}: arg \"{arg.spelling}\" has unbindable iterator type \"{spelling}\""
+          )
+      if "type-parameter-" in canonical and "type-parameter-" in spelling:
+        raise SkipException(
+          f"Skipping {className}::{methodName}: arg \"{arg.spelling}\" has unresolved template param \"{spelling}\""
+        )
+
+
   def resolveWithCanonicalFallback(self, spelling, clangType, templateDecl = None, templateArgs = None):
     """Resolve a type spelling, falling back to canonical type for member typedefs.
     
@@ -159,7 +192,10 @@ class Bindings:
     output = ""
     isAbstract = isAbstractClass(theClass, self.tuInfo.classDict)
     if not isAbstract:
-      output += self.processSimpleConstructor(theClass)
+      try:
+        output += self.processSimpleConstructor(theClass, templateDecl, templateArgs)
+      except SkipException as e:
+        print(str(e))
     for method in theClass.get_children():
       if not filterMethodOrProperty(theClass, method):
         continue
@@ -202,6 +238,9 @@ class EmbindBindings(Bindings):
     output += "EMSCRIPTEN_BINDINGS(" + (theClass.spelling if templateDecl is None else templateDecl.spelling) + ") {\n"
     output += "  class_<" + className + baseClassBinding + ">(\"" + className + "\")\n"
 
+    if isTransientDerived(theClass, self.tuInfo.classDict):
+      output += "    .smart_ptr<opencascade::handle<" + className + ">>(\"" + className + "\")\n"
+
     output += super().processClass(theClass, templateDecl, templateArgs)
 
     for child in theClass.get_children():
@@ -227,7 +266,7 @@ class EmbindBindings(Bindings):
   def processFinalizeClass(self):
     return "  ;\n"
 
-  def processSimpleConstructor(self, theClass):
+  def processSimpleConstructor(self, theClass, templateDecl = None, templateArgs = None):
     output = ""
     children = list(theClass.get_children())
     constructors = list(filter(lambda x: x.kind == clang.cindex.CursorKind.CONSTRUCTOR, children))
@@ -242,10 +281,26 @@ class EmbindBindings(Bindings):
     if not standardConstructor:
       return output
 
-    argTypesBindings = ", ".join(list(map(lambda x: x.type.spelling, list(standardConstructor.get_arguments()))))
-    
+    args = list(standardConstructor.get_arguments())
+    self._checkUnbindableArgs("constructor", theClass.spelling, args)
+    argTypesBindings = ", ".join([
+      self.getSingleArgumentBinding(False, True, templateDecl, templateArgs)(arg)[0]
+      for arg in args
+    ])
+
     output += "    .constructor<" + argTypesBindings + ">()\n"
     return output
+
+  def getOriginalArgumentType(self, arg, templateDecl = None, templateArgs = None):
+    """Resolve type for select_overload: keeps original const/ref qualifiers exactly."""
+    argChildren = list(arg.get_children())
+    hasDefaultValue = any(x.spelling == "=" for x in list(arg.get_tokens()))
+    isArray = not hasDefaultValue and len(argChildren) > 1 and argChildren[1].kind == clang.cindex.CursorKind.INTEGER_LITERAL
+    if isArray:
+      const = "const " if list(arg.get_tokens())[0].spelling == "const" else ""
+      arrayCount = list(argChildren[1].get_tokens())[0].spelling
+      return const + argChildren[0].type.spelling + " (&)[" + arrayCount + "]"
+    return self.resolveWithCanonicalFallback(arg.type.spelling, arg.type, templateDecl, templateArgs)
 
   def getSingleArgumentBinding(self, argNames = True, isConstructor = False, templateDecl = None, templateArgs = None):
     def f(arg):
@@ -309,6 +364,7 @@ class EmbindBindings(Bindings):
         )
 
       args = list(method.get_arguments())
+      self._checkUnbindableArgs(method.spelling, theClass.spelling, args)
       argsNeedingWrapper = list(map(lambda arg: needsWrapper(arg.type), args))
       returnNeedsWrapper = needsWrapper(method.result_type)
       if any(argsNeedingWrapper) or returnNeedsWrapper:
@@ -429,9 +485,9 @@ class EmbindBindings(Bindings):
                     indent(4),
                     "return ret == nullptr ? emscripten::val::null() : emscripten::val(static_cast<",
                       pick(isCString(method.result_type), "std::string", self.getTypedefedTemplateTypeAsString(method.result_type.spelling, templateDecl, templateArgs)),
-                    ">(ret));\n",
+                    ">(ret), allow_raw_pointers());\n",
                   ),
-                  f"{indent(4)}return emscripten::val(ret);\n",
+                  f"{indent(4)}return emscripten::val(ret, allow_raw_pointers());\n",
                 ),
                 f"{indent(4)}return ret;\n",
               ),
@@ -451,7 +507,7 @@ class EmbindBindings(Bindings):
           functionBinding = merge("",
             " select_overload<",
             self.resolveWithCanonicalFallback(method.result_type.spelling, method.result_type, templateDecl, templateArgs),
-            f'({merge(", ", *map(lambda x: self.getSingleArgumentBinding(True, True, templateDecl, templateArgs)(x)[0], list(method.get_arguments())))})',
+            f'({merge(", ", *map(lambda x: self.getOriginalArgumentType(x, templateDecl, templateArgs), list(method.get_arguments())))})',
             pick(method.is_const_method(), "const", ""),
             pick(not method.is_static_method(), f", {getClassTypeName(theClass, templateDecl)}", ""),
             f">(&{className}::{method.spelling})",
@@ -484,20 +540,27 @@ class EmbindBindings(Bindings):
     if len(allOverloads) == 1:
       raise Exception("Something weird happened")
     for constructor in filter(lambda x: filterMethodOrProperty(theClass, x), constructors):
-      overloadPostfix = "" if (not len(allOverloads) > 1) else "_" + str(allOverloads.index(constructor) + 1)
+      try:
+        ctorArgs = list(constructor.get_arguments())
+        self._checkUnbindableArgs("constructor", theClass.spelling, ctorArgs)
 
-      args = ", ".join(list(map(lambda x: ("std::string " + x.spelling) if isCString(x.type) else self.getSingleArgumentBinding(True, True, templateDecl, templateArgs)(x)[0], constructor.get_arguments())))
-      argNames = ", ".join(list(map(lambda x: (x.spelling + ".c_str()") if isCString(x.type) else x.spelling, constructor.get_arguments())))
-      argTypes = ", ".join(list(map(lambda x: "std::string" if isCString(x.type) else self.getSingleArgumentBinding(False, True, templateDecl, templateArgs)(x)[0], constructor.get_arguments())))
+        overloadPostfix = "" if (not len(allOverloads) > 1) else "_" + str(allOverloads.index(constructor) + 1)
 
-      name = getClassTypeName(theClass, templateDecl)
-      constructorBindings += "    struct " + name + overloadPostfix + " : public " + name + " {\n"
-      constructorBindings += "      " + name + overloadPostfix + "(" + args + ") : " + name + "(" + argNames + ") {}\n"
-      constructorBindings += "    };\n"
-      constructorBindings += "    class_<" + name + overloadPostfix + ", base<" + name + ">>(\"" + name + overloadPostfix + "\")\n"
-      constructorBindings += "      .constructor<" + argTypes + ">()\n"
-      constructorBindings += "    ;\n"
+        args = ", ".join(list(map(lambda x: ("std::string " + x.spelling) if isCString(x.type) else self.getSingleArgumentBinding(True, True, templateDecl, templateArgs)(x)[0], constructor.get_arguments())))
+        argNames = ", ".join(list(map(lambda x: (x.spelling + ".c_str()") if isCString(x.type) else x.spelling, constructor.get_arguments())))
+        argTypes = ", ".join(list(map(lambda x: "std::string" if isCString(x.type) else self.getSingleArgumentBinding(False, True, templateDecl, templateArgs)(x)[0], constructor.get_arguments())))
 
+        name = getClassTypeName(theClass, templateDecl)
+        constructorBindings += "    struct " + name + overloadPostfix + " : public " + name + " {\n"
+        constructorBindings += "      " + name + overloadPostfix + "(" + args + ") : " + name + "(" + argNames + ") {}\n"
+        constructorBindings += "    };\n"
+        constructorBindings += "    class_<" + name + overloadPostfix + ", base<" + name + ">>(\"" + name + overloadPostfix + "\")\n"
+        constructorBindings += "      .constructor<" + argTypes + ">()\n"
+        constructorBindings += "    ;\n"
+
+      except SkipException as e:
+        print(str(e))
+        continue
     output += constructorBindings
     return output
 
@@ -555,6 +618,24 @@ class TypescriptBindings(Bindings):
       current = baseDef
     return None
 
+  def resolve_handle_type(self, clang_type):
+    """Extract inner type from opencascade::handle<T> via AST inspection.
+    Returns the inner type's spelling (e.g. 'Geom_Curve') or None."""
+    t = clang_type
+    if t.kind == clang.cindex.TypeKind.LVALUEREFERENCE:
+      t = t.get_pointee()
+    if t.kind == clang.cindex.TypeKind.POINTER:
+      t = t.get_pointee()
+    if t.get_num_template_arguments() != 1:
+      return None
+    decl = t.get_declaration()
+    if decl.spelling != "handle":
+      return None
+    parent = decl.semantic_parent
+    if not parent or parent.spelling not in ("opencascade", "occ"):
+      return None
+    return t.get_template_argument_type(0).spelling
+
   def processClass(self, theClass, templateDecl = None, templateArgs = None):
     output = ""
     baseSpec = list(filter(lambda x: x.kind == clang.cindex.CursorKind.CXX_BASE_SPECIFIER and x.access_specifier == clang.cindex.AccessSpecifier.PUBLIC, theClass.get_children()))
@@ -597,7 +678,7 @@ class TypescriptBindings(Bindings):
     output += "}\n\n"
     return output
 
-  def processSimpleConstructor(self, theClass):
+  def processSimpleConstructor(self, theClass, templateDecl = None, templateArgs = None):
     output = ""
     children = list(theClass.get_children())
     constructors = list(filter(lambda x: x.kind == clang.cindex.CursorKind.CONSTRUCTOR, children))
@@ -624,39 +705,69 @@ class TypescriptBindings(Bindings):
       "unsigned",
       "uint32_t",
       "unsigned int",
-      "unsigned long"
+      "unsigned long",
       "long",
       "long int",
       "unsigned short",
       "short",
       "short int",
       "float",
-      "unsigned float",
       "double",
-      "unsigned double"
+      "Standard_Integer",
+      "Standard_Real",
+      "Standard_ShortReal",
+      "Standard_Size",
+      "Standard_Byte",
     ]:
       return "number"
 
     if typeName in [
       "char",
       "unsigned char",
-      "std::string"
+      "std::string",
+      "Standard_Character",
+      "Standard_ExtCharacter",
+      "Standard_CString",
+      "Standard_WideChar",
     ]:
       return "string"
 
     if typeName in [
-      "bool"
+      "bool",
+      "Standard_Boolean",
     ]:
       return "boolean"
+
+    if typeName in [
+      "Standard_SStream",
+    ]:
+      return "any"
+
     return typeName
 
+  def _resolve_nested_type(self, decl):
+    """Resolve nested C++ types (enum/class/struct inside a class) to Parent_Child format."""
+    if not decl or decl.spelling == "":
+      return None
+    if decl.kind not in (clang.cindex.CursorKind.ENUM_DECL, clang.cindex.CursorKind.CLASS_DECL, clang.cindex.CursorKind.STRUCT_DECL):
+      return None
+    parent = decl.semantic_parent
+    if not parent or parent.kind not in (clang.cindex.CursorKind.CLASS_DECL, clang.cindex.CursorKind.STRUCT_DECL):
+      return None
+    return parent.spelling + "_" + decl.spelling
+
   def getTypescriptDefFromResultType(self, res, templateDecl = None, templateArgs = None):
+    handleInner = self.resolve_handle_type(res)
+    if handleInner:
+      return handleInner
+
     if not res.spelling == "void":
       decl = res.get_declaration()
-      if decl and decl.kind == clang.cindex.CursorKind.ENUM_DECL and decl.spelling != "":
-        parent = decl.semantic_parent
-        if parent and parent.kind in (clang.cindex.CursorKind.CLASS_DECL, clang.cindex.CursorKind.STRUCT_DECL):
-          return parent.spelling + "_" + decl.spelling
+      nested = self._resolve_nested_type(decl)
+      if nested:
+        if nested in self.exports:
+          return nested
+        return "any"
       typedefType = self.resolveWithCanonicalFallback(res.spelling.replace("&", "").replace("const", "").replace("*", "").strip(), res, templateDecl, templateArgs)
       resTypeName = typedefType.replace("&", "").replace("const", "").replace("*", "").strip()
       resTypeName = self.convertBuiltinTypes(resTypeName)
@@ -668,28 +779,31 @@ class TypescriptBindings(Bindings):
       resTypeName = "any"
     return resTypeName
 
+  def _argname(self, arg, suffix = ""):
+    argname = (arg.spelling if not arg.spelling == "" else ("a" + str(suffix)))
+    if argname in ["var", "with", "super"]:
+      argname += "_"
+    return argname
+
   def getTypescriptDefFromArg(self, arg, suffix = "", templateDecl = None, templateArgs = None):
+    handleInner = self.resolve_handle_type(arg.type)
+    if handleInner:
+      return self._argname(arg, suffix) + ": " + handleInner
+
     decl = arg.type.get_declaration()
-    if decl and decl.kind == clang.cindex.CursorKind.ENUM_DECL and decl.spelling != "":
-      parent = decl.semantic_parent
-      if parent and parent.kind in (clang.cindex.CursorKind.CLASS_DECL, clang.cindex.CursorKind.STRUCT_DECL):
-        argTypeName = parent.spelling + "_" + decl.spelling
-        argname = (arg.spelling if not arg.spelling == "" else ("a" + str(suffix)))
-        if argname in ["var", "with", "super"]:
-          argname += "_"
-        return argname + ": " + argTypeName
+    nested = self._resolve_nested_type(decl)
+    if nested:
+      argTypeName = nested if nested in self.exports else "any"
+      return self._argname(arg, suffix) + ": " + argTypeName
 
     argTypeName = self.resolveWithCanonicalFallback(arg.type.spelling.replace("&", "").replace("const", "").replace("*", "").strip(), arg.type, templateDecl, templateArgs)
     argTypeName = argTypeName.replace("&", "").replace("const", "").replace("*", "").strip()
     argTypeName = self.convertBuiltinTypes(argTypeName)
-    if argTypeName == "" or "(" in argTypeName or ":" in argTypeName:
+    if argTypeName == "" or "(" in argTypeName or ":" in argTypeName or "<" in argTypeName:
       print("could not generate proper types for type name '" + argTypeName + "', using 'any' instead.")
       argTypeName = "any"
 
-    argname = (arg.spelling if not arg.spelling == "" else ("a" + str(suffix)))
-    if argname in ["var", "with", "super"]:
-      argname += "_"
-    return argname + ": " + argTypeName
+    return self._argname(arg, suffix) + ": " + argTypeName
 
   def processMethodOrProperty(self, theClass, method, templateDecl = None, templateArgs = None):
     output = ""

@@ -228,12 +228,6 @@ mainBuild:
   - symbol: STEPControl_StepModelType
   - symbol: IFSelect_ReturnStatus
   - symbol: IFSelect_WorkSession
-  - symbol: Handle_Geom2d_Curve
-  - symbol: Handle_Geom_Curve
-  - symbol: Handle_Geom_Surface
-  - symbol: Handle_HLRBRep_Algo
-  - symbol: Handle_TDocStd_Document
-  - symbol: Handle_XSControl_WorkSession
   - symbol: TopoDS_Cast
   - symbol: OCJS_ShapeHasher
   - symbol: BRepMesh_IncrementalMeshWrapper
@@ -243,8 +237,9 @@ mainBuild:
   - symbol: Standard_Failure
   emccFlags:
   - -flto
-  - -fexceptions
+  - -fwasm-exceptions
   - -sEXPORT_ES6=1
+  - -sMODULARIZE
   - -sALLOW_MEMORY_GROWTH=1
   - -sEXPORTED_RUNTIME_METHODS=["FS"]
   - -sINITIAL_MEMORY=100MB
@@ -254,12 +249,6 @@ mainBuild:
   - --no-entry
   - -O3
 additionalCppCode: |
-  typedef opencascade::handle<Geom2d_Curve> Handle_Geom2d_Curve;
-  typedef opencascade::handle<Geom_Curve> Handle_Geom_Curve;
-  typedef opencascade::handle<Geom_Surface> Handle_Geom_Surface;
-  typedef opencascade::handle<HLRBRep_Algo> Handle_HLRBRep_Algo;
-  typedef opencascade::handle<TDocStd_Document> Handle_TDocStd_Document;
-  typedef opencascade::handle<XSControl_WorkSession> Handle_XSControl_WorkSession;
 
   class TopoDS_Cast {
   public:
