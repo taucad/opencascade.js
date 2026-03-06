@@ -120,7 +120,7 @@ if __name__ == "__main__":
 
   print(f"Using flat includes: {FLAT_INCLUDE_DIR}")
 
-  nproc = min(multiprocessing.cpu_count(), 16)
+  nproc = min(multiprocessing.cpu_count(), 8)
   print(f"Compiling {len(filesToBuild)} source files with {nproc} workers...", flush=True)
   with multiprocessing.Pool(processes=nproc) as p:
     results = p.map(partial(buildObjectFiles, {"threading": args.threading}), filesToBuild)

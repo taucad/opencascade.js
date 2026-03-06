@@ -118,6 +118,17 @@ class Bindings:
           f"Skipping {className}::{methodName}: arg \"{arg.spelling}\" has unresolved template param \"{spelling}\""
         )
 
+  def _constructorsHaveUniqueArities(self, publicConstructors):
+    """Check if all public constructors have unique argument counts (enabling native Embind overloading).
+    Also rejects cstring args which need wrapper subclasses for string conversion."""
+    arities = [len(list(c.get_arguments())) for c in publicConstructors]
+    if len(arities) != len(set(arities)):
+      return False
+    hasCStringArgs = any(
+      any(isCString(arg.type) for arg in c.get_arguments())
+      for c in publicConstructors
+    )
+    return not hasCStringArgs
 
   def resolveWithCanonicalFallback(self, spelling, clangType, templateDecl = None, templateArgs = None):
     """Resolve a type spelling, falling back to canonical type for member typedefs.
@@ -275,20 +286,35 @@ class EmbindBindings(Bindings):
       output += "    .constructor<>()\n"
       return output
     publicConstructors = list(filter(lambda x: x.kind == clang.cindex.CursorKind.CONSTRUCTOR and x.access_specifier == clang.cindex.AccessSpecifier.PUBLIC, children))
-    if len(publicConstructors) == 0 or len(publicConstructors) > 1:
-      return output
-    standardConstructor = publicConstructors[0]
-    if not standardConstructor:
+    if len(publicConstructors) == 0:
       return output
 
-    args = list(standardConstructor.get_arguments())
-    self._checkUnbindableArgs("constructor", theClass.spelling, args)
-    argTypesBindings = ", ".join([
-      self.getSingleArgumentBinding(False, True, templateDecl, templateArgs)(arg)[0]
-      for arg in args
-    ])
+    if len(publicConstructors) == 1:
+      standardConstructor = publicConstructors[0]
+      args = list(standardConstructor.get_arguments())
+      self._checkUnbindableArgs("constructor", theClass.spelling, args)
+      argTypesBindings = ", ".join([
+        self.getSingleArgumentBinding(False, True, templateDecl, templateArgs)(arg)[0]
+        for arg in args
+      ])
+      output += "    .constructor<" + argTypesBindings + ">()\n"
+      return output
 
-    output += "    .constructor<" + argTypesBindings + ">()\n"
+    if self._constructorsHaveUniqueArities(publicConstructors):
+      for constructor in filter(lambda x: filterMethodOrProperty(theClass, x), publicConstructors):
+        try:
+          args = list(constructor.get_arguments())
+          self._checkUnbindableArgs("constructor", theClass.spelling, args)
+          argTypesBindings = ", ".join([
+            self.getSingleArgumentBinding(False, True, templateDecl, templateArgs)(arg)[0]
+            for arg in args
+          ])
+          output += "    .constructor<" + argTypesBindings + ">()\n"
+        except SkipException as e:
+          print(str(e))
+          continue
+      return output
+
     return output
 
   def getOriginalArgumentType(self, arg, templateDecl = None, templateArgs = None):
@@ -533,18 +559,20 @@ class EmbindBindings(Bindings):
     if children is None:
       children = list(theClass.get_children())
     constructors = list(filter(lambda x: x.kind == clang.cindex.CursorKind.CONSTRUCTOR and x.access_specifier == clang.cindex.AccessSpecifier.PUBLIC, children))
-    if len(constructors) == 1:
+    if len(constructors) <= 1:
       return output
+
+    if self._constructorsHaveUniqueArities(constructors):
+      return output
+
     constructorBindings = ""
-    allOverloads = [m for m in children if m.kind == clang.cindex.CursorKind.CONSTRUCTOR and m.access_specifier == clang.cindex.AccessSpecifier.PUBLIC]
-    if len(allOverloads) == 1:
-      raise Exception("Something weird happened")
+    allOverloads = constructors
     for constructor in filter(lambda x: filterMethodOrProperty(theClass, x), constructors):
       try:
         ctorArgs = list(constructor.get_arguments())
         self._checkUnbindableArgs("constructor", theClass.spelling, ctorArgs)
 
-        overloadPostfix = "" if (not len(allOverloads) > 1) else "_" + str(allOverloads.index(constructor) + 1)
+        overloadPostfix = "_" + str(allOverloads.index(constructor) + 1)
 
         args = ", ".join(list(map(lambda x: ("std::string " + x.spelling) if isCString(x.type) else self.getSingleArgumentBinding(True, True, templateDecl, templateArgs)(x)[0], constructor.get_arguments())))
         argNames = ", ".join(list(map(lambda x: (x.spelling + ".c_str()") if isCString(x.type) else x.spelling, constructor.get_arguments())))
@@ -687,15 +715,27 @@ class TypescriptBindings(Bindings):
       output += "  constructor();\n"
       return output
     publicConstructors = list(filter(lambda x: x.kind == clang.cindex.CursorKind.CONSTRUCTOR and x.access_specifier == clang.cindex.AccessSpecifier.PUBLIC, children))
-    if len(publicConstructors) == 0 or len(publicConstructors) > 1:
-      return output
-    standardConstructor = publicConstructors[0]
-    if not standardConstructor:
+    if len(publicConstructors) == 0:
       return output
 
-    argsTypescriptDef = ", ".join(list(map(lambda x: self.getTypescriptDefFromArg(x), list(standardConstructor.get_arguments()))))
-    
-    output += "  constructor(" + argsTypescriptDef + ")\n"
+    if len(publicConstructors) == 1:
+      standardConstructor = publicConstructors[0]
+      argsTypescriptDef = ", ".join(list(map(lambda x: self.getTypescriptDefFromArg(x), list(standardConstructor.get_arguments()))))
+      output += "  constructor(" + argsTypescriptDef + ")\n"
+      return output
+
+    if self._constructorsHaveUniqueArities(publicConstructors):
+      for constructor in filter(lambda x: filterMethodOrProperty(theClass, x), publicConstructors):
+        try:
+          args = list(constructor.get_arguments())
+          self._checkUnbindableArgs("constructor", theClass.spelling, args)
+          argsTypescriptDef = ", ".join(list(map(lambda x: self.getTypescriptDefFromArg(x, "", templateDecl, templateArgs), args)))
+          output += "  constructor(" + argsTypescriptDef + ");\n"
+        except SkipException as e:
+          print(str(e))
+          continue
+      return output
+
     return output
 
   def convertBuiltinTypes(self, typeName):
@@ -821,14 +861,18 @@ class TypescriptBindings(Bindings):
     if children is None:
       children = list(theClass.get_children())
     constructors = list(filter(lambda x: x.kind == clang.cindex.CursorKind.CONSTRUCTOR and x.access_specifier == clang.cindex.AccessSpecifier.PUBLIC, children))
-    if len(constructors) == 1:
+    if len(constructors) <= 1:
+      return output
+
+    if self._constructorsHaveUniqueArities(constructors):
       return output
 
     constructorTypescriptDef = ""
     allOverloadedConstructors = []
+    allOverloads = constructors
 
     for constructor in filter(lambda x: filterMethodOrProperty(theClass, x), constructors):
-      [overloadPostfix, numOverloads] = getMethodOverloadPostfix(theClass, constructor, children)
+      overloadPostfix = "_" + str(allOverloads.index(constructor) + 1)
 
       argsTypescriptDef = ", ".join(list(map(lambda x: self.getTypescriptDefFromArg(x, "", templateDecl, templateArgs), list(constructor.get_arguments()))))
       name = getClassTypeName(theClass, templateDecl)

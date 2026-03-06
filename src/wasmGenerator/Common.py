@@ -80,9 +80,17 @@ def getMethodOverloadPostfix(theClass, method, children = None):
   if children == None:
     children = theClass.get_children() 
   allOverloads = [m for m in children if m.spelling == method.spelling]
-  overloadPostfix = "" if (not len(allOverloads) > 1) else "_" + str(allOverloads.index(method) + 1)
+  numOverloads = len(allOverloads)
 
-  return [overloadPostfix, len(allOverloads)]
+  if numOverloads <= 1:
+    return ["", numOverloads]
+
+  arities = [len(list(m.get_arguments())) for m in allOverloads]
+  if len(arities) == len(set(arities)):
+    return ["", numOverloads]
+
+  overloadPostfix = "_" + str(allOverloads.index(method) + 1)
+  return [overloadPostfix, numOverloads]
 
 def ignoreDuplicateTypedef(typedef):
   if typedef.underlying_typedef_type.spelling in [

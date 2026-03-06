@@ -90,7 +90,7 @@ def compileCustomCodeBindings(args):
   for dirpath, dirnames, filenames in os.walk(libraryBasePath + "/myMain.h"):
     filesToBuild.extend(map(lambda x: dirpath + "/" + x, filter(lambda x: x.endswith(".cpp"), filenames)))
 
-  with multiprocessing.Pool(processes=int(multiprocessing.cpu_count() / 1)) as p:
+  with multiprocessing.Pool(processes=min(multiprocessing.cpu_count(), 8)) as p:
     p.map(partial(buildOneFile, args), sorted(filesToBuild))
 
 def _is_filtered_binding(filepath):
@@ -121,7 +121,7 @@ if __name__ == "__main__":
     print("WARNING: No PCH found -- compilation will be ~25x slower. Run buildPch.py first.")
   print(f"Using flat includes: {FLAT_INCLUDE_DIR}")
 
-  nproc = min(multiprocessing.cpu_count(), 16)
+  nproc = min(multiprocessing.cpu_count(), 8)
   print(f"Compiling {len(filesToBuild)} binding files with {nproc} workers...", flush=True)
   with multiprocessing.Pool(processes=nproc) as p:
     results = p.map(partial(buildOneFile, {
