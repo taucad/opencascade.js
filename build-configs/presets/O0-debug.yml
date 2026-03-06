@@ -1,0 +1,21 @@
+name: O0-debug
+description: >
+  Debug build with no optimization. Fastest compilation (~5x faster
+  than -O2). Produces very large binaries not suitable for production.
+  Useful for development iteration and debugging WASM issues.
+
+compilation:
+  optimization: '-O0'
+  lto: false
+  exceptions: 'none'
+  threading: 'single-threaded'
+
+linking:
+  yaml: '../full.yml'
+  wasmOptLevel: '-O0'
+
+optimizations:
+  closure: false
+  evalCtors: false
+  converge: false
+  patchDump: false

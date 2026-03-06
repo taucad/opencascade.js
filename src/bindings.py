@@ -4,7 +4,6 @@ import re
 from wasmGenerator.Common import SkipException, isAbstractClass, getMethodOverloadPostfix
 from filter.filterClasses import filterClass
 from filter.filterMethodOrProperties import filterMethodOrProperty
-from Common import occtBasePath
 from typing import Tuple, List
 
 def merge(sep: str, *strings: List[str]):
@@ -81,20 +80,69 @@ def getClassTypeName(theClass, templateDecl = None):
   return templateDecl.spelling if templateDecl is not None else theClass.spelling
 
 class Bindings:
-  def __init__(self, typedefs, templateTypedefs, translationUnit):
-    self.templateTypedefs = templateTypedefs
-    self.translationUnit = translationUnit
-    self.typedefs = typedefs
+  def __init__(self, tuInfo):
+    self.tuInfo = tuInfo
+
+  _MEMBER_TYPEDEFS = {"value_type", "const_reference", "reference", "Array1Type", "Array2Type", "SequenceType"}
+  _TYPE_PARAM_RE = None
+
+  def resolveWithCanonicalFallback(self, spelling, clangType, templateDecl = None, templateArgs = None):
+    """Resolve a type spelling, falling back to canonical type for member typedefs.
+    
+    Template specializations like NCollection_Array1<gp_Pnt> use member typedefs
+    (value_type, const_reference) that resolve to concrete types (gp_Pnt, const gp_Pnt&)
+    in the canonical form. When clang returns type-parameter-0-N for the canonical type
+    (template definitions), we map it through templateArgs to the concrete type.
+    """
+    resolved = self.getTypedefedTemplateTypeAsString(spelling, templateDecl, templateArgs)
+    if not any(td in resolved for td in self._MEMBER_TYPEDEFS):
+      return resolved
+
+    canonical = clangType.get_canonical().spelling
+    if "type-parameter-" not in canonical:
+      return canonical
+
+    if not templateArgs:
+      return resolved
+
+    import re
+    if Bindings._TYPE_PARAM_RE is None:
+      Bindings._TYPE_PARAM_RE = re.compile(r'type-parameter-(\d+)-(\d+)')
+
+    def replacer(m):
+      depth, index = int(m.group(1)), int(m.group(2))
+      if depth == 0:
+        argValues = list(templateArgs.values())
+        if index < len(argValues):
+          return argValues[index].spelling
+      return m.group(0)
+
+    return Bindings._TYPE_PARAM_RE.sub(replacer, canonical)
 
   def getTypedefedTemplateTypeAsString(self, theTypeSpelling, templateDecl = None, templateArgs = None):
     if templateDecl is None:
-      typedefType = next((x for x in self.typedefs if x.location.file.name.startswith(occtBasePath) and x.underlying_typedef_type.spelling == theTypeSpelling), None)
-      typedefType = None if typedefType is None else typedefType.spelling
+      tud = self.tuInfo.typedefUnderlyingDict
+      if theTypeSpelling in tud:
+        typedefType = tud[theTypeSpelling].spelling
+      else:
+        typedefType = None
     else:
       templateType = self.replaceTemplateArgs(theTypeSpelling, templateArgs)
       rawTemplateType = templateType.replace("&", "").replace("const", "").strip()
-      rawTypedefType = next((x for x in self.templateTypedefs if (x.underlying_typedef_type.spelling == rawTemplateType or x.underlying_typedef_type.spelling == "opencascade::" + rawTemplateType)), None)
-      rawTypedefType = rawTemplateType if rawTypedefType is None else rawTypedefType.spelling
+      ttud = self.tuInfo.templateTypedefUnderlyingDict
+      oc_rawTemplateType = "opencascade::" + rawTemplateType
+      occ_rawTemplateType = "occ::" + rawTemplateType
+      normalized = rawTemplateType.replace("occ::", "opencascade::")
+      if rawTemplateType in ttud:
+        rawTypedefType = ttud[rawTemplateType].spelling
+      elif oc_rawTemplateType in ttud:
+        rawTypedefType = ttud[oc_rawTemplateType].spelling
+      elif occ_rawTemplateType in ttud:
+        rawTypedefType = ttud[occ_rawTemplateType].spelling
+      elif normalized in ttud:
+        rawTypedefType = ttud[normalized].spelling
+      else:
+        rawTypedefType = rawTemplateType
       typedefType = templateType.replace(rawTemplateType, rawTypedefType)
     return theTypeSpelling if typedefType is None else typedefType
 
@@ -109,7 +157,7 @@ class Bindings:
 
   def processClass(self, theClass, templateDecl = None, templateArgs = None):
     output = ""
-    isAbstract = isAbstractClass(theClass, self.translationUnit)
+    isAbstract = isAbstractClass(theClass, self.tuInfo.classDict)
     if not isAbstract:
       output += self.processSimpleConstructor(theClass)
     for method in theClass.get_children():
@@ -130,10 +178,9 @@ class Bindings:
 class EmbindBindings(Bindings):
   def __init__(
     self,
-    typedefs, templateTypedefs,
-    translationUnit
+    tuInfo
   ):
-    super().__init__(typedefs, templateTypedefs, translationUnit)
+    super().__init__(tuInfo)
 
   def processClass(self, theClass, templateDecl = None, templateArgs = None):
     output = ""
@@ -144,7 +191,11 @@ class EmbindBindings(Bindings):
     baseSpec = list(filter(lambda x: x.kind == clang.cindex.CursorKind.CXX_BASE_SPECIFIER and x.access_specifier == clang.cindex.AccessSpecifier.PUBLIC, theClass.get_children()))
 
     if len(baseSpec) > 0:
-      baseClassBinding = ", base<" + baseSpec[0].type.spelling + ">"
+      baseType = baseSpec[0].type.spelling
+      if any(x in baseType for x in [":", "<"]):
+        baseClassBinding = ""
+      else:
+        baseClassBinding = ", base<" + baseType + ">"
     else:
       baseClassBinding = ""
 
@@ -153,13 +204,24 @@ class EmbindBindings(Bindings):
 
     output += super().processClass(theClass, templateDecl, templateArgs)
 
+    for child in theClass.get_children():
+      if child.kind == clang.cindex.CursorKind.ENUM_DECL and child.access_specifier == clang.cindex.AccessSpecifier.PUBLIC and child.spelling != "" and child.spelling.isidentifier():
+        enumName = className + "_" + child.spelling
+        isScoped = child.is_scoped_enum()
+        valuePrefix = className + "::" + child.spelling + "::" if isScoped else className + "::"
+        output += "  enum_<" + className + "::" + child.spelling + ">(\"" + enumName + "\")\n"
+        for enumChild in list(child.get_children()):
+          if enumChild.kind == clang.cindex.CursorKind.ENUM_CONSTANT_DECL:
+            output += "    .value(\"" + enumChild.spelling + "\", " + valuePrefix + enumChild.spelling + ")\n"
+        output += "  ;\n"
+
     output += "}\n\n"
 
     # Epilog
     nonPublicDestructor = any(x.kind == clang.cindex.CursorKind.DESTRUCTOR and not x.access_specifier == clang.cindex.AccessSpecifier.PUBLIC for x in theClass.get_children())
     placementDelete = next((x for x in theClass.get_children() if x.spelling == "operator delete" and len(list(x.get_arguments())) == 2), None) is not None
     if nonPublicDestructor or placementDelete:
-      output += "namespace emscripten { namespace internal { template<> void raw_destructor<" + theClass.spelling + ">(" + theClass.spelling + "* ptr) { /* do nothing */ } } }\n"
+      output += "namespace emscripten { namespace internal { template<> void raw_destructor<" + className + ">(" + className + "* ptr) { /* do nothing */ } } }\n"
     return output
 
   def processFinalizeClass(self):
@@ -198,7 +260,12 @@ class EmbindBindings(Bindings):
         argBinding = const + argChildren[0].type.spelling + " (&" + (arg.spelling if argNames else "") + ")[" + arrayCount + "]"
         changed = True
       else:
-        typename = self.getTypedefedTemplateTypeAsString(arg.type.spelling, templateDecl, templateArgs)
+        typename = self.resolveWithCanonicalFallback(arg.type.spelling, arg.type, templateDecl, templateArgs)
+        decl = arg.type.get_declaration()
+        if decl and decl.kind == clang.cindex.CursorKind.ENUM_DECL:
+          parent = decl.semantic_parent
+          if parent and parent.kind in (clang.cindex.CursorKind.CLASS_DECL, clang.cindex.CursorKind.STRUCT_DECL):
+            typename = arg.type.get_canonical().spelling
         if arg.type.kind == clang.cindex.TypeKind.LVALUEREFERENCE:
           tokenList = list(arg.get_tokens())
           isConstRef = len(tokenList) > 0 and tokenList[0].spelling == "const"
@@ -308,7 +375,7 @@ class EmbindBindings(Bindings):
           else:
             return getArgName(x)
         resultTypeSpelling = \
-          pick(returnNeedsWrapper, "emscripten::val", self.getTypedefedTemplateTypeAsString(method.result_type.spelling, templateDecl, templateArgs))
+          pick(returnNeedsWrapper, "emscripten::val", self.resolveWithCanonicalFallback(method.result_type.spelling, method.result_type, templateDecl, templateArgs))
         functionBindingHead = \
           merge("",
             "\n",
@@ -346,7 +413,7 @@ class EmbindBindings(Bindings):
               ""
             ),
             merge("",
-              pick(not method.is_static_method(), "that.", f"{theClass.spelling}::"),
+              pick(not method.is_static_method(), "that.", f"{className}::"),
               f'{method.spelling}({merge(", ", *map(lambda x: generateInvocationArgs(x), enumerate(argsNeedingWrapper)))})',
             ),
             ";\n",
@@ -383,7 +450,7 @@ class EmbindBindings(Bindings):
         else:
           functionBinding = merge("",
             " select_overload<",
-            self.getTypedefedTemplateTypeAsString(method.result_type.spelling, templateDecl, templateArgs),
+            self.resolveWithCanonicalFallback(method.result_type.spelling, method.result_type, templateDecl, templateArgs),
             f'({merge(", ", *map(lambda x: self.getSingleArgumentBinding(True, True, templateDecl, templateArgs)(x)[0], list(method.get_arguments())))})',
             pick(method.is_const_method(), "const", ""),
             pick(not method.is_static_method(), f", {getClassTypeName(theClass, templateDecl)}", ""),
@@ -451,13 +518,42 @@ class EmbindBindings(Bindings):
 class TypescriptBindings(Bindings):
   def __init__(
     self,
-    typedefs, templateTypedefs,
-    translationUnit
+    tuInfo
   ):
-    super().__init__(typedefs, templateTypedefs, translationUnit)
+    super().__init__(tuInfo)
     self.imports = {}
 
     self.exports = []
+
+  def _findBoundAncestor(self, theClass):
+    """Walk the inheritance chain to find the nearest ancestor that is in the build.
+    
+    When an intermediate class (e.g. GeomAdaptor_TransformedSurface) is not included
+    in the build config, skip it and find the next ancestor that IS included, so the
+    TypeScript `extends` clause references a declared class.
+    """
+    visited = set()
+    current = theClass
+    while current is not None:
+      if current.spelling in visited:
+        break
+      visited.add(current.spelling)
+      baseSpecs = list(filter(
+        lambda x: x.kind == clang.cindex.CursorKind.CXX_BASE_SPECIFIER and x.access_specifier == clang.cindex.AccessSpecifier.PUBLIC,
+        current.get_children()
+      ))
+      if not baseSpecs:
+        break
+      baseType = baseSpecs[0].type.spelling
+      if any(x in baseType for x in [":", "<"]):
+        break
+      if baseType in self.exports:
+        return baseType
+      baseDef = baseSpecs[0].type.get_declaration()
+      if baseDef is None or baseDef.kind == clang.cindex.CursorKind.NO_DECL_FOUND:
+        return baseType
+      current = baseDef
+    return None
 
   def processClass(self, theClass, templateDecl = None, templateArgs = None):
     output = ""
@@ -467,14 +563,32 @@ class TypescriptBindings(Bindings):
       if any(x in baseSpec[0].type.spelling for x in [":", "<"]):
         print("Unsupported character for base class \"" + baseSpec[0].type.spelling + "\" (" + theClass.spelling + ")")
       else:
-        baseClassDefinition = " extends " + baseSpec[0].type.spelling
-        # self.addImportIfWeHaveTo(baseSpec[0].type.spelling)
+        directBase = baseSpec[0].type.spelling
+        if directBase in self.exports:
+          baseClassDefinition = " extends " + directBase
+        else:
+          boundAncestor = self._findBoundAncestor(theClass)
+          if boundAncestor:
+            baseClassDefinition = " extends " + boundAncestor
+          else:
+            baseClassDefinition = " extends " + directBase
 
     name = getClassTypeName(theClass, templateDecl)
     output += "export declare class " + name + baseClassDefinition + " {\n"
     self.exports.append(name)
 
     output += super().processClass(theClass, templateDecl, templateArgs)
+
+    for child in theClass.get_children():
+      if child.kind == clang.cindex.CursorKind.ENUM_DECL and child.access_specifier == clang.cindex.AccessSpecifier.PUBLIC and child.spelling != "" and child.spelling.isidentifier():
+        enumName = name + "_" + child.spelling
+        output += "export declare type " + enumName + " = {\n"
+        for enumChild in list(child.get_children()):
+          if enumChild.kind == clang.cindex.CursorKind.ENUM_CONSTANT_DECL:
+            output += "  " + enumChild.spelling + ": {};\n"
+        output += "}\n\n"
+        self.exports.append(enumName)
+
     return output
 
   def processFinalizeClass(self):
@@ -538,7 +652,12 @@ class TypescriptBindings(Bindings):
 
   def getTypescriptDefFromResultType(self, res, templateDecl = None, templateArgs = None):
     if not res.spelling == "void":
-      typedefType = self.getTypedefedTemplateTypeAsString(res.spelling.replace("&", "").replace("const", "").replace("*", "").strip(), templateDecl, templateArgs)
+      decl = res.get_declaration()
+      if decl and decl.kind == clang.cindex.CursorKind.ENUM_DECL and decl.spelling != "":
+        parent = decl.semantic_parent
+        if parent and parent.kind in (clang.cindex.CursorKind.CLASS_DECL, clang.cindex.CursorKind.STRUCT_DECL):
+          return parent.spelling + "_" + decl.spelling
+      typedefType = self.resolveWithCanonicalFallback(res.spelling.replace("&", "").replace("const", "").replace("*", "").strip(), res, templateDecl, templateArgs)
       resTypeName = typedefType.replace("&", "").replace("const", "").replace("*", "").strip()
       resTypeName = self.convertBuiltinTypes(resTypeName)
     else:
@@ -550,7 +669,17 @@ class TypescriptBindings(Bindings):
     return resTypeName
 
   def getTypescriptDefFromArg(self, arg, suffix = "", templateDecl = None, templateArgs = None):
-    argTypeName = self.getTypedefedTemplateTypeAsString(arg.type.spelling.replace("&", "").replace("const", "").replace("*", "").strip(), templateDecl, templateArgs)
+    decl = arg.type.get_declaration()
+    if decl and decl.kind == clang.cindex.CursorKind.ENUM_DECL and decl.spelling != "":
+      parent = decl.semantic_parent
+      if parent and parent.kind in (clang.cindex.CursorKind.CLASS_DECL, clang.cindex.CursorKind.STRUCT_DECL):
+        argTypeName = parent.spelling + "_" + decl.spelling
+        argname = (arg.spelling if not arg.spelling == "" else ("a" + str(suffix)))
+        if argname in ["var", "with", "super"]:
+          argname += "_"
+        return argname + ": " + argTypeName
+
+    argTypeName = self.resolveWithCanonicalFallback(arg.type.spelling.replace("&", "").replace("const", "").replace("*", "").strip(), arg.type, templateDecl, templateArgs)
     argTypeName = argTypeName.replace("&", "").replace("const", "").replace("*", "").strip()
     argTypeName = self.convertBuiltinTypes(argTypeName)
     if argTypeName == "" or "(" in argTypeName or ":" in argTypeName:

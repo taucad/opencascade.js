@@ -1,0 +1,23 @@
+name: O3-maxperf
+description: >
+  Maximum runtime performance. Aggressive inlining via -O3, all
+  Emscripten optimizations enabled. Produces larger binaries (~1.5 MB
+  more than O2) with marginal speed gains in typical CAD workloads.
+
+compilation:
+  optimization: '-O3'
+  lto: false
+  exceptions: 'none'
+  threading: 'single-threaded'
+  defines: ['OCCT_NO_DUMP']
+  undefines: ['OCC_CONVERT_SIGNALS']
+
+linking:
+  yaml: '../full.yml'
+  wasmOptLevel: '-O3'
+
+optimizations:
+  closure: true
+  evalCtors: true
+  converge: true
+  patchDump: true

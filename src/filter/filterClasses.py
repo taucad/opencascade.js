@@ -424,10 +424,85 @@ def filterClass(theClass, additionalInfo=None):
   ):
     return False
 
-  # error: no template named 'handle'; did you mean 'opencascade::handle'?
   if theClass.spelling in [
     "StepKinematics_UnconstrainedPair",
-    "StepKinematics_UnconstrainedPairValue"
+    "StepKinematics_UnconstrainedPairValue",
+  ]:
+    return False
+
+  # OCCT V8: GeomGridEval/Geom2dGridEval classes have deleted constructors (new EvalD* API)
+  if theClass.spelling.startswith("GeomGridEval_") or theClass.spelling.startswith("Geom2dGridEval_"):
+    return False
+
+  # OCCT V8: deleted/non-default constructors or deep binding issues
+  if theClass.spelling in [
+    "BSplCLib_CacheParams",
+    "LDOM_XmlReader",
+    "TDF_DerivedAttribute",
+    "HLRAlgo_PolyInternalData",
+    "HLRAlgo_Coincidence",
+    "Poly_MakeLoops2D",
+    "Poly_MakeLoops3D",
+    "Handle_math_NotSquare",
+    "Handle_math_SingularMatrix",
+    "BSplCLib",
+    "BRepMesh_IncrementalMesh",
+    "BRepMesh_Triangle",
+    "BRepMesh_Delaun",
+  ]:
+    return False
+
+  # OCCT V8: non-const lvalue enum ref params, nested types, std::function signature mismatches
+  if theClass.spelling in [
+    "AIS_GraphicTool", "AIS_Manipulator",
+    "BRepApprox_TheFunctionOfTheInt2SOfThePrmPrmSvSurfacesOfApprox",
+    "BRepBlend_Walking", "BRepClass3d_SolidExplorer", "BRepClass_FaceExplorer",
+    "BRepExtrema_ProximityDistTool", "BRepExtrema_ProximityValueTool",
+    "BRepFeat_MakeRevolutionForm", "BRepFill_TrimSurfaceTool",
+    "BRepGProp_MeshProps", "BRepOffset", "BRepOffset_Tool",
+    "BRepTopAdaptor_FClass2d",
+    "DESTEP_Provider", "DESTL_Provider", "DEVRML_Provider", "DE_Provider", "DE_Wrapper",
+    "FairCurve_Batten", "FairCurve_MinimalVariation",
+    "GccAna_Circ2d2TanOn", "GccAna_Circ2d2TanRad", "GccAna_Circ2d3Tan",
+    "GccAna_Circ2dTanCen", "GccAna_Circ2dTanOnRad",
+    "GccAna_Lin2d2Tan", "GccAna_Lin2dTanObl", "GccAna_Lin2dTanPar", "GccAna_Lin2dTanPer",
+    "GccEnt",
+    "Geom2dGcc_Circ2d2TanOn", "Geom2dGcc_Circ2d2TanOnGeo", "Geom2dGcc_Circ2d2TanOnIter",
+    "Geom2dGcc_Circ2d2TanRad", "Geom2dGcc_Circ2d2TanRadGeo",
+    "Geom2dGcc_Circ2d3Tan", "Geom2dGcc_Circ2d3TanIter",
+    "Geom2dGcc_Circ2dTanCen", "Geom2dGcc_Circ2dTanCenGeo",
+    "Geom2dGcc_Circ2dTanOnRad", "Geom2dGcc_Circ2dTanOnRadGeo",
+    "Geom2dGcc_Lin2d2Tan", "Geom2dGcc_Lin2d2TanIter",
+    "Geom2dGcc_Lin2dTanObl", "Geom2dGcc_Lin2dTanOblIter",
+    "Geom2dHatch_Elements",
+    "GeomInt_TheFunctionOfTheInt2SOfThePrmPrmSvSurfacesOfWLApprox",
+    "Graphic3d_Layer", "Graphic3d_SequenceOfHClipPlane", "Graphic3d_ShaderObject",
+    "HLRBRep_Data", "HLRBRep_TheCSFunctionOfInterCSurf",
+    "HelixGeom_BuilderApproxCurve",
+    "IGESData_FreeFormatEntity", "IGESData_ParamReader",
+    "IntCurveSurface_IntersectionPoint", "IntImpParGen",
+    "IntWalk_PWalking", "IntWalk_TheFunctionOfTheInt2S",
+    "Interface_UndefinedContent", "Intf_SectionPoint",
+    "LocOpe_CSIntersector", "LocOpe_CurveShapeIntersector",
+    "Message_ProgressScope",
+    "PCDM_ReaderFilter",
+    "Select3D_SensitiveCircle", "SelectMgr_SelectableObjectSet",
+    "ShapeProcess", "ShapeProcess_ShapeContext",
+    "StepToTopoDS_TranslateFace",
+    "TColStd_PackedMapOfInteger",
+    "TopOpeBRepBuild_GIter", "TopOpeBRepBuild_GTopo",
+    "TopOpeBRepDS_HDataStructure", "TopOpeBRepDS_Interference", "TopOpeBRepDS_TKI",
+    "TopOpeBRepTool_TOOL", "TopOpeBRepTool_makeTransition",
+    "TopOpeBRep_FacesFiller",
+    "VrmlData_Node",
+    "XCAFDimTolObjects_DatumObject", "XCAFDimTolObjects_DimensionObject",
+    "XSAlgo_ShapeProcessor",
+    "Graphic3d_MaterialAspect",
+    "Message", "Message_Messenger", "Message_ProgressScope",
+    "OSD_Protection", "PrsDim", "PrsDim_EqualDistanceRelation",
+    "StepData_StepReaderData", "TColStd_PackedMapOfInteger",
+    "TopAbs", "V3d",
+    "STEPCAFControl_GDTProperty",
   ]:
     return False
 

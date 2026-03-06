@@ -1,0 +1,30 @@
+{
+  "$schema": "deps-lock-v1",
+  "description": "Pinned dependency versions for reproducible opencascade.js builds. Both Dockerfile and build-wasm.sh reference this file.",
+  "dependencies": {
+    "occt": {
+      "repository": "https://github.com/Open-Cascade-SAS/OCCT.git",
+      "commit": "48ebca0f70a5e4b936548b695bc3583363898da4",
+      "version": "V8_0_0_rc4 (master tip)",
+      "description": "Open CASCADE Technology — the C++ CAD kernel"
+    },
+    "rapidjson": {
+      "repository": "https://github.com/Tencent/rapidjson.git",
+      "commit": "24b5e7a8b27f42fa16b96fc70aade9106cf7102f",
+      "version": "post-1.1.0 (master)",
+      "description": "JSON parser/generator for C++ (header-only)"
+    },
+    "freetype": {
+      "repository": "https://github.com/freetype/freetype.git",
+      "commit": "de8b92dd7ec634e9e2b25ef534c54a3537555c11",
+      "version": "VER-2-13-0",
+      "description": "Font rendering library"
+    },
+    "emscripten": {
+      "docker_image": "emscripten/emsdk:5.0.1",
+      "docker_digest": "sha256:c89732ef63a56de5a96395c5a8c1c7904f7420131a045406e6fedc4cbe1cc198",
+      "emsdk_version": "5.0.1",
+      "description": "Emscripten SDK for compiling C++ to WebAssembly"
+    }
+  }
+}
