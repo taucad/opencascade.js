@@ -1,9 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { getOC, wasmExists } from './helpers.js';
+import { getOC, wasmExists, isExceptionsEnabled } from './helpers.js';
 
 describe.skipIf(!wasmExists)('Smoke: Exception handling', () => {
-  it('MakeCone with zero height throws Standard_Failure', async () => {
+  it('MakeCone with zero height throws Standard_Failure', async (ctx) => {
     const oc = await getOC();
+    if (!isExceptionsEnabled()) ctx.skip();
+
     let caught = false;
     let message = '';
 
@@ -12,8 +14,8 @@ describe.skipIf(!wasmExists)('Smoke: Exception handling', () => {
       cone.delete();
     } catch (e) {
       caught = true;
-      if (oc.OCJS?.getStandard_FailureData) {
-        const failureData = oc.OCJS.getStandard_FailureData(e);
+      if ((oc as any).OCJS?.getStandard_FailureData) {
+        const failureData = (oc as any).OCJS.getStandard_FailureData(e);
         message = failureData.GetMessageString();
         failureData.delete();
       } else {
@@ -22,11 +24,13 @@ describe.skipIf(!wasmExists)('Smoke: Exception handling', () => {
     }
 
     expect(caught).toBe(true);
-    expect(message).toContain('cone');
+    expect(message.toLowerCase()).toContain('cone');
   });
 
-  it('MakeBox with zero dimensions produces IsDone false or throws', async () => {
+  it('MakeBox with zero dimensions throws or produces invalid shape', async (ctx) => {
     const oc = await getOC();
+    if (!isExceptionsEnabled()) ctx.skip();
+
     let failedAsExpected = false;
 
     try {
@@ -39,12 +43,8 @@ describe.skipIf(!wasmExists)('Smoke: Exception handling', () => {
         failedAsExpected = true;
       }
       box.delete();
-    } catch (e) {
+    } catch {
       failedAsExpected = true;
-      if (oc.OCJS?.getStandard_FailureData) {
-        const fd = oc.OCJS.getStandard_FailureData(e);
-        fd?.delete?.();
-      }
     }
 
     expect(failedAsExpected).toBe(true);

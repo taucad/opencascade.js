@@ -6,10 +6,8 @@ describe.skipIf(!wasmExists)('Smoke: XCAF document tools', () => {
     const oc = await getOC();
 
     const doc = new oc.TDocStd_Document(new oc.TCollection_ExtendedString_1());
-    const shapeToolHandle = oc.XCAFDoc_DocumentTool.ShapeTool(doc.Main());
-    const shapeTool = shapeToolHandle.get();
-    const colorToolHandle = oc.XCAFDoc_DocumentTool.ColorTool(doc.Main());
-    const colorTool = colorToolHandle.get();
+    const shapeTool = oc.XCAFDoc_DocumentTool.ShapeTool(doc.Main());
+    const colorTool = oc.XCAFDoc_DocumentTool.ColorTool(doc.Main());
 
     expect(shapeTool).toBeTruthy();
     expect(colorTool).toBeTruthy();
@@ -20,11 +18,11 @@ describe.skipIf(!wasmExists)('Smoke: XCAF document tools', () => {
     const newShapeLabel = shapeTool.NewShape();
     shapeTool.SetShape(newShapeLabel, boxShape);
 
-    const color = new oc.Quantity_Color_3(1, 0, 0, oc.Quantity_TypeOfColor.Quantity_TOC_RGB);
-    colorTool.SetColor_2(newShapeLabel, color, oc.XCAFDoc_ColorType.XCAFDoc_ColorGen);
+    const color = new oc.Quantity_Color_3(1, 0, 0, oc.Quantity_TypeOfColor.Quantity_TOC_RGB as never);
+    colorTool.SetColor_5(boxShape, color, oc.XCAFDoc_ColorType.XCAFDoc_ColorGen as never);
 
     const retrievedColor = new oc.Quantity_Color_1();
-    const hasColor = colorTool.GetColor_4(newShapeLabel, oc.XCAFDoc_ColorType.XCAFDoc_ColorGen, retrievedColor);
+    const hasColor = colorTool.GetColor_7(boxShape, oc.XCAFDoc_ColorType.XCAFDoc_ColorGen as never, retrievedColor);
     expect(hasColor).toBe(true);
 
     doc.delete();

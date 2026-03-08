@@ -1,13 +1,14 @@
 import { describe, it, expect } from 'vitest';
-import { getOC, wasmExists } from './helpers.js';
+import { getOC, wasmExists, isExceptionsEnabled } from './helpers.js';
+import { expectShapeGeometry } from './geometry-helpers.js';
 
 describe.skipIf(!wasmExists)('Smoke: Advanced modeling', () => {
-  it('BRepOffsetAPI_MakeThickSolid shells a box', async () => {
+  it('BRepOffsetAPI_MakeThickSolid shells a box preserving outer dimensions', async () => {
     const oc = await getOC();
     const box = new oc.BRepPrimAPI_MakeBox_2(20, 20, 20);
     const boxShape = box.Shape();
 
-    const faceExplorer = new oc.TopExp_Explorer_2(
+    const faceExplorer = new oc.TopExp_Explorer(
       boxShape,
       oc.TopAbs_ShapeEnum.TopAbs_FACE,
       oc.TopAbs_ShapeEnum.TopAbs_SHAPE
@@ -29,12 +30,18 @@ describe.skipIf(!wasmExists)('Smoke: Advanced modeling', () => {
       false,
       oc.GeomAbs_JoinType.GeomAbs_Arc,
       false,
-      new oc.Message_ProgressRange_1()
+      new oc.Message_ProgressRange()
     );
 
     const result = thickSolid.Shape();
     expect(result).toBeTruthy();
     expect(result.IsNull()).toBe(false);
+
+    await expectShapeGeometry(result, {
+      size: [20, 20, 20],
+      center: [10, 10, 10],
+      tolerance: 1,
+    });
 
     thickSolid.delete();
     facesToRemove.delete();
@@ -42,20 +49,20 @@ describe.skipIf(!wasmExists)('Smoke: Advanced modeling', () => {
     box.delete();
   });
 
-  it('BRepOffsetAPI_ThruSections lofts between two circles', async () => {
+  it('BRepOffsetAPI_ThruSections loft has correct height and max diameter', async () => {
     const oc = await getOC();
 
-    const ax1 = new oc.gp_Ax2_3(new oc.gp_Pnt_3(0, 0, 0), new oc.gp_Dir_4(0, 0, 1));
-    const ax2 = new oc.gp_Ax2_3(new oc.gp_Pnt_3(0, 0, 10), new oc.gp_Dir_4(0, 0, 1));
+    const ax1 = new oc.gp_Ax2_4(new oc.gp_Pnt(0, 0, 0), new oc.gp_Dir_5(0, 0, 1));
+    const ax2 = new oc.gp_Ax2_4(new oc.gp_Pnt(0, 0, 10), new oc.gp_Dir_5(0, 0, 1));
 
-    const circle1 = new oc.Geom_Circle_2(ax1, 5);
-    const circle2 = new oc.Geom_Circle_2(ax2, 3);
+    const circle1 = new oc.Geom_Circle(ax1, 5);
+    const circle2 = new oc.Geom_Circle(ax2, 3);
 
     const edge1 = new oc.BRepBuilderAPI_MakeEdge_24(circle1);
     const edge2 = new oc.BRepBuilderAPI_MakeEdge_24(circle2);
 
-    const wire1 = new oc.BRepBuilderAPI_MakeWire_3(edge1.Edge());
-    const wire2 = new oc.BRepBuilderAPI_MakeWire_3(edge2.Edge());
+    const wire1 = new oc.BRepBuilderAPI_MakeWire_2(edge1.Edge());
+    const wire2 = new oc.BRepBuilderAPI_MakeWire_2(edge2.Edge());
 
     const loft = new oc.BRepOffsetAPI_ThruSections(true, false, 1e-6);
     loft.AddWire(wire1.Wire());
@@ -65,6 +72,12 @@ describe.skipIf(!wasmExists)('Smoke: Advanced modeling', () => {
     const result = loft.Shape();
     expect(result).toBeTruthy();
     expect(result.IsNull()).toBe(false);
+
+    await expectShapeGeometry(result, {
+      size: [10, 10, 10],
+      center: [0, 0, 5],
+      tolerance: 1,
+    });
 
     loft.delete();
     wire2.delete();
@@ -77,23 +90,30 @@ describe.skipIf(!wasmExists)('Smoke: Advanced modeling', () => {
     ax1.delete();
   });
 
-  it('BRepOffsetAPI_MakePipe sweeps circle along line edge', async () => {
+  it('BRepOffsetAPI_MakePipe sweep has correct dimensions', async (ctx) => {
     const oc = await getOC();
+    if (!isExceptionsEnabled()) ctx.skip();
 
-    const line = new oc.Geom_Line_3(new oc.gp_Pnt_3(0, 0, 0), new oc.gp_Dir_4(1, 0, 0));
+    const line = new oc.Geom_Line_3(new oc.gp_Pnt(0, 0, 0), new oc.gp_Dir_5(1, 0, 0));
     const lineEdge = new oc.BRepBuilderAPI_MakeEdge_24(line);
-    const spineWire = new oc.BRepBuilderAPI_MakeWire_3(lineEdge.Edge());
+    const spineWire = new oc.BRepBuilderAPI_MakeWire_2(lineEdge.Edge());
 
-    const ax = new oc.gp_Ax2_3(new oc.gp_Pnt_3(0, 0, 0), new oc.gp_Dir_4(1, 0, 0));
-    const circle = new oc.Geom_Circle_2(ax, 2);
+    const ax = new oc.gp_Ax2_4(new oc.gp_Pnt(0, 0, 0), new oc.gp_Dir_5(1, 0, 0));
+    const circle = new oc.Geom_Circle(ax, 2);
     const profileEdge = new oc.BRepBuilderAPI_MakeEdge_24(circle);
-    const profileWire = new oc.BRepBuilderAPI_MakeWire_3(profileEdge.Edge());
+    const profileWire = new oc.BRepBuilderAPI_MakeWire_2(profileEdge.Edge());
 
-    const pipe = new oc.BRepOffsetAPI_MakePipe_1(spineWire.Wire(), profileWire.Wire());
+    const pipe = new oc.BRepOffsetAPI_MakePipe(spineWire.Wire(), profileWire.Wire());
     const result = pipe.Shape();
 
     expect(result).toBeTruthy();
     expect(result.IsNull()).toBe(false);
+
+    await expectShapeGeometry(result, {
+      size: [1, 4, 4],
+      tolerance: 1,
+      minVertices: 10,
+    });
 
     pipe.delete();
     profileWire.delete();

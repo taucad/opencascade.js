@@ -2,13 +2,13 @@ import { describe, it, expect } from 'vitest';
 import { getOC, wasmExists } from './helpers.js';
 
 describe.skipIf(!wasmExists)('Smoke: Topology', () => {
-  it('TopExp_Explorer counts 6 faces, 12 edges, 8 vertices on box', async () => {
+  it('TopExp_Explorer counts 6 faces, 24 edges (with duplicates), 8 vertices on box', async () => {
     const oc = await getOC();
     const box = new oc.BRepPrimAPI_MakeBox_2(10, 10, 10);
     const shape = box.Shape();
 
     let faceCount = 0;
-    const faceExplorer = new oc.TopExp_Explorer_2(
+    const faceExplorer = new oc.TopExp_Explorer(
       shape,
       oc.TopAbs_ShapeEnum.TopAbs_FACE as never,
       oc.TopAbs_ShapeEnum.TopAbs_SHAPE as never,
@@ -18,7 +18,7 @@ describe.skipIf(!wasmExists)('Smoke: Topology', () => {
     }
 
     let edgeCount = 0;
-    const edgeExplorer = new oc.TopExp_Explorer_2(
+    const edgeExplorer = new oc.TopExp_Explorer(
       shape,
       oc.TopAbs_ShapeEnum.TopAbs_EDGE as never,
       oc.TopAbs_ShapeEnum.TopAbs_SHAPE as never,
@@ -28,7 +28,7 @@ describe.skipIf(!wasmExists)('Smoke: Topology', () => {
     }
 
     let vertexCount = 0;
-    const vertexExplorer = new oc.TopExp_Explorer_2(
+    const vertexExplorer = new oc.TopExp_Explorer(
       shape,
       oc.TopAbs_ShapeEnum.TopAbs_VERTEX as never,
       oc.TopAbs_ShapeEnum.TopAbs_SHAPE as never,
@@ -38,8 +38,8 @@ describe.skipIf(!wasmExists)('Smoke: Topology', () => {
     }
 
     expect(faceCount).toBe(6);
-    expect(edgeCount).toBe(12);
-    expect(vertexCount).toBe(8);
+    expect(edgeCount).toBe(24);
+    expect(vertexCount).toBe(48);
 
     box.delete();
     faceExplorer.delete();
@@ -67,33 +67,33 @@ describe.skipIf(!wasmExists)('Smoke: Topology', () => {
     const box = new oc.BRepPrimAPI_MakeBox_2(10, 10, 10);
     const shape = box.Shape();
 
-    const faceExplorer = new oc.TopExp_Explorer_2(
+    const faceExplorer = new oc.TopExp_Explorer(
       shape,
       oc.TopAbs_ShapeEnum.TopAbs_FACE as never,
       oc.TopAbs_ShapeEnum.TopAbs_SHAPE as never,
     );
     expect(faceExplorer.More()).toBe(true);
-    const face = oc.TopoDS.Face_1(faceExplorer.Current());
+    const face = oc.TopoDS_Cast.Face(faceExplorer.Current());
     expect(face).toBeTruthy();
     face.delete();
 
-    const edgeExplorer = new oc.TopExp_Explorer_2(
+    const edgeExplorer = new oc.TopExp_Explorer(
       shape,
       oc.TopAbs_ShapeEnum.TopAbs_EDGE as never,
       oc.TopAbs_ShapeEnum.TopAbs_SHAPE as never,
     );
     expect(edgeExplorer.More()).toBe(true);
-    const edge = oc.TopoDS.Edge_1(edgeExplorer.Current());
+    const edge = oc.TopoDS_Cast.Edge(edgeExplorer.Current());
     expect(edge).toBeTruthy();
     edge.delete();
 
-    const vertexExplorer = new oc.TopExp_Explorer_2(
+    const vertexExplorer = new oc.TopExp_Explorer(
       shape,
       oc.TopAbs_ShapeEnum.TopAbs_VERTEX as never,
       oc.TopAbs_ShapeEnum.TopAbs_SHAPE as never,
     );
     expect(vertexExplorer.More()).toBe(true);
-    const vertex = oc.TopoDS.Vertex_1(vertexExplorer.Current());
+    const vertex = oc.TopoDS_Cast.Vertex(vertexExplorer.Current());
     expect(vertex).toBeTruthy();
     vertex.delete();
 

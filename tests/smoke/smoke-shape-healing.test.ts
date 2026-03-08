@@ -7,16 +7,29 @@ describe.skipIf(!wasmExists)('Smoke: Shape healing', () => {
     const box = new oc.BRepPrimAPI_MakeBox_2(10, 20, 30);
     const shape = box.Shape();
 
-    const fixer = new oc.ShapeFix_Shape_1(shape);
-    fixer.Perform(new oc.Message_ProgressRange_1());
+    const fixer = new oc.ShapeFix_Shape(shape);
+    fixer.Perform(new oc.Message_ProgressRange());
     const fixed = fixer.Shape();
     expect(fixed.IsNull()).toBe(false);
 
+    const explorer = new oc.TopExp_Explorer(
+      fixed,
+      oc.TopAbs_ShapeEnum.TopAbs_FACE,
+      oc.TopAbs_ShapeEnum.TopAbs_SHAPE,
+    );
+    let faceCount = 0;
+    while (explorer.More()) {
+      faceCount++;
+      explorer.Next();
+    }
+    expect(faceCount).toBe(6);
+
+    explorer.delete();
     fixer.delete();
     box.delete();
   });
 
-  it('ShapeFix_Wire fixes a wire', async () => {
+  it('ShapeFix_Wire fixes a wire and preserves topology', async () => {
     const oc = await getOC();
     const p1 = new oc.gp_Pnt(0, 0, 0);
     const p2 = new oc.gp_Pnt(10, 0, 0);
@@ -30,10 +43,27 @@ describe.skipIf(!wasmExists)('Smoke: Shape healing', () => {
     wireBuilder.Add_1(e2);
     const wire = wireBuilder.Wire();
 
-    const fixer = new oc.ShapeFix_Wire_2(wire, new oc.BRepBuilderAPI_MakeFace_15(wire, true).Face(), 1e-6);
+    const face = new oc.BRepBuilderAPI_MakeFace_15(wire, true).Face();
+    const fixer = new oc.ShapeFix_Wire(wire, face, 1e-6);
     const result = fixer.Perform();
     expect(typeof result).toBe('boolean');
 
+    const fixedWire = fixer.Wire();
+    expect(fixedWire.IsNull()).toBe(false);
+
+    const edgeExplorer = new oc.TopExp_Explorer(
+      fixedWire,
+      oc.TopAbs_ShapeEnum.TopAbs_EDGE,
+      oc.TopAbs_ShapeEnum.TopAbs_SHAPE,
+    );
+    let edgeCount = 0;
+    while (edgeExplorer.More()) {
+      edgeCount++;
+      edgeExplorer.Next();
+    }
+    expect(edgeCount).toBeGreaterThanOrEqual(2);
+
+    edgeExplorer.delete();
     fixer.delete();
     wireBuilder.delete();
     p1.delete();

@@ -8,21 +8,17 @@ describe.skipIf(!wasmExists)('Smoke: RWGltf_CafWriter GLB export', () => {
     const shape = box.Shape();
 
     const doc = new oc.TDocStd_Document(new oc.TCollection_ExtendedString_1());
-    const shapeTool = oc.XCAFDoc_DocumentTool.ShapeTool(doc.Main()).get();
+    const shapeTool = oc.XCAFDoc_DocumentTool.ShapeTool(doc.Main());
     const newShape = shapeTool.NewShape();
     shapeTool.SetShape(newShape, shape);
-    new oc.BRepMesh_IncrementalMesh_2(shape, 0.1, false, 0.1, false);
+    new oc.BRepMesh_IncrementalMesh(shape, 0.1, false, 0.1, false);
 
     const glbPath = '/test.glb';
     const cafWriter = new oc.RWGltf_CafWriter(
-      new oc.TCollection_AsciiString_2(glbPath),
+      new oc.TCollection_AsciiString_3(glbPath),
       true,
     );
-    cafWriter.Perform_2(
-      new oc.Handle_TDocStd_Document_2(doc),
-      new oc.TColStd_IndexedDataMapOfStringString_1(),
-      new oc.Message_ProgressRange_1(),
-    );
+    cafWriter.Perform(doc, new oc.TColStd_IndexedDataMapOfStringString(), new oc.Message_ProgressRange());
 
     const stat = oc.FS.stat(glbPath);
     expect(stat).toBeTruthy();

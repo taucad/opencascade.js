@@ -102,10 +102,8 @@ exclude:
     - LocOpe_Revol
     - QANCollection
     - MAT2d_CutCurve
-    - Law_Interpolate
     - LocOpe_RevolutionForm
     - MeshTest_CheckTopology
-    - ProjLib_ProjectOnSurface
     - QABugs_PresentableObject
     - QABugs
     - QADraw
@@ -125,9 +123,6 @@ exclude:
     - XBRepMesh
     - math_NewtonMinimum
     - math_NewtonFunctionSetRoot
-    - math_IntegerVector
-    - math_Matrix
-    - math_Vector
     - HLRBRep_CLProps
     - HLRBRep_Intersector
     - BOPTest_Objects
@@ -155,7 +150,6 @@ exclude:
     - AIS_Manipulator
     - BRepApprox_TheFunctionOfTheInt2SOfThePrmPrmSvSurfacesOfApprox
     - BRepBlend_Walking
-    - BRepClass3d_SolidExplorer
     - BRepClass_FaceExplorer
     - BRepExtrema_ProximityDistTool
     - BRepExtrema_ProximityValueTool
@@ -170,8 +164,6 @@ exclude:
     - DEVRML_Provider
     - DE_Provider
     - DE_Wrapper
-    - FairCurve_Batten
-    - FairCurve_MinimalVariation
     - GccAna_Circ2d2TanOn
     - GccAna_Circ2d2TanRad
     - GccAna_Circ2d3Tan
@@ -204,7 +196,6 @@ exclude:
     - Graphic3d_ShaderObject
     - HLRBRep_Data
     - HLRBRep_TheCSFunctionOfInterCSurf
-    - HelixGeom_BuilderApproxCurve
     - IGESData_FreeFormatEntity
     - IGESData_ParamReader
     - IntCurveSurface_IntersectionPoint
@@ -215,12 +206,9 @@ exclude:
     - Intf_SectionPoint
     - LocOpe_CSIntersector
     - LocOpe_CurveShapeIntersector
-    - Message_ProgressScope
     - PCDM_ReaderFilter
     - Select3D_SensitiveCircle
     - SelectMgr_SelectableObjectSet
-    - ShapeProcess
-    - ShapeProcess_ShapeContext
     - StepToTopoDS_TranslateFace
     - TColStd_PackedMapOfInteger
     - TopOpeBRepBuild_GIter
@@ -232,8 +220,6 @@ exclude:
     - TopOpeBRepTool_makeTransition
     - TopOpeBRep_FacesFiller
     - VrmlData_Node
-    - XCAFDimTolObjects_DatumObject
-    - XCAFDimTolObjects_DimensionObject
     - XSAlgo_ShapeProcessor
     - Graphic3d_MaterialAspect
     - Message
@@ -242,11 +228,13 @@ exclude:
     - PrsDim
     - PrsDim_EqualDistanceRelation
     - StepData_StepReaderData
-    - TopAbs
     - V3d
     - STEPCAFControl_GDTProperty
 
   methods:
+    FairCurve_Batten: [Compute, Dump]
+    FairCurve_MinimalVariation: [Compute, Dump]
+    HelixGeom_BuilderApproxCurve: [ApproxParameters]
     AppDef_MultiLine: [SetParameter]
     BSplCLib: [DN]
     BlendFunc: [Knots, Mults, GetShape]

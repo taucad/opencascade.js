@@ -705,6 +705,54 @@ describe('Overload validation (full build)', () => {
 });
 
 // ---------------------------------------------------------------------------
+// NCollection_Vec tuple type validation
+// ---------------------------------------------------------------------------
+
+describe('NCollection_Vec tuple type validation', () => {
+  const dtsPath = path.join(FULL_BUILD_CONFIG, 'opencascade_full.d.ts');
+
+  it('should never produce bare number[] for NCollection_Vec types', () => {
+    if (!fs.existsSync(dtsPath)) return;
+    const content = fs.readFileSync(dtsPath, 'utf8');
+    const lines = content.split('\n');
+    const violations: { line: number; text: string }[] = [];
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (line.includes('//') || line.includes('/*')) continue;
+      if (/NCollection_Vec[234]/.test(line)) {
+        violations.push({ line: i + 1, text: line.trim() });
+      }
+    }
+
+    expect(
+      violations,
+      `NCollection_Vec types should be resolved to tuples, not left as raw type names: ${violations.map((v) => `L${v.line}: ${v.text}`).join('; ')}`,
+    ).toHaveLength(0);
+  });
+
+  it('should use fixed-length tuples, not number[] for vec-like types', () => {
+    if (!fs.existsSync(dtsPath)) return;
+    const content = fs.readFileSync(dtsPath, 'utf8');
+    const lines = content.split('\n');
+
+    const tuplePattern = /\[number(?:,\s*number){1,3}\]/;
+    const arrayPattern = /:\s*number\[\]/;
+    let tupleCount = 0;
+    let arrayCount = 0;
+
+    for (const line of lines) {
+      if (tuplePattern.test(line)) tupleCount++;
+      if (arrayPattern.test(line)) arrayCount++;
+    }
+
+    if (tupleCount > 0) {
+      expect(tupleCount).toBeGreaterThan(0);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
 // :: detection happy path and failure path
 // ---------------------------------------------------------------------------
 

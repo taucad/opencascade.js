@@ -886,7 +886,9 @@ mainBuild:
   - symbol: FSD_CmpFile
   - symbol: FSD_FileHeader
   - symbol: FairCurve_AnalysisCode
+  - symbol: FairCurve_Batten
   - symbol: FairCurve_BattenLaw
+  - symbol: FairCurve_MinimalVariation
   - symbol: FairCurve_DistributionOfEnergy
   - symbol: FairCurve_DistributionOfJerk
   - symbol: FairCurve_DistributionOfSagging
@@ -1374,6 +1376,7 @@ mainBuild:
   - symbol: HeaderSection_FileSchema
   - symbol: HeaderSection_Protocol
   - symbol: HelixBRep_BuilderHelix
+  - symbol: HelixGeom_BuilderApproxCurve
   - symbol: HelixGeom_BuilderHelix
   - symbol: HelixGeom_BuilderHelixCoil
   - symbol: HelixGeom_BuilderHelixGen
@@ -4461,12 +4464,25 @@ mainBuild:
     #include <TopoDS_CompSolid.hxx>
     #include <TopoDS_Compound.hxx>
     #include <TColStd_IndexedDataMapOfStringString.hxx>
+    #include <FairCurve_Batten.hxx>
+    #include <FairCurve_MinimalVariation.hxx>
+    #include <FairCurve_AnalysisCode.hxx>
     struct TopoDS_Cast {};
     using namespace emscripten;
     EMSCRIPTEN_BINDINGS(ocjs_additional) {
       class_<NCollection_IndexedDataMap<TCollection_AsciiString, TCollection_AsciiString>>("TColStd_IndexedDataMapOfStringString")
         .constructor<>()
         ;
+      function("FairCurve_Batten_Compute", optional_override([](FairCurve_Batten& self, int nbIter, double tol) -> int {
+        FairCurve_AnalysisCode code;
+        self.Compute(code, nbIter, tol);
+        return static_cast<int>(code);
+      }));
+      function("FairCurve_MinimalVariation_Compute", optional_override([](FairCurve_MinimalVariation& self, int nbIter, double tol) -> int {
+        FairCurve_AnalysisCode code;
+        self.Compute(code, nbIter, tol);
+        return static_cast<int>(code);
+      }));
       class_<TopoDS_Cast>("TopoDS_Cast")
         .class_function("Edge", optional_override([](const TopoDS_Shape& s) -> TopoDS_Edge { return TopoDS::Edge(s); }))
         .class_function("Wire", optional_override([](const TopoDS_Shape& s) -> TopoDS_Wire { return TopoDS::Wire(s); }))

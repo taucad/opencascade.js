@@ -732,7 +732,8 @@ class TypescriptBindings(Bindings):
         output += "export declare type " + enumName + " = {\n"
         for enumChild in list(child.get_children()):
           if enumChild.kind == clang.cindex.CursorKind.ENUM_CONSTANT_DECL:
-            output += "  " + enumChild.spelling + ": {};\n"
+            output += "  " + enumChild.spelling + ": " + enumName + ";\n"
+        output += "  value: number;\n"
         output += "}\n\n"
         self.exports.append(enumName)
 
@@ -812,7 +813,7 @@ class TypescriptBindings(Bindings):
       return "boolean"
 
     if typeName in ("Standard_SStream",):
-      return "any"
+      return "string"
 
     return typeName
 
@@ -838,6 +839,20 @@ class TypescriptBindings(Bindings):
       t = t.get_pointee()
     return t
 
+  _reverse_typedef_cache = None
+
+  def _find_typedef_for_container(self, container, clang_type):
+    """Check if a container type (e.g., NCollection_Array1<gp_Pnt>) has a
+    known typedef (e.g., TColgp_Array1OfPnt) that is a bound class."""
+    if TypescriptBindings._reverse_typedef_cache is None:
+      TypescriptBindings._reverse_typedef_cache = {}
+      for underlying_spelling, typedef_cursor in self.tuInfo.typedefUnderlyingDict.items():
+        clean = underlying_spelling.replace("const ", "").replace("&", "").strip()
+        TypescriptBindings._reverse_typedef_cache[clean] = typedef_cursor.spelling
+
+    type_spelling = clang_type.spelling.replace("const ", "").replace("&", "").replace("*", "").strip()
+    return TypescriptBindings._reverse_typedef_cache.get(type_spelling)
+
   def _resolve_template_type(self, clang_type, templateDecl=None, templateArgs=None):
     """Resolve template types via AST, returning inner type for known containers."""
     t = clang_type
@@ -856,7 +871,15 @@ class TypescriptBindings(Bindings):
     parent = decl.semantic_parent
     if container == "handle" and parent and parent.spelling in ("opencascade", "occ"):
       inner = t.get_template_argument_type(0)
-      return self.resolve_type(inner, templateDecl, templateArgs) if inner.spelling else "any"
+      if inner.spelling:
+        return self.resolve_type(inner, templateDecl, templateArgs)
+      canonical_inner = inner.get_canonical()
+      if canonical_inner.spelling:
+        return self.resolve_type(canonical_inner, templateDecl, templateArgs)
+      decl_inner = inner.get_declaration()
+      if decl_inner and decl_inner.spelling and decl_inner.spelling in self.exports:
+        return decl_inner.spelling
+      return "any"
 
     SINGLE_ARG_CONTAINERS = {
       "NCollection_Array1", "NCollection_Sequence", "NCollection_List",
@@ -865,14 +888,22 @@ class TypescriptBindings(Bindings):
     }
 
     if container in SINGLE_ARG_CONTAINERS:
+      typedef_name = self._find_typedef_for_container(container, t)
+      if typedef_name:
+        return typedef_name
       inner = t.get_template_argument_type(0)
       return self.resolve_type(inner, templateDecl, templateArgs)
 
     if container in ("NCollection_DataMap", "NCollection_IndexedDataMap"):
       return "any"
 
-    if container in ("NCollection_Vec2", "NCollection_Vec3", "NCollection_Vec4"):
-      return "any"
+    VEC_TUPLES = {
+      "NCollection_Vec2": "[number, number]",
+      "NCollection_Vec3": "[number, number, number]",
+      "NCollection_Vec4": "[number, number, number, number]",
+    }
+    if container in VEC_TUPLES:
+      return VEC_TUPLES[container]
 
     if container in self.exports:
       return container
@@ -1034,10 +1065,12 @@ class TypescriptBindings(Bindings):
 
   def processEnum(self, theEnum):
     output = ""
-    bindingsOutput = "export declare type " + theEnum.spelling + " = {\n"
+    enumName = theEnum.spelling
+    bindingsOutput = "export declare type " + enumName + " = {\n"
     for enumChild in list(theEnum.get_children()):
-      bindingsOutput += "  " + enumChild.spelling + ": {};\n"
+      bindingsOutput += "  " + enumChild.spelling + ": " + enumName + ";\n"
+    bindingsOutput += "  value: number;\n"
     bindingsOutput += "}\n\n"
     output += bindingsOutput
-    self.exports.append(theEnum.spelling)
+    self.exports.append(enumName)
     return output
