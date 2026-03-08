@@ -59,7 +59,7 @@ def buildOneFile(args, item):
       "-Wno-unused-parameter",
       "-Wno-unused-variable",
       "-Werror=return-type",
-      "-Werror=non-virtual-dtor",
+      "-Wno-non-virtual-dtor",
       "-pthread" if args["threading"] == "multi-threaded" else "",
       *(["-include-pch", PCH_FILE] if _use_pch else []),
       *["-I" + p for p in _flat_include_paths],

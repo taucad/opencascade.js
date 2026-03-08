@@ -60,10 +60,22 @@ def _occt_commit() -> str:
 
 
 def _filter_hash() -> str:
+    h = hashlib.sha256()
     filter_file = os.path.join(OCJS_ROOT, "src", "filter", "filterPackages.py")
     if os.path.exists(filter_file):
-        return _file_hash(filter_file)[:8]
-    return "nofilter"
+        with open(filter_file, "rb") as f:
+            for chunk in iter(lambda: f.read(65536), b""):
+                h.update(chunk)
+    bindgen_config = os.environ.get(
+        "OCJS_BINDGEN_CONFIG",
+        os.path.join(OCJS_ROOT, "bindgen-filters.yaml"),
+    )
+    if os.path.exists(bindgen_config):
+        with open(bindgen_config, "rb") as f:
+            for chunk in iter(lambda: f.read(65536), b""):
+                h.update(chunk)
+    digest = h.hexdigest()
+    return digest[:8] if digest != hashlib.sha256().hexdigest() else "nofilter"
 
 
 def _opt_slug(opt: str) -> str:

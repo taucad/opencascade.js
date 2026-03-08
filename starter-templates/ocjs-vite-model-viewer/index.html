@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>OpenCascade.js + Vite + Model Viewer</title>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      body { font-family: system-ui, sans-serif; background: #1a1a2e; color: #e0e0e0; height: 100vh; display: flex; flex-direction: column; }
+      header { padding: 1rem 2rem; background: #16213e; border-bottom: 1px solid #0f3460; }
+      header h1 { font-size: 1.2rem; font-weight: 500; }
+      #status { padding: 0.5rem 2rem; font-size: 0.85rem; color: #a0a0a0; }
+      model-viewer { flex: 1; width: 100%; background: #0f3460; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>OpenCascade.js — Vite + Model Viewer</h1>
+    </header>
+    <div id="status">Initializing OpenCASCADE WASM...</div>
+    <model-viewer
+      id="viewer"
+      camera-controls
+      auto-rotate
+      shadow-intensity="1"
+      environment-image="neutral"
+      style="display: none"
+    ></model-viewer>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

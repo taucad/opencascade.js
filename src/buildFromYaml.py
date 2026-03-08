@@ -21,15 +21,17 @@ except ImportError:
 _yaml_config_hash = ""
 
 
-def verifyBinding(binding, libraryBasePath) -> bool:
+def _collect_compiled_symbols(libraryBasePath) -> set:
+  compiled = set()
   for dirpath, dirnames, filenames in os.walk(libraryBasePath + "/bindings"):
     for item in filenames:
-      if item.endswith(".cpp.o") and binding["symbol"] == item[:-6]:
-        return True
-  return False
+      if item.endswith(".cpp.o"):
+        compiled.add(item[:-6])
+  return compiled
 
 def verifyBindings(bindings, libraryBasePath) -> bool:
-  missing = [b for b in bindings if not verifyBinding(b, libraryBasePath)]
+  compiled = _collect_compiled_symbols(libraryBasePath)
+  missing = [b for b in bindings if b["symbol"] not in compiled]
   if missing:
     missing_names = [b["symbol"] for b in missing]
     print(f"WARNING: {len(missing)} of {len(bindings)} requested bindings have no compiled .o file:", flush=True)
@@ -127,13 +129,23 @@ def runBuild(build, libraryBasePath):
           continue
         if item.endswith(".o"):
           sourcesO.append(dirpath + "/" + item)
+  allowed_undef_flags = []
+  for sym in build.get("allowedUndefinedSymbols", []):
+    allowed_undef_flags.extend(["-Wl,--allow-undefined-symbol=" + sym])
+
+  OPT_LEVEL = os.environ.get("OCJS_OPT", "-O2")
+  USE_LTO = os.environ.get("OCJS_LTO", "1") == "1"
+  yaml_flags = [f for f in build["emccFlags"] if not f.startswith("-O") and f != "-flto"]
+  env_flags = [OPT_LEVEL] + (["-flto"] if USE_LTO else [])
   linkCmd = [
     "emcc", "-lembind",
     *([additionalBindCodeO] if additionalBindCodeO else []),
     *bindingsO, *sourcesO,
     "-o", os.getcwd() + "/" + build["name"],
     *(["-pthread"] if os.environ["THREADING"] == "multi-threaded" else []),
-    *build["emccFlags"],
+    *env_flags,
+    *yaml_flags,
+    *allowed_undef_flags,
   ]
   if os.environ.get("OCJS_CLOSURE", "false") == "true":
     linkCmd.extend(["--closure", "1"])
@@ -215,8 +227,18 @@ def main():
   except Exception:
     pass
 
+  additionalCppCode = buildConfig["additionalCppCode"]
+
+  yaml_dir = os.path.dirname(os.path.abspath(args.filename))
+  for cpp_file in buildConfig.get("additionalCppFiles", []):
+    resolved = os.path.join(yaml_dir, cpp_file) if not os.path.isabs(cpp_file) else cpp_file
+    if not os.path.isfile(resolved):
+      raise FileNotFoundError(f"additionalCppFiles: file not found: {resolved} (from '{cpp_file}')")
+    with open(resolved, "r") as f:
+      additionalCppCode += "\n" + f.read()
+
   print("Generating custom code bindings...", flush=True)
-  generateCustomCodeBindings(buildConfig["additionalCppCode"])
+  generateCustomCodeBindings(additionalCppCode)
   print("Compiling custom code bindings...", flush=True)
   compileCustomCodeBindings({
     "threading": os.environ['THREADING'],
@@ -255,6 +277,26 @@ def main():
           "export": export,
           "kind": dts["kind"],
         })
+
+    # Declarations for types provided via additionalBindCode
+    typescriptDefinitionOutput += \
+      "export declare class TColStd_IndexedDataMapOfStringString {\n" + \
+      "  constructor();\n" + \
+      "  delete(): void;\n" + \
+      "}\n\n" + \
+      "export declare class TopoDS_Cast {\n" + \
+      "  static Edge(shape: TopoDS_Shape): TopoDS_Edge;\n" + \
+      "  static Wire(shape: TopoDS_Shape): TopoDS_Wire;\n" + \
+      "  static Face(shape: TopoDS_Shape): TopoDS_Face;\n" + \
+      "  static Vertex(shape: TopoDS_Shape): TopoDS_Vertex;\n" + \
+      "  static Shell(shape: TopoDS_Shape): TopoDS_Shell;\n" + \
+      "  static Solid(shape: TopoDS_Shape): TopoDS_Solid;\n" + \
+      "  static Compound(shape: TopoDS_Shape): TopoDS_Compound;\n" + \
+      "}\n\n"
+    typescriptExports.extend([
+      {"export": "TColStd_IndexedDataMapOfStringString", "kind": "class"},
+      {"export": "TopoDS_Cast", "kind": "class"},
+    ])
 
     typescriptDefinitionOutput += \
       "type Standard_Boolean = boolean;\n" + \

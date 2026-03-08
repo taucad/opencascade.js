@@ -250,7 +250,11 @@ class EmbindBindings(Bindings):
     output += "  class_<" + className + baseClassBinding + ">(\"" + className + "\")\n"
 
     if isTransientDerived(theClass, self.tuInfo.classDict):
-      output += "    .smart_ptr<opencascade::handle<" + className + ">>(\"" + className + "\")\n"
+      output += "    .smart_ptr<opencascade::handle<" + className + ">>(\"Handle_" + className + "\")\n"
+
+    if className == "Standard_Transient":
+      output += "    .function(\"isNull\", &handle_isNull<Standard_Transient>)\n"
+      output += "    .function(\"nullify\", &handle_nullify<Standard_Transient>)\n"
 
     output += super().processClass(theClass, templateDecl, templateArgs)
 
@@ -277,13 +281,44 @@ class EmbindBindings(Bindings):
   def processFinalizeClass(self):
     return "  ;\n"
 
+  def _emitConstructor(self, className, args, templateDecl, templateArgs, useHandleOverride):
+    """Emit a single constructor binding, using optional_override for Transient-derived classes."""
+    argTypesBindings = ", ".join([
+      self.getSingleArgumentBinding(False, True, templateDecl, templateArgs)(arg)[0]
+      for arg in args
+    ])
+    if not useHandleOverride:
+      return "    .constructor<" + argTypesBindings + ">()\n"
+    namedArgs = []
+    for i, arg in enumerate(args):
+      name = arg.spelling if arg.spelling else f"a{i}"
+      typeStr = self.getSingleArgumentBinding(False, True, templateDecl, templateArgs)(arg)[0]
+      if isCString(arg.type):
+        namedArgs.append(("std::string " + name, name + ".c_str()"))
+      else:
+        namedArgs.append((typeStr + " " + name, name))
+    typedArgs = ", ".join([a[0] for a in namedArgs])
+    argNames = ", ".join([a[1] for a in namedArgs])
+    return (
+      "    .constructor(optional_override([](" + typedArgs + ") {\n"
+      "      return opencascade::handle<" + className + ">(new " + className + "(" + argNames + "));\n"
+      "    }))\n"
+    )
+
   def processSimpleConstructor(self, theClass, templateDecl = None, templateArgs = None):
     output = ""
     children = list(theClass.get_children())
     constructors = list(filter(lambda x: x.kind == clang.cindex.CursorKind.CONSTRUCTOR, children))
+    className = getClassTypeName(theClass, templateDecl)
+    useHandleOverride = isTransientDerived(theClass, self.tuInfo.classDict)
 
     if len(constructors) == 0:
-      output += "    .constructor<>()\n"
+      if useHandleOverride:
+        output += "    .constructor(optional_override([]() {\n"
+        output += "      return opencascade::handle<" + className + ">(new " + className + "());\n"
+        output += "    }))\n"
+      else:
+        output += "    .constructor<>()\n"
       return output
     publicConstructors = list(filter(lambda x: x.kind == clang.cindex.CursorKind.CONSTRUCTOR and x.access_specifier == clang.cindex.AccessSpecifier.PUBLIC, children))
     if len(publicConstructors) == 0:
@@ -293,11 +328,7 @@ class EmbindBindings(Bindings):
       standardConstructor = publicConstructors[0]
       args = list(standardConstructor.get_arguments())
       self._checkUnbindableArgs("constructor", theClass.spelling, args)
-      argTypesBindings = ", ".join([
-        self.getSingleArgumentBinding(False, True, templateDecl, templateArgs)(arg)[0]
-        for arg in args
-      ])
-      output += "    .constructor<" + argTypesBindings + ">()\n"
+      output += self._emitConstructor(className, args, templateDecl, templateArgs, useHandleOverride)
       return output
 
     if self._constructorsHaveUniqueArities(publicConstructors):
@@ -305,11 +336,7 @@ class EmbindBindings(Bindings):
         try:
           args = list(constructor.get_arguments())
           self._checkUnbindableArgs("constructor", theClass.spelling, args)
-          argTypesBindings = ", ".join([
-            self.getSingleArgumentBinding(False, True, templateDecl, templateArgs)(arg)[0]
-            for arg in args
-          ])
-          output += "    .constructor<" + argTypesBindings + ">()\n"
+          output += self._emitConstructor(className, args, templateDecl, templateArgs, useHandleOverride)
         except SkipException as e:
           print(str(e))
           continue
@@ -565,6 +592,7 @@ class EmbindBindings(Bindings):
     if self._constructorsHaveUniqueArities(constructors):
       return output
 
+    useHandleOverride = isTransientDerived(theClass, self.tuInfo.classDict)
     constructorBindings = ""
     allOverloads = constructors
     for constructor in filter(lambda x: filterMethodOrProperty(theClass, x), constructors):
@@ -583,7 +611,13 @@ class EmbindBindings(Bindings):
         constructorBindings += "      " + name + overloadPostfix + "(" + args + ") : " + name + "(" + argNames + ") {}\n"
         constructorBindings += "    };\n"
         constructorBindings += "    class_<" + name + overloadPostfix + ", base<" + name + ">>(\"" + name + overloadPostfix + "\")\n"
-        constructorBindings += "      .constructor<" + argTypes + ">()\n"
+        if useHandleOverride:
+          constructorBindings += "      .smart_ptr<opencascade::handle<" + name + overloadPostfix + ">>(\"Handle_" + name + overloadPostfix + "\")\n"
+          constructorBindings += "      .constructor(optional_override([](" + args + ") {\n"
+          constructorBindings += "        return opencascade::handle<" + name + overloadPostfix + ">(new " + name + overloadPostfix + "(" + argNames + "));\n"
+          constructorBindings += "      }))\n"
+        else:
+          constructorBindings += "      .constructor<" + argTypes + ">()\n"
         constructorBindings += "    ;\n"
 
       except SkipException as e:
@@ -686,6 +720,10 @@ class TypescriptBindings(Bindings):
     output += "export declare class " + name + baseClassDefinition + " {\n"
     self.exports.append(name)
 
+    if name == "Standard_Transient":
+      output += "  isNull(): boolean;\n"
+      output += "  nullify(): void;\n"
+
     output += super().processClass(theClass, templateDecl, templateArgs)
 
     for child in theClass.get_children():
@@ -738,49 +776,42 @@ class TypescriptBindings(Bindings):
 
     return output
 
+  _NUMERIC_TYPES = frozenset({
+    "int", "int16_t", "int32_t", "int64_t",
+    "unsigned", "uint32_t", "uint64_t",
+    "unsigned int", "unsigned long",
+    "long", "long int", "long long",
+    "unsigned long long", "unsigned short",
+    "short", "short int",
+    "float", "double", "long double",
+    "size_t", "ptrdiff_t", "ssize_t",
+    "Standard_Integer", "Standard_Real",
+    "Standard_ShortReal", "Standard_Size",
+    "Standard_Byte",
+  })
+
+  _STRING_TYPES = frozenset({
+    "char", "unsigned char",
+    "std::string", "std::string_view",
+    "Standard_Character", "Standard_ExtCharacter",
+    "Standard_CString", "Standard_WideChar",
+  })
+
+  _BOOLEAN_TYPES = frozenset({
+    "bool", "Standard_Boolean",
+  })
+
   def convertBuiltinTypes(self, typeName):
-    if typeName in [
-      "int",
-      "int16_t",
-      "unsigned",
-      "uint32_t",
-      "unsigned int",
-      "unsigned long",
-      "long",
-      "long int",
-      "unsigned short",
-      "short",
-      "short int",
-      "float",
-      "double",
-      "Standard_Integer",
-      "Standard_Real",
-      "Standard_ShortReal",
-      "Standard_Size",
-      "Standard_Byte",
-    ]:
+    if typeName in self._NUMERIC_TYPES:
       return "number"
 
-    if typeName in [
-      "char",
-      "unsigned char",
-      "std::string",
-      "Standard_Character",
-      "Standard_ExtCharacter",
-      "Standard_CString",
-      "Standard_WideChar",
-    ]:
+    if typeName in self._STRING_TYPES:
       return "string"
 
-    if typeName in [
-      "bool",
-      "Standard_Boolean",
-    ]:
+    if typeName in self._BOOLEAN_TYPES:
       return "boolean"
 
-    if typeName in [
-      "Standard_SStream",
-    ]:
+    if typeName in ("Standard_SStream",):
       return "any"
 
     return typeName
@@ -796,28 +827,161 @@ class TypescriptBindings(Bindings):
       return None
     return parent.spelling + "_" + decl.spelling
 
-  def getTypescriptDefFromResultType(self, res, templateDecl = None, templateArgs = None):
-    handleInner = self.resolve_handle_type(res)
+  def _strip_qualifiers(self, clang_type):
+    """Strip const, reference, and pointer qualifiers via AST traversal."""
+    t = clang_type
+    if t.kind == clang.cindex.TypeKind.LVALUEREFERENCE:
+      t = t.get_pointee()
+    if t.kind == clang.cindex.TypeKind.RVALUEREFERENCE:
+      t = t.get_pointee()
+    if t.kind == clang.cindex.TypeKind.POINTER:
+      t = t.get_pointee()
+    return t
+
+  def _resolve_template_type(self, clang_type, templateDecl=None, templateArgs=None):
+    """Resolve template types via AST, returning inner type for known containers."""
+    t = clang_type
+    numArgs = t.get_num_template_arguments()
+    if numArgs <= 0:
+      t = clang_type.get_canonical()
+      numArgs = t.get_num_template_arguments()
+      if numArgs <= 0:
+        return None
+
+    decl = t.get_declaration()
+    if not decl:
+      return None
+    container = decl.spelling
+
+    parent = decl.semantic_parent
+    if container == "handle" and parent and parent.spelling in ("opencascade", "occ"):
+      inner = t.get_template_argument_type(0)
+      return self.resolve_type(inner, templateDecl, templateArgs) if inner.spelling else "any"
+
+    SINGLE_ARG_CONTAINERS = {
+      "NCollection_Array1", "NCollection_Sequence", "NCollection_List",
+      "NCollection_HArray1", "NCollection_HSequence",
+      "NCollection_IndexedMap", "NCollection_Map",
+    }
+
+    if container in SINGLE_ARG_CONTAINERS:
+      inner = t.get_template_argument_type(0)
+      return self.resolve_type(inner, templateDecl, templateArgs)
+
+    if container in ("NCollection_DataMap", "NCollection_IndexedDataMap"):
+      return "any"
+
+    if container in ("NCollection_Vec2", "NCollection_Vec3", "NCollection_Vec4"):
+      return "any"
+
+    if container in self.exports:
+      return container
+
+    return "any"
+
+  _BUILTIN_NUMERIC_KINDS = frozenset({
+    clang.cindex.TypeKind.INT, clang.cindex.TypeKind.UINT,
+    clang.cindex.TypeKind.LONG, clang.cindex.TypeKind.ULONG,
+    clang.cindex.TypeKind.LONGLONG, clang.cindex.TypeKind.ULONGLONG,
+    clang.cindex.TypeKind.SHORT, clang.cindex.TypeKind.USHORT,
+    clang.cindex.TypeKind.FLOAT, clang.cindex.TypeKind.DOUBLE,
+    clang.cindex.TypeKind.LONGDOUBLE,
+  })
+
+  _BUILTIN_STRING_KINDS = frozenset({
+    clang.cindex.TypeKind.CHAR_U, clang.cindex.TypeKind.UCHAR,
+    clang.cindex.TypeKind.CHAR16, clang.cindex.TypeKind.CHAR32,
+    clang.cindex.TypeKind.CHAR_S, clang.cindex.TypeKind.SCHAR,
+  })
+
+  def _resolve_handle_recursive(self, clang_type, templateDecl=None, templateArgs=None):
+    """Unwrap handle<T> and recursively resolve the inner type via AST."""
+    t = clang_type
+    if t.kind == clang.cindex.TypeKind.LVALUEREFERENCE:
+      t = t.get_pointee()
+    if t.kind == clang.cindex.TypeKind.POINTER:
+      t = t.get_pointee()
+    if t.get_num_template_arguments() != 1:
+      return None
+    decl = t.get_declaration()
+    if decl.spelling != "handle":
+      return None
+    parent = decl.semantic_parent
+    if not parent or parent.spelling not in ("opencascade", "occ"):
+      return None
+    inner_type = t.get_template_argument_type(0)
+    return self.resolve_type(inner_type, templateDecl, templateArgs)
+
+  def resolve_type(self, clang_type, templateDecl=None, templateArgs=None):
+    """Resolve a clang type to its TypeScript equivalent using AST-first analysis.
+
+    Resolution order:
+    1. Handle<T> unwrapping via AST (recursive)
+    2. Strip const/ref/ptr qualifiers via AST
+    3. Template type resolution via AST
+    4. Nested type (enum/class inside class) resolution
+    5. Builtin type mapping via AST TypeKind
+    6. Canonical fallback for template member typedefs
+    7. Declaration spelling lookup in exports
+    """
+    handleInner = self._resolve_handle_recursive(clang_type, templateDecl, templateArgs)
     if handleInner:
       return handleInner
 
-    if not res.spelling == "void":
-      decl = res.get_declaration()
-      nested = self._resolve_nested_type(decl)
-      if nested:
-        if nested in self.exports:
-          return nested
-        return "any"
-      typedefType = self.resolveWithCanonicalFallback(res.spelling.replace("&", "").replace("const", "").replace("*", "").strip(), res, templateDecl, templateArgs)
-      resTypeName = typedefType.replace("&", "").replace("const", "").replace("*", "").strip()
-      resTypeName = self.convertBuiltinTypes(resTypeName)
-    else:
-      resTypedefType = res.spelling.replace("&", "").replace("const", "").replace("*", "").strip()
-      resTypeName = resTypedefType
-    if resTypeName == "" or "(" in resTypeName or ":" in resTypeName or "<" in resTypeName:
-      print("could not generate proper types for type name '" + resTypeName + "', using 'any' instead.")
-      resTypeName = "any"
-    return resTypeName
+    t = self._strip_qualifiers(clang_type)
+
+    handleInner = self._resolve_handle_recursive(t, templateDecl, templateArgs)
+    if handleInner:
+      return handleInner
+
+    template_result = self._resolve_template_type(t, templateDecl, templateArgs)
+    if template_result is not None:
+      return template_result
+
+    decl = t.get_declaration()
+    nested = self._resolve_nested_type(decl)
+    if nested:
+      return nested if nested in self.exports else "any"
+
+    canonical = t.get_canonical()
+    kind = canonical.kind
+    if kind in self._BUILTIN_NUMERIC_KINDS:
+      return "number"
+    if kind in self._BUILTIN_STRING_KINDS:
+      return "string"
+    if kind == clang.cindex.TypeKind.BOOL:
+      return "boolean"
+    if kind == clang.cindex.TypeKind.VOID:
+      return "void"
+
+    spelling = t.spelling.replace("&", "").replace("const", "").replace("*", "").strip()
+    resolved = self.resolveWithCanonicalFallback(spelling, t, templateDecl, templateArgs)
+    resolved = resolved.replace("&", "").replace("const", "").replace("*", "").strip()
+    resolved = self.convertBuiltinTypes(resolved)
+
+    if resolved in ("number", "string", "boolean", "void"):
+      return resolved
+    if resolved and resolved != "" and "(" not in resolved and ":" not in resolved and "<" not in resolved:
+      return resolved
+
+    canonical_spelling = canonical.spelling.replace("&", "").replace("const", "").replace("*", "").strip()
+    canonical_spelling = self.convertBuiltinTypes(canonical_spelling)
+    if canonical_spelling in ("number", "string", "boolean", "void"):
+      return canonical_spelling
+    if canonical_spelling and "(" not in canonical_spelling and ":" not in canonical_spelling and "<" not in canonical_spelling:
+      if canonical_spelling in self.exports:
+        return canonical_spelling
+
+    if decl and decl.spelling and decl.spelling in self.exports:
+      return decl.spelling
+
+    print(f"could not generate proper types for type '{t.spelling}' (canonical: '{canonical.spelling}'), using 'any' instead.")
+    return "any"
+
+  def getTypescriptDefFromResultType(self, res, templateDecl = None, templateArgs = None):
+    if res.spelling == "void":
+      return "void"
+    return self.resolve_type(res, templateDecl, templateArgs)
 
   def _argname(self, arg, suffix = ""):
     argname = (arg.spelling if not arg.spelling == "" else ("a" + str(suffix)))
@@ -826,24 +990,8 @@ class TypescriptBindings(Bindings):
     return argname
 
   def getTypescriptDefFromArg(self, arg, suffix = "", templateDecl = None, templateArgs = None):
-    handleInner = self.resolve_handle_type(arg.type)
-    if handleInner:
-      return self._argname(arg, suffix) + ": " + handleInner
-
-    decl = arg.type.get_declaration()
-    nested = self._resolve_nested_type(decl)
-    if nested:
-      argTypeName = nested if nested in self.exports else "any"
-      return self._argname(arg, suffix) + ": " + argTypeName
-
-    argTypeName = self.resolveWithCanonicalFallback(arg.type.spelling.replace("&", "").replace("const", "").replace("*", "").strip(), arg.type, templateDecl, templateArgs)
-    argTypeName = argTypeName.replace("&", "").replace("const", "").replace("*", "").strip()
-    argTypeName = self.convertBuiltinTypes(argTypeName)
-    if argTypeName == "" or "(" in argTypeName or ":" in argTypeName or "<" in argTypeName:
-      print("could not generate proper types for type name '" + argTypeName + "', using 'any' instead.")
-      argTypeName = "any"
-
-    return self._argname(arg, suffix) + ": " + argTypeName
+    typeName = self.resolve_type(arg.type, templateDecl, templateArgs)
+    return self._argname(arg, suffix) + ": " + typeName
 
   def processMethodOrProperty(self, theClass, method, templateDecl = None, templateArgs = None):
     output = ""

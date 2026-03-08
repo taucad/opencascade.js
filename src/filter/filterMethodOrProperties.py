@@ -93,4 +93,12 @@ def filterMethodOrProperty(theClass, methodOrProperty):
   if "NCollection_ItemsView" in str(getattr(methodOrProperty, 'displayname', '')):
     return False
 
+  # Pointer-reference output parameters (T*&) trigger Embind's raw pointer static assertion
+  if methodOrProperty.kind in [clang.cindex.CursorKind.CXX_METHOD, clang.cindex.CursorKind.FUNCTION_DECL]:
+    for arg in methodOrProperty.get_arguments():
+      if arg.type.kind == clang.cindex.TypeKind.LVALUEREFERENCE:
+        pointee = arg.type.get_pointee()
+        if pointee.kind == clang.cindex.TypeKind.POINTER:
+          return False
+
   return True

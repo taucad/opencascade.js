@@ -47,6 +47,8 @@ _FILTERED_TEMPLATE_TYPEDEFS = frozenset({
 def filterTemplates(child, customBuild):
   if child.spelling in _FILTERED_TEMPLATE_TYPEDEFS:
     return False
+  if child.spelling.startswith("Handle_"):
+    return False
   if customBuild:
     return (
       child.location.file is not None and child.location.file.name == "myMain.h" and
@@ -181,6 +183,7 @@ referenceTypeTemplateDefs = \
   "using namespace emscripten;\n" + \
   "#include <functional>\n" + \
   "#include \"ocjs_smart_ptr.h\"\n" + \
+  "#include \"ocjs_handle_helpers.h\"\n" + \
   "\n" + \
   "template<typename T>\n" + \
   "T getReferenceValue(const emscripten::val& v) {\n" + \

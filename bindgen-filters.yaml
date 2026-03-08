@@ -19,6 +19,10 @@ exclude:
     - prefix: GeomGridEval_
     - prefix: Geom2dGridEval_
     - prefix: ShapePersistent_
+    # Visualization deps (AIS_ColoredShape, Graphic3d_Texture2D, TPrsStd_Driver)
+    - XCAFPrs_AISObject
+    - XCAFPrs_Driver
+    - XCAFPrs_Texture
     # Undefined symbols
     - GCPnts_DistFunction2d
     - GCPnts_DistFunction
@@ -145,7 +149,6 @@ exclude:
     - Handle_math_NotSquare
     - Handle_math_SingularMatrix
     - BSplCLib
-    - BRepMesh_IncrementalMesh
     - BRepMesh_Triangle
     - BRepMesh_Delaun
     - AIS_GraphicTool
@@ -270,6 +273,8 @@ exclude:
     StdPrs_BRepFont: [Mutex]
     AdvApp2Var_Network: [ChangePatch, Patch]
     AdvApp2Var_Framework: [IsoU, IsoV]
+    GeomPlate_PlateG0Criterion: [Value, IsSatisfied]
+    GeomPlate_PlateG1Criterion: [Value, IsSatisfied]
     Resource_Unicode: []  # entire class methods filtered
     OSD_Thread: [Wait]
     TCollection_ExtendedString: [ToUTF8CString]
@@ -529,57 +534,8 @@ exclude:
     - TKVCAF
     - TPrsStd
 
-    ## Data Exchange — only keep STEP + STL
-    # IGES
-    - TKDEIGES
-    - IGESCAFControl
-    - IGESData
-    - IGESFile
-    - IGESBasic
-    - IGESGraph
-    - IGESGeom
-    - IGESDimen
-    - IGESDraw
-    - IGESSolid
-    - IGESDefs
-    - IGESAppli
-    - IGESConvGeom
-    - IGESSelect
-    - IGESToBRep
-    - GeomToIGES
-    - Geom2dToIGES
-    - BRepToIGES
-    - BRepToIGESBRep
-    - IGESControl
-    - DEIGES
-    # VRML
-    - TKDEVRML
-    - VrmlConverter
-    - VrmlAPI
-    - Vrml
-    - VrmlData
-    - DEVRML
-    # GLTF
-    - TKDEGLTF
-    - RWGltf
-    - DEGLTF
-    # OBJ
-    - TKDEOBJ
-    - RWObj
-    - DEOBJ
-    # PLY
-    - TKDEPLY
-    - RWPly
-    - DEPLY
-    # Cascade native format
-    - TKDECascade
-    - DEBRepCascade
-    - DEXCAFCascade
-    - DEBREP
-    - DEXCAF
-    # Mesh I/O
-    - TKRWMesh
-    - RWMesh
+    ## Data Exchange — STEP, STL, IGES, GLTF, OBJ, PLY, VRML all included
+    ## Individual problematic classes are excluded above in the classes section
 
     ## Persistence/serialization drivers (not needed in WASM)
     - TKBin
@@ -627,24 +583,14 @@ exclude:
     - XmlXCAFDrivers
     - XmlMXCAFDoc
 
-    ## Expression parser (not needed)
-    - TKExpress
-    - Expr
-    - ExprIntrp
-
-    ## Helix geometry (not bound, not used)
-    - TKHelix
-    - HelixBRep
-    - HelixGeom
+    ## Expression parser — included for math expression evaluation
+    ## Helix geometry — included for helical curves and sweeps
 
     ## Naming clash with BRepMesh
     - XBRepMesh
 
-    ## TKDE plugin framework (no bindings, no transitive deps)
+    ## TKDE plugin framework — included for data exchange
     ## NOTE: DESTEP is NOT filtered — STEPCAFControl uses DESTEP_Parameters at runtime
-    - TKDE
-    - DE
-    - DEBRep
 
   # Semantic rules that remain in code (not configurable):
   # - Methods with void*, istream/ostream params (type-based)

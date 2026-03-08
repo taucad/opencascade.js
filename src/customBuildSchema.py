@@ -33,7 +33,7 @@
           "-sMAXIMUM_MEMORY=4GB",
           "-sALLOW_MEMORY_GROWTH=1",
           "-sUSE_FREETYPE=1",
-          "-sERROR_ON_UNDEFINED_SYMBOLS=0",
+          "-sERROR_ON_UNDEFINED_SYMBOLS=1",
           "--no-entry",
         ],
       },
@@ -90,7 +90,7 @@
           "-sMAXIMUM_MEMORY=4GB",
           "-sALLOW_MEMORY_GROWTH=1",
           "-sUSE_FREETYPE=1",
-          "-sERROR_ON_UNDEFINED_SYMBOLS=0",
+          "-sERROR_ON_UNDEFINED_SYMBOLS=1",
           "--no-entry",
         ],
       },
@@ -118,6 +118,14 @@
     "required": False,
     "type": "string",
     "default": "",
+  },
+  "additionalCppFiles": {
+    "required": False,
+    "type": "list",
+    "schema": {
+      "type": "string",
+    },
+    "default": [],
   },
   "generateTypescriptDefinitions": {
     "required": False,
