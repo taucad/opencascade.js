@@ -1,6 +1,7 @@
 TODO.md
 .dockerignore
 Dockerfile
+Dockerfile.*
 README.md
 build-output.log
 pull-stages-output.log
@@ -9,6 +10,10 @@ runAction.sh
 /images/
 /doc/
 /build/
+/build-configs/
+/cache/
+/tools/
+/tests/
 /.vscode/
 /.github/
 /.devcontainer/

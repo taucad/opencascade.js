@@ -67,6 +67,12 @@ function extractSymbols(sourceFile: ts.SourceFile): DtsSymbol[] {
       symbols.push({ name: node.name.text, kind: 'interface' });
     } else if (ts.isFunctionDeclaration(node) && node.name) {
       symbols.push({ name: node.name.text, kind: 'function' });
+    } else if (ts.isVariableStatement(node)) {
+      for (const decl of node.declarationList.declarations) {
+        if (ts.isIdentifier(decl.name)) {
+          symbols.push({ name: decl.name.text, kind: 'enum' });
+        }
+      }
     }
 
     ts.forEachChild(node, visit);
@@ -193,18 +199,6 @@ describe('Replicad build .d.ts validation', () => {
       },
     }).getSyntacticDiagnostics(sourceFile);
 
-    if (diagnostics.length > 0) {
-      console.warn(
-        `\x1b[33m[WARN] ${diagnostics.length} syntactic diagnostics found in .d.ts\x1b[0m`,
-      );
-      for (const d of diagnostics.slice(0, 10)) {
-        const pos = d.file?.getLineAndCharacterOfPosition(d.start ?? 0);
-        console.warn(
-          `  Line ${(pos?.line ?? 0) + 1}: ${ts.flattenDiagnosticMessageText(d.messageText, '\n')}`,
-        );
-      }
-    }
-
     expect(diagnostics.length).toBe(0);
   });
 
@@ -212,30 +206,12 @@ describe('Replicad build .d.ts validation', () => {
     if (!sourceFile) return;
     const violations = findDoubleColonViolations(sourceFile.getFullText());
 
-    if (violations.length > 0) {
-      console.warn(
-        `\x1b[33m[WARN] ${violations.length} lines contain C++ :: syntax\x1b[0m`,
-      );
-      for (const v of violations.slice(0, 10)) {
-        console.warn(`  Line ${v.line}: ${v.text}`);
-      }
-    }
-
     expect(violations).toHaveLength(0);
   });
 
   it('should not contain bare template types (<) in type positions', () => {
     if (!sourceFile) return;
     const violations = findBareTemplateViolations(sourceFile.getFullText());
-
-    if (violations.length > 0) {
-      console.warn(
-        `\x1b[33m[WARN] ${violations.length} lines contain bare template types in type positions\x1b[0m`,
-      );
-      for (const v of violations.slice(0, 10)) {
-        console.warn(`  Line ${v.line}: ${v.text}`);
-      }
-    }
 
     expect(violations).toHaveLength(0);
   });
@@ -277,12 +253,6 @@ describe('Replicad build .d.ts validation', () => {
       }
     }
 
-    if (missing.length > 0) {
-      console.warn(
-        `\x1b[33m[WARN] ${missing.length} required classes missing from .d.ts: ${missing.join(', ')}\x1b[0m`,
-      );
-    }
-
     expect(missing).toHaveLength(0);
   });
 
@@ -313,7 +283,6 @@ describe('Replicad build .d.ts validation', () => {
     } | undefined;
 
     if (!symbolsSection?.requested) {
-      console.warn('\x1b[33m[WARN] Build manifest has no symbols.requested\x1b[0m');
       return;
     }
 
@@ -328,41 +297,7 @@ describe('Replicad build .d.ts validation', () => {
       }
     }
 
-    const inDtsNotInManifest: string[] = [];
-    for (const sym of dtsNames) {
-      if (!requested.has(sym)) {
-        inDtsNotInManifest.push(sym);
-      }
-    }
-
-    if (inManifestNotInDts.length > 0) {
-      console.warn(
-        `\x1b[33m[WARN] ${inManifestNotInDts.length} symbols in manifest but not in .d.ts:\x1b[0m`,
-      );
-      for (const s of inManifestNotInDts.slice(0, 20)) {
-        console.warn(`  - ${s}`);
-      }
-      if (inManifestNotInDts.length > 20) {
-        console.warn(`  ... and ${inManifestNotInDts.length - 20} more`);
-      }
-    }
-
-    if (inDtsNotInManifest.length > 0) {
-      console.warn(
-        `\x1b[33m[WARN] ${inDtsNotInManifest.length} symbols in .d.ts but not in manifest (overload subclasses, enums, etc.):\x1b[0m`,
-      );
-      for (const s of inDtsNotInManifest.slice(0, 20)) {
-        console.warn(`  - ${s}`);
-      }
-      if (inDtsNotInManifest.length > 20) {
-        console.warn(`  ... and ${inDtsNotInManifest.length - 20} more`);
-      }
-    }
-
     const coveragePercent = ((requested.size - inManifestNotInDts.length) / requested.size) * 100;
-    console.log(
-      `Symbol coverage: ${coveragePercent.toFixed(1)}% (${requested.size - inManifestNotInDts.length}/${requested.size} requested symbols found in .d.ts)`,
-    );
 
     expect(coveragePercent).toBeGreaterThan(0);
   });
@@ -390,33 +325,12 @@ describe('Full build .d.ts validation', () => {
       },
     }).getSyntacticDiagnostics(sourceFile);
 
-    if (diagnostics.length > 0) {
-      console.warn(
-        `\x1b[33m[WARN] ${diagnostics.length} syntactic diagnostics found in full .d.ts\x1b[0m`,
-      );
-      for (const d of diagnostics.slice(0, 10)) {
-        const pos = d.file?.getLineAndCharacterOfPosition(d.start ?? 0);
-        console.warn(
-          `  Line ${(pos?.line ?? 0) + 1}: ${ts.flattenDiagnosticMessageText(d.messageText, '\n')}`,
-        );
-      }
-    }
-
     expect(diagnostics.length).toBe(0);
   });
 
   it('should have zero :: leaks (C++ scope resolution)', () => {
     if (!sourceFile) return;
     const violations = findDoubleColonViolations(sourceFile.getFullText());
-
-    if (violations.length > 0) {
-      console.warn(
-        `\x1b[33m[WARN] ${violations.length} lines contain C++ :: syntax in full .d.ts\x1b[0m`,
-      );
-      for (const v of violations.slice(0, 10)) {
-        console.warn(`  Line ${v.line}: ${v.text}`);
-      }
-    }
 
     expect(violations).toHaveLength(0);
   });
@@ -443,27 +357,12 @@ describe('Full build .d.ts validation', () => {
     if (!sourceFile) return;
     const violations = findBareTemplateViolations(sourceFile.getFullText());
 
-    if (violations.length > 0) {
-      console.warn(
-        `\x1b[33m[WARN] ${violations.length} lines contain bare template types in full .d.ts\x1b[0m`,
-      );
-      for (const v of violations.slice(0, 10)) {
-        console.warn(`  Line ${v.line}: ${v.text}`);
-      }
-    }
-
     expect(violations).toHaveLength(0);
   });
 
   it('should keep `any` type count below regression threshold (1700)', () => {
     if (!sourceFile) return;
-    const { total, byClass } = countAnyTypes(sourceFile);
-
-    console.log(`\x1b[36m[INFO] Total ": any" occurrences in full .d.ts: ${total}\x1b[0m`);
-    console.log('Top-10 classes by any count:');
-    for (const entry of byClass.slice(0, 10)) {
-      console.log(`  ${entry.className}: ${entry.count}`);
-    }
+    const { total } = countAnyTypes(sourceFile);
 
     expect(total, `any count ${total} exceeds regression threshold of 2200`).toBeLessThan(2200);
   });
@@ -484,22 +383,7 @@ describe('Full build .d.ts validation', () => {
       }
     }
 
-    if (missing.length > 0) {
-      console.warn(
-        `\x1b[33m[WARN] ${missing.length}/${yamlSymbols.length} symbols from full.yml missing in .d.ts:\x1b[0m`,
-      );
-      for (const s of missing.slice(0, 30)) {
-        console.warn(`  - ${s}`);
-      }
-      if (missing.length > 30) {
-        console.warn(`  ... and ${missing.length - 30} more`);
-      }
-    }
-
     const coveragePercent = ((yamlSymbols.length - missing.length) / yamlSymbols.length) * 100;
-    console.log(
-      `Full build symbol coverage: ${coveragePercent.toFixed(1)}% (${yamlSymbols.length - missing.length}/${yamlSymbols.length})`,
-    );
 
     expect(
       coveragePercent,
@@ -556,12 +440,6 @@ describe('Full build .d.ts validation', () => {
       }
     }
 
-    if (missing.length > 0) {
-      console.warn(
-        `\x1b[33m[WARN] ${missing.length} required classes missing from full .d.ts: ${missing.join(', ')}\x1b[0m`,
-      );
-    }
-
     expect(missing).toHaveLength(0);
   });
 
@@ -575,7 +453,6 @@ describe('Full build .d.ts validation', () => {
     } | undefined;
 
     if (!symbolsSection?.requested) {
-      console.warn('\x1b[33m[WARN] Full build manifest has no symbols.requested\x1b[0m');
       return;
     }
 
@@ -590,41 +467,7 @@ describe('Full build .d.ts validation', () => {
       }
     }
 
-    const inDtsNotInManifest: string[] = [];
-    for (const sym of dtsNames) {
-      if (!requested.has(sym)) {
-        inDtsNotInManifest.push(sym);
-      }
-    }
-
-    if (inManifestNotInDts.length > 0) {
-      console.warn(
-        `\x1b[33m[WARN] ${inManifestNotInDts.length} symbols in manifest but not in full .d.ts:\x1b[0m`,
-      );
-      for (const s of inManifestNotInDts.slice(0, 20)) {
-        console.warn(`  - ${s}`);
-      }
-      if (inManifestNotInDts.length > 20) {
-        console.warn(`  ... and ${inManifestNotInDts.length - 20} more`);
-      }
-    }
-
-    if (inDtsNotInManifest.length > 0) {
-      console.warn(
-        `\x1b[33m[WARN] ${inDtsNotInManifest.length} symbols in full .d.ts but not in manifest (overload subclasses, enums, etc.):\x1b[0m`,
-      );
-      for (const s of inDtsNotInManifest.slice(0, 20)) {
-        console.warn(`  - ${s}`);
-      }
-      if (inDtsNotInManifest.length > 20) {
-        console.warn(`  ... and ${inDtsNotInManifest.length - 20} more`);
-      }
-    }
-
     const coveragePercent = ((requested.size - inManifestNotInDts.length) / requested.size) * 100;
-    console.log(
-      `Full build manifest coverage: ${coveragePercent.toFixed(1)}% (${requested.size - inManifestNotInDts.length}/${requested.size} requested symbols found in .d.ts)`,
-    );
 
     expect(coveragePercent).toBeGreaterThan(0);
   });
@@ -638,7 +481,7 @@ describe('Overload validation (full build)', () => {
   const dtsPath = path.join(FULL_BUILD_CONFIG, 'opencascade_full.d.ts');
   const sourceFile = parseDtsFile(dtsPath);
 
-  it('gp_Pnt should use inline constructor overloads (unique arities: 0, 1, 3 args)', () => {
+  it('should use inline constructor overloads for gp_Pnt (unique arities: 0, 1, 3 args)', () => {
     if (!sourceFile) return;
     const symbols = extractSymbols(sourceFile);
 
@@ -660,7 +503,7 @@ describe('Overload validation (full build)', () => {
     ).toHaveLength(0);
   });
 
-  it('BRepPrimAPI_MakeBox should use _N subclasses (duplicate arities)', () => {
+  it('should use _N subclasses for BRepPrimAPI_MakeBox (duplicate arities)', () => {
     if (!sourceFile) return;
     const symbols = extractSymbols(sourceFile);
 
@@ -683,7 +526,7 @@ describe('Overload validation (full build)', () => {
     }
   });
 
-  it('methods with unique arities should not have _N suffixes', () => {
+  it('should not have _N suffixes for methods with unique arities', () => {
     if (!sourceFile) return;
     const symbols = extractSymbols(sourceFile);
 

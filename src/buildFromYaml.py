@@ -203,12 +203,31 @@ def runBuild(build, libraryBasePath):
   print("Build finished", flush=True)
 
 
+def _collect_dts_fragments(buildConfig, libraryBasePath):
+  """Walk bindings dir and collect all .d.ts.json fragments matching the YAML bindings."""
+  typescriptDefinitions = []
+  allBindings = list(chain(buildConfig["mainBuild"]["bindings"], *list(map(lambda x: x["bindings"], buildConfig["extraBuilds"]))))
+  for dirpath, dirnames, filenames in os.walk(libraryBasePath + "/bindings"):
+    rel_parts = dirpath.replace(libraryBasePath + "/bindings/", "").split("/")
+    skip = any(not filterPackages(p) for p in rel_parts if p)
+    if skip:
+      dirnames.clear()
+      continue
+    for item in filenames:
+      if item.endswith(".d.ts.json") and shouldProcessSymbol(item[:-10], allBindings):
+        f = open(dirpath + "/" + item, "r")
+        typescriptDefinitions.append(json.loads(f.read()))
+  return typescriptDefinitions
+
+
 def main():
   from generateBindings import generateCustomCodeBindings
   from compileBindings import compileCustomCodeBindings
 
   parser = ArgumentParser()
   parser.add_argument(dest="filename", help="Custom build input file (.yml)", metavar="FILE.yml")
+  parser.add_argument("--dts-only", action="store_true",
+                       help="Regenerate only the .d.ts file from existing .d.ts.json fragments (no compile/link)")
   args = parser.parse_args()
   libraryBasePath = OCJS_ROOT + "/build"
 
@@ -222,50 +241,40 @@ def main():
     raise Exception(v.errors)
   buildConfig = v.normalized(buildConfig)
 
-  try:
-    shutil.rmtree(libraryBasePath + "/bindings/myMain.h")
-  except Exception:
-    pass
+  typescriptDefinitions = _collect_dts_fragments(buildConfig, libraryBasePath)
 
-  additionalCppCode = buildConfig["additionalCppCode"]
+  if not args.dts_only:
+    try:
+      shutil.rmtree(libraryBasePath + "/bindings/myMain.h")
+    except Exception:
+      pass
 
-  yaml_dir = os.path.dirname(os.path.abspath(args.filename))
-  for cpp_file in buildConfig.get("additionalCppFiles", []):
-    resolved = os.path.join(yaml_dir, cpp_file) if not os.path.isabs(cpp_file) else cpp_file
-    if not os.path.isfile(resolved):
-      raise FileNotFoundError(f"additionalCppFiles: file not found: {resolved} (from '{cpp_file}')")
-    with open(resolved, "r") as f:
-      additionalCppCode += "\n" + f.read()
+    additionalCppCode = buildConfig["additionalCppCode"]
 
-  print("Generating custom code bindings...", flush=True)
-  generateCustomCodeBindings(additionalCppCode)
-  print("Compiling custom code bindings...", flush=True)
-  compileCustomCodeBindings({
-    "threading": os.environ['THREADING'],
-  })
-  print("Custom code bindings done.", flush=True)
+    yaml_dir = os.path.dirname(os.path.abspath(args.filename))
+    for cpp_file in buildConfig.get("additionalCppFiles", []):
+      resolved = os.path.join(yaml_dir, cpp_file) if not os.path.isabs(cpp_file) else cpp_file
+      if not os.path.isfile(resolved):
+        raise FileNotFoundError(f"additionalCppFiles: file not found: {resolved} (from '{cpp_file}')")
+      with open(resolved, "r") as f:
+        additionalCppCode += "\n" + f.read()
 
-  verifyBindings(buildConfig["mainBuild"]["bindings"], libraryBasePath)
-  for extraBuild in buildConfig["extraBuilds"]:
-    verifyBindings(extraBuild, libraryBasePath)
-  print("All bindings verified.", flush=True)
+    print("Generating custom code bindings...", flush=True)
+    generateCustomCodeBindings(additionalCppCode)
+    print("Compiling custom code bindings...", flush=True)
+    compileCustomCodeBindings({
+      "threading": os.environ['THREADING'],
+    })
+    print("Custom code bindings done.", flush=True)
 
-  typescriptDefinitions = []
-  allBindings = list(chain(buildConfig["mainBuild"]["bindings"], *list(map(lambda x: x["bindings"], buildConfig["extraBuilds"]))))
-  for dirpath, dirnames, filenames in os.walk(libraryBasePath + "/bindings"):
-    rel_parts = dirpath.replace(libraryBasePath + "/bindings/", "").split("/")
-    skip = any(not filterPackages(p) for p in rel_parts if p)
-    if skip:
-      dirnames.clear()
-      continue
-    for item in filenames:
-      if item.endswith(".d.ts.json") and shouldProcessSymbol(item[:-10], allBindings):
-        f = open(dirpath + "/" + item, "r")
-        typescriptDefinitions.append(json.loads(f.read()))
+    verifyBindings(buildConfig["mainBuild"]["bindings"], libraryBasePath)
+    for extraBuild in buildConfig["extraBuilds"]:
+      verifyBindings(extraBuild, libraryBasePath)
+    print("All bindings verified.", flush=True)
 
-  runBuild(buildConfig["mainBuild"], libraryBasePath)
-  for extraBuild in buildConfig["extraBuilds"]:
-    runBuild(extraBuild, libraryBasePath)
+    runBuild(buildConfig["mainBuild"], libraryBasePath)
+    for extraBuild in buildConfig["extraBuilds"]:
+      runBuild(extraBuild, libraryBasePath)
 
   if buildConfig["generateTypescriptDefinitions"]:
     typescriptDefinitionOutput = ""
@@ -452,7 +461,7 @@ def main():
       "  }\n" + \
       "  function analyzePath(path: string): AnalysisResults;\n" + \
       "}\n\n" + \
-      "\nexport type OpenCascadeInstance = {FS: typeof FS} & {\n  " + ";\n  ".join(map(lambda x: x["export"] + ((": typeof " + x["export"]) if x["kind"] == "class" else (": " + x["export"])), typescriptExports)) + ";\n" + \
+      "\nexport type OpenCascadeInstance = {FS: typeof FS} & {\n  " + ";\n  ".join(map(lambda x: x["export"] + ": typeof " + x["export"] if x["kind"] in ("class", "enum") else x["export"] + ": " + x["export"], typescriptExports)) + ";\n" + \
       "};\n\n" + \
       "declare function init(): Promise<OpenCascadeInstance>;\n\n" + \
       "export default init;\n"

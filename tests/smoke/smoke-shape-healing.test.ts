@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { getOC, wasmExists } from './helpers.js';
 
 describe.skipIf(!wasmExists)('Smoke: Shape healing', () => {
-  it('ShapeFix_Shape fixes a valid shape without error', async () => {
+  it('should fix a valid shape without error with ShapeFix_Shape', async () => {
     const oc = await getOC();
     const box = new oc.BRepPrimAPI_MakeBox_2(10, 20, 30);
     const shape = box.Shape();
@@ -29,7 +29,7 @@ describe.skipIf(!wasmExists)('Smoke: Shape healing', () => {
     box.delete();
   });
 
-  it('ShapeFix_Wire fixes a wire and preserves topology', async () => {
+  it('should fix a wire and preserve topology with ShapeFix_Wire', async () => {
     const oc = await getOC();
     const p1 = new oc.gp_Pnt(0, 0, 0);
     const p2 = new oc.gp_Pnt(10, 0, 0);
@@ -61,7 +61,7 @@ describe.skipIf(!wasmExists)('Smoke: Shape healing', () => {
       edgeCount++;
       edgeExplorer.Next();
     }
-    expect(edgeCount).toBeGreaterThanOrEqual(2);
+    expect(edgeCount).toBe(2);
 
     edgeExplorer.delete();
     fixer.delete();

@@ -12,7 +12,7 @@ import { getOC, wasmExists } from './helpers.js';
 import { expectShapeGeometry } from './geometry-helpers.js';
 
 describe.skipIf(!wasmExists)('Smoke: Geometric properties', () => {
-  it('BRepGProp computes volume of a 10x20x30 box', async () => {
+  it('should compute volume of a 10x20x30 box with BRepGProp', async () => {
     const oc = await getOC();
 
     const box = new oc.BRepPrimAPI_MakeBox_2(10, 20, 30);
@@ -22,18 +22,18 @@ describe.skipIf(!wasmExists)('Smoke: Geometric properties', () => {
     oc.BRepGProp.VolumeProperties_1(shape, props, false, false, false);
 
     const volume = props.Mass();
-    expect(volume).toBeCloseTo(10 * 20 * 30, 0);
+    expect(volume).toBe(6000);
 
     const center = props.CentreOfMass();
-    expect(center.X()).toBeCloseTo(5, 1);
-    expect(center.Y()).toBeCloseTo(10, 1);
-    expect(center.Z()).toBeCloseTo(15, 1);
+    expect(center.X()).toBe(5);
+    expect(center.Y()).toBe(10);
+    expect(center.Z()).toBe(15);
 
     props.delete();
     box.delete();
   });
 
-  it('BRepGProp computes surface area of a 10x20x30 box', async () => {
+  it('should compute surface area of a 10x20x30 box with BRepGProp', async () => {
     const oc = await getOC();
 
     const box = new oc.BRepPrimAPI_MakeBox_2(10, 20, 30);
@@ -44,13 +44,13 @@ describe.skipIf(!wasmExists)('Smoke: Geometric properties', () => {
 
     const area = props.Mass();
     const expected = 2 * (10 * 20 + 20 * 30 + 10 * 30);
-    expect(area).toBeCloseTo(expected, 0);
+    expect(area).toBe(2200);
 
     props.delete();
     box.delete();
   });
 
-  it('BRepGProp computes volume of a sphere', async () => {
+  it('should compute volume of a sphere with BRepGProp', async () => {
     const oc = await getOC();
     const radius = 10;
 
@@ -62,18 +62,18 @@ describe.skipIf(!wasmExists)('Smoke: Geometric properties', () => {
 
     const volume = props.Mass();
     const expectedVolume = (4 / 3) * Math.PI * radius ** 3;
-    expect(volume).toBeCloseTo(expectedVolume, -1);
+    expect(volume).toBeCloseTo(expectedVolume, 0);
 
     const center = props.CentreOfMass();
-    expect(center.X()).toBeCloseTo(0, 0);
-    expect(center.Y()).toBeCloseTo(0, 0);
-    expect(center.Z()).toBeCloseTo(0, 0);
+    expect(center.X()).toBeCloseTo(0, 10);
+    expect(center.Y()).toBeCloseTo(0, 10);
+    expect(center.Z()).toBeCloseTo(0, 10);
 
     props.delete();
     sphere.delete();
   });
 
-  it('BRepGProp linear properties on a box wire segment', async () => {
+  it('should compute linear properties on a box wire segment with BRepGProp', async () => {
     const oc = await getOC();
 
     const p1 = new oc.gp_Pnt(0, 0, 0);
@@ -84,7 +84,7 @@ describe.skipIf(!wasmExists)('Smoke: Geometric properties', () => {
     oc.BRepGProp.LinearProperties(edge.Shape(), props, false, false);
 
     const length = props.Mass();
-    expect(length).toBeCloseTo(10, 1);
+    expect(length).toBe(10);
 
     props.delete();
     edge.delete();
@@ -92,7 +92,7 @@ describe.skipIf(!wasmExists)('Smoke: Geometric properties', () => {
     p1.delete();
   });
 
-  it('Bnd_Box computes bounding box for a box shape', async () => {
+  it('should compute bounding box for a box shape with Bnd_Box', async () => {
     const oc = await getOC();
 
     const box = new oc.BRepPrimAPI_MakeBox_2(10, 20, 30);
@@ -110,18 +110,18 @@ describe.skipIf(!wasmExists)('Smoke: Geometric properties', () => {
     const yMax = bndBox.GetYMax();
     const zMax = bndBox.GetZMax();
 
-    expect(xMin).toBeCloseTo(0, 0);
-    expect(yMin).toBeCloseTo(0, 0);
-    expect(zMin).toBeCloseTo(0, 0);
-    expect(xMax).toBeCloseTo(10, 0);
-    expect(yMax).toBeCloseTo(20, 0);
-    expect(zMax).toBeCloseTo(30, 0);
+    expect(xMin).toBeCloseTo(0, 5);
+    expect(yMin).toBeCloseTo(0, 5);
+    expect(zMin).toBeCloseTo(0, 5);
+    expect(xMax).toBeCloseTo(10, 5);
+    expect(yMax).toBeCloseTo(20, 5);
+    expect(zMax).toBeCloseTo(30, 5);
 
     bndBox.delete();
     box.delete();
   });
 
-  it('Bnd_Box checks point containment', async () => {
+  it('should check point containment with Bnd_Box', async () => {
     const oc = await getOC();
 
     const box = new oc.BRepPrimAPI_MakeBox_2(10, 10, 10);
@@ -142,7 +142,7 @@ describe.skipIf(!wasmExists)('Smoke: Geometric properties', () => {
     box.delete();
   });
 
-  it('GLB export validates box dimensions via gltf-transform', async () => {
+  it('should validate box dimensions in GLB export via gltf-transform', async () => {
     const oc = await getOC();
 
     const box = new oc.BRepPrimAPI_MakeBox_2(25, 15, 10);
@@ -152,13 +152,12 @@ describe.skipIf(!wasmExists)('Smoke: Geometric properties', () => {
       size: [25, 15, 10],
       center: [12.5, 7.5, 5],
       meshCount: 1,
-      tolerance: 1,
     });
 
     box.delete();
   });
 
-  it('GLB export validates sphere dimensions via gltf-transform', async () => {
+  it('should validate sphere dimensions in GLB export via gltf-transform', async () => {
     const oc = await getOC();
 
     const sphere = new oc.BRepPrimAPI_MakeSphere_1(8);
@@ -168,13 +167,12 @@ describe.skipIf(!wasmExists)('Smoke: Geometric properties', () => {
       size: [16, 16, 16],
       center: [0, 0, 0],
       meshCount: 1,
-      tolerance: 1,
     });
 
     sphere.delete();
   });
 
-  it('GLB export validates cylinder dimensions via gltf-transform', async () => {
+  it('should validate cylinder dimensions in GLB export via gltf-transform', async () => {
     const oc = await getOC();
 
     const cyl = new oc.BRepPrimAPI_MakeCylinder_1(5, 20);
@@ -183,7 +181,6 @@ describe.skipIf(!wasmExists)('Smoke: Geometric properties', () => {
     await expectShapeGeometry(shape, {
       size: [10, 10, 20],
       center: [0, 0, 10],
-      tolerance: 1,
     });
 
     cyl.delete();

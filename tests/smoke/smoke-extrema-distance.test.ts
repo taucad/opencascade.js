@@ -11,7 +11,7 @@ import { describe, it, expect } from 'vitest';
 import { getOC, wasmExists } from './helpers.js';
 
 describe.skipIf(!wasmExists)('Smoke: Extrema and distance', () => {
-  it('BRepExtrema_DistShapeShape computes distance between two separated boxes', async () => {
+  it('should compute distance between two separated boxes with BRepExtrema_DistShapeShape', async () => {
     const oc = await getOC();
 
     const box1 = new oc.BRepPrimAPI_MakeBox_2(10, 10, 10);
@@ -31,19 +31,19 @@ describe.skipIf(!wasmExists)('Smoke: Extrema and distance', () => {
     );
 
     expect(dist.IsDone()).toBe(true);
-    expect(dist.Value()).toBeCloseTo(10, 1);
+    expect(dist.Value()).toBe(10);
 
     const pt1 = dist.PointOnShape1(1);
     const pt2 = dist.PointOnShape2(1);
-    expect(pt1.X()).toBeCloseTo(10, 1);
-    expect(pt2.X()).toBeCloseTo(20, 1);
+    expect(pt1.X()).toBe(10);
+    expect(pt2.X()).toBe(20);
 
     dist.delete();
     box2Maker.delete();
     box1.delete();
   });
 
-  it('BRepExtrema_DistShapeShape returns 0 for overlapping shapes', async () => {
+  it('should return 0 distance for overlapping shapes with BRepExtrema_DistShapeShape', async () => {
     const oc = await getOC();
 
     const box1 = new oc.BRepPrimAPI_MakeBox_2(10, 10, 10);
@@ -58,14 +58,14 @@ describe.skipIf(!wasmExists)('Smoke: Extrema and distance', () => {
     );
 
     expect(dist.IsDone()).toBe(true);
-    expect(dist.Value()).toBeCloseTo(0, 1);
+    expect(dist.Value()).toBe(0);
 
     dist.delete();
     box2.delete();
     box1.delete();
   });
 
-  it('BRepExtrema_DistShapeShape between box and sphere', async () => {
+  it('should compute distance between box and sphere with BRepExtrema_DistShapeShape', async () => {
     const oc = await getOC();
 
     const box = new oc.BRepPrimAPI_MakeBox_2(10, 10, 10);
@@ -83,14 +83,14 @@ describe.skipIf(!wasmExists)('Smoke: Extrema and distance', () => {
     );
 
     expect(dist.IsDone()).toBe(true);
-    expect(dist.Value()).toBeCloseTo(15, 1);
+    expect(dist.Value()).toBeCloseTo(15, 10);
 
     dist.delete();
     sphere.delete();
     box.delete();
   });
 
-  it('Bnd_Box distance between two separated bounding boxes', async () => {
+  it('should compute distance between two separated bounding boxes with Bnd_Box', async () => {
     const oc = await getOC();
 
     const box1 = new oc.BRepPrimAPI_MakeBox_2(10, 10, 10);
@@ -107,7 +107,7 @@ describe.skipIf(!wasmExists)('Smoke: Extrema and distance', () => {
     oc.BRepBndLib.Add(box2.Shape(), bnd2, false);
 
     const distance = bnd1.Distance(bnd2);
-    expect(distance).toBeCloseTo(10, 1);
+    expect(distance).toBeCloseTo(10, 5);
 
     expect(bnd1.IsOut_4(bnd2)).toBe(true);
 

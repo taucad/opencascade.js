@@ -3,7 +3,7 @@ import { getOC, wasmExists } from './helpers.js';
 import { expectShapeGeometry } from './geometry-helpers.js';
 
 describe.skipIf(!wasmExists)('Smoke: Transforms', () => {
-  it('gp_Trsf translation shifts box center by (5,0,0)', async () => {
+  it('should shift box center by (5,0,0) with translation', async () => {
     const oc = await getOC();
     const box = new oc.BRepPrimAPI_MakeBox_2(10, 10, 10);
     const trsf = new oc.gp_Trsf();
@@ -15,13 +15,11 @@ describe.skipIf(!wasmExists)('Smoke: Transforms', () => {
       false,
     );
     const shape = transform.Shape();
-    expect(shape).toBeTruthy();
     expect(shape.IsNull()).toBe(false);
 
     await expectShapeGeometry(shape, {
       size: [10, 10, 10],
       center: [10, 5, 5],
-      tolerance: 1,
     });
 
     box.delete();
@@ -29,7 +27,7 @@ describe.skipIf(!wasmExists)('Smoke: Transforms', () => {
     transform.delete();
   });
 
-  it('gp_Trsf rotation preserves bounding box dimensions', async () => {
+  it('should preserve bounding box dimensions with rotation', async () => {
     const oc = await getOC();
     const box = new oc.BRepPrimAPI_MakeBox_2(10, 10, 10);
     const trsf = new oc.gp_Trsf();
@@ -45,13 +43,11 @@ describe.skipIf(!wasmExists)('Smoke: Transforms', () => {
       false,
     );
     const shape = transform.Shape();
-    expect(shape).toBeTruthy();
     expect(shape.IsNull()).toBe(false);
 
     const diag = 10 * Math.SQRT2;
     await expectShapeGeometry(shape, {
       size: [diag, diag, 10],
-      tolerance: 1,
     });
 
     box.delete();
@@ -60,7 +56,7 @@ describe.skipIf(!wasmExists)('Smoke: Transforms', () => {
     transform.delete();
   });
 
-  it('gp_Trsf scale doubles all box dimensions', async () => {
+  it('should double all box dimensions with scale', async () => {
     const oc = await getOC();
     const box = new oc.BRepPrimAPI_MakeBox_2(10, 10, 10);
     const trsf = new oc.gp_Trsf();
@@ -72,13 +68,11 @@ describe.skipIf(!wasmExists)('Smoke: Transforms', () => {
       false,
     );
     const shape = transform.Shape();
-    expect(shape).toBeTruthy();
     expect(shape.IsNull()).toBe(false);
 
     await expectShapeGeometry(shape, {
       size: [20, 20, 20],
       center: [10, 10, 10],
-      tolerance: 1,
     });
 
     box.delete();

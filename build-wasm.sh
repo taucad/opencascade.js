@@ -59,6 +59,8 @@ Commands:
   bindings              Compile bindings only
   sources               Compile OCCT sources only
   validate <yaml>       Validate YAML config without building
+  clean-generated       Remove all generated .d.ts.json and .cpp files (handles symlinks)
+  clean-objects         Remove all compiled .o files from bindings (handles symlinks)
   cache-list            List all cached compilations
   cache-gc [n]          Garbage collect old cache entries (keep n, default 5)
 
@@ -76,6 +78,8 @@ Environment Variables:
   OCJS_EXCEPTIONS       Native WASM exceptions: 0|1 (default: 0)
   THREADING             Threading mode: single-threaded|multi-threaded (default: single-threaded)
   OCJS_STRICT_DEPS      Fail on dependency commit mismatch: 0|1 (default: 0)
+  OCJS_FORCE_GENERATE   Force regeneration of all bindings: 0|1 (default: 0)
+  OCJS_FORCE_MISS       Force cache miss (bypass cache): 0|1 (default: 0)
 
 Examples:
   # Default production build
@@ -115,6 +119,122 @@ if [ "${1:-}" = "cache-gc" ]; then
   export OCCT_ROOT="${OCCT_ROOT:-$(cd "$SCRIPT_DIR/../OCCT" 2>/dev/null && pwd || echo "")}"
   export PYTHONPATH="$OCJS_ROOT/src:${PYTHONPATH:-}"
   python3 src/build-cache.py gc "${2:-5}"
+  exit 0
+fi
+
+_resolve_symlink_target() {
+  local path="$1"
+  if [ -L "$path" ]; then
+    readlink -f "$path" 2>/dev/null || readlink "$path"
+  else
+    echo "$path"
+  fi
+}
+
+_ensure_doxygen() {
+  local version
+  version=$(python3 -c "import json; print(json.load(open('$SCRIPT_DIR/DEPS.json'))['dependencies']['doxygen']['version'])" 2>/dev/null || echo "1.16.1")
+  local tag
+  tag=$(python3 -c "import json; print(json.load(open('$SCRIPT_DIR/DEPS.json'))['dependencies']['doxygen']['release_tag'])" 2>/dev/null || echo "Release_1_16_1")
+  local doxygen_bin="$SCRIPT_DIR/tools/doxygen/bin/doxygen"
+
+  if [ -x "$doxygen_bin" ]; then
+    local installed
+    installed=$("$doxygen_bin" --version 2>/dev/null || echo "")
+    if [ "$installed" = "$version" ]; then
+      return 0
+    fi
+    echo "  Doxygen version mismatch ($installed != $version), re-downloading..."
+  fi
+
+  echo "  Downloading Doxygen $version..."
+  local os_name arch asset_name
+  os_name="$(uname -s)"
+  arch="$(uname -m)"
+  case "$os_name" in
+    Darwin)
+      case "$arch" in
+        arm64) asset_name="doxygen-${version}-mac-arm.zip" ;;
+        *)     asset_name="doxygen-${version}-mac-intel.zip" ;;
+      esac
+      ;;
+    Linux)
+      asset_name="doxygen-${version}.linux.bin.tar.gz"
+      ;;
+    *)
+      echo "  WARNING: Unsupported OS '$os_name' for Doxygen auto-download. Install doxygen manually." >&2
+      return 1
+      ;;
+  esac
+
+  local url="https://github.com/doxygen/doxygen/releases/download/${tag}/${asset_name}"
+  local tmp_dir
+  tmp_dir="$(mktemp -d)"
+
+  mkdir -p "$SCRIPT_DIR/tools"
+  rm -rf "$SCRIPT_DIR/tools/doxygen"
+
+  if ! curl -fsSL "$url" -o "$tmp_dir/$asset_name"; then
+    echo "  WARNING: Failed to download Doxygen from $url" >&2
+    rm -rf "$tmp_dir"
+    return 1
+  fi
+
+  case "$asset_name" in
+    *.zip)
+      unzip -q "$tmp_dir/$asset_name" -d "$tmp_dir/extracted"
+      local inner_dir
+      inner_dir="$(ls -d "$tmp_dir/extracted"/Doxygen.app/Contents/Resources 2>/dev/null || ls -d "$tmp_dir/extracted"/doxygen-* 2>/dev/null || echo "$tmp_dir/extracted")"
+      mkdir -p "$SCRIPT_DIR/tools/doxygen/bin"
+      cp "$inner_dir/doxygen" "$SCRIPT_DIR/tools/doxygen/bin/doxygen" 2>/dev/null || \
+        find "$tmp_dir/extracted" -name "doxygen" -type f -exec cp {} "$SCRIPT_DIR/tools/doxygen/bin/doxygen" \;
+      chmod +x "$SCRIPT_DIR/tools/doxygen/bin/doxygen"
+      ;;
+    *.tar.gz)
+      tar xzf "$tmp_dir/$asset_name" -C "$tmp_dir"
+      local extracted_dir
+      extracted_dir="$(ls -d "$tmp_dir"/doxygen-* 2>/dev/null | head -1)"
+      mv "$extracted_dir" "$SCRIPT_DIR/tools/doxygen"
+      ;;
+  esac
+
+  rm -rf "$tmp_dir"
+
+  if [ -x "$doxygen_bin" ]; then
+    echo "  Doxygen $("$doxygen_bin" --version) installed at $doxygen_bin"
+  else
+    echo "  WARNING: Doxygen binary not found after extraction" >&2
+    return 1
+  fi
+}
+
+if [ "${1:-}" = "clean-generated" ]; then
+  echo "Cleaning generated .d.ts.json and .cpp files..."
+  target="$(_resolve_symlink_target "$SCRIPT_DIR/build/bindings")"
+  if [ -d "$target" ]; then
+    count=$(find "$target" \( -name "*.d.ts.json" -o \( -name "*.cpp" ! -name "*.cpp.o" \) \) | wc -l | tr -d ' ')
+    find "$target" -name "*.d.ts.json" -delete 2>/dev/null || true
+    find "$target" -name "*.cpp" ! -name "*.cpp.o" -delete 2>/dev/null || true
+    rm -f "$SCRIPT_DIR/build/bindings/.generator-hash" 2>/dev/null || true
+    echo "  Removed $count generated files."
+  else
+    echo "  No build/bindings directory found."
+  fi
+  echo "Done. Run 'generate' to regenerate."
+  exit 0
+fi
+
+if [ "${1:-}" = "clean-objects" ]; then
+  echo "Cleaning compiled .o files from bindings..."
+  target="$(_resolve_symlink_target "$SCRIPT_DIR/build/bindings")"
+  if [ -d "$target" ]; then
+    count=$(find "$target" -name "*.cpp.o" | wc -l | tr -d ' ')
+    find "$target" -name "*.cpp.o" -delete 2>/dev/null || true
+    echo "  Removed $count object files."
+  else
+    echo "  No build/bindings directory found."
+  fi
+  echo "Done. Run 'bindings' to recompile."
   exit 0
 fi
 
@@ -182,6 +302,8 @@ export OCJS_CONVERGE="${OCJS_CONVERGE:-false}"
 export OCJS_DEFINES="${OCJS_DEFINES:-}"
 export OCJS_UNDEFINES="${OCJS_UNDEFINES:-}"
 export OCJS_PATCH_DUMP="${OCJS_PATCH_DUMP:-false}"
+export OCJS_FORCE_GENERATE="${OCJS_FORCE_GENERATE:-0}"
+export OCJS_FORCE_MISS="${OCJS_FORCE_MISS:-0}"
 export THREADING="${THREADING:-single-threaded}"
 export PYTHONPATH="$OCJS_ROOT/src:${PYTHONPATH:-}"
 
@@ -229,8 +351,31 @@ buildPch(threading='$THREADING')
   echo ""
 }
 
+step_docs() {
+  echo "═══ Generating OCCT documentation JSON ═══"
+  _ensure_doxygen
+  python3 src/extract-docs.py
+  echo ""
+}
+
 step_generate() {
   echo "═══ Generating bindings from OCCT headers ═══"
+
+  step_docs
+
+  find "$OCJS_ROOT/src" -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+
+  if [ "${OCJS_FORCE_GENERATE:-0}" = "1" ]; then
+    echo "  Force regeneration: clearing existing .d.ts.json and .cpp files"
+    local target="$OCJS_ROOT/build/bindings"
+    [ -L "$target" ] && target="$(readlink -f "$target")"
+    if [ -d "$target" ]; then
+      find "$target" -name "*.d.ts.json" -delete 2>/dev/null || true
+      find "$target" -name "*.cpp" ! -name "*.cpp.o" -delete 2>/dev/null || true
+      rm -f "$OCJS_ROOT/build/bindings/.generator-hash" 2>/dev/null || true
+    fi
+  fi
+
   local config="${OCJS_BINDGEN_CONFIG:-$OCJS_ROOT/bindgen-filters.yaml}"
   if [ -f "$config" ]; then
     echo "  Using bindgen config: $config"
@@ -342,6 +487,21 @@ step_sources_cmake() {
   echo "$lib_dir" > "$OCJS_ROOT/build/.cmake-lib-dir"
 }
 
+step_dts() {
+  local yaml="$1"
+  if [ ! -f "$yaml" ]; then
+    echo "ERROR: YAML config not found: $yaml" >&2
+    exit 1
+  fi
+  local yaml_abs
+  yaml_abs="$(cd "$(dirname "$yaml")" && pwd)/$(basename "$yaml")"
+  echo "═══ Regenerating .d.ts from $yaml_abs (no compile/link) ═══"
+  cd "$(dirname "$yaml_abs")"
+  python3 "$OCJS_ROOT/src/buildFromYaml.py" --dts-only "$(basename "$yaml_abs")"
+  cd "$SCRIPT_DIR"
+  echo ""
+}
+
 step_link() {
   local yaml="$1"
   if [ ! -f "$yaml" ]; then
@@ -359,6 +519,13 @@ step_link() {
 
 step_compile_all() {
   local cache_key="$1"
+
+  if [ "$OCJS_FORCE_MISS" = "1" ]; then
+    echo "═══ Forced cache miss (OCJS_FORCE_MISS=1) ═══"
+    local cache_entry="$OCJS_ROOT/cache/$cache_key"
+    rm -f "$cache_entry/.complete" 2>/dev/null || true
+    echo ""
+  fi
 
   # setup symlinks build/ → cache/<key>/, returns 0 on hit, 1 on miss
   if python3 src/build-cache.py setup "$cache_key"; then
@@ -397,14 +564,18 @@ if [ $# -eq 0 ]; then
   echo "Usage: $0 <command> [<command>...] [<yaml-config>]"
   echo ""
   echo "Commands:"
-  echo "  pch            Rebuild flat includes + PCH"
-  echo "  generate       Generate binding .cpp files from OCCT headers"
-  echo "  bindings       Compile bindings only"
-  echo "  sources        Compile OCCT sources only"
-  echo "  link <yaml>    Link WASM binary from YAML config"
-  echo "  full <yaml>    Full pipeline with cache (pch + generate + bindings + sources + link)"
-  echo "  cache-list     List all cached compilations"
-  echo "  cache-gc [n]   Garbage collect old cache entries (keep n, default 5)"
+  echo "  pch              Rebuild flat includes + PCH"
+  echo "  docs             Generate OCCT documentation JSON (for JSDoc)"
+  echo "  generate         Generate binding .cpp files from OCCT headers"
+  echo "  bindings         Compile bindings only"
+  echo "  sources          Compile OCCT sources only"
+  echo "  dts <yaml>       Regenerate .d.ts only from existing fragments (no compile/link)"
+  echo "  link <yaml>      Link WASM binary from YAML config"
+  echo "  full <yaml>      Full pipeline with cache (pch + generate + bindings + sources + link)"
+  echo "  clean-generated  Remove generated .d.ts.json and .cpp (handles symlinks)"
+  echo "  clean-objects    Remove compiled .o files from bindings (handles symlinks)"
+  echo "  cache-list       List all cached compilations"
+  echo "  cache-gc [n]     Garbage collect old cache entries (keep n, default 5)"
   exit 1
 fi
 
@@ -426,7 +597,7 @@ while [ $# -gt 0 ]; do
       PRESET="$1"
       shift
       ;;
-    pch|generate|bindings|sources|sources-legacy)
+    pch|docs|generate|bindings|sources|sources-legacy)
       COMMANDS+=("$1")
       shift
       ;;
@@ -506,10 +677,12 @@ START_TIME=$(date +%s)
 for cmd in "${COMMANDS[@]}"; do
   case "$cmd" in
     pch)       step_pch ;;
+    docs)      step_docs ;;
     generate)  step_generate ;;
     bindings)  step_bindings ;;
     sources)   step_sources ;;
     sources-legacy) step_sources_legacy ;;
+    dts)       step_dts "$YAML_CONFIG" ;;
     link)      step_link "$YAML_CONFIG" ;;
     validate)
       echo "═══ Validating YAML config: $YAML_CONFIG ═══"

@@ -13,7 +13,7 @@ import { getOC, wasmExists } from './helpers.js';
 import { expectShapeGeometry } from './geometry-helpers.js';
 
 describe.skipIf(!wasmExists)('Smoke: Wire and face building', () => {
-  it('MakePolygon builds a triangular wire from 3 points', async () => {
+  it('should build a triangular wire from 3 points with MakePolygon', async () => {
     const oc = await getOC();
 
     const p1 = new oc.gp_Pnt(0, 0, 0);
@@ -32,7 +32,7 @@ describe.skipIf(!wasmExists)('Smoke: Wire and face building', () => {
     p1.delete();
   });
 
-  it('MakePolygon builds a rectangular wire from 4 points', async () => {
+  it('should build a rectangular wire from 4 points with MakePolygon', async () => {
     const oc = await getOC();
 
     const p1 = new oc.gp_Pnt(0, 0, 0);
@@ -53,7 +53,7 @@ describe.skipIf(!wasmExists)('Smoke: Wire and face building', () => {
     p1.delete();
   });
 
-  it('MakePolygon with Add creates an arbitrary polygon', async () => {
+  it('should create an arbitrary polygon with MakePolygon.Add', async () => {
     const oc = await getOC();
 
     const poly = new oc.BRepBuilderAPI_MakePolygon_1();
@@ -78,7 +78,7 @@ describe.skipIf(!wasmExists)('Smoke: Wire and face building', () => {
     for (const pt of pts) pt.delete();
   });
 
-  it('MakeFace from a closed polygon wire creates a planar face', async () => {
+  it('should create a planar face from a closed polygon wire', async () => {
     const oc = await getOC();
 
     const p1 = new oc.gp_Pnt(0, 0, 0);
@@ -101,7 +101,7 @@ describe.skipIf(!wasmExists)('Smoke: Wire and face building', () => {
     p1.delete();
   });
 
-  it('Extruded polygon face produces a solid with correct dimensions', async () => {
+  it('should produce a solid with correct dimensions from extruded polygon face', async () => {
     const oc = await getOC();
 
     const p1 = new oc.gp_Pnt(0, 0, 0);
@@ -136,7 +136,7 @@ describe.skipIf(!wasmExists)('Smoke: Wire and face building', () => {
     p1.delete();
   });
 
-  it('Sewing joins two adjacent faces into a shell', async () => {
+  it('should join two adjacent faces into a shell with Sewing', async () => {
     const oc = await getOC();
 
     const p1 = new oc.gp_Pnt(0, 0, 0);

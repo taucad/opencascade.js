@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { getOC, wasmExists } from './helpers.js';
 
 describe.skipIf(!wasmExists)('Smoke: XCAF document tools', () => {
-  it('creates XCAF document with ShapeTool and ColorTool, adds box and sets color', async () => {
+  it('should create XCAF document with ShapeTool and ColorTool, add box and set color', async () => {
     const oc = await getOC();
 
     const doc = new oc.TDocStd_Document(new oc.TCollection_ExtendedString_1());

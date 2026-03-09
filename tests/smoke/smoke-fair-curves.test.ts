@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { getOC, wasmExists } from './helpers.js';
 
 describe.skipIf(!wasmExists)('Smoke: Fair curves', () => {
-  it('FairCurve_Batten computes a constrained curve via wrapper', async () => {
+  it('should compute a constrained curve via FairCurve_Batten wrapper', async () => {
     const oc = await getOC();
     const p1 = new oc.gp_Pnt2d(0, 0);
     const p2 = new oc.gp_Pnt2d(10, 5);
@@ -14,14 +14,14 @@ describe.skipIf(!wasmExists)('Smoke: Fair curves', () => {
     expect(typeof code).toBe('number');
 
     const curve = batten.Curve();
-    expect(curve).toBeTruthy();
+    expect(curve.Degree()).toBeGreaterThanOrEqual(1);
 
     batten.delete();
     p2.delete();
     p1.delete();
   });
 
-  it('FairCurve_MinimalVariation computes a smoother constrained curve', async () => {
+  it('should compute a smoother constrained curve via FairCurve_MinimalVariation', async () => {
     const oc = await getOC();
     const p1 = new oc.gp_Pnt2d(0, 0);
     const p2 = new oc.gp_Pnt2d(10, 5);
@@ -33,7 +33,7 @@ describe.skipIf(!wasmExists)('Smoke: Fair curves', () => {
     expect(typeof code).toBe('number');
 
     const curve = mv.Curve();
-    expect(curve).toBeTruthy();
+    expect(curve.Degree()).toBeGreaterThanOrEqual(1);
 
     mv.delete();
     p2.delete();

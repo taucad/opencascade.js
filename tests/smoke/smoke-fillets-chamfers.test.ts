@@ -3,7 +3,7 @@ import { getOC, wasmExists } from './helpers.js';
 import { expectShapeGeometry } from './geometry-helpers.js';
 
 describe.skipIf(!wasmExists)('Smoke: Fillets and chamfers', () => {
-  it('BRepFilletAPI_MakeFillet preserves box dimensions after filleting one edge', async () => {
+  it('should preserve box dimensions after filleting one edge', async () => {
     const oc = await getOC();
     const box = new oc.BRepPrimAPI_MakeBox_2(10, 10, 10);
     const boxShape = box.Shape();
@@ -23,13 +23,11 @@ describe.skipIf(!wasmExists)('Smoke: Fillets and chamfers', () => {
     }
     fillet.Build(new oc.Message_ProgressRange());
     const shape = fillet.Shape();
-    expect(shape).toBeTruthy();
     expect(shape.IsNull()).toBe(false);
 
     await expectShapeGeometry(shape, {
       size: [10, 10, 10],
       center: [5, 5, 5],
-      tolerance: 1,
     });
 
     box.delete();
@@ -37,7 +35,7 @@ describe.skipIf(!wasmExists)('Smoke: Fillets and chamfers', () => {
     explorer.delete();
   });
 
-  it('BRepFilletAPI_MakeChamfer preserves box dimensions after chamfering one edge', async () => {
+  it('should preserve box dimensions after chamfering one edge', async () => {
     const oc = await getOC();
     const box = new oc.BRepPrimAPI_MakeBox_2(10, 10, 10);
     const boxShape = box.Shape();
@@ -54,13 +52,11 @@ describe.skipIf(!wasmExists)('Smoke: Fillets and chamfers', () => {
     }
     chamfer.Build(new oc.Message_ProgressRange());
     const shape = chamfer.Shape();
-    expect(shape).toBeTruthy();
     expect(shape.IsNull()).toBe(false);
 
     await expectShapeGeometry(shape, {
       size: [10, 10, 10],
       center: [5, 5, 5],
-      tolerance: 1,
     });
 
     box.delete();
@@ -68,7 +64,7 @@ describe.skipIf(!wasmExists)('Smoke: Fillets and chamfers', () => {
     explorer.delete();
   });
 
-  it('Fillet all edges of a box produces a rounded box with same dimensions', async () => {
+  it('should produce a rounded box with same dimensions when filleting all edges', async () => {
     const oc = await getOC();
     const box = new oc.BRepPrimAPI_MakeBox_2(20, 20, 20);
     const boxShape = box.Shape();
@@ -94,7 +90,6 @@ describe.skipIf(!wasmExists)('Smoke: Fillets and chamfers', () => {
     await expectShapeGeometry(shape, {
       size: [20, 20, 20],
       center: [10, 10, 10],
-      tolerance: 1,
     });
 
     fillet.delete();

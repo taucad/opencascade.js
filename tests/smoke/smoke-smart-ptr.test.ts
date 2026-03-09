@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { getOC, wasmExists, isExceptionsEnabled } from './helpers.js';
 
 describe.skipIf(!wasmExists)('Smoke: Smart pointer unified API', () => {
-  it('constructor-created Transient object has isNull()', async () => {
+  it('should have isNull() on constructor-created Transient object', async () => {
     const oc = await getOC();
     const ax2 = new oc.gp_Ax2_4(new oc.gp_Pnt(), new oc.gp_Dir_5(0, 0, 1));
     const circle = new oc.Geom_Circle(ax2, 5.0);
@@ -14,7 +14,7 @@ describe.skipIf(!wasmExists)('Smoke: Smart pointer unified API', () => {
     ax2.delete();
   });
 
-  it('constructor-created Transient object has nullify()', async () => {
+  it('should have nullify() on constructor-created Transient object', async () => {
     const oc = await getOC();
     const ax2 = new oc.gp_Ax2_4(new oc.gp_Pnt(), new oc.gp_Dir_5(0, 0, 1));
     const circle = new oc.Geom_Circle(ax2, 5.0);
@@ -25,7 +25,7 @@ describe.skipIf(!wasmExists)('Smoke: Smart pointer unified API', () => {
     ax2.delete();
   });
 
-  it('nullify then isNull roundtrip', async () => {
+  it('should return true for isNull() after nullify() roundtrip', async () => {
     const oc = await getOC();
     const ax2 = new oc.gp_Ax2_4(new oc.gp_Pnt(), new oc.gp_Dir_5(0, 0, 1));
     const circle = new oc.Geom_Circle(ax2, 5.0);
@@ -38,7 +38,7 @@ describe.skipIf(!wasmExists)('Smoke: Smart pointer unified API', () => {
     ax2.delete();
   });
 
-  it('inherited handle methods on deep hierarchy (Geom_Circle: 3 levels)', async () => {
+  it('should inherit handle methods on deep hierarchy (Geom_Circle: 3 levels)', async () => {
     // Standard_Transient -> Geom_Geometry -> Geom_Curve -> Geom_Conic -> Geom_Circle
     const oc = await getOC();
     const ax2 = new oc.gp_Ax2_4(new oc.gp_Pnt(), new oc.gp_Dir_5(0, 0, 1));
@@ -51,7 +51,7 @@ describe.skipIf(!wasmExists)('Smoke: Smart pointer unified API', () => {
     ax2.delete();
   });
 
-  it('Geom_Line inherits isNull from Standard_Transient', async () => {
+  it('should inherit isNull from Standard_Transient for Geom_Line', async () => {
     const oc = await getOC();
     const ax1 = new oc.gp_Ax1_2(new oc.gp_Pnt(), new oc.gp_Dir_5(1, 0, 0));
     const line = new oc.Geom_Line_1(ax1);
@@ -63,7 +63,7 @@ describe.skipIf(!wasmExists)('Smoke: Smart pointer unified API', () => {
     ax1.delete();
   });
 
-  it('Handle_ classes no longer exist', async () => {
+  it('should not expose Handle_ classes', async () => {
     const oc = await getOC() as Record<string, unknown>;
     expect(oc['Handle_Geom_Curve']).toBeUndefined();
     expect(oc['Handle_Geom_Circle']).toBeUndefined();
@@ -71,7 +71,7 @@ describe.skipIf(!wasmExists)('Smoke: Smart pointer unified API', () => {
     expect(oc['Handle_Standard_Transient']).toBeUndefined();
   });
 
-  it('method call on nullified object throws', async (ctx) => {
+  it('should throw on method call after nullify', async (ctx) => {
     const oc = await getOC();
     if (!isExceptionsEnabled()) ctx.skip();
 
@@ -87,7 +87,7 @@ describe.skipIf(!wasmExists)('Smoke: Smart pointer unified API', () => {
     ax2.delete();
   });
 
-  it('non-Transient classes still work normally', async () => {
+  it('should work normally for non-Transient classes', async () => {
     const oc = await getOC();
     const pnt = new oc.gp_Pnt(1, 2, 3);
     expect(pnt.X()).toBe(1);

@@ -5,10 +5,10 @@ from bindings import EmbindBindings, TypescriptBindings, shouldProcessClass
 import clang.cindex
 import os
 import errno
+import hashlib
 from wasmGenerator.Common import SkipException
 from Common import ocIncludeStatements
 import json
-import os
 from filter.filterPackages import filterPackages
 from TuInfo import TuInfo
 
@@ -16,6 +16,55 @@ from Common import OCJS_ROOT, OCCT_ROOT
 libraryBasePath = OCJS_ROOT + "/build/bindings"
 buildDirectory = OCJS_ROOT + "/build"
 occtBasePath = OCCT_ROOT + "/src/"
+
+GENERATOR_HASH_FILE = os.path.join(libraryBasePath, ".generator-hash")
+
+def _generator_source_hash() -> str:
+  """Hash all Python source files that affect binding generation."""
+  h = hashlib.sha256()
+  src_dir = os.path.join(OCJS_ROOT, "src")
+  for root, dirs, files in os.walk(src_dir):
+    dirs[:] = [d for d in sorted(dirs) if d != "__pycache__"]
+    for fname in sorted(files):
+      if fname.endswith(".py"):
+        fpath = os.path.join(root, fname)
+        with open(fpath, "rb") as f:
+          h.update(f.read())
+  return h.hexdigest()[:16]
+
+def _check_generator_hash_and_clean():
+  """Compare current generator code hash to stored hash; purge stale outputs on mismatch."""
+  current_hash = _generator_source_hash()
+
+  stored_hash = ""
+  if os.path.exists(GENERATOR_HASH_FILE):
+    with open(GENERATOR_HASH_FILE, "r") as f:
+      stored_hash = f.read().strip()
+
+  if stored_hash == current_hash:
+    return
+
+  if stored_hash:
+    print(f"Generator code changed (was {stored_hash[:8]}..., now {current_hash[:8]}...). Purging stale .d.ts.json and .cpp files.")
+  else:
+    print(f"No generator hash found. Will regenerate all bindings.")
+
+  target = libraryBasePath
+  if os.path.islink(target):
+    target = os.path.realpath(target)
+
+  count = 0
+  for dirpath, dirnames, filenames in os.walk(target):
+    for fname in filenames:
+      if fname.endswith(".d.ts.json") or (fname.endswith(".cpp") and not fname.endswith(".cpp.o")):
+        os.remove(os.path.join(dirpath, fname))
+        count += 1
+  if count > 0:
+    print(f"  Removed {count} stale generated files.")
+
+  os.makedirs(os.path.dirname(GENERATOR_HASH_FILE), exist_ok=True)
+  with open(GENERATOR_HASH_FILE, "w") as f:
+    f.write(current_hash)
 
 def mkdirp(name: str) -> None:
   try:
@@ -180,6 +229,7 @@ def typescriptGenerationFuncEnums(tuInfo: TuInfo, preamble, child) -> str:
 referenceTypeTemplateDefs = \
   "\n" + \
   "#include <emscripten/bind.h>\n" + \
+  "#include <emscripten/wire.h>\n" + \
   "using namespace emscripten;\n" + \
   "#include <functional>\n" + \
   "#include \"ocjs_smart_ptr.h\"\n" + \
@@ -233,6 +283,8 @@ if __name__ == "__main__":
     os.makedirs(libraryBasePath)
   except Exception:
     pass
+
+  _check_generator_hash_and_clean()
 
   tuInfo = TuInfo("")
 

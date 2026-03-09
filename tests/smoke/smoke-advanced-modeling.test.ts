@@ -3,7 +3,7 @@ import { getOC, wasmExists, isExceptionsEnabled } from './helpers.js';
 import { expectShapeGeometry } from './geometry-helpers.js';
 
 describe.skipIf(!wasmExists)('Smoke: Advanced modeling', () => {
-  it('BRepOffsetAPI_MakeThickSolid shells a box preserving outer dimensions', async () => {
+  it('should shell a box preserving outer dimensions with MakeThickSolid', async () => {
     const oc = await getOC();
     const box = new oc.BRepPrimAPI_MakeBox_2(20, 20, 20);
     const boxShape = box.Shape();
@@ -34,13 +34,11 @@ describe.skipIf(!wasmExists)('Smoke: Advanced modeling', () => {
     );
 
     const result = thickSolid.Shape();
-    expect(result).toBeTruthy();
     expect(result.IsNull()).toBe(false);
 
     await expectShapeGeometry(result, {
       size: [20, 20, 20],
       center: [10, 10, 10],
-      tolerance: 1,
     });
 
     thickSolid.delete();
@@ -49,7 +47,7 @@ describe.skipIf(!wasmExists)('Smoke: Advanced modeling', () => {
     box.delete();
   });
 
-  it('BRepOffsetAPI_ThruSections loft has correct height and max diameter', async () => {
+  it('should produce loft with correct height and max diameter via ThruSections', async () => {
     const oc = await getOC();
 
     const ax1 = new oc.gp_Ax2_4(new oc.gp_Pnt(0, 0, 0), new oc.gp_Dir_5(0, 0, 1));
@@ -70,13 +68,11 @@ describe.skipIf(!wasmExists)('Smoke: Advanced modeling', () => {
     loft.CheckCompatibility(false);
 
     const result = loft.Shape();
-    expect(result).toBeTruthy();
     expect(result.IsNull()).toBe(false);
 
     await expectShapeGeometry(result, {
       size: [10, 10, 10],
       center: [0, 0, 5],
-      tolerance: 1,
     });
 
     loft.delete();
@@ -90,7 +86,7 @@ describe.skipIf(!wasmExists)('Smoke: Advanced modeling', () => {
     ax1.delete();
   });
 
-  it('BRepOffsetAPI_MakePipe sweep has correct dimensions', async (ctx) => {
+  it('should produce pipe sweep with correct dimensions via MakePipe', async (ctx) => {
     const oc = await getOC();
     if (!isExceptionsEnabled()) ctx.skip();
 
@@ -105,13 +101,10 @@ describe.skipIf(!wasmExists)('Smoke: Advanced modeling', () => {
 
     const pipe = new oc.BRepOffsetAPI_MakePipe(spineWire.Wire(), profileWire.Wire());
     const result = pipe.Shape();
-
-    expect(result).toBeTruthy();
     expect(result.IsNull()).toBe(false);
 
     await expectShapeGeometry(result, {
       size: [1, 4, 4],
-      tolerance: 1,
       minVertices: 10,
     });
 

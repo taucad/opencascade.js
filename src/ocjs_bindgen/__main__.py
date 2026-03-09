@@ -83,6 +83,7 @@ def _run_full_pipeline(gen):
     from TuInfo import TuInfo
 
     os.makedirs(gen.libraryBasePath, exist_ok=True)
+    gen._check_generator_hash_and_clean()
 
     tuInfo = TuInfo("")
     embindPreamble = ocIncludeStatements + "\n" + gen.referenceTypeTemplateDefs

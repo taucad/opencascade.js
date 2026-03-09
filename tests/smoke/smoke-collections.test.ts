@@ -11,7 +11,7 @@ import { describe, it, expect } from 'vitest';
 import { getOC, wasmExists } from './helpers.js';
 
 describe.skipIf(!wasmExists)('Smoke: Collections', () => {
-  it('TopTools_ListOfShape append, size, and access', async () => {
+  it('should support append, size, and access on TopTools_ListOfShape', async () => {
     const oc = await getOC();
 
     const box1 = new oc.BRepPrimAPI_MakeBox_2(10, 10, 10);
@@ -39,7 +39,7 @@ describe.skipIf(!wasmExists)('Smoke: Collections', () => {
     box1.delete();
   });
 
-  it('TopTools_ListOfShape prepend and reverse', async () => {
+  it('should support prepend and reverse on TopTools_ListOfShape', async () => {
     const oc = await getOC();
 
     const box1 = new oc.BRepPrimAPI_MakeBox_2(5, 5, 5);
@@ -62,7 +62,7 @@ describe.skipIf(!wasmExists)('Smoke: Collections', () => {
     box1.delete();
   });
 
-  it('TopTools_IndexedMapOfShape collects unique faces from a box', async () => {
+  it('should collect unique faces from a box with TopTools_IndexedMapOfShape', async () => {
     const oc = await getOC();
 
     const box = new oc.BRepPrimAPI_MakeBox_2(10, 10, 10);
@@ -96,7 +96,7 @@ describe.skipIf(!wasmExists)('Smoke: Collections', () => {
     box.delete();
   });
 
-  it('TopTools_IndexedMapOfShape collects unique edges from a box', async () => {
+  it('should collect unique edges from a box with TopTools_IndexedMapOfShape', async () => {
     const oc = await getOC();
 
     const box = new oc.BRepPrimAPI_MakeBox_2(10, 10, 10);
@@ -122,7 +122,7 @@ describe.skipIf(!wasmExists)('Smoke: Collections', () => {
     box.delete();
   });
 
-  it('TColgp_Array1OfPnt stores and retrieves points', async () => {
+  it('should store and retrieve points in TColgp_Array1OfPnt', async () => {
     const oc = await getOC();
 
     const arr = new oc.TColgp_Array1OfPnt_2(1, 5);
@@ -157,7 +157,7 @@ describe.skipIf(!wasmExists)('Smoke: Collections', () => {
     for (const pt of pts) pt.delete();
   });
 
-  it('IndexedMapOfShape counts unique topology elements of a cylinder', async () => {
+  it('should count unique topology elements of a cylinder with IndexedMapOfShape', async () => {
     const oc = await getOC();
 
     const cyl = new oc.BRepPrimAPI_MakeCylinder_1(5, 10);

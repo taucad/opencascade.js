@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { getOC, wasmExists } from './helpers.js';
 
 describe.skipIf(!wasmExists)('Smoke: IGESControl Writer and Reader', () => {
-  it('writes box to IGES and reads back with shape verification', async () => {
+  it('should write box to IGES and read back with shape verification', async () => {
     const oc = await getOC();
     const box = new oc.BRepPrimAPI_MakeBox_2(10, 20, 30);
     const shape = box.Shape();
@@ -20,11 +20,11 @@ describe.skipIf(!wasmExists)('Smoke: IGESControl Writer and Reader', () => {
 
     const reader = new oc.IGESControl_Reader();
     const readResult = reader.ReadFile(igesPath);
-    expect(readResult.value).toBe(oc.IFSelect_ReturnStatus.IFSelect_RetDone.value);
+    expect(readResult).toBe(oc.IFSelect_ReturnStatus.IFSelect_RetDone);
 
     reader.TransferRoots(new oc.Message_ProgressRange());
     const nbShapes = reader.NbShapes();
-    expect(nbShapes).toBeGreaterThan(0);
+    expect(nbShapes).toBe(1);
 
     const readShape = reader.OneShape();
     expect(readShape.IsNull()).toBe(false);

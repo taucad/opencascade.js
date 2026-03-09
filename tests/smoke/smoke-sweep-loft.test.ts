@@ -13,7 +13,7 @@ import { getOC, wasmExists } from './helpers.js';
 import { expectShapeGeometry } from './geometry-helpers.js';
 
 describe.skipIf(!wasmExists)('Smoke: Sweep and loft', () => {
-  it('MakePipeShell sweeps a circle along a straight spine', async () => {
+  it('should sweep a circle along a straight spine with MakePipeShell', async () => {
     const oc = await getOC();
 
     const p1 = new oc.gp_Pnt(0, 0, 0);
@@ -55,7 +55,7 @@ describe.skipIf(!wasmExists)('Smoke: Sweep and loft', () => {
     p1.delete();
   });
 
-  it('ThruSections lofts 3 circles of different radii', async () => {
+  it('should loft 3 circles of different radii with ThruSections', async () => {
     const oc = await getOC();
 
     const profiles = [
@@ -95,7 +95,7 @@ describe.skipIf(!wasmExists)('Smoke: Sweep and loft', () => {
     loft.delete();
   });
 
-  it('MakeFilling creates a constrained surface patch from 4 edges', async () => {
+  it('should create a constrained surface patch from 4 edges with MakeFilling', async () => {
     const oc = await getOC();
 
     const p1 = new oc.gp_Pnt(0, 0, 0);
@@ -139,7 +139,7 @@ describe.skipIf(!wasmExists)('Smoke: Sweep and loft', () => {
     p1.delete();
   });
 
-  it('ThruSections loft from rectangle to circle', async () => {
+  it('should loft from rectangle to circle with ThruSections', async () => {
     const oc = await getOC();
 
     const p1 = new oc.gp_Pnt(-10, -5, 0);

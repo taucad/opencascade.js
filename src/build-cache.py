@@ -82,6 +82,23 @@ def _opt_slug(opt: str) -> str:
     return opt.lstrip("-")
 
 
+def _bindgen_code_hash() -> str:
+    """Hash all Python source files that affect binding generation."""
+    h = hashlib.sha256()
+    src_dir = os.path.join(OCJS_ROOT, "src")
+    for root, dirs, files in os.walk(src_dir):
+        dirs[:] = [d for d in sorted(dirs) if d != "__pycache__"]
+        for fname in sorted(files):
+            if fname.endswith(".py"):
+                fpath = os.path.join(root, fname)
+                try:
+                    with open(fpath, "rb") as f:
+                        h.update(f.read())
+                except OSError:
+                    pass
+    return h.hexdigest()[:8]
+
+
 def compute_key() -> str:
     opt = os.environ.get("OCJS_OPT", "-O2")
     lto = "LTO" if os.environ.get("OCJS_LTO", "1") == "1" else "noLTO"
@@ -91,6 +108,7 @@ def compute_key() -> str:
     filt = _filter_hash()
     occt = _occt_commit()[:6]
     emcc_ver = _get_emscripten_version()
+    bg = _bindgen_code_hash()
 
     defines = os.environ.get("OCJS_DEFINES", "")
     undefines = os.environ.get("OCJS_UNDEFINES", "")
@@ -98,7 +116,7 @@ def compute_key() -> str:
     extra_hash = hashlib.sha256(extra.encode()).hexdigest()[:6] if extra != "|" else ""
 
     key_parts = [
-        _opt_slug(opt), lto, exc, thread_slug, filt, occt, f"em{emcc_ver}",
+        _opt_slug(opt), lto, exc, thread_slug, filt, occt, f"bg{bg}", f"em{emcc_ver}",
     ]
     if extra_hash:
         key_parts.append(extra_hash)
@@ -172,13 +190,16 @@ def setup(key: str) -> bool:
 
         os.symlink(cache_path, build_path)
 
-    # For cached files (pch.h, pch.h.pch), copy from cache on hit
     if hit:
         for fname in CACHED_FILES:
             src = os.path.join(cache_entry, fname)
             dst = os.path.join(BUILD_DIR, fname)
             if os.path.isfile(src):
-                shutil.copy2(src, dst)
+                if os.path.isfile(dst) and os.path.getmtime(dst) > os.path.getmtime(src):
+                    shutil.copy2(dst, src)
+                    print(f"  Updated cache with newer {fname} from build/")
+                else:
+                    shutil.copy2(src, dst)
 
     if hit:
         # Update hit count

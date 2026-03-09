@@ -12,7 +12,7 @@ import { describe, it, expect } from 'vitest';
 import { getOC, wasmExists } from './helpers.js';
 
 describe.skipIf(!wasmExists)('Smoke: 2D geometry', () => {
-  it('gp_Pnt2d exposes X and Y coordinates', async () => {
+  it('should expose X and Y coordinates for gp_Pnt2d', async () => {
     const oc = await getOC();
 
     const pt = new oc.gp_Pnt2d(7, 13);
@@ -25,17 +25,17 @@ describe.skipIf(!wasmExists)('Smoke: 2D geometry', () => {
     pt.delete();
   });
 
-  it('gp_Vec2d magnitude and direction', async () => {
+  it('should compute magnitude and direction for gp_Vec2d', async () => {
     const oc = await getOC();
 
     const vec = new oc.gp_Vec2d_4(3, 4);
-    expect(vec.Magnitude()).toBeCloseTo(5, 5);
+    expect(vec.Magnitude()).toBe(5);
     expect(vec.IsNormal(new oc.gp_Vec2d_4(-4, 3), 1e-6)).toBe(true);
 
     vec.delete();
   });
 
-  it('Geom2d_Circle creates a 2D circle with correct radius', async () => {
+  it('should create a 2D circle with correct radius using Geom2d_Circle', async () => {
     const oc = await getOC();
 
     const center = new oc.gp_Pnt2d(0, 0);
@@ -43,15 +43,15 @@ describe.skipIf(!wasmExists)('Smoke: 2D geometry', () => {
     const ax = new oc.gp_Ax2d_2(center, dir);
 
     const circle = new oc.Geom2d_Circle(ax, 10, true);
-    expect(circle.Radius()).toBeCloseTo(10, 5);
+    expect(circle.Radius()).toBe(10);
 
     const pt = circle.EvalD0(0);
-    expect(pt.X()).toBeCloseTo(10, 5);
-    expect(pt.Y()).toBeCloseTo(0, 5);
+    expect(pt.X()).toBe(10);
+    expect(pt.Y()).toBe(0);
 
     const ptHalf = circle.EvalD0(Math.PI);
-    expect(ptHalf.X()).toBeCloseTo(-10, 5);
-    expect(ptHalf.Y()).toBeCloseTo(0, 1);
+    expect(ptHalf.X()).toBe(-10);
+    expect(ptHalf.Y()).toBeCloseTo(0, 10);
 
     circle.delete();
     ax.delete();
@@ -59,7 +59,7 @@ describe.skipIf(!wasmExists)('Smoke: 2D geometry', () => {
     center.delete();
   });
 
-  it('Geom2d_Line creates a 2D line with correct direction', async () => {
+  it('should create a 2D line with correct direction using Geom2d_Line', async () => {
     const oc = await getOC();
 
     const origin = new oc.gp_Pnt2d(0, 0);
@@ -69,8 +69,8 @@ describe.skipIf(!wasmExists)('Smoke: 2D geometry', () => {
     const line = new oc.Geom2d_Line_1(ax);
     const pt = line.EvalD0(Math.SQRT2);
 
-    expect(pt.X()).toBeCloseTo(1, 3);
-    expect(pt.Y()).toBeCloseTo(1, 3);
+    expect(pt.X()).toBe(1);
+    expect(pt.Y()).toBe(1);
 
     line.delete();
     ax.delete();
@@ -78,7 +78,7 @@ describe.skipIf(!wasmExists)('Smoke: 2D geometry', () => {
     origin.delete();
   });
 
-  it('gp_Trsf2d applies 2D translation', async () => {
+  it('should apply 2D translation with gp_Trsf2d', async () => {
     const oc = await getOC();
 
     const pt = new oc.gp_Pnt2d(5, 5);
@@ -86,14 +86,14 @@ describe.skipIf(!wasmExists)('Smoke: 2D geometry', () => {
     trsf.SetTranslation(new oc.gp_Vec2d_4(10, 20));
 
     const transformed = pt.Transformed(trsf);
-    expect(transformed.X()).toBeCloseTo(15, 5);
-    expect(transformed.Y()).toBeCloseTo(25, 5);
+    expect(transformed.X()).toBe(15);
+    expect(transformed.Y()).toBe(25);
 
     trsf.delete();
     pt.delete();
   });
 
-  it('gp_Trsf2d applies 2D rotation', async () => {
+  it('should apply 2D rotation with gp_Trsf2d', async () => {
     const oc = await getOC();
 
     const pt = new oc.gp_Pnt2d(10, 0);
@@ -101,14 +101,14 @@ describe.skipIf(!wasmExists)('Smoke: 2D geometry', () => {
     trsf.SetRotation(new oc.gp_Pnt2d(0, 0), Math.PI / 2);
 
     const transformed = pt.Transformed(trsf);
-    expect(transformed.X()).toBeCloseTo(0, 3);
-    expect(transformed.Y()).toBeCloseTo(10, 3);
+    expect(transformed.X()).toBeCloseTo(0, 10);
+    expect(transformed.Y()).toBeCloseTo(10, 10);
 
     trsf.delete();
     pt.delete();
   });
 
-  it('GCE2d_MakeCirc2d constructs a circle from center and radius', async () => {
+  it('should construct a circle from center and radius with GCE2d_MakeCirc2d', async () => {
     const oc = await getOC();
 
     const center = new oc.gp_Pnt2d(5, 5);
@@ -116,8 +116,7 @@ describe.skipIf(!wasmExists)('Smoke: 2D geometry', () => {
     const maker = new oc.GCE2d_MakeCircle_2(ax, 8, true);
 
     const circle = maker.Value();
-    expect(circle).toBeTruthy();
-    expect(circle.Radius()).toBeCloseTo(8, 5);
+    expect(circle.Radius()).toBe(8);
 
     maker.delete();
     ax.delete();

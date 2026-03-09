@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { getOC, wasmExists } from './helpers.js';
 
 describe.skipIf(!wasmExists)('Smoke: Geometry', () => {
-  it('gp_Pnt exposes X, Y, Z coordinates', async () => {
+  it('should expose X, Y, Z coordinates for gp_Pnt', async () => {
     const oc = await getOC();
     const pnt = new oc.gp_Pnt(1, 2, 3);
     expect(pnt.X()).toBe(1);
@@ -11,18 +11,17 @@ describe.skipIf(!wasmExists)('Smoke: Geometry', () => {
     pnt.delete();
   });
 
-  it('gp_Vec IsNull and Magnitude work', async () => {
+  it('should compute IsNull and Magnitude for gp_Vec', async () => {
     const oc = await getOC();
     const nullVec = new oc.gp_Vec_4(0, 0, 0);
     expect(nullVec.Magnitude()).toBe(0);
     const vec = new oc.gp_Vec_4(3, 4, 0);
-    expect(vec.Magnitude()).toBeGreaterThan(0);
     expect(vec.Magnitude()).toBe(5);
     nullVec.delete();
     vec.delete();
   });
 
-  it('Geom_Circle, BRepBuilderAPI_MakeEdge, MakeWire, MakeFace produce valid face', async () => {
+  it('should produce valid face from Geom_Circle through MakeEdge, MakeWire, MakeFace pipeline', async () => {
     const oc = await getOC();
     const axis = new oc.gp_Ax2_4(
       new oc.gp_Pnt(),
@@ -35,7 +34,6 @@ describe.skipIf(!wasmExists)('Smoke: Geometry', () => {
     const wire = makeWire.Wire();
     const makeFace = new oc.BRepBuilderAPI_MakeFace_15(wire, false);
     const shape = makeFace.Shape();
-    expect(shape).toBeTruthy();
     expect(shape.IsNull()).toBe(false);
     axis.delete();
     circle.delete();

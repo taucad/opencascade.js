@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { getOC, wasmExists } from './helpers.js';
 
 describe.skipIf(!wasmExists)('Smoke: Data exchange (STEP, STL)', () => {
-  it('STEPControl_Writer transfers a shape successfully', async () => {
+  it('should transfer a shape successfully with STEPControl_Writer', async () => {
     const oc = await getOC();
     const box = new oc.BRepPrimAPI_MakeBox_2(10, 20, 30);
     const shape = box.Shape();
@@ -16,17 +16,16 @@ describe.skipIf(!wasmExists)('Smoke: Data exchange (STEP, STL)', () => {
       new oc.Message_ProgressRange()
     );
 
-    const doneValue = oc.IFSelect_ReturnStatus.IFSelect_RetDone.value;
-    expect(transferStatus.value).toBe(doneValue);
+    expect(transferStatus).toBe(oc.IFSelect_ReturnStatus.IFSelect_RetDone);
 
     const model = writer.Model(false);
-    expect(model).toBeTruthy();
+    expect(model.NbEntities()).toBeGreaterThan(0);
 
     writer.delete();
     box.delete();
   });
 
-  it('STEPControl_Reader reads and transfers shapes from STEP data', async () => {
+  it('should read and transfer shapes from STEP data with STEPControl_Reader', async () => {
     const oc = await getOC();
 
     const stepContent = [
@@ -48,13 +47,13 @@ describe.skipIf(!wasmExists)('Smoke: Data exchange (STEP, STL)', () => {
 
     const reader = new oc.STEPControl_Reader();
     const readStatus = reader.ReadFile(stepPath);
-    expect(readStatus.value).toBe(oc.IFSelect_ReturnStatus.IFSelect_RetDone.value);
+    expect(readStatus).toBe(oc.IFSelect_ReturnStatus.IFSelect_RetDone);
 
-    try { oc.FS.unlink(stepPath); } catch { /* cleanup */ }
+    try { oc.FS.unlink(stepPath); } catch { /* file may not exist if ReadFile failed */ }
     reader.delete();
   });
 
-  it('meshes shape with BRepMesh_IncrementalMesh and writes STL via FS', async () => {
+  it('should mesh shape and write STL via FS with BRepMesh_IncrementalMesh', async () => {
     const oc = await getOC();
     const box = new oc.BRepPrimAPI_MakeBox_2(5, 5, 5);
     const shape = box.Shape();
@@ -72,7 +71,6 @@ describe.skipIf(!wasmExists)('Smoke: Data exchange (STEP, STL)', () => {
     expect(stlSuccess).toBe(true);
 
     const fileData = oc.FS.readFile(stlPath);
-    expect(fileData).toBeTruthy();
     expect(fileData.byteLength ?? fileData.length).toBeGreaterThan(0);
 
     oc.FS.unlink(stlPath);

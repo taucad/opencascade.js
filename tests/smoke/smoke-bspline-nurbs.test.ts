@@ -13,7 +13,7 @@ import { getOC, wasmExists, isExceptionsEnabled } from './helpers.js';
 import { expectShapeGeometry } from './geometry-helpers.js';
 
 describe.skipIf(!wasmExists)('Smoke: BSpline and NURBS', () => {
-  it('GeomAPI_PointsToBSpline approximates a curve through control points', async () => {
+  it('should approximate a curve through control points with GeomAPI_PointsToBSpline', async () => {
     const oc = await getOC();
 
     const points = new oc.TColgp_Array1OfPnt_2(1, 5);
@@ -34,23 +34,22 @@ describe.skipIf(!wasmExists)('Smoke: BSpline and NURBS', () => {
     expect(approx.IsDone()).toBe(true);
 
     const curve = approx.Curve();
-    expect(curve).toBeTruthy();
-    expect(curve.Degree()).toBeGreaterThanOrEqual(3);
-    expect(curve.NbPoles()).toBeGreaterThanOrEqual(4);
+    expect(curve.Degree()).toBe(3);
+    expect(curve.NbPoles()).toBe(4);
 
     const startPt = curve.StartPoint();
-    expect(startPt.X()).toBeCloseTo(0, 0);
-    expect(startPt.Y()).toBeCloseTo(0, 0);
+    expect(startPt.X()).toBe(0);
+    expect(startPt.Y()).toBe(0);
 
     const endPt = curve.EndPoint();
-    expect(endPt.X()).toBeCloseTo(20, 0);
-    expect(endPt.Y()).toBeCloseTo(0, 0);
+    expect(endPt.X()).toBe(20);
+    expect(endPt.Y()).toBe(0);
 
     approx.delete();
     points.delete();
   });
 
-  it('GeomAPI_Interpolate creates curve passing exactly through given points', async (ctx) => {
+  it('should create curve passing exactly through given points with GeomAPI_Interpolate', async (ctx) => {
     const oc = await getOC();
     if (!isExceptionsEnabled()) ctx.skip();
 
@@ -67,21 +66,20 @@ describe.skipIf(!wasmExists)('Smoke: BSpline and NURBS', () => {
     expect(interp.IsDone()).toBe(true);
 
     const curve = interp.Curve();
-    expect(curve).toBeTruthy();
 
     const startPt = curve.StartPoint();
-    expect(startPt.X()).toBeCloseTo(0, 1);
-    expect(startPt.Y()).toBeCloseTo(0, 1);
+    expect(startPt.X()).toBe(0);
+    expect(startPt.Y()).toBe(0);
 
     const endPt = curve.EndPoint();
-    expect(endPt.X()).toBeCloseTo(30, 1);
-    expect(endPt.Y()).toBeCloseTo(10, 1);
+    expect(endPt.X()).toBe(30);
+    expect(endPt.Y()).toBe(10);
 
     interp.delete();
     hpoints.delete();
   });
 
-  it('BSpline curve can be built into an edge and wire', async () => {
+  it('should build BSpline curve into an edge and wire', async () => {
     const oc = await getOC();
 
     const points = new oc.TColgp_Array1OfPnt_2(1, 4);
@@ -115,7 +113,7 @@ describe.skipIf(!wasmExists)('Smoke: BSpline and NURBS', () => {
     points.delete();
   });
 
-  it('Geom_BezierCurve from 4 poles creates a cubic Bezier', async () => {
+  it('should create a cubic Bezier from 4 poles with Geom_BezierCurve', async () => {
     const oc = await getOC();
 
     const poles = new oc.TColgp_Array1OfPnt_2(1, 4);
@@ -132,21 +130,21 @@ describe.skipIf(!wasmExists)('Smoke: BSpline and NURBS', () => {
     expect(bezier.IsRational()).toBe(false);
 
     const startPt = bezier.StartPoint();
-    expect(startPt.X()).toBeCloseTo(0, 1);
-    expect(startPt.Y()).toBeCloseTo(0, 1);
+    expect(startPt.X()).toBe(0);
+    expect(startPt.Y()).toBe(0);
 
     const endPt = bezier.EndPoint();
-    expect(endPt.X()).toBeCloseTo(20, 1);
-    expect(endPt.Y()).toBeCloseTo(0, 1);
+    expect(endPt.X()).toBe(20);
+    expect(endPt.Y()).toBe(0);
 
     const midPt = bezier.EvalD0(0.5);
-    expect(midPt.Y()).toBeGreaterThan(0);
+    expect(midPt.Y()).toBe(11.25);
 
     bezier.delete();
     poles.delete();
   });
 
-  it('BSpline curve extruded into a surface produces valid geometry', async () => {
+  it('should produce valid geometry when extruding BSpline curve into a surface', async () => {
     const oc = await getOC();
 
     const points = new oc.TColgp_Array1OfPnt_2(1, 4);

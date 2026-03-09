@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { getOC, wasmExists } from './helpers.js';
 
 describe.skipIf(!wasmExists)('Smoke: RWPly_CafWriter PLY export', () => {
-  it('exports box to PLY via XCAF document with correct geometry', async () => {
+  it('should export box to PLY via XCAF document with correct geometry', async () => {
     const oc = await getOC();
     const box = new oc.BRepPrimAPI_MakeBox_2(10, 20, 30);
     const shape = box.Shape();

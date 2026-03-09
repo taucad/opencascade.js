@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { getOC, wasmExists } from './helpers.js';
 
 describe.skipIf(!wasmExists)('Smoke: Topology', () => {
-  it('TopExp_Explorer counts 6 faces, 24 edges (with duplicates), 8 vertices on box', async () => {
+  it('should count 6 faces, 24 edges, and 8 vertices on box with TopExp_Explorer', async () => {
     const oc = await getOC();
     const box = new oc.BRepPrimAPI_MakeBox_2(10, 10, 10);
     const shape = box.Shape();
@@ -47,7 +47,7 @@ describe.skipIf(!wasmExists)('Smoke: Topology', () => {
     vertexExplorer.delete();
   });
 
-  it('BRep_Builder and TopoDS_Compound build compound from box', async () => {
+  it('should build compound from box with BRep_Builder and TopoDS_Compound', async () => {
     const oc = await getOC();
     const box = new oc.BRepPrimAPI_MakeBox_2(10, 10, 10);
     const builder = new oc.BRep_Builder();
@@ -55,14 +55,13 @@ describe.skipIf(!wasmExists)('Smoke: Topology', () => {
     builder.MakeCompound(compound);
     builder.Add(compound, box.Shape());
     const shape = compound;
-    expect(shape).toBeTruthy();
     expect(shape.IsNull()).toBe(false);
     box.delete();
     builder.delete();
     compound.delete();
   });
 
-  it('TopoDS cast functions convert explorer Current to Face/Edge/Vertex', async () => {
+  it('should convert explorer Current to Face/Edge/Vertex with TopoDS cast functions', async () => {
     const oc = await getOC();
     const box = new oc.BRepPrimAPI_MakeBox_2(10, 10, 10);
     const shape = box.Shape();
@@ -74,7 +73,6 @@ describe.skipIf(!wasmExists)('Smoke: Topology', () => {
     );
     expect(faceExplorer.More()).toBe(true);
     const face = oc.TopoDS_Cast.Face(faceExplorer.Current());
-    expect(face).toBeTruthy();
     face.delete();
 
     const edgeExplorer = new oc.TopExp_Explorer(
@@ -84,7 +82,6 @@ describe.skipIf(!wasmExists)('Smoke: Topology', () => {
     );
     expect(edgeExplorer.More()).toBe(true);
     const edge = oc.TopoDS_Cast.Edge(edgeExplorer.Current());
-    expect(edge).toBeTruthy();
     edge.delete();
 
     const vertexExplorer = new oc.TopExp_Explorer(
@@ -94,7 +91,6 @@ describe.skipIf(!wasmExists)('Smoke: Topology', () => {
     );
     expect(vertexExplorer.More()).toBe(true);
     const vertex = oc.TopoDS_Cast.Vertex(vertexExplorer.Current());
-    expect(vertex).toBeTruthy();
     vertex.delete();
 
     box.delete();

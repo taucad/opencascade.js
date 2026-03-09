@@ -3,7 +3,7 @@ import { getOC, wasmExists } from './helpers.js';
 import { expectShapeGeometry } from './geometry-helpers.js';
 
 describe.skipIf(!wasmExists)('Smoke: Boolean operations', () => {
-  it('BRepAlgoAPI_Fuse fuses two overlapping boxes', async () => {
+  it('should fuse two overlapping boxes', async () => {
     const oc = await getOC();
     const box1 = new oc.BRepPrimAPI_MakeBox_2(10, 10, 10);
     const box2 = new oc.BRepPrimAPI_MakeBox_2(5, 5, 5);
@@ -14,13 +14,11 @@ describe.skipIf(!wasmExists)('Smoke: Boolean operations', () => {
     );
     fuse.Build(new oc.Message_ProgressRange());
     const shape = fuse.Shape();
-    expect(shape).toBeTruthy();
     expect(shape.IsNull()).toBe(false);
 
     await expectShapeGeometry(shape, {
       size: [10, 10, 10],
       center: [5, 5, 5],
-      tolerance: 1,
     });
 
     box1.delete();
@@ -28,7 +26,7 @@ describe.skipIf(!wasmExists)('Smoke: Boolean operations', () => {
     fuse.delete();
   });
 
-  it('BRepAlgoAPI_Cut cuts second box from first', async () => {
+  it('should cut second box from first', async () => {
     const oc = await getOC();
     const box1 = new oc.BRepPrimAPI_MakeBox_2(10, 10, 10);
     const box2 = new oc.BRepPrimAPI_MakeBox_2(5, 5, 5);
@@ -39,12 +37,10 @@ describe.skipIf(!wasmExists)('Smoke: Boolean operations', () => {
     );
     cut.Build(new oc.Message_ProgressRange());
     const shape = cut.Shape();
-    expect(shape).toBeTruthy();
     expect(shape.IsNull()).toBe(false);
 
     await expectShapeGeometry(shape, {
       size: [10, 10, 10],
-      tolerance: 1,
     });
 
     box1.delete();
@@ -52,7 +48,7 @@ describe.skipIf(!wasmExists)('Smoke: Boolean operations', () => {
     cut.delete();
   });
 
-  it('BRepAlgoAPI_Common returns intersection of two overlapping boxes', async () => {
+  it('should return intersection of two overlapping boxes', async () => {
     const oc = await getOC();
     const box1 = new oc.BRepPrimAPI_MakeBox_2(10, 10, 10);
     const box2 = new oc.BRepPrimAPI_MakeBox_2(5, 5, 5);
@@ -63,13 +59,11 @@ describe.skipIf(!wasmExists)('Smoke: Boolean operations', () => {
     );
     common.Build(new oc.Message_ProgressRange());
     const shape = common.Shape();
-    expect(shape).toBeTruthy();
     expect(shape.IsNull()).toBe(false);
 
     await expectShapeGeometry(shape, {
       size: [5, 5, 5],
       center: [2.5, 2.5, 2.5],
-      tolerance: 1,
     });
 
     box1.delete();
@@ -77,7 +71,7 @@ describe.skipIf(!wasmExists)('Smoke: Boolean operations', () => {
     common.delete();
   });
 
-  it('BRepAlgoAPI_Fuse of two separated boxes produces wider bounding box', async () => {
+  it('should produce wider bounding box from fuse of two separated boxes', async () => {
     const oc = await getOC();
     const box1 = new oc.BRepPrimAPI_MakeBox_2(10, 10, 10);
     const box2 = new oc.BRepPrimAPI_MakeBox_3(
@@ -95,7 +89,6 @@ describe.skipIf(!wasmExists)('Smoke: Boolean operations', () => {
     await expectShapeGeometry(shape, {
       size: [30, 10, 10],
       center: [15, 5, 5],
-      tolerance: 1,
     });
 
     fuse.delete();

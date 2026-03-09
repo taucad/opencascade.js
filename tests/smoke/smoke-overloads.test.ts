@@ -2,12 +2,13 @@ import { describe, it, expect } from 'vitest';
 import { getOC, wasmExists } from './helpers.js';
 
 describe.skipIf(!wasmExists)('Smoke: overloaded constructors and methods', () => {
-  it('gp_Pnt has 0-arg and 3-arg constructor overloads', async () => {
+  it('should support 0-arg and 3-arg constructor overloads for gp_Pnt', async () => {
     const oc = await getOC();
     const pnt0 = new oc.gp_Pnt();
     const pnt3 = new oc.gp_Pnt(1, 2, 3);
-    expect(pnt0).toBeTruthy();
-    expect(pnt3).toBeTruthy();
+    expect(pnt0.X()).toBe(0);
+    expect(pnt0.Y()).toBe(0);
+    expect(pnt0.Z()).toBe(0);
     expect(pnt3.X()).toBe(1);
     expect(pnt3.Y()).toBe(2);
     expect(pnt3.Z()).toBe(3);
@@ -15,7 +16,7 @@ describe.skipIf(!wasmExists)('Smoke: overloaded constructors and methods', () =>
     pnt3.delete();
   });
 
-  it('BRepPrimAPI_MakeBox has _2 (dx/dy/dz) and _3 (gp_Pnt + dx/dy/dz) subclass constructors', async () => {
+  it('should support _2 and _3 subclass constructors for BRepPrimAPI_MakeBox', async () => {
     const oc = await getOC();
     const box2 = new oc.BRepPrimAPI_MakeBox_2(10, 20, 30);
     const origin = new oc.gp_Pnt(1, 2, 3);
@@ -27,7 +28,7 @@ describe.skipIf(!wasmExists)('Smoke: overloaded constructors and methods', () =>
     origin.delete();
   });
 
-  it('gp_Pnt.SetCoord overloads work (index+value and x,y,z)', async () => {
+  it('should support SetCoord overloads for gp_Pnt (index+value and x,y,z)', async () => {
     const oc = await getOC();
     const pnt = new oc.gp_Pnt(0, 0, 0);
     pnt.SetCoord(1, 5); // set Y to 5 (index 0=X, 1=Y, 2=Z)

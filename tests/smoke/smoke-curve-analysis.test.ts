@@ -13,7 +13,7 @@ import { describe, it, expect } from 'vitest';
 import { getOC, wasmExists } from './helpers.js';
 
 describe.skipIf(!wasmExists)('Smoke: Curve analysis and sampling', () => {
-  it('BRepAdaptor_Curve wraps a line edge and evaluates endpoints', async () => {
+  it('should wrap a line edge and evaluate endpoints with BRepAdaptor_Curve', async () => {
     const oc = await getOC();
 
     const p1 = new oc.gp_Pnt(0, 0, 0);
@@ -25,16 +25,17 @@ describe.skipIf(!wasmExists)('Smoke: Curve analysis and sampling', () => {
 
     const first = adaptor.FirstParameter();
     const last = adaptor.LastParameter();
-    expect(last).toBeGreaterThan(first);
+    expect(first).toBe(0);
+    expect(last).toBe(10);
 
     const curveType = adaptor.GetType();
     expect(curveType).toBe(oc.GeomAbs_CurveType.GeomAbs_Line);
 
     const startPt = adaptor.Value(first);
-    expect(startPt.X()).toBeCloseTo(0, 3);
+    expect(startPt.X()).toBe(0);
 
     const endPt = adaptor.Value(last);
-    expect(endPt.X()).toBeCloseTo(10, 3);
+    expect(endPt.X()).toBe(10);
 
     adaptor.delete();
     edgeMaker.delete();
@@ -42,7 +43,7 @@ describe.skipIf(!wasmExists)('Smoke: Curve analysis and sampling', () => {
     p1.delete();
   });
 
-  it('BRepAdaptor_Curve identifies a circular edge', async () => {
+  it('should identify a circular edge with BRepAdaptor_Curve', async () => {
     const oc = await getOC();
 
     const ax = new oc.gp_Ax2_4(
@@ -58,7 +59,7 @@ describe.skipIf(!wasmExists)('Smoke: Curve analysis and sampling', () => {
     expect(adaptor.GetType()).toBe(oc.GeomAbs_CurveType.GeomAbs_Circle);
 
     const circleData = adaptor.Circle();
-    expect(circleData.Radius()).toBeCloseTo(10, 3);
+    expect(circleData.Radius()).toBe(10);
 
     adaptor.delete();
     edgeMaker.delete();
@@ -66,7 +67,7 @@ describe.skipIf(!wasmExists)('Smoke: Curve analysis and sampling', () => {
     ax.delete();
   });
 
-  it('GCPnts_UniformAbscissa samples a line at equal intervals', async () => {
+  it('should sample a line at equal intervals with GCPnts_UniformAbscissa', async () => {
     const oc = await getOC();
 
     const p1 = new oc.gp_Pnt(0, 0, 0);
@@ -84,14 +85,14 @@ describe.skipIf(!wasmExists)('Smoke: Curve analysis and sampling', () => {
     const lastParam = sampler.Parameter(11);
 
     const firstPt = adaptor.Value(firstParam);
-    expect(firstPt.X()).toBeCloseTo(0, 1);
+    expect(firstPt.X()).toBe(0);
 
     const lastPt = adaptor.Value(lastParam);
-    expect(lastPt.X()).toBeCloseTo(100, 1);
+    expect(lastPt.X()).toBe(100);
 
     const midParam = sampler.Parameter(6);
     const midPt = adaptor.Value(midParam);
-    expect(midPt.X()).toBeCloseTo(50, 1);
+    expect(midPt.X()).toBe(50);
 
     sampler.delete();
     adaptor.delete();
@@ -100,7 +101,7 @@ describe.skipIf(!wasmExists)('Smoke: Curve analysis and sampling', () => {
     p1.delete();
   });
 
-  it('GCPnts_UniformAbscissa samples a circle at equal arc-lengths', async () => {
+  it('should sample a circle at equal arc-lengths with GCPnts_UniformAbscissa', async () => {
     const oc = await getOC();
 
     const ax = new oc.gp_Ax2_4(
@@ -118,8 +119,8 @@ describe.skipIf(!wasmExists)('Smoke: Curve analysis and sampling', () => {
     expect(sampler.NbPoints()).toBe(37);
 
     const p0 = adaptor.Value(sampler.Parameter(1));
-    expect(p0.X()).toBeCloseTo(10, 1);
-    expect(p0.Y()).toBeCloseTo(0, 1);
+    expect(p0.X()).toBe(10);
+    expect(p0.Y()).toBe(0);
 
     sampler.delete();
     adaptor.delete();
@@ -128,7 +129,7 @@ describe.skipIf(!wasmExists)('Smoke: Curve analysis and sampling', () => {
     ax.delete();
   });
 
-  it('GCPnts_UniformDeflection samples with chord deviation control', async () => {
+  it('should sample with chord deviation control using GCPnts_UniformDeflection', async () => {
     const oc = await getOC();
 
     const ax = new oc.gp_Ax2_4(
@@ -143,7 +144,7 @@ describe.skipIf(!wasmExists)('Smoke: Curve analysis and sampling', () => {
     const sampler = new oc.GCPnts_UniformDeflection_2(adaptor, 0.1, true);
 
     expect(sampler.IsDone()).toBe(true);
-    expect(sampler.NbPoints()).toBeGreaterThan(10);
+    expect(sampler.NbPoints()).toBe(24);
 
     for (let i = 1; i <= sampler.NbPoints(); i++) {
       const pt = sampler.Value(i);

@@ -42,7 +42,12 @@ def _classify_error(stderr_text):
 
 
 def buildOneFile(args, item):
-  if not os.path.exists(item + ".o"):
+  o_path = item + ".o"
+  needs_build = not os.path.exists(o_path)
+  if not needs_build and os.path.getmtime(o_path) < os.path.getmtime(item):
+    needs_build = True
+
+  if needs_build:
     print("building " + item, flush=True)
     exception_flags = WASM_EXCEPTION_FLAGS
     command = [
@@ -66,7 +71,7 @@ def buildOneFile(args, item):
       "-c", item,
     ]
     command = [c for c in command if c]
-    result = subprocess.run([*command, "-o", item + ".o"], capture_output=True, text=True)
+    result = subprocess.run([*command, "-o", o_path], capture_output=True, text=True)
     if result.returncode != 0:
       print("FAILED: " + item, flush=True)
       stderr_text = result.stderr or ""

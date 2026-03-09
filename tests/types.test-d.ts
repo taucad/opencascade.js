@@ -1,9 +1,9 @@
-import { expectTypeOf, test } from 'vitest';
+import { expectTypeOf, it } from 'vitest';
 import type init from '../build-configs/opencascade_full';
 
 type OC = Awaited<ReturnType<typeof init>>;
 
-test('gp_Pnt methods return correct types', () => {
+it('should return correct types for gp_Pnt methods', () => {
   expectTypeOf<InstanceType<OC['gp_Pnt']>['X']>().returns.toBeNumber();
   expectTypeOf<InstanceType<OC['gp_Pnt']>['Y']>().returns.toBeNumber();
   expectTypeOf<InstanceType<OC['gp_Pnt']>['Z']>().returns.toBeNumber();
@@ -11,29 +11,31 @@ test('gp_Pnt methods return correct types', () => {
   expectTypeOf<InstanceType<OC['gp_Pnt']>['IsEqual']>().returns.toBeBoolean();
 });
 
-test('gp_Vec methods return correct types', () => {
+it('should return correct types for gp_Vec methods', () => {
   expectTypeOf<InstanceType<OC['gp_Vec']>['X']>().returns.toBeNumber();
   expectTypeOf<InstanceType<OC['gp_Vec']>['Magnitude']>().returns.toBeNumber();
 });
 
-test('BRepPrimAPI_MakeBox produces shape with expected properties', () => {
+it('should produce shape with expected properties for BRepPrimAPI_MakeBox', () => {
   type MakeBox = InstanceType<OC['BRepPrimAPI_MakeBox']>;
   expectTypeOf<MakeBox['Shape']>().returns.toHaveProperty('IsNull');
   expectTypeOf<MakeBox['Shape']>().returns.toHaveProperty('delete');
 });
 
-test('delete method exists on all bound classes', () => {
+it('should have delete method on all bound classes', () => {
   expectTypeOf<InstanceType<OC['gp_Pnt']>>().toHaveProperty('delete');
   expectTypeOf<InstanceType<OC['gp_Vec']>>().toHaveProperty('delete');
   expectTypeOf<InstanceType<OC['TopoDS_Shape']>>().toHaveProperty('delete');
   expectTypeOf<InstanceType<OC['BRepPrimAPI_MakeBox']>>().toHaveProperty('delete');
 });
 
-test('enum types are objects with enum members', () => {
+it('should have members with numeric literal types for enum lookup objects', () => {
   expectTypeOf<OC['TopAbs_ShapeEnum']>().toBeObject();
+  expectTypeOf<OC['TopAbs_ShapeEnum']['TopAbs_FACE']>().toBeNumber();
+  expectTypeOf<OC['TopAbs_ShapeEnum']['TopAbs_EDGE']>().toBeNumber();
 });
 
-test('NCollection_Vec types resolve to fixed-length tuples not number[]', () => {
+it('should resolve NCollection_Vec types to fixed-length tuples not number[]', () => {
   type Vec2 = [number, number];
   type Vec3 = [number, number, number];
   type Vec4 = [number, number, number, number];
@@ -47,7 +49,7 @@ test('NCollection_Vec types resolve to fixed-length tuples not number[]', () => 
   expectTypeOf<[number, number, number, number]>().toEqualTypeOf<Vec4>();
 });
 
-test('init returns Promise<OpenCascadeInstance>', () => {
+it('should return Promise<OpenCascadeInstance> from init', () => {
   expectTypeOf<typeof init>().returns.resolves.toHaveProperty('gp_Pnt');
   expectTypeOf<typeof init>().returns.resolves.toHaveProperty('FS');
 });

@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { getOC, wasmExists, isExceptionsEnabled } from './helpers.js';
 
 describe.skipIf(!wasmExists)('Smoke: Exception handling', () => {
-  it('MakeCone with zero height throws Standard_Failure', async (ctx) => {
+  it('should throw Standard_Failure for MakeCone with zero height', async (ctx) => {
     const oc = await getOC();
     if (!isExceptionsEnabled()) ctx.skip();
 
@@ -27,7 +27,7 @@ describe.skipIf(!wasmExists)('Smoke: Exception handling', () => {
     expect(message.toLowerCase()).toContain('cone');
   });
 
-  it('MakeBox with zero dimensions throws or produces invalid shape', async (ctx) => {
+  it('should throw or produce invalid shape for MakeBox with zero dimensions', async (ctx) => {
     const oc = await getOC();
     if (!isExceptionsEnabled()) ctx.skip();
 
@@ -43,7 +43,8 @@ describe.skipIf(!wasmExists)('Smoke: Exception handling', () => {
         failedAsExpected = true;
       }
       box.delete();
-    } catch {
+    } catch (e: unknown) {
+      expect(e).toBeDefined();
       failedAsExpected = true;
     }
 

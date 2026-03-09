@@ -1,4 +1,6 @@
 import clang.cindex
+import json
+import os
 import re
 
 from wasmGenerator.Common import SkipException, isAbstractClass, isTransientDerived, getMethodOverloadPostfix
@@ -207,11 +209,16 @@ class Bindings:
         output += self.processSimpleConstructor(theClass, templateDecl, templateArgs)
       except SkipException as e:
         print(str(e))
+    arity_seen_by_method = {}
     for method in theClass.get_children():
       if not filterMethodOrProperty(theClass, method):
         continue
+      nargs = len(list(method.get_arguments()))
+      key = (method.spelling, nargs)
+      arity_idx = arity_seen_by_method.get(key, 0)
+      arity_seen_by_method[key] = arity_idx + 1
       try:
-        output += self.processMethodOrProperty(theClass, method, templateDecl, templateArgs)
+        output += self.processMethodOrProperty(theClass, method, templateDecl, templateArgs, overload_index=arity_idx)
       except SkipException as e:
         print(str(e))
     output += self.processFinalizeClass()
@@ -263,7 +270,7 @@ class EmbindBindings(Bindings):
         enumName = className + "_" + child.spelling
         isScoped = child.is_scoped_enum()
         valuePrefix = className + "::" + child.spelling + "::" if isScoped else className + "::"
-        output += "  enum_<" + className + "::" + child.spelling + ">(\"" + enumName + "\")\n"
+        output += "  enum_<" + className + "::" + child.spelling + ">(\"" + enumName + "\", emscripten::enum_value_type::number)\n"
         for enumChild in list(child.get_children()):
           if enumChild.kind == clang.cindex.CursorKind.ENUM_CONSTANT_DECL:
             output += "    .value(\"" + enumChild.spelling + "\", " + valuePrefix + enumChild.spelling + ")\n"
@@ -392,7 +399,7 @@ class EmbindBindings(Bindings):
       return [argBinding, changed]
     return f
 
-  def processMethodOrProperty(self, theClass, method, templateDecl = None, templateArgs = None):
+  def processMethodOrProperty(self, theClass, method, templateDecl = None, templateArgs = None, overload_index = 0):
     output = ""
     className = getClassTypeName(theClass, templateDecl)
     if className == "":
@@ -629,7 +636,7 @@ class EmbindBindings(Bindings):
   def processEnum(self, theEnum):
     output = "EMSCRIPTEN_BINDINGS(" + theEnum.spelling + ") {\n"
 
-    bindingsOutput = "  enum_<" + theEnum.spelling + ">(\"" + theEnum.spelling + "\")\n"
+    bindingsOutput = "  enum_<" + theEnum.spelling + ">(\"" + theEnum.spelling + "\", emscripten::enum_value_type::number)\n"
     enumChildren = list(theEnum.get_children())
     prefix = (theEnum.spelling + "::") if theEnum.is_scoped_enum() else ""
     for enumChild in enumChildren:
@@ -641,6 +648,8 @@ class EmbindBindings(Bindings):
     return output
 
 class TypescriptBindings(Bindings):
+  _docs_cache = None
+
   def __init__(
     self,
     tuInfo
@@ -649,6 +658,99 @@ class TypescriptBindings(Bindings):
     self.imports = {}
 
     self.exports = []
+    self._docs = self._load_docs()
+
+  @staticmethod
+  def _load_docs():
+    if TypescriptBindings._docs_cache is not None:
+      return TypescriptBindings._docs_cache
+    docs_path = os.path.join(
+      os.path.dirname(__file__), "..", "build", "occt-docs.json"
+    )
+    if os.path.isfile(docs_path):
+      with open(docs_path, "r") as f:
+        TypescriptBindings._docs_cache = json.load(f)
+    else:
+      TypescriptBindings._docs_cache = {}
+    return TypescriptBindings._docs_cache
+
+  def _jsdoc(self, class_name, member_name=None, indent_str="", param_count=None, overload_index=0, template_name=None):
+    used_template = False
+    entry = self._docs.get(class_name)
+    if not entry and template_name:
+      entry = self._docs.get(template_name)
+      used_template = True
+    if not entry:
+      return ""
+    if member_name is None:
+      brief = entry.get("brief", "")
+      if not brief:
+        return ""
+      lines = [f"{indent_str}/**"]
+      for line in brief.splitlines():
+        lines.append(f"{indent_str} * {line}")
+      if entry.get("deprecated"):
+        lines.append(f"{indent_str} * @deprecated")
+      lines.append(f"{indent_str} */")
+      return "\n".join(lines) + "\n"
+    members = entry.get("members", {})
+    member = members.get(member_name)
+    if not member and used_template and template_name and member_name == class_name:
+      member = members.get(template_name)
+    if not member:
+      return ""
+    member = self._resolve_overload(member, param_count, overload_index)
+    brief = member.get("brief", "")
+    if not brief:
+      return ""
+    lines = [f"{indent_str}/**"]
+    for line in brief.splitlines():
+      lines.append(f"{indent_str} * {line}")
+    for param in member.get("params", []):
+      desc = param.get("description", "")
+      lines.append(f"{indent_str} * @param {param['name']} {desc}".rstrip())
+    ret_desc = member.get("returns_description", "")
+    if ret_desc:
+      lines.append(f"{indent_str} * @returns {ret_desc}")
+    if member.get("deprecated"):
+      lines.append(f"{indent_str} * @deprecated")
+    lines.append(f"{indent_str} */")
+    return "\n".join(lines) + "\n"
+
+  def _enum_member_jsdoc(self, enum_name, member_name):
+    """Emit JSDoc for an individual enum member if Doxygen docs are available."""
+    entry = self._docs.get(enum_name)
+    if not entry or entry.get("kind") != "enum":
+      return ""
+    members = entry.get("members", {})
+    member = members.get(member_name, {})
+    brief = member.get("brief", "")
+    if not brief:
+      return ""
+    lines = ["  /**"]
+    for line in brief.splitlines():
+      lines.append(f"   * {line}")
+    lines.append("   */")
+    return "\n".join(lines) + "\n"
+
+  @staticmethod
+  def _resolve_overload(member, param_count, overload_index=0):
+    """Select the correct overload entry when a member has multiple definitions.
+
+    When multiple overloads share the same param_count, overload_index
+    disambiguates by selecting the Nth match (0-based) among those
+    with the matching arity.
+    """
+    overloads = member.get("overloads")
+    if not overloads:
+      return member
+    if param_count is None:
+      return overloads[0]
+    matches = [o for o in overloads if o.get("param_count") == param_count]
+    if not matches:
+      return overloads[0]
+    idx = min(overload_index, len(matches) - 1)
+    return matches[idx]
 
   def _findBoundAncestor(self, theClass):
     """Walk the inheritance chain to find the nearest ancestor that is in the build.
@@ -717,11 +819,15 @@ class TypescriptBindings(Bindings):
             baseClassDefinition = " extends " + directBase
 
     name = getClassTypeName(theClass, templateDecl)
+    tplName = theClass.spelling if templateDecl is not None else None
+    output += self._jsdoc(name, template_name=tplName)
     output += "export declare class " + name + baseClassDefinition + " {\n"
     self.exports.append(name)
 
     if name == "Standard_Transient":
+      output += "  /** Returns true if the underlying handle is null. */\n"
       output += "  isNull(): boolean;\n"
+      output += "  /** Releases the handle, setting it to null. */\n"
       output += "  nullify(): void;\n"
 
     output += super().processClass(theClass, templateDecl, templateArgs)
@@ -729,18 +835,21 @@ class TypescriptBindings(Bindings):
     for child in theClass.get_children():
       if child.kind == clang.cindex.CursorKind.ENUM_DECL and child.access_specifier == clang.cindex.AccessSpecifier.PUBLIC and child.spelling != "" and child.spelling.isidentifier():
         enumName = name + "_" + child.spelling
-        output += "export declare type " + enumName + " = {\n"
+        output += "export type " + enumName + " = typeof " + enumName + "[keyof typeof " + enumName + "];\n"
+        output += self._jsdoc(enumName)
+        output += "export declare const " + enumName + ": {\n"
         for enumChild in list(child.get_children()):
           if enumChild.kind == clang.cindex.CursorKind.ENUM_CONSTANT_DECL:
-            output += "  " + enumChild.spelling + ": " + enumName + ";\n"
-        output += "  value: number;\n"
-        output += "}\n\n"
+            output += self._enum_member_jsdoc(enumName, enumChild.spelling)
+            output += "  readonly " + enumChild.spelling + ": " + str(enumChild.enum_value) + ";\n"
+        output += "};\n\n"
         self.exports.append(enumName)
 
     return output
 
   def processFinalizeClass(self):
     output = ""
+    output += "  /** Releases the C++ object. The caller must ensure no further access. */\n"
     output += "  delete(): void;\n"
     output += "}\n\n"
     return output
@@ -749,8 +858,11 @@ class TypescriptBindings(Bindings):
     output = ""
     children = list(theClass.get_children())
     constructors = list(filter(lambda x: x.kind == clang.cindex.CursorKind.CONSTRUCTOR, children))
+    className = getClassTypeName(theClass, templateDecl)
+    tplName = theClass.spelling if templateDecl is not None else None
 
     if len(constructors) == 0:
+      output += self._jsdoc(className, className, "  ", param_count=0, template_name=tplName)
       output += "  constructor();\n"
       return output
     publicConstructors = list(filter(lambda x: x.kind == clang.cindex.CursorKind.CONSTRUCTOR and x.access_specifier == clang.cindex.AccessSpecifier.PUBLIC, children))
@@ -759,7 +871,9 @@ class TypescriptBindings(Bindings):
 
     if len(publicConstructors) == 1:
       standardConstructor = publicConstructors[0]
-      argsTypescriptDef = ", ".join(list(map(lambda x: self.getTypescriptDefFromArg(x), list(standardConstructor.get_arguments()))))
+      ctorArgs = list(standardConstructor.get_arguments())
+      argsTypescriptDef = ", ".join(list(map(lambda x: self.getTypescriptDefFromArg(x), ctorArgs)))
+      output += self._jsdoc(className, className, "  ", param_count=len(ctorArgs), template_name=tplName)
       output += "  constructor(" + argsTypescriptDef + ")\n"
       return output
 
@@ -769,6 +883,7 @@ class TypescriptBindings(Bindings):
           args = list(constructor.get_arguments())
           self._checkUnbindableArgs("constructor", theClass.spelling, args)
           argsTypescriptDef = ", ".join(list(map(lambda x: self.getTypescriptDefFromArg(x, "", templateDecl, templateArgs), args)))
+          output += self._jsdoc(className, className, "  ", param_count=len(args), template_name=tplName)
           output += "  constructor(" + argsTypescriptDef + ");\n"
         except SkipException as e:
           print(str(e))
@@ -1024,7 +1139,7 @@ class TypescriptBindings(Bindings):
     typeName = self.resolve_type(arg.type, templateDecl, templateArgs)
     return self._argname(arg, suffix) + ": " + typeName
 
-  def processMethodOrProperty(self, theClass, method, templateDecl = None, templateArgs = None):
+  def processMethodOrProperty(self, theClass, method, templateDecl = None, templateArgs = None, overload_index = 0):
     output = ""
     if method.access_specifier == clang.cindex.AccessSpecifier.PUBLIC and method.kind == clang.cindex.CursorKind.CXX_METHOD and not method.spelling.startswith("operator"):
       [overloadPostfix, numOverloads] = getMethodOverloadPostfix(theClass, method)
@@ -1032,6 +1147,10 @@ class TypescriptBindings(Bindings):
       args = ", ".join(list(map(lambda x: self.getTypescriptDefFromArg(x[1], x[0], templateDecl, templateArgs), enumerate(method.get_arguments()))))
       returnType = self.getTypescriptDefFromResultType(method.result_type, templateDecl, templateArgs)
 
+      className = getClassTypeName(theClass, templateDecl)
+      tplName = theClass.spelling if templateDecl is not None else None
+      methodArgs = list(method.get_arguments())
+      output += self._jsdoc(className, method.spelling, "  ", param_count=len(methodArgs), overload_index=overload_index, template_name=tplName)
       output += "  " + ("static " if method.is_static_method() else "") + method.spelling + overloadPostfix + "(" + args + "): " + returnType + ";\n"
     return output
 
@@ -1049,13 +1168,22 @@ class TypescriptBindings(Bindings):
     constructorTypescriptDef = ""
     allOverloadedConstructors = []
     allOverloads = constructors
+    arity_seen = {}
 
     for constructor in filter(lambda x: filterMethodOrProperty(theClass, x), constructors):
       overloadPostfix = "_" + str(allOverloads.index(constructor) + 1)
 
-      argsTypescriptDef = ", ".join(list(map(lambda x: self.getTypescriptDefFromArg(x, "", templateDecl, templateArgs), list(constructor.get_arguments()))))
+      ctorArgs = list(constructor.get_arguments())
+      nargs = len(ctorArgs)
+      arity_idx = arity_seen.get(nargs, 0)
+      arity_seen[nargs] = arity_idx + 1
+
+      argsTypescriptDef = ", ".join(list(map(lambda x: self.getTypescriptDefFromArg(x, "", templateDecl, templateArgs), ctorArgs)))
       name = getClassTypeName(theClass, templateDecl)
+      tplName = theClass.spelling if templateDecl is not None else None
+      constructorTypescriptDef += self._jsdoc(name, name, "  ", param_count=nargs, overload_index=arity_idx, template_name=tplName)
       constructorTypescriptDef += "  export declare class " + name + overloadPostfix + " extends " + name + " {\n"
+      constructorTypescriptDef += self._jsdoc(name, name, "    ", param_count=nargs, overload_index=arity_idx, template_name=tplName)
       constructorTypescriptDef += "    constructor(" + argsTypescriptDef + ");\n"
       constructorTypescriptDef += "  }\n\n"
       allOverloadedConstructors.append(name + overloadPostfix)
@@ -1066,11 +1194,12 @@ class TypescriptBindings(Bindings):
   def processEnum(self, theEnum):
     output = ""
     enumName = theEnum.spelling
-    bindingsOutput = "export declare type " + enumName + " = {\n"
+    output += "export type " + enumName + " = typeof " + enumName + "[keyof typeof " + enumName + "];\n"
+    output += self._jsdoc(enumName)
+    output += "export declare const " + enumName + ": {\n"
     for enumChild in list(theEnum.get_children()):
-      bindingsOutput += "  " + enumChild.spelling + ": " + enumName + ";\n"
-    bindingsOutput += "  value: number;\n"
-    bindingsOutput += "}\n\n"
-    output += bindingsOutput
+      output += self._enum_member_jsdoc(enumName, enumChild.spelling)
+      output += "  readonly " + enumChild.spelling + ": " + str(enumChild.enum_value) + ";\n"
+    output += "};\n\n"
     self.exports.append(enumName)
     return output

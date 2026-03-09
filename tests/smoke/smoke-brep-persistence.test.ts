@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { getOC, wasmExists } from './helpers.js';
 
 describe.skipIf(!wasmExists)('Smoke: BRepTools Write/Read round-trip', () => {
-  it('writes box to FS and reads back', async () => {
+  it('should write box to FS and read back', async () => {
     const oc = await getOC();
     const box = new oc.BRepPrimAPI_MakeBox_2(10, 20, 30);
     const shape = box.Shape();
