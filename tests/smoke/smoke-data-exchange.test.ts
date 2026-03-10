@@ -11,7 +11,7 @@ describe.skipIf(!wasmExists)('Smoke: Data exchange (STEP, STL)', () => {
     const writer = new oc.STEPControl_Writer();
     const transferStatus = writer.Transfer(
       shape,
-      oc.STEPControl_StepModelType.STEPControl_AsIs as never,
+      oc.STEPControl_StepModelType.STEPControl_AsIs,
       false,
       new oc.Message_ProgressRange()
     );

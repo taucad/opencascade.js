@@ -9,15 +9,15 @@ describe.skipIf(!wasmExists)('Smoke: Fillets and chamfers', () => {
     const boxShape = box.Shape();
     const fillet = new oc.BRepFilletAPI_MakeFillet(
       boxShape,
-      oc.ChFi3d_FilletShape.ChFi3d_Rational as never,
+      oc.ChFi3d_FilletShape.ChFi3d_Rational,
     );
     const explorer = new oc.TopExp_Explorer(
       boxShape,
-      oc.TopAbs_ShapeEnum.TopAbs_EDGE as never,
-      oc.TopAbs_ShapeEnum.TopAbs_SHAPE as never,
+      oc.TopAbs_ShapeEnum.TopAbs_EDGE,
+      oc.TopAbs_ShapeEnum.TopAbs_SHAPE,
     );
     if (explorer.More()) {
-      const edge = oc.TopoDS_Cast.Edge(explorer.Current());
+      const edge = oc.TopoDS.Edge(explorer.Current());
       fillet.Add_2(2, edge);
       edge.delete();
     }
@@ -42,11 +42,11 @@ describe.skipIf(!wasmExists)('Smoke: Fillets and chamfers', () => {
     const chamfer = new oc.BRepFilletAPI_MakeChamfer(boxShape);
     const explorer = new oc.TopExp_Explorer(
       boxShape,
-      oc.TopAbs_ShapeEnum.TopAbs_EDGE as never,
-      oc.TopAbs_ShapeEnum.TopAbs_SHAPE as never,
+      oc.TopAbs_ShapeEnum.TopAbs_EDGE,
+      oc.TopAbs_ShapeEnum.TopAbs_SHAPE,
     );
     if (explorer.More()) {
-      const edge = oc.TopoDS_Cast.Edge(explorer.Current());
+      const edge = oc.TopoDS.Edge(explorer.Current());
       chamfer.Add(2, edge);
       edge.delete();
     }
@@ -70,16 +70,16 @@ describe.skipIf(!wasmExists)('Smoke: Fillets and chamfers', () => {
     const boxShape = box.Shape();
     const fillet = new oc.BRepFilletAPI_MakeFillet(
       boxShape,
-      oc.ChFi3d_FilletShape.ChFi3d_Rational as never,
+      oc.ChFi3d_FilletShape.ChFi3d_Rational,
     );
 
     const explorer = new oc.TopExp_Explorer(
       boxShape,
-      oc.TopAbs_ShapeEnum.TopAbs_EDGE as never,
-      oc.TopAbs_ShapeEnum.TopAbs_SHAPE as never,
+      oc.TopAbs_ShapeEnum.TopAbs_EDGE,
+      oc.TopAbs_ShapeEnum.TopAbs_SHAPE,
     );
     while (explorer.More()) {
-      const edge = oc.TopoDS_Cast.Edge(explorer.Current());
+      const edge = oc.TopoDS.Edge(explorer.Current());
       fillet.Add_2(3, edge);
       edge.delete();
       explorer.Next();

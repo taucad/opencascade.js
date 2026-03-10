@@ -30,8 +30,9 @@ async function initModule(): Promise<OpenCascadeInstance> {
 export async function getOC(): Promise<OpenCascadeInstance> {
   if (!instance) {
     instance = await initModule();
-    _exceptionsEnabled = typeof (instance as Record<string, unknown>).OCJS === 'object'
-      && typeof ((instance as Record<string, unknown>).OCJS as Record<string, unknown>)?.getStandard_FailureData === 'function';
+    const ocjs = (instance as Record<string, unknown>).OCJS;
+    _exceptionsEnabled = (typeof ocjs === 'function' || typeof ocjs === 'object')
+      && typeof (ocjs as Record<string, unknown>)?.getStandard_FailureData === 'function';
   }
   return instance;
 }

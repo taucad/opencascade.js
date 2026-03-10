@@ -81,14 +81,6 @@ def filterMethodOrProperty(theClass, methodOrProperty):
         if theClass.spelling in arg.type.spelling and "&" in arg.type.spelling:
           return False
 
-  # OCCT V8: methods with non-const enum output parameters that Embind can't handle
-  if methodOrProperty.kind == clang.cindex.CursorKind.CXX_METHOD:
-    for arg in methodOrProperty.get_arguments():
-      if arg.type.kind == clang.cindex.TypeKind.LVALUEREFERENCE:
-        pointee = arg.type.get_pointee()
-        if pointee.kind == clang.cindex.TypeKind.ENUM and not pointee.is_const_qualified():
-          return False
-
   # OCCT V8: NCollection_ItemsView::Iterator not directly accessible
   if "NCollection_ItemsView" in str(getattr(methodOrProperty, 'displayname', '')):
     return False

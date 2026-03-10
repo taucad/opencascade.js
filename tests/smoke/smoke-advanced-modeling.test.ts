@@ -90,8 +90,9 @@ describe.skipIf(!wasmExists)('Smoke: Advanced modeling', () => {
     const oc = await getOC();
     if (!isExceptionsEnabled()) ctx.skip();
 
-    const line = new oc.Geom_Line_3(new oc.gp_Pnt(0, 0, 0), new oc.gp_Dir_5(1, 0, 0));
-    const lineEdge = new oc.BRepBuilderAPI_MakeEdge_24(line);
+    const p1 = new oc.gp_Pnt(0, 0, 0);
+    const p2 = new oc.gp_Pnt(10, 0, 0);
+    const lineEdge = new oc.BRepBuilderAPI_MakeEdge_3(p1, p2);
     const spineWire = new oc.BRepBuilderAPI_MakeWire_2(lineEdge.Edge());
 
     const ax = new oc.gp_Ax2_4(new oc.gp_Pnt(0, 0, 0), new oc.gp_Dir_5(1, 0, 0));
@@ -104,7 +105,7 @@ describe.skipIf(!wasmExists)('Smoke: Advanced modeling', () => {
     expect(result.IsNull()).toBe(false);
 
     await expectShapeGeometry(result, {
-      size: [1, 4, 4],
+      size: [10, 4, 4],
       minVertices: 10,
     });
 
@@ -115,6 +116,7 @@ describe.skipIf(!wasmExists)('Smoke: Advanced modeling', () => {
     ax.delete();
     spineWire.delete();
     lineEdge.delete();
-    line.delete();
+    p2.delete();
+    p1.delete();
   });
 });

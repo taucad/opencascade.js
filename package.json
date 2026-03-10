@@ -7,6 +7,9 @@
   "license": "LGPL-2.1-only",
   "repository": "github:donalffons/opencascade.js",
   "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
   "peerDependencies": {
     "ws": "^8.5.0"
   },

@@ -25,8 +25,8 @@ describe.skipIf(!wasmExists)('Smoke: Extrema and distance', () => {
     const dist = new oc.BRepExtrema_DistShapeShape(
       box1.Shape(),
       box2Maker.Shape(),
-      oc.Extrema_ExtFlag.Extrema_ExtFlag_MIN as never,
-      oc.Extrema_ExtAlgo.Extrema_ExtAlgo_Grad as never,
+      oc.Extrema_ExtFlag.Extrema_ExtFlag_MIN,
+      oc.Extrema_ExtAlgo.Extrema_ExtAlgo_Grad,
       new oc.Message_ProgressRange(),
     );
 
@@ -52,8 +52,8 @@ describe.skipIf(!wasmExists)('Smoke: Extrema and distance', () => {
     const dist = new oc.BRepExtrema_DistShapeShape(
       box1.Shape(),
       box2.Shape(),
-      oc.Extrema_ExtFlag.Extrema_ExtFlag_MIN as never,
-      oc.Extrema_ExtAlgo.Extrema_ExtAlgo_Grad as never,
+      oc.Extrema_ExtFlag.Extrema_ExtFlag_MIN,
+      oc.Extrema_ExtAlgo.Extrema_ExtAlgo_Grad,
       new oc.Message_ProgressRange(),
     );
 
@@ -77,8 +77,8 @@ describe.skipIf(!wasmExists)('Smoke: Extrema and distance', () => {
     const dist = new oc.BRepExtrema_DistShapeShape(
       box.Shape(),
       sphere.Shape(),
-      oc.Extrema_ExtFlag.Extrema_ExtFlag_MIN as never,
-      oc.Extrema_ExtAlgo.Extrema_ExtAlgo_Grad as never,
+      oc.Extrema_ExtFlag.Extrema_ExtFlag_MIN,
+      oc.Extrema_ExtAlgo.Extrema_ExtAlgo_Grad,
       new oc.Message_ProgressRange(),
     );
 

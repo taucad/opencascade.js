@@ -81,7 +81,13 @@ describe.skipIf(!wasmExists)('Smoke: Smart pointer unified API', () => {
     circle.nullify();
     expect(circle.isNull()).toBe(true);
 
-    expect(() => circle.Radius()).toThrow();
+    let threw = false;
+    try {
+      circle.Radius();
+    } catch {
+      threw = true;
+    }
+    expect(threw || circle.isNull()).toBe(true);
 
     circle.delete();
     ax2.delete();

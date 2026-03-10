@@ -1,7 +1,7 @@
 {
-  "timestamp": "2026-03-08T12:48:25Z",
-  "yaml_config": "full.yml",
-  "yaml_hash": "3387e07d06ce",
+  "timestamp": "2026-03-10T04:39:47Z",
+  "yaml_config": "full-exceptions.yml",
+  "yaml_hash": "1fae73a4c00a",
   "validation_passed": false,
   "symbols": {
     "requested": [
@@ -890,6 +890,7 @@
       "FSD_CmpFile",
       "FSD_FileHeader",
       "FairCurve_AnalysisCode",
+      "FairCurve_Batten",
       "FairCurve_BattenLaw",
       "FairCurve_DistributionOfEnergy",
       "FairCurve_DistributionOfJerk",
@@ -898,6 +899,7 @@
       "FairCurve_Energy",
       "FairCurve_EnergyOfBatten",
       "FairCurve_EnergyOfMVC",
+      "FairCurve_MinimalVariation",
       "FairCurve_Newton",
       "FilletPoint",
       "FilletSurf_Builder",
@@ -4472,7 +4474,7 @@
       "TCollection_HAsciiString",
       "TCollection_HExtendedString"
     ],
-    "extra_compiled": 6,
+    "extra_compiled": 4,
     "pass": false
   },
   "outputs": [
@@ -4480,9 +4482,9 @@
       "name": "opencascade_full.js",
       "wasm_file": "opencascade_full.wasm",
       "wasm_exists": true,
-      "wasm_size": 62816633,
+      "wasm_size": 105370926,
       "js_exists": true,
-      "js_size": 478386,
+      "js_size": 518730,
       "pass": true
     }
   ],
@@ -4510,27 +4512,27 @@
       {
         "file": "Message_ProgressScope.cpp",
         "error_type": "compile_error",
-        "message": "/Users/rifont/git/tau/repos/opencascade.js/build/bindings/FoundationClasses/TKernel/Message/Message_ProgressScope.hxx/Message_ProgressScope.cpp:4884:57: error: unknown type name 'NullString'; did you mean 'Message_ProgressScope_1::NullString'?"
+        "message": "/Users/rifont/git/tau/repos/opencascade.js/build/bindings/FoundationClasses/TKernel/Message/Message_ProgressScope.hxx/Message_ProgressScope.cpp:4885:57: error: unknown type name 'NullString'; did you mean 'Message_ProgressScope_1::NullString'?"
       },
       {
         "file": "TColStd_HPackedMapOfInteger.cpp",
         "error_type": "compile_error",
-        "message": "/Users/rifont/git/tau/repos/opencascade.js/build/bindings/FoundationClasses/TKernel/TColStd/TColStd_HPackedMapOfInteger.hxx/TColStd_HPackedMapOfInteger.cpp:4885:71: error: no matching constructor for initialization of 'TColStd_HPackedMapOfInteger_3'"
+        "message": "/Users/rifont/git/tau/repos/opencascade.js/build/bindings/FoundationClasses/TKernel/TColStd/TColStd_HPackedMapOfInteger.hxx/TColStd_HPackedMapOfInteger.cpp:4886:71: error: no matching constructor for initialization of 'TColStd_HPackedMapOfInteger_3'"
       },
       {
         "file": "TCollection_HAsciiString.cpp",
         "error_type": "compile_error",
-        "message": "/Users/rifont/git/tau/repos/opencascade.js/build/bindings/FoundationClasses/TKernel/TCollection/TCollection_HAsciiString.hxx/TCollection_HAsciiString.cpp:5020:68: error: no matching constructor for initialization of 'TCollection_HAsciiString_8'"
+        "message": "/Users/rifont/git/tau/repos/opencascade.js/build/bindings/FoundationClasses/TKernel/TCollection/TCollection_HAsciiString.hxx/TCollection_HAsciiString.cpp:5021:68: error: no matching constructor for initialization of 'TCollection_HAsciiString_8'"
       },
       {
         "file": "TCollection_HExtendedString.cpp",
         "error_type": "compile_error",
-        "message": "/Users/rifont/git/tau/repos/opencascade.js/build/bindings/FoundationClasses/TKernel/TCollection/TCollection_HExtendedString.hxx/TCollection_HExtendedString.cpp:4943:71: error: no matching constructor for initialization of 'TCollection_HExtendedString_7'"
+        "message": "/Users/rifont/git/tau/repos/opencascade.js/build/bindings/FoundationClasses/TKernel/TCollection/TCollection_HExtendedString.hxx/TCollection_HExtendedString.cpp:4944:71: error: no matching constructor for initialization of 'TCollection_HExtendedString_7'"
       },
       {
         "file": "ShapeProcess.cpp",
         "error_type": "compile_error",
-        "message": "/Users/rifont/git/tau/repos/opencascade.js/build/bindings/ModelingAlgorithms/TKShHealing/ShapeProcess/ShapeProcess.hxx/ShapeProcess.cpp:4868:116: error: unknown type name 'OperationsFlags'; did you mean 'ShapeProcess::OperationsFlags'?"
+        "message": "/Users/rifont/git/tau/repos/opencascade.js/build/bindings/ModelingAlgorithms/TKShHealing/ShapeProcess/ShapeProcess.hxx/ShapeProcess.cpp:4869:116: error: unknown type name 'OperationsFlags'; did you mean 'ShapeProcess::OperationsFlags'?"
       },
       {
         "file": "ShapeProcess_ShapeContext.cpp",

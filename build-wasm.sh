@@ -441,7 +441,11 @@ step_sources_cmake() {
   fi
 
   if [ "$OCJS_EXCEPTIONS" = "1" ]; then
-    cxxflags="$cxxflags -fwasm-exceptions"
+    if [ "${OCJS_EH_MODE:-wasm}" = "js" ]; then
+      cxxflags="$cxxflags -fexceptions"
+    else
+      cxxflags="$cxxflags -fwasm-exceptions"
+    fi
   fi
 
   if [ "$THREADING" = "multi-threaded" ]; then

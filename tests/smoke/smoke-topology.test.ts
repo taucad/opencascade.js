@@ -10,8 +10,8 @@ describe.skipIf(!wasmExists)('Smoke: Topology', () => {
     let faceCount = 0;
     const faceExplorer = new oc.TopExp_Explorer(
       shape,
-      oc.TopAbs_ShapeEnum.TopAbs_FACE as never,
-      oc.TopAbs_ShapeEnum.TopAbs_SHAPE as never,
+      oc.TopAbs_ShapeEnum.TopAbs_FACE,
+      oc.TopAbs_ShapeEnum.TopAbs_SHAPE,
     );
     for (; faceExplorer.More(); faceExplorer.Next()) {
       faceCount++;
@@ -20,8 +20,8 @@ describe.skipIf(!wasmExists)('Smoke: Topology', () => {
     let edgeCount = 0;
     const edgeExplorer = new oc.TopExp_Explorer(
       shape,
-      oc.TopAbs_ShapeEnum.TopAbs_EDGE as never,
-      oc.TopAbs_ShapeEnum.TopAbs_SHAPE as never,
+      oc.TopAbs_ShapeEnum.TopAbs_EDGE,
+      oc.TopAbs_ShapeEnum.TopAbs_SHAPE,
     );
     for (; edgeExplorer.More(); edgeExplorer.Next()) {
       edgeCount++;
@@ -30,8 +30,8 @@ describe.skipIf(!wasmExists)('Smoke: Topology', () => {
     let vertexCount = 0;
     const vertexExplorer = new oc.TopExp_Explorer(
       shape,
-      oc.TopAbs_ShapeEnum.TopAbs_VERTEX as never,
-      oc.TopAbs_ShapeEnum.TopAbs_SHAPE as never,
+      oc.TopAbs_ShapeEnum.TopAbs_VERTEX,
+      oc.TopAbs_ShapeEnum.TopAbs_SHAPE,
     );
     for (; vertexExplorer.More(); vertexExplorer.Next()) {
       vertexCount++;
@@ -68,29 +68,29 @@ describe.skipIf(!wasmExists)('Smoke: Topology', () => {
 
     const faceExplorer = new oc.TopExp_Explorer(
       shape,
-      oc.TopAbs_ShapeEnum.TopAbs_FACE as never,
-      oc.TopAbs_ShapeEnum.TopAbs_SHAPE as never,
+      oc.TopAbs_ShapeEnum.TopAbs_FACE,
+      oc.TopAbs_ShapeEnum.TopAbs_SHAPE,
     );
     expect(faceExplorer.More()).toBe(true);
-    const face = oc.TopoDS_Cast.Face(faceExplorer.Current());
+    const face = oc.TopoDS.Face(faceExplorer.Current());
     face.delete();
 
     const edgeExplorer = new oc.TopExp_Explorer(
       shape,
-      oc.TopAbs_ShapeEnum.TopAbs_EDGE as never,
-      oc.TopAbs_ShapeEnum.TopAbs_SHAPE as never,
+      oc.TopAbs_ShapeEnum.TopAbs_EDGE,
+      oc.TopAbs_ShapeEnum.TopAbs_SHAPE,
     );
     expect(edgeExplorer.More()).toBe(true);
-    const edge = oc.TopoDS_Cast.Edge(edgeExplorer.Current());
+    const edge = oc.TopoDS.Edge(edgeExplorer.Current());
     edge.delete();
 
     const vertexExplorer = new oc.TopExp_Explorer(
       shape,
-      oc.TopAbs_ShapeEnum.TopAbs_VERTEX as never,
-      oc.TopAbs_ShapeEnum.TopAbs_SHAPE as never,
+      oc.TopAbs_ShapeEnum.TopAbs_VERTEX,
+      oc.TopAbs_ShapeEnum.TopAbs_SHAPE,
     );
     expect(vertexExplorer.More()).toBe(true);
-    const vertex = oc.TopoDS_Cast.Vertex(vertexExplorer.Current());
+    const vertex = oc.TopoDS.Vertex(vertexExplorer.Current());
     vertex.delete();
 
     box.delete();

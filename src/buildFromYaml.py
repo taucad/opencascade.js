@@ -20,6 +20,60 @@ except ImportError:
 
 _yaml_config_hash = ""
 
+BUILTIN_ADDITIONAL_BIND_CODE = r"""
+#include <TopoDS.hxx>
+#include <TopoDS_Vertex.hxx>
+#include <TopoDS_Edge.hxx>
+#include <TopoDS_Wire.hxx>
+#include <TopoDS_Face.hxx>
+#include <TopoDS_Shell.hxx>
+#include <TopoDS_Solid.hxx>
+#include <TopoDS_CompSolid.hxx>
+#include <TopoDS_Compound.hxx>
+#include <TColStd_IndexedDataMapOfStringString.hxx>
+#include <Standard_Failure.hxx>
+#include <FairCurve_Batten.hxx>
+#include <FairCurve_MinimalVariation.hxx>
+#include <FairCurve_AnalysisCode.hxx>
+struct TopoDS_Bind_ {};
+class OCJS {
+public:
+  static Standard_Failure* getStandard_FailureData(intptr_t exceptionPtr) {
+    return reinterpret_cast<Standard_Failure*>(exceptionPtr);
+  }
+};
+using namespace emscripten;
+EMSCRIPTEN_BINDINGS(ocjs_builtins) {
+  class_<OCJS>("OCJS")
+    .class_function("getStandard_FailureData", &OCJS::getStandard_FailureData, allow_raw_pointers())
+    ;
+  class_<NCollection_IndexedDataMap<TCollection_AsciiString, TCollection_AsciiString>>("TColStd_IndexedDataMapOfStringString")
+    .constructor<>()
+    ;
+  function("FairCurve_Batten_Compute", optional_override([](FairCurve_Batten& self, emscripten::val codeRef, int nbIter, double tol) -> bool {
+    FairCurve_AnalysisCode code = static_cast<FairCurve_AnalysisCode>(codeRef["current"].as<int>());
+    bool result = self.Compute(code, nbIter, tol);
+    codeRef.set("current", static_cast<int>(code));
+    return result;
+  }));
+  function("FairCurve_MinimalVariation_Compute", optional_override([](FairCurve_MinimalVariation& self, emscripten::val codeRef, int nbIter, double tol) -> bool {
+    FairCurve_AnalysisCode code = static_cast<FairCurve_AnalysisCode>(codeRef["current"].as<int>());
+    bool result = self.Compute(code, nbIter, tol);
+    codeRef.set("current", static_cast<int>(code));
+    return result;
+  }));
+  class_<TopoDS_Bind_>("TopoDS")
+    .class_function("Edge", optional_override([](const TopoDS_Shape& s) -> TopoDS_Edge { return TopoDS::Edge(s); }))
+    .class_function("Wire", optional_override([](const TopoDS_Shape& s) -> TopoDS_Wire { return TopoDS::Wire(s); }))
+    .class_function("Face", optional_override([](const TopoDS_Shape& s) -> TopoDS_Face { return TopoDS::Face(s); }))
+    .class_function("Vertex", optional_override([](const TopoDS_Shape& s) -> TopoDS_Vertex { return TopoDS::Vertex(s); }))
+    .class_function("Shell", optional_override([](const TopoDS_Shape& s) -> TopoDS_Shell { return TopoDS::Shell(s); }))
+    .class_function("Solid", optional_override([](const TopoDS_Shape& s) -> TopoDS_Solid { return TopoDS::Solid(s); }))
+    .class_function("Compound", optional_override([](const TopoDS_Shape& s) -> TopoDS_Compound { return TopoDS::Compound(s); }))
+    ;
+}
+"""
+
 
 def _collect_compiled_symbols(libraryBasePath) -> set:
   compiled = set()
@@ -53,42 +107,42 @@ def shouldProcessSymbol(symbol: str, bindings) -> bool:
 
 def runBuild(build, libraryBasePath):
   def getAdditionalBindCodeO():
+    combined = BUILTIN_ADDITIONAL_BIND_CODE
     if "additionalBindCode" in build:
-      try:
-        os.mkdir(libraryBasePath + "/additionalBindCode")
-      except Exception:
-        pass
-      additionalBindCodeFileName = libraryBasePath + "/additionalBindCode/" + build["name"] + ".cpp"
-      f = open(additionalBindCodeFileName, "w")
-      f.write(build["additionalBindCode"])
-      f.close()
-      print("building " + additionalBindCodeFileName)
-      OPT_LEVEL = os.environ.get("OCJS_OPT", "-O0")
-      USE_LTO = os.environ.get("OCJS_LTO", "0") == "1"
-      exception_flags = WASM_EXCEPTION_FLAGS
-      command = [
-        "emcc",
-        "-std=c++17",
-        *(["-flto"] if USE_LTO else []),
-        *exception_flags,
-        *EXTRA_COMPILE_FLAGS,
-        "-DIGNORE_NO_ATOMICS=1",
-        "-DOCCT_NO_PLUGINS",
-        "-frtti",
-        "-DHAVE_RAPIDJSON",
-        OPT_LEVEL,
-        *(["-pthread"] if os.environ["THREADING"] == "multi-threaded" else []),
-        *(["-include-pch", PCH_FILE] if os.path.exists(PCH_FILE) else []),
-        *["-I" + p for p in getFlatIncludePaths()],
-        "-c", additionalBindCodeFileName,
-      ]
-      subprocess.check_call([
-        *command,
-        "-o", additionalBindCodeFileName + ".o",
-      ])
-      return additionalBindCodeFileName + ".o"
-    else:
-      return None
+      combined += "\n" + build["additionalBindCode"]
+    try:
+      os.mkdir(libraryBasePath + "/additionalBindCode")
+    except Exception:
+      pass
+    additionalBindCodeFileName = libraryBasePath + "/additionalBindCode/" + build["name"] + ".cpp"
+    f = open(additionalBindCodeFileName, "w")
+    f.write(combined)
+    f.close()
+    print("building " + additionalBindCodeFileName)
+    OPT_LEVEL = os.environ.get("OCJS_OPT", "-O0")
+    USE_LTO = os.environ.get("OCJS_LTO", "0") == "1"
+    exception_flags = WASM_EXCEPTION_FLAGS
+    command = [
+      "emcc",
+      "-std=c++17",
+      *(["-flto"] if USE_LTO else []),
+      *exception_flags,
+      *EXTRA_COMPILE_FLAGS,
+      "-DIGNORE_NO_ATOMICS=1",
+      "-DOCCT_NO_PLUGINS",
+      "-frtti",
+      "-DHAVE_RAPIDJSON",
+      OPT_LEVEL,
+      *(["-pthread"] if os.environ["THREADING"] == "multi-threaded" else []),
+      *(["-include-pch", PCH_FILE] if os.path.exists(PCH_FILE) else []),
+      *["-I" + p for p in getFlatIncludePaths()],
+      "-c", additionalBindCodeFileName,
+    ]
+    subprocess.check_call([
+      *command,
+      "-o", additionalBindCodeFileName + ".o",
+    ])
+    return additionalBindCodeFileName + ".o"
   additionalBindCodeO = getAdditionalBindCodeO()
   print("Running build: " + build["name"], flush=True)
   bindingsO = []
@@ -133,9 +187,11 @@ def runBuild(build, libraryBasePath):
   for sym in build.get("allowedUndefinedSymbols", []):
     allowed_undef_flags.extend(["-Wl,--allow-undefined-symbol=" + sym])
 
-  OPT_LEVEL = os.environ.get("OCJS_OPT", "-O2")
+  OPT_LEVEL = os.environ.get("OCJS_LINK_OPT", os.environ.get("OCJS_OPT", "-O2"))
   USE_LTO = os.environ.get("OCJS_LTO", "1") == "1"
   yaml_flags = [f for f in build["emccFlags"] if not f.startswith("-O") and f != "-flto"]
+  if os.environ.get("OCJS_EH_MODE", "wasm") == "js":
+    yaml_flags = ["-fexceptions" if f == "-fwasm-exceptions" else f for f in yaml_flags]
   env_flags = [OPT_LEVEL] + (["-flto"] if USE_LTO else [])
   linkCmd = [
     "emcc", "-lembind",
@@ -165,9 +221,10 @@ def runBuild(build, libraryBasePath):
   wasm_opt_duration = 0
   wasm_opt_flag_list = []
 
-  if os.path.exists(wasmFile) and wasmOptPath and os.path.exists(wasmOptPath):
+  wasm_opt_level = os.environ.get("OCJS_WASM_OPT_LEVEL", "-O3")
+  skip_wasm_opt = os.environ.get("OCJS_SKIP_WASM_OPT", "0") == "1"
+  if os.path.exists(wasmFile) and wasmOptPath and os.path.exists(wasmOptPath) and wasm_opt_level and not skip_wasm_opt:
     print(f"Running wasm-opt on {wasmFile} ({sizeBefore / (1024*1024):.1f} MB)...", flush=True)
-    wasm_opt_level = os.environ.get("OCJS_WASM_OPT_LEVEL", "-O3")
     wasm_opt_flag_list = [wasm_opt_level, "--strip-debug", "--strip-producers", "--enable-mutable-globals", "--enable-bulk-memory", "--enable-sign-ext", "--enable-nontrapping-float-to-int"]
     if os.environ.get("OCJS_CONVERGE", "false") == "true":
       wasm_opt_flag_list.append("--converge")
@@ -287,13 +344,13 @@ def main():
           "kind": dts["kind"],
         })
 
-    # Declarations for types provided via additionalBindCode
+    # Declarations for built-in types provided via BUILTIN_ADDITIONAL_BIND_CODE
     typescriptDefinitionOutput += \
       "export declare class TColStd_IndexedDataMapOfStringString {\n" + \
       "  constructor();\n" + \
       "  delete(): void;\n" + \
       "}\n\n" + \
-      "export declare class TopoDS_Cast {\n" + \
+      "export declare class TopoDS {\n" + \
       "  static Edge(shape: TopoDS_Shape): TopoDS_Edge;\n" + \
       "  static Wire(shape: TopoDS_Shape): TopoDS_Wire;\n" + \
       "  static Face(shape: TopoDS_Shape): TopoDS_Face;\n" + \
@@ -301,10 +358,15 @@ def main():
       "  static Shell(shape: TopoDS_Shape): TopoDS_Shell;\n" + \
       "  static Solid(shape: TopoDS_Shape): TopoDS_Solid;\n" + \
       "  static Compound(shape: TopoDS_Shape): TopoDS_Compound;\n" + \
+      "}\n\n" + \
+      "export declare class OCJS {\n" + \
+      "  static getStandard_FailureData(exceptionPtr: number): Standard_Failure;\n" + \
+      "  delete(): void;\n" + \
       "}\n\n"
     typescriptExports.extend([
       {"export": "TColStd_IndexedDataMapOfStringString", "kind": "class"},
-      {"export": "TopoDS_Cast", "kind": "class"},
+      {"export": "TopoDS", "kind": "class"},
+      {"export": "OCJS", "kind": "class"},
     ])
 
     typescriptDefinitionOutput += \
@@ -460,7 +522,33 @@ def main():
       "    parentObject: any\n" + \
       "  }\n" + \
       "  function analyzePath(path: string): AnalysisResults;\n" + \
-      "}\n\n" + \
+      "}\n\n"
+
+    # --- Generate namespace blocks for OCCT package organization (Finding 6, Path A) ---
+    from collections import defaultdict
+    namespaces = defaultdict(list)
+    for ex in typescriptExports:
+      name = ex["export"]
+      idx = name.find("_")
+      if idx > 0:
+        prefix = name[:idx]
+        short_name = name[idx+1:]
+        if short_name and not short_name[0].isdigit():
+          namespaces[prefix].append((short_name, ex))
+
+    for ns_name in sorted(namespaces.keys()):
+      entries = namespaces[ns_name]
+      typescriptDefinitionOutput += f"export namespace {ns_name} {{\n"
+      for short_name, ex in sorted(entries, key=lambda e: e[0]):
+        full_name = ex["export"]
+        if ex["kind"] in ("class", "enum"):
+          typescriptDefinitionOutput += f"  export type {short_name} = {full_name};\n"
+        else:
+          typescriptDefinitionOutput += f"  export type {short_name} = {full_name};\n"
+      typescriptDefinitionOutput += "}\n\n"
+    # --- End namespace blocks ---
+
+    typescriptDefinitionOutput += \
       "\nexport type OpenCascadeInstance = {FS: typeof FS} & {\n  " + ";\n  ".join(map(lambda x: x["export"] + ": typeof " + x["export"] if x["kind"] in ("class", "enum") else x["export"] + ": " + x["export"], typescriptExports)) + ";\n" + \
       "};\n\n" + \
       "declare function init(): Promise<OpenCascadeInstance>;\n\n" + \

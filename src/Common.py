@@ -11,7 +11,11 @@ RAPIDJSON_ROOT = os.environ.get("RAPIDJSON_ROOT", "/rapidjson")
 FREETYPE_ROOT = os.environ.get("FREETYPE_ROOT", "/freetype")
 EMSDK_ROOT = os.environ.get("EMSDK", "/emsdk")
 USE_WASM_EXCEPTIONS = os.environ.get("OCJS_EXCEPTIONS", "0") == "1"
-WASM_EXCEPTION_FLAGS = ["-fwasm-exceptions"] if USE_WASM_EXCEPTIONS else []
+_EH_MODE = os.environ.get("OCJS_EH_MODE", "wasm")
+if USE_WASM_EXCEPTIONS:
+  WASM_EXCEPTION_FLAGS = ["-fexceptions"] if _EH_MODE == "js" else ["-fwasm-exceptions"]
+else:
+  WASM_EXCEPTION_FLAGS = []
 
 def _parse_extra_compile_flags():
   flags = []

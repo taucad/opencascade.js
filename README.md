@@ -45,9 +45,12 @@ cd ../opencascade.js
 # 4. Install Python build dependencies
 pip install -r requirements.txt
 
-# 5. Build WASM
-OCJS_LTO=0 ./build-wasm.sh full build-configs/full.yml
+# 5. Build WASM (use nohup — full builds take 10-30+ min)
+nohup env OCJS_LTO=0 ./build-wasm.sh full build-configs/full.yml > build.log 2>&1 &
+tail -f build.log
 ```
+
+> **Tip:** Full builds take 10-30+ minutes (longer with cold caches). Using `nohup` ensures the build continues if your terminal session disconnects. For link-only rebuilds (~1-2 min), `nohup` is optional.
 
 Output files appear alongside the YAML config: `opencascade_full.wasm`, `opencascade_full.js`, `opencascade_full.d.ts`.
 
@@ -126,7 +129,9 @@ Fewer symbols = smaller WASM binary. Each symbol adds ~15-25 KB.
 ## Build Commands
 
 ```bash
-./build-wasm.sh full <yaml>        # Full build with cache
+# Full build — always use nohup (10-30+ min)
+nohup env ./build-wasm.sh full <yaml> > build.log 2>&1 &
+
 ./build-wasm.sh link <yaml>        # Link only (fastest, reuses .o files)
 ./build-wasm.sh validate <yaml>    # Validate config without building
 ./build-wasm.sh cache-list         # List cached compilations

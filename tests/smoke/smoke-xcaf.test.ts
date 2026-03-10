@@ -18,11 +18,11 @@ describe.skipIf(!wasmExists)('Smoke: XCAF document tools', () => {
     const newShapeLabel = shapeTool.NewShape();
     shapeTool.SetShape(newShapeLabel, boxShape);
 
-    const color = new oc.Quantity_Color_3(1, 0, 0, oc.Quantity_TypeOfColor.Quantity_TOC_RGB as never);
-    colorTool.SetColor_5(boxShape, color, oc.XCAFDoc_ColorType.XCAFDoc_ColorGen as never);
+    const color = new oc.Quantity_Color_3(1, 0, 0, oc.Quantity_TypeOfColor.Quantity_TOC_RGB);
+    colorTool.SetColor_5(boxShape, color, oc.XCAFDoc_ColorType.XCAFDoc_ColorGen);
 
     const retrievedColor = new oc.Quantity_Color_1();
-    const hasColor = colorTool.GetColor_7(boxShape, oc.XCAFDoc_ColorType.XCAFDoc_ColorGen as never, retrievedColor);
+    const hasColor = colorTool.GetColor_7(boxShape, oc.XCAFDoc_ColorType.XCAFDoc_ColorGen, retrievedColor);
     expect(hasColor).toBe(true);
 
     doc.delete();

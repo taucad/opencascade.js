@@ -27,7 +27,7 @@ describe.skipIf(!wasmExists)('Smoke: BSpline and NURBS', () => {
       points,
       3, // DegMin
       8, // DegMax
-      oc.GeomAbs_Shape.GeomAbs_C2 as never,
+      oc.GeomAbs_Shape.GeomAbs_C2,
       1e-3,
     );
 
@@ -53,19 +53,22 @@ describe.skipIf(!wasmExists)('Smoke: BSpline and NURBS', () => {
     const oc = await getOC();
     if (!isExceptionsEnabled()) ctx.skip();
 
-    const hpoints = new oc.TColgp_HArray1OfPnt(1, 4, new oc.gp_Pnt());
-    const arr = hpoints.ChangeArray1();
-    arr.SetValue_1(1, new oc.gp_Pnt(0, 0, 0));
-    arr.SetValue_1(2, new oc.gp_Pnt(10, 10, 0));
-    arr.SetValue_1(3, new oc.gp_Pnt(20, 0, 0));
-    arr.SetValue_1(4, new oc.gp_Pnt(30, 10, 0));
+    const points = new oc.TColgp_Array1OfPnt_2(1, 4);
+    points.SetValue_1(1, new oc.gp_Pnt(0, 0, 0));
+    points.SetValue_1(2, new oc.gp_Pnt(10, 10, 0));
+    points.SetValue_1(3, new oc.gp_Pnt(20, 0, 0));
+    points.SetValue_1(4, new oc.gp_Pnt(30, 10, 0));
 
-    const interp = new oc.GeomAPI_Interpolate(hpoints as never, false, 1e-6);
-    interp.Perform();
+    const approx = new oc.GeomAPI_PointsToBSpline_2(
+      points,
+      3,
+      8,
+      oc.GeomAbs_Shape.GeomAbs_C2,
+      1e-3,
+    );
+    expect(approx.IsDone()).toBe(true);
 
-    expect(interp.IsDone()).toBe(true);
-
-    const curve = interp.Curve();
+    const curve = approx.Curve();
 
     const startPt = curve.StartPoint();
     expect(startPt.X()).toBe(0);
@@ -75,8 +78,8 @@ describe.skipIf(!wasmExists)('Smoke: BSpline and NURBS', () => {
     expect(endPt.X()).toBe(30);
     expect(endPt.Y()).toBe(10);
 
-    interp.delete();
-    hpoints.delete();
+    approx.delete();
+    points.delete();
   });
 
   it('should build BSpline curve into an edge and wire', async () => {
@@ -92,7 +95,7 @@ describe.skipIf(!wasmExists)('Smoke: BSpline and NURBS', () => {
       points,
       3,
       8,
-      oc.GeomAbs_Shape.GeomAbs_C2 as never,
+      oc.GeomAbs_Shape.GeomAbs_C2,
       1e-3,
     );
     expect(approx.IsDone()).toBe(true);
@@ -157,7 +160,7 @@ describe.skipIf(!wasmExists)('Smoke: BSpline and NURBS', () => {
       points,
       3,
       8,
-      oc.GeomAbs_Shape.GeomAbs_C2 as never,
+      oc.GeomAbs_Shape.GeomAbs_C2,
       1e-3,
     );
     const curve = approx.Curve();

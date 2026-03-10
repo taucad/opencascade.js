@@ -1,38 +1,36 @@
 import { expectTypeOf, it } from 'vitest';
 import type init from '../build-configs/opencascade_full';
+import type { gp, BRepPrimAPI, TopoDS as TopoDS_NS, TopAbs } from '../build-configs/opencascade_full';
 
 type OC = Awaited<ReturnType<typeof init>>;
 
-it('should return correct types for gp_Pnt methods', () => {
-  expectTypeOf<InstanceType<OC['gp_Pnt']>['X']>().returns.toBeNumber();
-  expectTypeOf<InstanceType<OC['gp_Pnt']>['Y']>().returns.toBeNumber();
-  expectTypeOf<InstanceType<OC['gp_Pnt']>['Z']>().returns.toBeNumber();
-  expectTypeOf<InstanceType<OC['gp_Pnt']>['Distance']>().returns.toBeNumber();
-  expectTypeOf<InstanceType<OC['gp_Pnt']>['IsEqual']>().returns.toBeBoolean();
+it('should return correct types for gp.Pnt methods', () => {
+  expectTypeOf<gp.Pnt['X']>().returns.toBeNumber();
+  expectTypeOf<gp.Pnt['Y']>().returns.toBeNumber();
+  expectTypeOf<gp.Pnt['Z']>().returns.toBeNumber();
+  expectTypeOf<gp.Pnt['Distance']>().returns.toBeNumber();
+  expectTypeOf<gp.Pnt['IsEqual']>().returns.toBeBoolean();
 });
 
-it('should return correct types for gp_Vec methods', () => {
-  expectTypeOf<InstanceType<OC['gp_Vec']>['X']>().returns.toBeNumber();
-  expectTypeOf<InstanceType<OC['gp_Vec']>['Magnitude']>().returns.toBeNumber();
+it('should return correct types for gp.Vec methods', () => {
+  expectTypeOf<gp.Vec['X']>().returns.toBeNumber();
+  expectTypeOf<gp.Vec['Magnitude']>().returns.toBeNumber();
 });
 
-it('should produce shape with expected properties for BRepPrimAPI_MakeBox', () => {
-  type MakeBox = InstanceType<OC['BRepPrimAPI_MakeBox']>;
-  expectTypeOf<MakeBox['Shape']>().returns.toHaveProperty('IsNull');
-  expectTypeOf<MakeBox['Shape']>().returns.toHaveProperty('delete');
+it('should produce shape with expected properties for BRepPrimAPI.MakeBox', () => {
+  expectTypeOf<BRepPrimAPI.MakeBox['Shape']>().returns.toHaveProperty('IsNull');
+  expectTypeOf<BRepPrimAPI.MakeBox['Shape']>().returns.toHaveProperty('delete');
 });
 
 it('should have delete method on all bound classes', () => {
-  expectTypeOf<InstanceType<OC['gp_Pnt']>>().toHaveProperty('delete');
-  expectTypeOf<InstanceType<OC['gp_Vec']>>().toHaveProperty('delete');
-  expectTypeOf<InstanceType<OC['TopoDS_Shape']>>().toHaveProperty('delete');
-  expectTypeOf<InstanceType<OC['BRepPrimAPI_MakeBox']>>().toHaveProperty('delete');
+  expectTypeOf<gp.Pnt>().toHaveProperty('delete');
+  expectTypeOf<gp.Vec>().toHaveProperty('delete');
+  expectTypeOf<TopoDS_NS.Shape>().toHaveProperty('delete');
+  expectTypeOf<BRepPrimAPI.MakeBox>().toHaveProperty('delete');
 });
 
 it('should have members with numeric literal types for enum lookup objects', () => {
-  expectTypeOf<OC['TopAbs_ShapeEnum']>().toBeObject();
-  expectTypeOf<OC['TopAbs_ShapeEnum']['TopAbs_FACE']>().toBeNumber();
-  expectTypeOf<OC['TopAbs_ShapeEnum']['TopAbs_EDGE']>().toBeNumber();
+  expectTypeOf<TopAbs.ShapeEnum>().toBeNumber();
 });
 
 it('should resolve NCollection_Vec types to fixed-length tuples not number[]', () => {

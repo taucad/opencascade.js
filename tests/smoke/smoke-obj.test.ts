@@ -14,14 +14,8 @@ describe.skipIf(!wasmExists)('Smoke: RWObj_CafWriter OBJ export', () => {
     new oc.BRepMesh_IncrementalMesh(shape, 0.1, false, 0.1, false);
 
     const objPath = '/test.obj';
-    const cafWriter = new oc.RWObj_CafWriter(
-      new oc.TCollection_AsciiString_3(objPath),
-    );
-    cafWriter.Perform(
-      doc,
-      new oc.TColStd_IndexedDataMapOfStringString(),
-      new oc.Message_ProgressRange(),
-    );
+    const cafWriter = new oc.RWObj_CafWriter(new oc.TCollection_AsciiString_3(objPath));
+    cafWriter.Perform(doc, new oc.TColStd_IndexedDataMapOfStringString(), new oc.Message_ProgressRange());
 
     const fileData = oc.FS.readFile(objPath, { encoding: 'utf8' }) as string;
     expect(fileData.length).toBeGreaterThan(100);

@@ -13,6 +13,7 @@ import { NodeIO } from '@gltf-transform/core';
 import type { InspectReport } from '@gltf-transform/functions';
 import { inspect } from '@gltf-transform/functions';
 import { expect } from 'vitest';
+import type { TopoDS_Shape } from '../../build-configs/opencascade_full.js';
 import { getOC } from './helpers.js';
 
 // =============================================================================
@@ -49,20 +50,22 @@ export type GeometryStats = {
  * 4. Read the GLB bytes from the Emscripten virtual filesystem
  */
 export async function shapeToGlb(
-  shape: { IsNull: () => boolean },
+  shape: TopoDS_Shape,
   options?: { linearDeflection?: number; angularDeflection?: number },
 ): Promise<Uint8Array> {
   const oc = await getOC();
   const linearDeflection = options?.linearDeflection ?? 0.1;
   const angularDeflection = options?.angularDeflection ?? 0.5;
 
-  const doc = new oc.TDocStd_Document(new oc.TCollection_ExtendedString_1());
-  const shapeTool = oc.XCAFDoc_DocumentTool.ShapeTool(doc.Main());
+  const docName = new oc.TCollection_ExtendedString_1();
+  const doc = new oc.TDocStd_Document(docName);
+  const mainLabel = doc.Main();
+  const shapeTool = oc.XCAFDoc_DocumentTool.ShapeTool(mainLabel);
   const label = shapeTool.NewShape();
-  shapeTool.SetShape(label, shape as never);
+  shapeTool.SetShape(label, shape);
 
-  new oc.BRepMesh_IncrementalMesh(
-    shape as never,
+  const mesh = new oc.BRepMesh_IncrementalMesh(
+    shape,
     linearDeflection,
     false,
     angularDeflection,
@@ -70,21 +73,25 @@ export async function shapeToGlb(
   );
 
   const glbPath = '/tmp/_smoke_test_export.glb';
-  const writer = new oc.RWGltf_CafWriter(
-    new oc.TCollection_AsciiString_3(glbPath),
-    true,
-  );
-  writer.Perform(
-    doc,
-    new oc.TColStd_IndexedDataMapOfStringString(),
-    new oc.Message_ProgressRange(),
-  );
+  const asciiPath = new oc.TCollection_AsciiString_3(glbPath);
+  const writer = new oc.RWGltf_CafWriter(asciiPath, true);
+  const metadata = new oc.TColStd_IndexedDataMapOfStringString();
+  const progress = new oc.Message_ProgressRange();
+  writer.Perform(doc, metadata, progress);
 
   const data = oc.FS.readFile(glbPath) as Uint8Array;
   oc.FS.unlink(glbPath);
 
+  progress.delete();
+  metadata.delete();
   writer.delete();
+  asciiPath.delete();
+  mesh.delete();
+  label.delete();
+  shapeTool.delete();
+  mainLabel.delete();
   doc.delete();
+  docName.delete();
 
   return data;
 }
@@ -140,7 +147,7 @@ export async function analyzeGlb(glbData: Uint8Array): Promise<GeometryStats> {
  * Export shape to GLB and analyze it in one step.
  */
 export async function analyzeShape(
-  shape: { IsNull: () => boolean },
+  shape: TopoDS_Shape,
   options?: { linearDeflection?: number; angularDeflection?: number },
 ): Promise<GeometryStats> {
   const glbData = await shapeToGlb(shape, options);
@@ -256,7 +263,7 @@ export async function expectMinVertexCount(
  * Full geometry assertion: export shape to GLB and validate dimensions.
  */
 export async function expectShapeGeometry(
-  shape: { IsNull: () => boolean },
+  shape: TopoDS_Shape,
   expected: {
     size: Vec3;
     center?: Vec3;

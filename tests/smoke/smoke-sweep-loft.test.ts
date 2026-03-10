@@ -21,17 +21,17 @@ describe.skipIf(!wasmExists)('Smoke: Sweep and loft', () => {
     const spineEdge = new oc.BRepBuilderAPI_MakeEdge_3(p1, p2);
     const spineWire = new oc.BRepBuilderAPI_MakeWire_2(spineEdge.Edge());
 
-    const ax = new oc.gp_Ax2_4(
-      new oc.gp_Pnt(0, 0, 0),
-      new oc.gp_Dir_5(0, 0, 1),
-    );
+    const axOrigin = new oc.gp_Pnt(0, 0, 0);
+    const axDir = new oc.gp_Dir_5(0, 0, 1);
+    const ax = new oc.gp_Ax2_4(axOrigin, axDir);
     const circle = new oc.Geom_Circle(ax, 5);
     const profileEdge = new oc.BRepBuilderAPI_MakeEdge_24(circle);
     const profileWire = new oc.BRepBuilderAPI_MakeWire_2(profileEdge.Edge());
 
     const pipeShell = new oc.BRepOffsetAPI_MakePipeShell(spineWire.Wire());
     pipeShell.Add(profileWire.Wire(), false, false);
-    pipeShell.Build(new oc.Message_ProgressRange());
+    const progress = new oc.Message_ProgressRange();
+    pipeShell.Build(progress);
     pipeShell.MakeSolid();
 
     const shape = pipeShell.Shape();
@@ -45,10 +45,13 @@ describe.skipIf(!wasmExists)('Smoke: Sweep and loft', () => {
     });
 
     pipeShell.delete();
+    progress.delete();
     profileWire.delete();
     profileEdge.delete();
     circle.delete();
     ax.delete();
+    axDir.delete();
+    axOrigin.delete();
     spineWire.delete();
     spineEdge.delete();
     p2.delete();
@@ -64,22 +67,23 @@ describe.skipIf(!wasmExists)('Smoke: Sweep and loft', () => {
       { z: 30, radius: 8 },
     ];
 
-    const wires: Array<{ wire: ReturnType<typeof oc.BRepBuilderAPI_MakeWire_2.prototype.Wire> }> = [];
+    const wireMakers: ReturnType<typeof oc.BRepBuilderAPI_MakeWire_2>[] = [];
+    const toDelete: Array<{ delete: () => void }> = [];
 
     for (const { z, radius } of profiles) {
-      const ax = new oc.gp_Ax2_4(
-        new oc.gp_Pnt(0, 0, z),
-        new oc.gp_Dir_5(0, 0, 1),
-      );
+      const center = new oc.gp_Pnt(0, 0, z);
+      const dir = new oc.gp_Dir_5(0, 0, 1);
+      const ax = new oc.gp_Ax2_4(center, dir);
       const circle = new oc.Geom_Circle(ax, radius);
       const edge = new oc.BRepBuilderAPI_MakeEdge_24(circle);
       const wireMaker = new oc.BRepBuilderAPI_MakeWire_2(edge.Edge());
-      wires.push({ wire: wireMaker.Wire() });
+      wireMakers.push(wireMaker);
+      toDelete.push(wireMaker, edge, circle, ax, dir, center);
     }
 
     const loft = new oc.BRepOffsetAPI_ThruSections(true, false, 1e-6);
-    for (const { wire } of wires) {
-      loft.AddWire(wire);
+    for (const wm of wireMakers) {
+      loft.AddWire(wm.Wire());
     }
     loft.CheckCompatibility(false);
 
@@ -93,6 +97,7 @@ describe.skipIf(!wasmExists)('Smoke: Sweep and loft', () => {
     });
 
     loft.delete();
+    for (const obj of toDelete) obj.delete();
   });
 
   it('should create a constrained surface patch from 4 edges with MakeFilling', async () => {
@@ -103,10 +108,14 @@ describe.skipIf(!wasmExists)('Smoke: Sweep and loft', () => {
     const p3 = new oc.gp_Pnt(10, 10, 0);
     const p4 = new oc.gp_Pnt(0, 10, 0);
 
-    const e1 = new oc.BRepBuilderAPI_MakeEdge_3(p1, p2).Edge();
-    const e2 = new oc.BRepBuilderAPI_MakeEdge_3(p2, p3).Edge();
-    const e3 = new oc.BRepBuilderAPI_MakeEdge_3(p3, p4).Edge();
-    const e4 = new oc.BRepBuilderAPI_MakeEdge_3(p4, p1).Edge();
+    const em1 = new oc.BRepBuilderAPI_MakeEdge_3(p1, p2);
+    const em2 = new oc.BRepBuilderAPI_MakeEdge_3(p2, p3);
+    const em3 = new oc.BRepBuilderAPI_MakeEdge_3(p3, p4);
+    const em4 = new oc.BRepBuilderAPI_MakeEdge_3(p4, p1);
+    const e1 = em1.Edge();
+    const e2 = em2.Edge();
+    const e3 = em3.Edge();
+    const e4 = em4.Edge();
 
     const filling = new oc.BRepOffsetAPI_MakeFilling(
       3, // Degree
@@ -121,18 +130,24 @@ describe.skipIf(!wasmExists)('Smoke: Sweep and loft', () => {
       9, // MaxSegments
     );
 
-    filling.Add_1(e1, oc.GeomAbs_Shape.GeomAbs_C0 as never, true);
-    filling.Add_1(e2, oc.GeomAbs_Shape.GeomAbs_C0 as never, true);
-    filling.Add_1(e3, oc.GeomAbs_Shape.GeomAbs_C0 as never, true);
-    filling.Add_1(e4, oc.GeomAbs_Shape.GeomAbs_C0 as never, true);
+    filling.Add_1(e1, oc.GeomAbs_Shape.GeomAbs_C0, true);
+    filling.Add_1(e2, oc.GeomAbs_Shape.GeomAbs_C0, true);
+    filling.Add_1(e3, oc.GeomAbs_Shape.GeomAbs_C0, true);
+    filling.Add_1(e4, oc.GeomAbs_Shape.GeomAbs_C0, true);
 
-    filling.Build(new oc.Message_ProgressRange());
+    const progress = new oc.Message_ProgressRange();
+    filling.Build(progress);
     expect(filling.IsDone()).toBe(true);
 
     const shape = filling.Shape();
     expect(shape.IsNull()).toBe(false);
 
     filling.delete();
+    progress.delete();
+    em4.delete();
+    em3.delete();
+    em2.delete();
+    em1.delete();
     p4.delete();
     p3.delete();
     p2.delete();
@@ -146,15 +161,16 @@ describe.skipIf(!wasmExists)('Smoke: Sweep and loft', () => {
     const p2 = new oc.gp_Pnt(10, -5, 0);
     const p3 = new oc.gp_Pnt(10, 5, 0);
     const p4 = new oc.gp_Pnt(-10, 5, 0);
-    const rectWire = new oc.BRepBuilderAPI_MakePolygon_4(p1, p2, p3, p4, true).Wire();
+    const rectPoly = new oc.BRepBuilderAPI_MakePolygon_4(p1, p2, p3, p4, true);
+    const rectWire = rectPoly.Wire();
 
-    const ax = new oc.gp_Ax2_4(
-      new oc.gp_Pnt(0, 0, 20),
-      new oc.gp_Dir_5(0, 0, 1),
-    );
+    const axCenter = new oc.gp_Pnt(0, 0, 20);
+    const axDir = new oc.gp_Dir_5(0, 0, 1);
+    const ax = new oc.gp_Ax2_4(axCenter, axDir);
     const circle = new oc.Geom_Circle(ax, 8);
     const circEdge = new oc.BRepBuilderAPI_MakeEdge_24(circle);
-    const circWire = new oc.BRepBuilderAPI_MakeWire_2(circEdge.Edge()).Wire();
+    const circWireMaker = new oc.BRepBuilderAPI_MakeWire_2(circEdge.Edge());
+    const circWire = circWireMaker.Wire();
 
     const loft = new oc.BRepOffsetAPI_ThruSections(true, false, 1e-6);
     loft.AddWire(rectWire);
@@ -170,6 +186,13 @@ describe.skipIf(!wasmExists)('Smoke: Sweep and loft', () => {
     });
 
     loft.delete();
+    circWireMaker.delete();
+    circEdge.delete();
+    circle.delete();
+    ax.delete();
+    axDir.delete();
+    axCenter.delete();
+    rectPoly.delete();
     p4.delete();
     p3.delete();
     p2.delete();
