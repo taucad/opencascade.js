@@ -1,9 +1,11 @@
-import { describe, it, expect } from 'vitest';
-import { getOC, wasmExists } from './helpers.js';
+import { describe, it, expect, beforeAll } from 'vitest';
+import { initOC, getOC, wasmExists } from './helpers.js';
 
 describe.skipIf(!wasmExists)('Smoke: IGESControl Writer and Reader', () => {
-  it('should write box to IGES and read back with shape verification', async () => {
-    const oc = await getOC();
+  beforeAll(async () => { await initOC(); });
+
+  it('should write box to IGES and read back with shape verification', () => {
+    const oc = getOC();
     const box = new oc.BRepPrimAPI_MakeBox_2(10, 20, 30);
     const shape = box.Shape();
 

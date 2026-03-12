@@ -1,9 +1,11 @@
-import { describe, it, expect } from 'vitest';
-import { getOC, wasmExists } from './helpers.js';
+import { describe, it, expect, beforeAll } from 'vitest';
+import { initOC, getOC, wasmExists } from './helpers.js';
 
 describe.skipIf(!wasmExists)('Smoke: Shape healing', () => {
-  it('should fix a valid shape without error with ShapeFix_Shape', async () => {
-    const oc = await getOC();
+  beforeAll(async () => { await initOC(); });
+
+  it('should fix a valid shape without error with ShapeFix_Shape', () => {
+    const oc = getOC();
     const box = new oc.BRepPrimAPI_MakeBox_2(10, 20, 30);
     const shape = box.Shape();
 
@@ -29,8 +31,8 @@ describe.skipIf(!wasmExists)('Smoke: Shape healing', () => {
     box.delete();
   });
 
-  it('should fix a wire and preserve topology with ShapeFix_Wire', async () => {
-    const oc = await getOC();
+  it('should fix a wire and preserve topology with ShapeFix_Wire', () => {
+    const oc = getOC();
     const p1 = new oc.gp_Pnt(0, 0, 0);
     const p2 = new oc.gp_Pnt(10, 0, 0);
     const p3 = new oc.gp_Pnt(10, 10, 0);

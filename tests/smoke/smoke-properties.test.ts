@@ -7,14 +7,15 @@
  * - Validating dimensions via GProp_GProps
  * - GLB export with geometry dimension validation
  */
-import { describe, it, expect } from 'vitest';
-import { getOC, wasmExists } from './helpers.js';
+import { describe, it, expect, beforeAll } from 'vitest';
+import { initOC, getOC, wasmExists } from './helpers.js';
 import { expectShapeGeometry } from './geometry-helpers.js';
 
 describe.skipIf(!wasmExists)('Smoke: Geometric properties', () => {
-  it('should compute volume of a 10x20x30 box with BRepGProp', async () => {
-    const oc = await getOC();
+  beforeAll(async () => { await initOC(); });
 
+  it('should compute volume of a 10x20x30 box with BRepGProp', () => {
+    const oc = getOC();
     const box = new oc.BRepPrimAPI_MakeBox_2(10, 20, 30);
     const shape = box.Shape();
 
@@ -33,9 +34,8 @@ describe.skipIf(!wasmExists)('Smoke: Geometric properties', () => {
     box.delete();
   });
 
-  it('should compute surface area of a 10x20x30 box with BRepGProp', async () => {
-    const oc = await getOC();
-
+  it('should compute surface area of a 10x20x30 box with BRepGProp', () => {
+    const oc = getOC();
     const box = new oc.BRepPrimAPI_MakeBox_2(10, 20, 30);
     const shape = box.Shape();
 
@@ -50,8 +50,8 @@ describe.skipIf(!wasmExists)('Smoke: Geometric properties', () => {
     box.delete();
   });
 
-  it('should compute volume of a sphere with BRepGProp', async () => {
-    const oc = await getOC();
+  it('should compute volume of a sphere with BRepGProp', () => {
+    const oc = getOC();
     const radius = 10;
 
     const sphere = new oc.BRepPrimAPI_MakeSphere_1(radius);
@@ -73,9 +73,8 @@ describe.skipIf(!wasmExists)('Smoke: Geometric properties', () => {
     sphere.delete();
   });
 
-  it('should compute linear properties on a box wire segment with BRepGProp', async () => {
-    const oc = await getOC();
-
+  it('should compute linear properties on a box wire segment with BRepGProp', () => {
+    const oc = getOC();
     const p1 = new oc.gp_Pnt(0, 0, 0);
     const p2 = new oc.gp_Pnt(10, 0, 0);
     const edge = new oc.BRepBuilderAPI_MakeEdge_3(p1, p2);
@@ -92,9 +91,8 @@ describe.skipIf(!wasmExists)('Smoke: Geometric properties', () => {
     p1.delete();
   });
 
-  it('should compute bounding box for a box shape with Bnd_Box', async () => {
-    const oc = await getOC();
-
+  it('should compute bounding box for a box shape with Bnd_Box', () => {
+    const oc = getOC();
     const box = new oc.BRepPrimAPI_MakeBox_2(10, 20, 30);
     const shape = box.Shape();
 
@@ -121,9 +119,8 @@ describe.skipIf(!wasmExists)('Smoke: Geometric properties', () => {
     box.delete();
   });
 
-  it('should check point containment with Bnd_Box', async () => {
-    const oc = await getOC();
-
+  it('should check point containment with Bnd_Box', () => {
+    const oc = getOC();
     const box = new oc.BRepPrimAPI_MakeBox_2(10, 10, 10);
     const shape = box.Shape();
 
@@ -143,8 +140,7 @@ describe.skipIf(!wasmExists)('Smoke: Geometric properties', () => {
   });
 
   it('should validate box dimensions in GLB export via gltf-transform', async () => {
-    const oc = await getOC();
-
+    const oc = getOC();
     const box = new oc.BRepPrimAPI_MakeBox_2(25, 15, 10);
     const shape = box.Shape();
 
@@ -158,8 +154,7 @@ describe.skipIf(!wasmExists)('Smoke: Geometric properties', () => {
   });
 
   it('should validate sphere dimensions in GLB export via gltf-transform', async () => {
-    const oc = await getOC();
-
+    const oc = getOC();
     const sphere = new oc.BRepPrimAPI_MakeSphere_1(8);
     const shape = sphere.Shape();
 
@@ -173,8 +168,7 @@ describe.skipIf(!wasmExists)('Smoke: Geometric properties', () => {
   });
 
   it('should validate cylinder dimensions in GLB export via gltf-transform', async () => {
-    const oc = await getOC();
-
+    const oc = getOC();
     const cyl = new oc.BRepPrimAPI_MakeCylinder_1(5, 20);
     const shape = cyl.Shape();
 

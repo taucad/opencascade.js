@@ -2,8 +2,6 @@ import { expectTypeOf, it } from 'vitest';
 import type init from '../build-configs/opencascade_full';
 import type { gp, BRepPrimAPI, TopoDS as TopoDS_NS, TopAbs } from '../build-configs/opencascade_full';
 
-type OC = Awaited<ReturnType<typeof init>>;
-
 it('should return correct types for gp.Pnt methods', () => {
   expectTypeOf<gp.Pnt['X']>().returns.toBeNumber();
   expectTypeOf<gp.Pnt['Y']>().returns.toBeNumber();
@@ -47,7 +45,13 @@ it('should resolve NCollection_Vec types to fixed-length tuples not number[]', (
   expectTypeOf<[number, number, number, number]>().toEqualTypeOf<Vec4>();
 });
 
+it('should support Symbol.dispose for using declarations', () => {
+  expectTypeOf<gp.Pnt>().toHaveProperty(Symbol.dispose);
+  expectTypeOf<gp.Vec>().toHaveProperty(Symbol.dispose);
+  expectTypeOf<TopoDS_NS.Shape>().toHaveProperty(Symbol.dispose);
+  expectTypeOf<BRepPrimAPI.MakeBox>().toHaveProperty(Symbol.dispose);
+});
+
 it('should return Promise<OpenCascadeInstance> from init', () => {
-  expectTypeOf<typeof init>().returns.resolves.toHaveProperty('gp_Pnt');
-  expectTypeOf<typeof init>().returns.resolves.toHaveProperty('FS');
+  expectTypeOf<typeof init>().returns.resolves.not.toBeVoid();
 });

@@ -1,8 +1,10 @@
 import { expectTypeOf, it } from 'vitest';
-import type init from '../build-configs/opencascade_full';
 import type {
   gp,
+  gp_Pnt,
+  gp_Vec,
   BRepPrimAPI,
+  BRepPrimAPI_MakeBox,
   BRepBuilderAPI,
   BRepAlgoAPI,
   TopAbs,
@@ -36,8 +38,6 @@ import type {
   FairCurve,
   Standard,
 } from '../build-configs/opencascade_full';
-
-type OC = Awaited<ReturnType<typeof init>>;
 
 it('should expose gp namespace with geometry types', () => {
   expectTypeOf<gp.Pnt>().toHaveProperty('X');
@@ -169,9 +169,9 @@ it('should expose FairCurve namespace', () => {
 });
 
 it('namespace types should be identical to flat types', () => {
-  expectTypeOf<gp.Pnt>().toEqualTypeOf<InstanceType<OC['gp_Pnt']>>();
-  expectTypeOf<gp.Vec>().toEqualTypeOf<InstanceType<OC['gp_Vec']>>();
-  expectTypeOf<BRepPrimAPI.MakeBox>().toEqualTypeOf<InstanceType<OC['BRepPrimAPI_MakeBox']>>();
+  expectTypeOf<gp.Pnt>().toEqualTypeOf<InstanceType<typeof gp_Pnt>>();
+  expectTypeOf<gp.Vec>().toEqualTypeOf<InstanceType<typeof gp_Vec>>();
+  expectTypeOf<BRepPrimAPI.MakeBox>().toEqualTypeOf<InstanceType<typeof BRepPrimAPI_MakeBox>>();
   expectTypeOf<TopAbs.ShapeEnum>().toEqualTypeOf<TopAbs_ShapeEnum>();
 });
 

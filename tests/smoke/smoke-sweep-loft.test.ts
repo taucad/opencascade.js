@@ -8,14 +8,15 @@
  * - Pipe sweep with different cross-sections along a path
  * - Geometry validation of swept shapes via GLB export
  */
-import { describe, it, expect } from 'vitest';
-import { getOC, wasmExists } from './helpers.js';
+import { describe, it, expect, beforeAll } from 'vitest';
+import { initOC, getOC, wasmExists } from './helpers.js';
 import { expectShapeGeometry } from './geometry-helpers.js';
 
 describe.skipIf(!wasmExists)('Smoke: Sweep and loft', () => {
-  it('should sweep a circle along a straight spine with MakePipeShell', async () => {
-    const oc = await getOC();
+  beforeAll(async () => { await initOC(); });
 
+  it('should sweep a circle along a straight spine with MakePipeShell', async () => {
+    const oc = getOC();
     const p1 = new oc.gp_Pnt(0, 0, 0);
     const p2 = new oc.gp_Pnt(0, 0, 30);
     const spineEdge = new oc.BRepBuilderAPI_MakeEdge_3(p1, p2);
@@ -59,8 +60,7 @@ describe.skipIf(!wasmExists)('Smoke: Sweep and loft', () => {
   });
 
   it('should loft 3 circles of different radii with ThruSections', async () => {
-    const oc = await getOC();
-
+    const oc = getOC();
     const profiles = [
       { z: 0, radius: 10 },
       { z: 15, radius: 5 },
@@ -100,9 +100,8 @@ describe.skipIf(!wasmExists)('Smoke: Sweep and loft', () => {
     for (const obj of toDelete) obj.delete();
   });
 
-  it('should create a constrained surface patch from 4 edges with MakeFilling', async () => {
-    const oc = await getOC();
-
+  it('should create a constrained surface patch from 4 edges with MakeFilling', () => {
+    const oc = getOC();
     const p1 = new oc.gp_Pnt(0, 0, 0);
     const p2 = new oc.gp_Pnt(10, 0, 0);
     const p3 = new oc.gp_Pnt(10, 10, 0);
@@ -155,8 +154,7 @@ describe.skipIf(!wasmExists)('Smoke: Sweep and loft', () => {
   });
 
   it('should loft from rectangle to circle with ThruSections', async () => {
-    const oc = await getOC();
-
+    const oc = getOC();
     const p1 = new oc.gp_Pnt(-10, -5, 0);
     const p2 = new oc.gp_Pnt(10, -5, 0);
     const p3 = new oc.gp_Pnt(10, 5, 0);

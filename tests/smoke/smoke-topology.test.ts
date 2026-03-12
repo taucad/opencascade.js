@@ -1,9 +1,11 @@
-import { describe, it, expect } from 'vitest';
-import { getOC, wasmExists } from './helpers.js';
+import { describe, it, expect, beforeAll } from 'vitest';
+import { initOC, getOC, wasmExists } from './helpers.js';
 
 describe.skipIf(!wasmExists)('Smoke: Topology', () => {
-  it('should count 6 faces, 24 edges, and 8 vertices on box with TopExp_Explorer', async () => {
-    const oc = await getOC();
+  beforeAll(async () => { await initOC(); });
+
+  it('should count 6 faces, 24 edges, and 8 vertices on box with TopExp_Explorer', () => {
+    const oc = getOC();
     const box = new oc.BRepPrimAPI_MakeBox_2(10, 10, 10);
     const shape = box.Shape();
 
@@ -47,8 +49,8 @@ describe.skipIf(!wasmExists)('Smoke: Topology', () => {
     vertexExplorer.delete();
   });
 
-  it('should build compound from box with BRep_Builder and TopoDS_Compound', async () => {
-    const oc = await getOC();
+  it('should build compound from box with BRep_Builder and TopoDS_Compound', () => {
+    const oc = getOC();
     const box = new oc.BRepPrimAPI_MakeBox_2(10, 10, 10);
     const builder = new oc.BRep_Builder();
     const compound = new oc.TopoDS_Compound();
@@ -61,8 +63,8 @@ describe.skipIf(!wasmExists)('Smoke: Topology', () => {
     compound.delete();
   });
 
-  it('should convert explorer Current to Face/Edge/Vertex with TopoDS cast functions', async () => {
-    const oc = await getOC();
+  it('should convert explorer Current to Face/Edge/Vertex with TopoDS cast functions', () => {
+    const oc = getOC();
     const box = new oc.BRepPrimAPI_MakeBox_2(10, 10, 10);
     const shape = box.Shape();
 

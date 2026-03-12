@@ -1,9 +1,11 @@
-import { describe, it, expect } from 'vitest';
-import { getOC, wasmExists } from './helpers.js';
+import { describe, it, expect, beforeAll } from 'vitest';
+import { initOC, getOC, wasmExists } from './helpers.js';
 
 describe.skipIf(!wasmExists)('Smoke: RWGltf_CafWriter GLB export', () => {
-  it('should export box to GLB via XCAF document', async () => {
-    const oc = await getOC();
+  beforeAll(async () => { await initOC(); });
+
+  it('should export box to GLB via XCAF document', () => {
+    const oc = getOC();
     const box = new oc.BRepPrimAPI_MakeBox_2(10, 20, 30);
     const shape = box.Shape();
 

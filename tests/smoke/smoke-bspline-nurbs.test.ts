@@ -8,14 +8,15 @@
  * - Evaluating curve points, degree, and knot counts
  * - Creating BSpline-based edges, wires, and faces
  */
-import { describe, it, expect } from 'vitest';
-import { getOC, wasmExists, isExceptionsEnabled } from './helpers.js';
+import { describe, it, expect, beforeAll } from 'vitest';
+import { initOC, getOC, wasmExists, isExceptionsEnabled } from './helpers.js';
 import { expectShapeGeometry } from './geometry-helpers.js';
 
 describe.skipIf(!wasmExists)('Smoke: BSpline and NURBS', () => {
-  it('should approximate a curve through control points with GeomAPI_PointsToBSpline', async () => {
-    const oc = await getOC();
+  beforeAll(async () => { await initOC(); });
 
+  it('should approximate a curve through control points with GeomAPI_PointsToBSpline', () => {
+    const oc = getOC();
     const points = new oc.TColgp_Array1OfPnt_2(1, 5);
     points.SetValue_1(1, new oc.gp_Pnt(0, 0, 0));
     points.SetValue_1(2, new oc.gp_Pnt(5, 5, 0));
@@ -49,10 +50,10 @@ describe.skipIf(!wasmExists)('Smoke: BSpline and NURBS', () => {
     points.delete();
   });
 
-  it('should create curve passing exactly through given points with GeomAPI_Interpolate', async (ctx) => {
-    const oc = await getOC();
+  it('should create curve passing exactly through given points with GeomAPI_Interpolate', (ctx) => {
     if (!isExceptionsEnabled()) ctx.skip();
 
+    const oc = getOC();
     const points = new oc.TColgp_Array1OfPnt_2(1, 4);
     points.SetValue_1(1, new oc.gp_Pnt(0, 0, 0));
     points.SetValue_1(2, new oc.gp_Pnt(10, 10, 0));
@@ -82,9 +83,8 @@ describe.skipIf(!wasmExists)('Smoke: BSpline and NURBS', () => {
     points.delete();
   });
 
-  it('should build BSpline curve into an edge and wire', async () => {
-    const oc = await getOC();
-
+  it('should build BSpline curve into an edge and wire', () => {
+    const oc = getOC();
     const points = new oc.TColgp_Array1OfPnt_2(1, 4);
     points.SetValue_1(1, new oc.gp_Pnt(0, 0, 0));
     points.SetValue_1(2, new oc.gp_Pnt(10, 15, 0));
@@ -116,9 +116,8 @@ describe.skipIf(!wasmExists)('Smoke: BSpline and NURBS', () => {
     points.delete();
   });
 
-  it('should create a cubic Bezier from 4 poles with Geom_BezierCurve', async () => {
-    const oc = await getOC();
-
+  it('should create a cubic Bezier from 4 poles with Geom_BezierCurve', () => {
+    const oc = getOC();
     const poles = new oc.TColgp_Array1OfPnt_2(1, 4);
     poles.SetValue_1(1, new oc.gp_Pnt(0, 0, 0));
     poles.SetValue_1(2, new oc.gp_Pnt(5, 15, 0));
@@ -148,8 +147,7 @@ describe.skipIf(!wasmExists)('Smoke: BSpline and NURBS', () => {
   });
 
   it('should produce valid geometry when extruding BSpline curve into a surface', async () => {
-    const oc = await getOC();
-
+    const oc = getOC();
     const points = new oc.TColgp_Array1OfPnt_2(1, 4);
     points.SetValue_1(1, new oc.gp_Pnt(0, 0, 0));
     points.SetValue_1(2, new oc.gp_Pnt(10, 5, 0));

@@ -1,9 +1,11 @@
-import { describe, it, expect } from 'vitest';
-import { getOC, wasmExists } from './helpers.js';
+import { describe, it, expect, beforeAll } from 'vitest';
+import { initOC, getOC, wasmExists } from './helpers.js';
 
 describe.skipIf(!wasmExists)('Smoke: Data exchange (STEP, STL)', () => {
-  it('should transfer a shape successfully with STEPControl_Writer', async () => {
-    const oc = await getOC();
+  beforeAll(async () => { await initOC(); });
+
+  it('should transfer a shape successfully with STEPControl_Writer', () => {
+    const oc = getOC();
     const box = new oc.BRepPrimAPI_MakeBox_2(10, 20, 30);
     const shape = box.Shape();
     expect(shape.IsNull()).toBe(false);
@@ -25,9 +27,8 @@ describe.skipIf(!wasmExists)('Smoke: Data exchange (STEP, STL)', () => {
     box.delete();
   });
 
-  it('should read and transfer shapes from STEP data with STEPControl_Reader', async () => {
-    const oc = await getOC();
-
+  it('should read and transfer shapes from STEP data with STEPControl_Reader', () => {
+    const oc = getOC();
     const stepContent = [
       'ISO-10303-21;',
       'HEADER;',
@@ -53,8 +54,8 @@ describe.skipIf(!wasmExists)('Smoke: Data exchange (STEP, STL)', () => {
     reader.delete();
   });
 
-  it('should mesh shape and write STL via FS with BRepMesh_IncrementalMesh', async () => {
-    const oc = await getOC();
+  it('should mesh shape and write STL via FS with BRepMesh_IncrementalMesh', () => {
+    const oc = getOC();
     const box = new oc.BRepPrimAPI_MakeBox_2(5, 5, 5);
     const shape = box.Shape();
 

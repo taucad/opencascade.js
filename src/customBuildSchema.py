@@ -26,8 +26,8 @@
         "default": [
           "-flto",
           "-O3",
-          "-sEXPORT_ES6=1",
           "-sMODULARIZE",
+          "-sEXPORT_ES6=1",
           "-sEXPORTED_RUNTIME_METHODS=['FS']",
           "-sINITIAL_MEMORY=100MB",
           "-sMAXIMUM_MEMORY=4GB",
@@ -83,8 +83,8 @@
         "default": [
           "-flto",
           "-O3",
-          "-sEXPORT_ES6=1",
           "-sMODULARIZE",
+          "-sEXPORT_ES6=1",
           "-sEXPORTED_RUNTIME_METHODS=['FS']",
           "-sINITIAL_MEMORY=100MB",
           "-sMAXIMUM_MEMORY=4GB",

@@ -1,10 +1,12 @@
-import { describe, it, expect } from 'vitest';
-import { getOC, wasmExists, isExceptionsEnabled } from './helpers.js';
+import { describe, it, expect, beforeAll } from 'vitest';
+import { initOC, getOC, wasmExists, isExceptionsEnabled } from './helpers.js';
 import { expectShapeGeometry } from './geometry-helpers.js';
 
 describe.skipIf(!wasmExists)('Smoke: Advanced modeling', () => {
+  beforeAll(async () => { await initOC(); });
+
   it('should shell a box preserving outer dimensions with MakeThickSolid', async () => {
-    const oc = await getOC();
+    const oc = getOC();
     const box = new oc.BRepPrimAPI_MakeBox_2(20, 20, 20);
     const boxShape = box.Shape();
 
@@ -48,8 +50,7 @@ describe.skipIf(!wasmExists)('Smoke: Advanced modeling', () => {
   });
 
   it('should produce loft with correct height and max diameter via ThruSections', async () => {
-    const oc = await getOC();
-
+    const oc = getOC();
     const ax1 = new oc.gp_Ax2_4(new oc.gp_Pnt(0, 0, 0), new oc.gp_Dir_5(0, 0, 1));
     const ax2 = new oc.gp_Ax2_4(new oc.gp_Pnt(0, 0, 10), new oc.gp_Dir_5(0, 0, 1));
 
@@ -87,9 +88,9 @@ describe.skipIf(!wasmExists)('Smoke: Advanced modeling', () => {
   });
 
   it('should produce pipe sweep with correct dimensions via MakePipe', async (ctx) => {
-    const oc = await getOC();
     if (!isExceptionsEnabled()) ctx.skip();
 
+    const oc = getOC();
     const p1 = new oc.gp_Pnt(0, 0, 0);
     const p2 = new oc.gp_Pnt(10, 0, 0);
     const lineEdge = new oc.BRepBuilderAPI_MakeEdge_3(p1, p2);

@@ -4454,8 +4454,8 @@ mainBuild:
   - symbol: math_Uzawa
   - symbol: math_ValueAndWeight
   emccFlags:
-  - -sEXPORT_ES6=1
   - -sMODULARIZE
+  - -sEXPORT_ES6=1
   - -sALLOW_MEMORY_GROWTH=1
   - -sEXPORTED_RUNTIME_METHODS=["FS"]
   - -sINITIAL_MEMORY=100MB
@@ -4463,6 +4463,6 @@ mainBuild:
   - -sUSE_FREETYPE=1
   - -sERROR_ON_UNDEFINED_SYMBOLS=0
   - --no-entry
-  - -fwasm-exceptions
+  - -fexceptions
   - -sDISABLE_EXCEPTION_CATCHING=0
   - -Wl,--allow-undefined

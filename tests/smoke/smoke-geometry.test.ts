@@ -1,9 +1,11 @@
-import { describe, it, expect } from 'vitest';
-import { getOC, wasmExists } from './helpers.js';
+import { describe, it, expect, beforeAll } from 'vitest';
+import { initOC, getOC, wasmExists } from './helpers.js';
 
 describe.skipIf(!wasmExists)('Smoke: Geometry', () => {
-  it('should expose X, Y, Z coordinates for gp_Pnt', async () => {
-    const oc = await getOC();
+  beforeAll(async () => { await initOC(); });
+
+  it('should expose X, Y, Z coordinates for gp_Pnt', () => {
+    const oc = getOC();
     const pnt = new oc.gp_Pnt(1, 2, 3);
     expect(pnt.X()).toBe(1);
     expect(pnt.Y()).toBe(2);
@@ -11,8 +13,8 @@ describe.skipIf(!wasmExists)('Smoke: Geometry', () => {
     pnt.delete();
   });
 
-  it('should compute IsNull and Magnitude for gp_Vec', async () => {
-    const oc = await getOC();
+  it('should compute IsNull and Magnitude for gp_Vec', () => {
+    const oc = getOC();
     const nullVec = new oc.gp_Vec_4(0, 0, 0);
     expect(nullVec.Magnitude()).toBe(0);
     const vec = new oc.gp_Vec_4(3, 4, 0);
@@ -21,8 +23,8 @@ describe.skipIf(!wasmExists)('Smoke: Geometry', () => {
     vec.delete();
   });
 
-  it('should produce valid face from Geom_Circle through MakeEdge, MakeWire, MakeFace pipeline', async () => {
-    const oc = await getOC();
+  it('should produce valid face from Geom_Circle through MakeEdge, MakeWire, MakeFace pipeline', () => {
+    const oc = getOC();
     const axis = new oc.gp_Ax2_4(
       new oc.gp_Pnt(),
       new oc.gp_Dir_5(0, 0, 1),

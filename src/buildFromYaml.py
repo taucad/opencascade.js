@@ -345,184 +345,18 @@ def main():
         })
 
     # Declarations for built-in types provided via BUILTIN_ADDITIONAL_BIND_CODE
-    typescriptDefinitionOutput += \
-      "export declare class TColStd_IndexedDataMapOfStringString {\n" + \
-      "  constructor();\n" + \
-      "  delete(): void;\n" + \
-      "}\n\n" + \
-      "export declare class TopoDS {\n" + \
-      "  static Edge(shape: TopoDS_Shape): TopoDS_Edge;\n" + \
-      "  static Wire(shape: TopoDS_Shape): TopoDS_Wire;\n" + \
-      "  static Face(shape: TopoDS_Shape): TopoDS_Face;\n" + \
-      "  static Vertex(shape: TopoDS_Shape): TopoDS_Vertex;\n" + \
-      "  static Shell(shape: TopoDS_Shape): TopoDS_Shell;\n" + \
-      "  static Solid(shape: TopoDS_Shape): TopoDS_Solid;\n" + \
-      "  static Compound(shape: TopoDS_Shape): TopoDS_Compound;\n" + \
-      "}\n\n" + \
-      "export declare class OCJS {\n" + \
-      "  static getStandard_FailureData(exceptionPtr: number): Standard_Failure;\n" + \
-      "  delete(): void;\n" + \
-      "}\n\n"
+    declarations_dir = os.path.join(os.path.dirname(__file__), 'declarations')
+
+    with open(os.path.join(declarations_dir, 'builtin-bindings.d.ts'), 'r') as f:
+      typescriptDefinitionOutput += f.read() + "\n\n"
     typescriptExports.extend([
       {"export": "TColStd_IndexedDataMapOfStringString", "kind": "class"},
       {"export": "TopoDS", "kind": "class"},
       {"export": "OCJS", "kind": "class"},
     ])
 
-    typescriptDefinitionOutput += \
-      "type Standard_Boolean = boolean;\n" + \
-      "type Standard_Byte = number;\n" + \
-      "type Standard_Character = string;\n" + \
-      "type Standard_CString = string;\n" + \
-      "type Standard_Integer = number;\n" + \
-      "type Standard_Real = number;\n" + \
-      "type Standard_ShortReal = number;\n" + \
-      "type Standard_Size = number;\n\n" + \
-      "declare namespace FS {\n" + \
-      "  interface Lookup {\n" + \
-      "      path: string;\n" + \
-      "      node: FSNode;\n" + \
-      "  }\n" + \
-      "\n" + \
-      "  interface FSStream {}\n" + \
-      "  interface FSNode {}\n" + \
-      "  interface ErrnoError {}\n" + \
-      "\n" + \
-      "  let ignorePermissions: boolean;\n" + \
-      "  let trackingDelegate: any;\n" + \
-      "  let tracking: any;\n" + \
-      "  let genericErrors: any;\n" + \
-      "\n" + \
-      "  //\n" + \
-      "  // paths\n" + \
-      "  //\n" + \
-      "  function lookupPath(path: string, opts: any): Lookup;\n" + \
-      "  function getPath(node: FSNode): string;\n" + \
-      "\n" + \
-      "  //\n" + \
-      "  // nodes\n" + \
-      "  //\n" + \
-      "  function isFile(mode: number): boolean;\n" + \
-      "  function isDir(mode: number): boolean;\n" + \
-      "  function isLink(mode: number): boolean;\n" + \
-      "  function isChrdev(mode: number): boolean;\n" + \
-      "  function isBlkdev(mode: number): boolean;\n" + \
-      "  function isFIFO(mode: number): boolean;\n" + \
-      "  function isSocket(mode: number): boolean;\n" + \
-      "\n" + \
-      "  //\n" + \
-      "  // devices\n" + \
-      "  //\n" + \
-      "  function major(dev: number): number;\n" + \
-      "  function minor(dev: number): number;\n" + \
-      "  function makedev(ma: number, mi: number): number;\n" + \
-      "  function registerDevice(dev: number, ops: any): void;\n" + \
-      "\n" + \
-      "  //\n" + \
-      "  // core\n" + \
-      "  //\n" + \
-      "  function syncfs(populate: boolean, callback: (e: any) => any): void;\n" + \
-      "  function syncfs(callback: (e: any) => any, populate?: boolean): void;\n" + \
-      "  function mount(type: any, opts: any, mountpoint: string): any;\n" + \
-      "  function unmount(mountpoint: string): void;\n" + \
-      "\n" + \
-      "  function mkdir(path: string, mode?: number): any;\n" + \
-      "  function mkdev(path: string, mode?: number, dev?: number): any;\n" + \
-      "  function symlink(oldpath: string, newpath: string): any;\n" + \
-      "  function rename(old_path: string, new_path: string): void;\n" + \
-      "  function rmdir(path: string): void;\n" + \
-      "  function readdir(path: string): any;\n" + \
-      "  function unlink(path: string): void;\n" + \
-      "  function readlink(path: string): string;\n" + \
-      "  function stat(path: string, dontFollow?: boolean): any;\n" + \
-      "  function lstat(path: string): any;\n" + \
-      "  function chmod(path: string, mode: number, dontFollow?: boolean): void;\n" + \
-      "  function lchmod(path: string, mode: number): void;\n" + \
-      "  function fchmod(fd: number, mode: number): void;\n" + \
-      "  function chown(path: string, uid: number, gid: number, dontFollow?: boolean): void;\n" + \
-      "  function lchown(path: string, uid: number, gid: number): void;\n" + \
-      "  function fchown(fd: number, uid: number, gid: number): void;\n" + \
-      "  function truncate(path: string, len: number): void;\n" + \
-      "  function ftruncate(fd: number, len: number): void;\n" + \
-      "  function utime(path: string, atime: number, mtime: number): void;\n" + \
-      "  function open(path: string, flags: string, mode?: number, fd_start?: number, fd_end?: number): FSStream;\n" + \
-      "  function close(stream: FSStream): void;\n" + \
-      "  function llseek(stream: FSStream, offset: number, whence: number): any;\n" + \
-      "  function read(stream: FSStream, buffer: ArrayBufferView, offset: number, length: number, position?: number): number;\n" + \
-      "  function write(\n" + \
-      "      stream: FSStream,\n" + \
-      "      buffer: ArrayBufferView,\n" + \
-      "      offset: number,\n" + \
-      "      length: number,\n" + \
-      "      position?: number,\n" + \
-      "      canOwn?: boolean,\n" + \
-      "  ): number;\n" + \
-      "  function allocate(stream: FSStream, offset: number, length: number): void;\n" + \
-      "  function mmap(\n" + \
-      "      stream: FSStream,\n" + \
-      "      buffer: ArrayBufferView,\n" + \
-      "      offset: number,\n" + \
-      "      length: number,\n" + \
-      "      position: number,\n" + \
-      "      prot: number,\n" + \
-      "      flags: number,\n" + \
-      "  ): any;\n" + \
-      "  function ioctl(stream: FSStream, cmd: any, arg: any): any;\n" + \
-      "  function readFile(path: string, opts: { encoding: 'binary'; flags?: string }): Uint8Array;\n" + \
-      "  function readFile(path: string, opts: { encoding: 'utf8'; flags?: string }): string;\n" + \
-      "  function readFile(path: string, opts?: { flags?: string }): Uint8Array;\n" + \
-      "  function writeFile(path: string, data: string | ArrayBufferView, opts?: { flags?: string }): void;\n" + \
-      "\n" + \
-      "  //\n" + \
-      "  // module-level FS code\n" + \
-      "  //\n" + \
-      "  function cwd(): string;\n" + \
-      "  function chdir(path: string): void;\n" + \
-      "  function init(\n" + \
-      "      input: null | (() => number | null),\n" + \
-      "      output: null | ((c: number) => any),\n" + \
-      "      error: null | ((c: number) => any),\n" + \
-      "  ): void;\n" + \
-      "\n" + \
-      "  function createLazyFile(\n" + \
-      "      parent: string | FSNode,\n" + \
-      "      name: string,\n" + \
-      "      url: string,\n" + \
-      "      canRead: boolean,\n" + \
-      "      canWrite: boolean,\n" + \
-      "  ): FSNode;\n" + \
-      "  function createPreloadedFile(\n" + \
-      "      parent: string | FSNode,\n" + \
-      "      name: string,\n" + \
-      "      url: string,\n" + \
-      "      canRead: boolean,\n" + \
-      "      canWrite: boolean,\n" + \
-      "      onload?: () => void,\n" + \
-      "      onerror?: () => void,\n" + \
-      "      dontCreateFile?: boolean,\n" + \
-      "      canOwn?: boolean,\n" + \
-      "  ): void;\n" + \
-      "  function createDataFile(\n" + \
-      "      parent: string | FSNode,\n" + \
-      "      name: string,\n" + \
-      "      data: ArrayBufferView | string,\n" + \
-      "      canRead: boolean,\n" + \
-      "      canWrite: boolean,\n" + \
-      "      canOwn: boolean,\n" + \
-      "  ): FSNode;\n" + \
-      "  interface AnalysisResults {\n" + \
-      "    isRoot: boolean,\n" + \
-      "    exists: boolean,\n" + \
-      "    error: Error,\n" + \
-      "    name: string,\n" + \
-      "    path: any,\n" + \
-      "    object: any,\n" + \
-      "    parentExists: boolean,\n" + \
-      "    parentPath: any,\n" + \
-      "    parentObject: any\n" + \
-      "  }\n" + \
-      "  function analyzePath(path: string): AnalysisResults;\n" + \
-      "}\n\n"
+    with open(os.path.join(declarations_dir, 'emscripten-fs.d.ts'), 'r') as f:
+      typescriptDefinitionOutput += f.read() + "\n\n"
 
     # --- Generate namespace blocks for OCCT package organization (Finding 6, Path A) ---
     from collections import defaultdict
@@ -548,11 +382,59 @@ def main():
       typescriptDefinitionOutput += "}\n\n"
     # --- End namespace blocks ---
 
+    main_flags = buildConfig["mainBuild"].get("emccFlags", [])
+    uses_native_wasm_eh = any('-fwasm-exceptions' in f for f in main_flags)
+    if uses_native_wasm_eh:
+      typescriptDefinitionOutput += \
+        "/**\n" + \
+        " * Extract the exception type and message from a caught `WebAssembly.Exception`.\n" + \
+        " *\n" + \
+        " * Only available in builds compiled with `-fwasm-exceptions` (native WASM exception handling).\n" + \
+        " *\n" + \
+        " * @param ex - The caught `WebAssembly.Exception` object.\n" + \
+        " * @returns A `[type, message]` tuple where `type` is the C++ exception class name\n" + \
+        " *   (e.g. `'Standard_DomainError'`) and `message` is the exception text.\n" + \
+        " */\n" + \
+        "export declare function getExceptionMessage(ex: WebAssembly.Exception): [string, string];\n" + \
+        "/**\n" + \
+        " * Increment the reference count of a `WebAssembly.Exception` to prevent premature disposal.\n" + \
+        " *\n" + \
+        " * Call this when storing an exception reference beyond its catch scope.\n" + \
+        " *\n" + \
+        " * @param ex - The exception whose refcount to increment.\n" + \
+        " */\n" + \
+        "export declare function incrementExceptionRefcount(ex: WebAssembly.Exception): void;\n" + \
+        "/**\n" + \
+        " * Decrement the reference count of a `WebAssembly.Exception`, freeing it when count reaches zero.\n" + \
+        " *\n" + \
+        " * @param ex - The exception whose refcount to decrement.\n" + \
+        " */\n" + \
+        "export declare function decrementExceptionRefcount(ex: WebAssembly.Exception): void;\n\n"
+      typescriptExports.append({"export": "getExceptionMessage", "kind": "function"})
+      typescriptExports.append({"export": "incrementExceptionRefcount", "kind": "function"})
+      typescriptExports.append({"export": "decrementExceptionRefcount", "kind": "function"})
+
     typescriptDefinitionOutput += \
-      "\nexport type OpenCascadeInstance = {FS: typeof FS} & {\n  " + ";\n  ".join(map(lambda x: x["export"] + ": typeof " + x["export"] if x["kind"] in ("class", "enum") else x["export"] + ": " + x["export"], typescriptExports)) + ";\n" + \
+      "\n/**\n" + \
+      " * Union of the Emscripten `FS` namespace and all bound OCCT classes, enums, and functions.\n" + \
+      " *\n" + \
+      " * Returned by {@link init} after the WASM module is fully loaded. Access any\n" + \
+      " * OCCT binding as a property (e.g. `oc.BRepPrimAPI_MakeBox`) and use `oc.FS`\n" + \
+      " * for virtual filesystem operations.\n" + \
+      " */\n" + \
+      "export type OpenCascadeInstance = {FS: typeof FS} & {\n  " + ";\n  ".join(map(lambda x: x["export"] + ": typeof " + x["export"] if x["kind"] in ("class", "enum") else x["export"] + ": " + x["export"], typescriptExports)) + ";\n" + \
       "};\n\n" + \
-      "declare function init(): Promise<OpenCascadeInstance>;\n\n" + \
-      "export default init;\n"
+      "/**\n" + \
+      " * Initialize the OpenCASCADE WASM module and return the fully populated instance.\n" + \
+      " *\n" + \
+      " * Downloads, compiles, and instantiates the WASM binary. The returned\n" + \
+      " * `OpenCascadeInstance` provides access to all bound OCCT classes and the\n" + \
+      " * Emscripten virtual filesystem.\n" + \
+      " *\n" + \
+      " * @param options - Emscripten module overrides (e.g. `locateFile`, `print`, `instantiateWasm`).\n" + \
+      " * @returns The initialized instance with all OCCT bindings and the `FS` namespace.\n" + \
+      " */\n" + \
+      "export default function init(options?: Record<string, unknown>): Promise<OpenCascadeInstance>;\n"
 
     typescriptDefinitionsFile = open(os.getcwd() + "/" + os.path.splitext(buildConfig["mainBuild"]["name"])[0] + ".d.ts", "w")
     typescriptDefinitionsFile.write(typescriptDefinitionOutput)

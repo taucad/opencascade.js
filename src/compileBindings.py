@@ -126,7 +126,7 @@ if __name__ == "__main__":
     print("WARNING: No PCH found -- compilation will be ~25x slower. Run buildPch.py first.")
   print(f"Using flat includes: {FLAT_INCLUDE_DIR}")
 
-  nproc = min(multiprocessing.cpu_count(), 8)
+  nproc = int(os.environ.get("OCJS_COMPILE_WORKERS", min(multiprocessing.cpu_count(), 8)))
   print(f"Compiling {len(filesToBuild)} binding files with {nproc} workers...", flush=True)
   with multiprocessing.Pool(processes=nproc) as p:
     results = p.map(partial(buildOneFile, {

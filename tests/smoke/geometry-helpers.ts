@@ -13,7 +13,6 @@ import { NodeIO } from '@gltf-transform/core';
 import type { InspectReport } from '@gltf-transform/functions';
 import { inspect } from '@gltf-transform/functions';
 import { expect } from 'vitest';
-import type { TopoDS_Shape } from '../../build-configs/opencascade_full.js';
 import { getOC } from './helpers.js';
 
 // =============================================================================
@@ -49,11 +48,11 @@ export type GeometryStats = {
  * 3. Write GLB using RWGltf_CafWriter
  * 4. Read the GLB bytes from the Emscripten virtual filesystem
  */
-export async function shapeToGlb(
-  shape: TopoDS_Shape,
+export function shapeToGlb(
+  shape: any,
   options?: { linearDeflection?: number; angularDeflection?: number },
-): Promise<Uint8Array> {
-  const oc = await getOC();
+): Uint8Array {
+  const oc = getOC();
   const linearDeflection = options?.linearDeflection ?? 0.1;
   const angularDeflection = options?.angularDeflection ?? 0.5;
 
@@ -147,10 +146,10 @@ export async function analyzeGlb(glbData: Uint8Array): Promise<GeometryStats> {
  * Export shape to GLB and analyze it in one step.
  */
 export async function analyzeShape(
-  shape: TopoDS_Shape,
+  shape: any,
   options?: { linearDeflection?: number; angularDeflection?: number },
 ): Promise<GeometryStats> {
-  const glbData = await shapeToGlb(shape, options);
+  const glbData = shapeToGlb(shape, options);
   return analyzeGlb(glbData);
 }
 
@@ -263,7 +262,7 @@ export async function expectMinVertexCount(
  * Full geometry assertion: export shape to GLB and validate dimensions.
  */
 export async function expectShapeGeometry(
-  shape: TopoDS_Shape,
+  shape: any,
   expected: {
     size: Vec3;
     center?: Vec3;
@@ -272,7 +271,7 @@ export async function expectShapeGeometry(
     tolerance?: number;
   },
 ): Promise<void> {
-  const glbData = await shapeToGlb(shape);
+  const glbData = shapeToGlb(shape);
   expectValidGlb(glbData);
 
   const tolerance = expected.tolerance ?? 0.5;

@@ -851,6 +851,7 @@ class TypescriptBindings(Bindings):
     output = ""
     output += "  /** Releases the C++ object. The caller must ensure no further access. */\n"
     output += "  delete(): void;\n"
+    output += "  [Symbol.dispose](): void;\n"
     output += "}\n\n"
     return output
 

@@ -1,10 +1,12 @@
-import { describe, it, expect } from 'vitest';
-import { getOC, wasmExists } from './helpers.js';
+import { describe, it, expect, beforeAll } from 'vitest';
+import { initOC, getOC, wasmExists } from './helpers.js';
 import { expectShapeGeometry } from './geometry-helpers.js';
 
 describe.skipIf(!wasmExists)('Smoke: Fillets and chamfers', () => {
+  beforeAll(async () => { await initOC(); });
+
   it('should preserve box dimensions after filleting one edge', async () => {
-    const oc = await getOC();
+    const oc = getOC();
     const box = new oc.BRepPrimAPI_MakeBox_2(10, 10, 10);
     const boxShape = box.Shape();
     const fillet = new oc.BRepFilletAPI_MakeFillet(
@@ -36,7 +38,7 @@ describe.skipIf(!wasmExists)('Smoke: Fillets and chamfers', () => {
   });
 
   it('should preserve box dimensions after chamfering one edge', async () => {
-    const oc = await getOC();
+    const oc = getOC();
     const box = new oc.BRepPrimAPI_MakeBox_2(10, 10, 10);
     const boxShape = box.Shape();
     const chamfer = new oc.BRepFilletAPI_MakeChamfer(boxShape);
@@ -65,7 +67,7 @@ describe.skipIf(!wasmExists)('Smoke: Fillets and chamfers', () => {
   });
 
   it('should produce a rounded box with same dimensions when filleting all edges', async () => {
-    const oc = await getOC();
+    const oc = getOC();
     const box = new oc.BRepPrimAPI_MakeBox_2(20, 20, 20);
     const boxShape = box.Shape();
     const fillet = new oc.BRepFilletAPI_MakeFillet(

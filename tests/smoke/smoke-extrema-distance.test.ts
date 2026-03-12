@@ -7,13 +7,14 @@
  * - Distance between a point and a shape
  * - Bounding box distance checking
  */
-import { describe, it, expect } from 'vitest';
-import { getOC, wasmExists } from './helpers.js';
+import { describe, it, expect, beforeAll } from 'vitest';
+import { initOC, getOC, wasmExists } from './helpers.js';
 
 describe.skipIf(!wasmExists)('Smoke: Extrema and distance', () => {
-  it('should compute distance between two separated boxes with BRepExtrema_DistShapeShape', async () => {
-    const oc = await getOC();
+  beforeAll(async () => { await initOC(); });
 
+  it('should compute distance between two separated boxes with BRepExtrema_DistShapeShape', () => {
+    const oc = getOC();
     const box1 = new oc.BRepPrimAPI_MakeBox_2(10, 10, 10);
     const box2Maker = new oc.BRepPrimAPI_MakeBox_3(
       new oc.gp_Pnt(20, 0, 0),
@@ -43,9 +44,8 @@ describe.skipIf(!wasmExists)('Smoke: Extrema and distance', () => {
     box1.delete();
   });
 
-  it('should return 0 distance for overlapping shapes with BRepExtrema_DistShapeShape', async () => {
-    const oc = await getOC();
-
+  it('should return 0 distance for overlapping shapes with BRepExtrema_DistShapeShape', () => {
+    const oc = getOC();
     const box1 = new oc.BRepPrimAPI_MakeBox_2(10, 10, 10);
     const box2 = new oc.BRepPrimAPI_MakeBox_2(10, 10, 10);
 
@@ -65,9 +65,8 @@ describe.skipIf(!wasmExists)('Smoke: Extrema and distance', () => {
     box1.delete();
   });
 
-  it('should compute distance between box and sphere with BRepExtrema_DistShapeShape', async () => {
-    const oc = await getOC();
-
+  it('should compute distance between box and sphere with BRepExtrema_DistShapeShape', () => {
+    const oc = getOC();
     const box = new oc.BRepPrimAPI_MakeBox_2(10, 10, 10);
     const sphere = new oc.BRepPrimAPI_MakeSphere_5(
       new oc.gp_Pnt(30, 5, 5),
@@ -90,9 +89,8 @@ describe.skipIf(!wasmExists)('Smoke: Extrema and distance', () => {
     box.delete();
   });
 
-  it('should compute distance between two separated bounding boxes with Bnd_Box', async () => {
-    const oc = await getOC();
-
+  it('should compute distance between two separated bounding boxes with Bnd_Box', () => {
+    const oc = getOC();
     const box1 = new oc.BRepPrimAPI_MakeBox_2(10, 10, 10);
     const box2 = new oc.BRepPrimAPI_MakeBox_3(
       new oc.gp_Pnt(20, 0, 0),

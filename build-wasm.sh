@@ -615,7 +615,7 @@ while [ $# -gt 0 ]; do
       YAML_CONFIG="$(cd "$(dirname "$1")" && pwd)/$(basename "$1")"
       shift
       ;;
-    link|full)
+    dts|link|full)
       COMMANDS+=("$1")
       shift
       if [ $# -eq 0 ]; then

@@ -9,13 +9,14 @@
  * - Sampling points with GCPnts_UniformDeflection (chord-deviation spacing)
  * - Measuring edge length
  */
-import { describe, it, expect } from 'vitest';
-import { getOC, wasmExists } from './helpers.js';
+import { describe, it, expect, beforeAll } from 'vitest';
+import { initOC, getOC, wasmExists } from './helpers.js';
 
 describe.skipIf(!wasmExists)('Smoke: Curve analysis and sampling', () => {
-  it('should wrap a line edge and evaluate endpoints with BRepAdaptor_Curve', async () => {
-    const oc = await getOC();
+  beforeAll(async () => { await initOC(); });
 
+  it('should wrap a line edge and evaluate endpoints with BRepAdaptor_Curve', () => {
+    const oc = getOC();
     const p1 = new oc.gp_Pnt(0, 0, 0);
     const p2 = new oc.gp_Pnt(10, 0, 0);
     const edgeMaker = new oc.BRepBuilderAPI_MakeEdge_3(p1, p2);
@@ -43,9 +44,8 @@ describe.skipIf(!wasmExists)('Smoke: Curve analysis and sampling', () => {
     p1.delete();
   });
 
-  it('should identify a circular edge with BRepAdaptor_Curve', async () => {
-    const oc = await getOC();
-
+  it('should identify a circular edge with BRepAdaptor_Curve', () => {
+    const oc = getOC();
     const ax = new oc.gp_Ax2_4(
       new oc.gp_Pnt(0, 0, 0),
       new oc.gp_Dir_5(0, 0, 1),
@@ -67,9 +67,8 @@ describe.skipIf(!wasmExists)('Smoke: Curve analysis and sampling', () => {
     ax.delete();
   });
 
-  it('should sample a line at equal intervals with GCPnts_UniformAbscissa', async () => {
-    const oc = await getOC();
-
+  it('should sample a line at equal intervals with GCPnts_UniformAbscissa', () => {
+    const oc = getOC();
     const p1 = new oc.gp_Pnt(0, 0, 0);
     const p2 = new oc.gp_Pnt(100, 0, 0);
     const edgeMaker = new oc.BRepBuilderAPI_MakeEdge_3(p1, p2);
@@ -101,9 +100,8 @@ describe.skipIf(!wasmExists)('Smoke: Curve analysis and sampling', () => {
     p1.delete();
   });
 
-  it('should sample a circle at equal arc-lengths with GCPnts_UniformAbscissa', async () => {
-    const oc = await getOC();
-
+  it('should sample a circle at equal arc-lengths with GCPnts_UniformAbscissa', () => {
+    const oc = getOC();
     const ax = new oc.gp_Ax2_4(
       new oc.gp_Pnt(0, 0, 0),
       new oc.gp_Dir_5(0, 0, 1),
@@ -129,9 +127,8 @@ describe.skipIf(!wasmExists)('Smoke: Curve analysis and sampling', () => {
     ax.delete();
   });
 
-  it('should sample with chord deviation control using GCPnts_UniformDeflection', async () => {
-    const oc = await getOC();
-
+  it('should sample with chord deviation control using GCPnts_UniformDeflection', () => {
+    const oc = getOC();
     const ax = new oc.gp_Ax2_4(
       new oc.gp_Pnt(0, 0, 0),
       new oc.gp_Dir_5(0, 0, 1),

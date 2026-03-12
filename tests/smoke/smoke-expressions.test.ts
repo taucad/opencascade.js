@@ -1,9 +1,11 @@
-import { describe, it, expect } from 'vitest';
-import { getOC, wasmExists } from './helpers.js';
+import { describe, it, expect, beforeAll } from 'vitest';
+import { initOC, getOC, wasmExists } from './helpers.js';
 
 describe.skipIf(!wasmExists)('Smoke: Expression parser', () => {
-  it('should create and query Expr_NamedUnknown', async () => {
-    const oc = await getOC();
+  beforeAll(async () => { await initOC(); });
+
+  it('should create and query Expr_NamedUnknown', () => {
+    const oc = getOC();
     const x = new oc.Expr_NamedUnknown(new oc.TCollection_AsciiString_3('x'));
     expect(x.IsShareable()).toBe(true);
 
@@ -13,8 +15,8 @@ describe.skipIf(!wasmExists)('Smoke: Expression parser', () => {
     x.delete();
   });
 
-  it('should hold a numeric constant in Expr_NumericValue', async () => {
-    const oc = await getOC();
+  it('should hold a numeric constant in Expr_NumericValue', () => {
+    const oc = getOC();
     const val = new oc.Expr_NumericValue(42.5);
 
     const numVal = val.GetValue();
@@ -23,8 +25,8 @@ describe.skipIf(!wasmExists)('Smoke: Expression parser', () => {
     val.delete();
   });
 
-  it('should combine two numeric values with Expr_Sum', async () => {
-    const oc = await getOC();
+  it('should combine two numeric values with Expr_Sum', () => {
+    const oc = getOC();
     const a = new oc.Expr_NumericValue(10);
     const b = new oc.Expr_NumericValue(32.5);
 

@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { getOC, wasmExists, isExceptionsEnabled } from './helpers.js';
+import { describe, it, expect, beforeAll } from 'vitest';
+import { initOC, getOC, wasmExists, isExceptionsEnabled } from './helpers.js';
 
 interface CppException extends Error {
   excPtr: number;
@@ -7,10 +7,12 @@ interface CppException extends Error {
 
 /* eslint-disable @typescript-eslint/naming-convention -- OpenCASCADE C++ API naming */
 describe.skipIf(!wasmExists)('Smoke: Exception handling', () => {
-  it('should throw Standard_DomainError for MakeCone with zero height', async (ctx) => {
-    const oc = await getOC();
+  beforeAll(async () => { await initOC(); });
+
+  it('should throw Standard_DomainError for MakeCone with zero height', (ctx) => {
     if (!isExceptionsEnabled()) ctx.skip();
 
+    const oc = getOC();
     let caught = false;
     let exceptionType = '';
     let exceptionMessage = '';
@@ -33,10 +35,10 @@ describe.skipIf(!wasmExists)('Smoke: Exception handling', () => {
     expect(exceptionMessage.toLowerCase()).toContain('cone');
   });
 
-  it('should throw Standard_DomainError for MakeBox with zero dimensions', async (ctx) => {
-    const oc = await getOC();
+  it('should throw Standard_DomainError for MakeBox with zero dimensions', (ctx) => {
     if (!isExceptionsEnabled()) ctx.skip();
 
+    const oc = getOC();
     let caught = false;
     let exceptionType = '';
 

@@ -1,10 +1,12 @@
-import { describe, it, expect } from 'vitest';
-import { getOC, wasmExists } from './helpers.js';
+import { describe, it, expect, beforeAll } from 'vitest';
+import { initOC, getOC, wasmExists } from './helpers.js';
 import { expectShapeGeometry } from './geometry-helpers.js';
 
 describe.skipIf(!wasmExists)('Smoke: Transforms', () => {
+  beforeAll(async () => { await initOC(); });
+
   it('should shift box center by (5,0,0) with translation', async () => {
-    const oc = await getOC();
+    const oc = getOC();
     const box = new oc.BRepPrimAPI_MakeBox_2(10, 10, 10);
     const trsf = new oc.gp_Trsf();
     trsf.SetTranslation(new oc.gp_Vec_4(5, 0, 0));
@@ -28,7 +30,7 @@ describe.skipIf(!wasmExists)('Smoke: Transforms', () => {
   });
 
   it('should preserve bounding box dimensions with rotation', async () => {
-    const oc = await getOC();
+    const oc = getOC();
     const box = new oc.BRepPrimAPI_MakeBox_2(10, 10, 10);
     const trsf = new oc.gp_Trsf();
     const axis = new oc.gp_Ax1_2(
@@ -57,7 +59,7 @@ describe.skipIf(!wasmExists)('Smoke: Transforms', () => {
   });
 
   it('should double all box dimensions with scale', async () => {
-    const oc = await getOC();
+    const oc = getOC();
     const box = new oc.BRepPrimAPI_MakeBox_2(10, 10, 10);
     const trsf = new oc.gp_Trsf();
     trsf.SetScale(new oc.gp_Pnt(), 2);

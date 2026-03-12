@@ -7,13 +7,14 @@
  * - TColgp_Array1OfPnt: fixed-size point arrays
  * - TopExp_Explorer as an iterator for topology traversal
  */
-import { describe, it, expect } from 'vitest';
-import { getOC, wasmExists } from './helpers.js';
+import { describe, it, expect, beforeAll } from 'vitest';
+import { initOC, getOC, wasmExists } from './helpers.js';
 
 describe.skipIf(!wasmExists)('Smoke: Collections', () => {
-  it('should support append, size, and access on TopTools_ListOfShape', async () => {
-    const oc = await getOC();
+  beforeAll(async () => { await initOC(); });
 
+  it('should support append, size, and access on TopTools_ListOfShape', () => {
+    const oc = getOC();
     const box1 = new oc.BRepPrimAPI_MakeBox_2(10, 10, 10);
     const box2 = new oc.BRepPrimAPI_MakeBox_2(20, 20, 20);
     const box3 = new oc.BRepPrimAPI_MakeBox_2(30, 30, 30);
@@ -39,9 +40,8 @@ describe.skipIf(!wasmExists)('Smoke: Collections', () => {
     box1.delete();
   });
 
-  it('should support prepend and reverse on TopTools_ListOfShape', async () => {
-    const oc = await getOC();
-
+  it('should support prepend and reverse on TopTools_ListOfShape', () => {
+    const oc = getOC();
     const box1 = new oc.BRepPrimAPI_MakeBox_2(5, 5, 5);
     const box2 = new oc.BRepPrimAPI_MakeBox_2(10, 10, 10);
 
@@ -62,9 +62,8 @@ describe.skipIf(!wasmExists)('Smoke: Collections', () => {
     box1.delete();
   });
 
-  it('should collect unique faces from a box with TopTools_IndexedMapOfShape', async () => {
-    const oc = await getOC();
-
+  it('should collect unique faces from a box with TopTools_IndexedMapOfShape', () => {
+    const oc = getOC();
     const box = new oc.BRepPrimAPI_MakeBox_2(10, 10, 10);
     const shape = box.Shape();
 
@@ -96,9 +95,8 @@ describe.skipIf(!wasmExists)('Smoke: Collections', () => {
     box.delete();
   });
 
-  it('should collect unique edges from a box with TopTools_IndexedMapOfShape', async () => {
-    const oc = await getOC();
-
+  it('should collect unique edges from a box with TopTools_IndexedMapOfShape', () => {
+    const oc = getOC();
     const box = new oc.BRepPrimAPI_MakeBox_2(10, 10, 10);
     const shape = box.Shape();
 
@@ -122,9 +120,8 @@ describe.skipIf(!wasmExists)('Smoke: Collections', () => {
     box.delete();
   });
 
-  it('should store and retrieve points in TColgp_Array1OfPnt', async () => {
-    const oc = await getOC();
-
+  it('should store and retrieve points in TColgp_Array1OfPnt', () => {
+    const oc = getOC();
     const arr = new oc.TColgp_Array1OfPnt_2(1, 5);
     expect(arr.Length()).toBe(5);
     expect(arr.Lower()).toBe(1);
@@ -157,9 +154,8 @@ describe.skipIf(!wasmExists)('Smoke: Collections', () => {
     for (const pt of pts) pt.delete();
   });
 
-  it('should count unique topology elements of a cylinder with IndexedMapOfShape', async () => {
-    const oc = await getOC();
-
+  it('should count unique topology elements of a cylinder with IndexedMapOfShape', () => {
+    const oc = getOC();
     const cyl = new oc.BRepPrimAPI_MakeCylinder_1(5, 10);
     const shape = cyl.Shape();
 

@@ -1,16 +1,18 @@
-import { describe, it, expect } from 'vitest';
-import { getOC, wasmExists } from './helpers.js';
+import { describe, it, expect, beforeAll } from 'vitest';
+import { initOC, getOC, wasmExists } from './helpers.js';
 
 /* eslint-disable @typescript-eslint/naming-convention -- OpenCASCADE C++ API naming */
 describe.skipIf(!wasmExists)('Smoke: Fair curves', () => {
-  it('should compute a constrained curve via FairCurve_Batten', async () => {
-    const oc = await getOC();
+  beforeAll(async () => { await initOC(); });
+
+  it('should compute a constrained curve via FairCurve_Batten', () => {
+    const oc = getOC();
     const p1 = new oc.gp_Pnt2d(0, 0);
     const p2 = new oc.gp_Pnt2d(10, 5);
     const batten = new oc.FairCurve_Batten(p1, p2, 2.0, 1);
 
     const codeRef = { current: 0 };
-    (oc as any).FairCurve_Batten_Compute(batten, codeRef, 50, 1e-3);
+    (oc.FairCurve_Batten_Compute as any)(batten, codeRef, 50, 1e-3);
     expect(typeof codeRef.current).toBe('number');
 
     const curve = batten.Curve();
@@ -21,14 +23,14 @@ describe.skipIf(!wasmExists)('Smoke: Fair curves', () => {
     p1.delete();
   });
 
-  it('should compute a smoother constrained curve via FairCurve_MinimalVariation', async () => {
-    const oc = await getOC();
+  it('should compute a smoother constrained curve via FairCurve_MinimalVariation', () => {
+    const oc = getOC();
     const p1 = new oc.gp_Pnt2d(0, 0);
     const p2 = new oc.gp_Pnt2d(10, 5);
     const mv = new oc.FairCurve_MinimalVariation(p1, p2, 2.0, 1, 0);
 
     const codeRef = { current: 0 };
-    (oc as any).FairCurve_MinimalVariation_Compute(mv, codeRef, 50, 1e-3);
+    (oc.FairCurve_MinimalVariation_Compute as any)(mv, codeRef, 50, 1e-3);
     expect(typeof codeRef.current).toBe('number');
 
     const curve = mv.Curve();

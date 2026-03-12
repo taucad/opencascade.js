@@ -1,10 +1,12 @@
-import { describe, it, expect } from 'vitest';
-import { getOC, wasmExists } from './helpers.js';
+import { describe, it, expect, beforeAll } from 'vitest';
+import { initOC, getOC, wasmExists } from './helpers.js';
 import { expectShapeGeometry } from './geometry-helpers.js';
 
 describe.skipIf(!wasmExists)('Smoke: Boolean operations', () => {
+  beforeAll(async () => { await initOC(); });
+
   it('should fuse two overlapping boxes', async () => {
-    const oc = await getOC();
+    const oc = getOC();
     const box1 = new oc.BRepPrimAPI_MakeBox_2(10, 10, 10);
     const box2 = new oc.BRepPrimAPI_MakeBox_2(5, 5, 5);
     const fuse = new oc.BRepAlgoAPI_Fuse(
@@ -27,7 +29,7 @@ describe.skipIf(!wasmExists)('Smoke: Boolean operations', () => {
   });
 
   it('should cut second box from first', async () => {
-    const oc = await getOC();
+    const oc = getOC();
     const box1 = new oc.BRepPrimAPI_MakeBox_2(10, 10, 10);
     const box2 = new oc.BRepPrimAPI_MakeBox_2(5, 5, 5);
     const cut = new oc.BRepAlgoAPI_Cut(
@@ -49,7 +51,7 @@ describe.skipIf(!wasmExists)('Smoke: Boolean operations', () => {
   });
 
   it('should return intersection of two overlapping boxes', async () => {
-    const oc = await getOC();
+    const oc = getOC();
     const box1 = new oc.BRepPrimAPI_MakeBox_2(10, 10, 10);
     const box2 = new oc.BRepPrimAPI_MakeBox_2(5, 5, 5);
     const common = new oc.BRepAlgoAPI_Common(
@@ -72,7 +74,7 @@ describe.skipIf(!wasmExists)('Smoke: Boolean operations', () => {
   });
 
   it('should produce wider bounding box from fuse of two separated boxes', async () => {
-    const oc = await getOC();
+    const oc = getOC();
     const box1 = new oc.BRepPrimAPI_MakeBox_2(10, 10, 10);
     const box2 = new oc.BRepPrimAPI_MakeBox_3(
       new oc.gp_Pnt(20, 0, 0),

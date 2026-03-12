@@ -8,14 +8,15 @@
  * - Building solids from closed shells
  * - Multi-edge wire construction
  */
-import { describe, it, expect } from 'vitest';
-import { getOC, wasmExists } from './helpers.js';
+import { describe, it, expect, beforeAll } from 'vitest';
+import { initOC, getOC, wasmExists } from './helpers.js';
 import { expectShapeGeometry } from './geometry-helpers.js';
 
 describe.skipIf(!wasmExists)('Smoke: Wire and face building', () => {
-  it('should build a triangular wire from 3 points with MakePolygon', async () => {
-    const oc = await getOC();
+  beforeAll(async () => { await initOC(); });
 
+  it('should build a triangular wire from 3 points with MakePolygon', () => {
+    const oc = getOC();
     const p1 = new oc.gp_Pnt(0, 0, 0);
     const p2 = new oc.gp_Pnt(10, 0, 0);
     const p3 = new oc.gp_Pnt(5, 10, 0);
@@ -32,9 +33,8 @@ describe.skipIf(!wasmExists)('Smoke: Wire and face building', () => {
     p1.delete();
   });
 
-  it('should build a rectangular wire from 4 points with MakePolygon', async () => {
-    const oc = await getOC();
-
+  it('should build a rectangular wire from 4 points with MakePolygon', () => {
+    const oc = getOC();
     const p1 = new oc.gp_Pnt(0, 0, 0);
     const p2 = new oc.gp_Pnt(20, 0, 0);
     const p3 = new oc.gp_Pnt(20, 15, 0);
@@ -53,9 +53,8 @@ describe.skipIf(!wasmExists)('Smoke: Wire and face building', () => {
     p1.delete();
   });
 
-  it('should create an arbitrary polygon with MakePolygon.Add', async () => {
-    const oc = await getOC();
-
+  it('should create an arbitrary polygon with MakePolygon.Add', () => {
+    const oc = getOC();
     const poly = new oc.BRepBuilderAPI_MakePolygon_1();
     const pts = [
       new oc.gp_Pnt(0, 0, 0),
@@ -78,9 +77,8 @@ describe.skipIf(!wasmExists)('Smoke: Wire and face building', () => {
     for (const pt of pts) pt.delete();
   });
 
-  it('should create a planar face from a closed polygon wire', async () => {
-    const oc = await getOC();
-
+  it('should create a planar face from a closed polygon wire', () => {
+    const oc = getOC();
     const p1 = new oc.gp_Pnt(0, 0, 0);
     const p2 = new oc.gp_Pnt(20, 0, 0);
     const p3 = new oc.gp_Pnt(20, 15, 0);
@@ -102,8 +100,7 @@ describe.skipIf(!wasmExists)('Smoke: Wire and face building', () => {
   });
 
   it('should produce a solid with correct dimensions from extruded polygon face', async () => {
-    const oc = await getOC();
-
+    const oc = getOC();
     const p1 = new oc.gp_Pnt(0, 0, 0);
     const p2 = new oc.gp_Pnt(20, 0, 0);
     const p3 = new oc.gp_Pnt(20, 15, 0);
@@ -136,9 +133,8 @@ describe.skipIf(!wasmExists)('Smoke: Wire and face building', () => {
     p1.delete();
   });
 
-  it('should join two adjacent faces into a shell with Sewing', async () => {
-    const oc = await getOC();
-
+  it('should join two adjacent faces into a shell with Sewing', () => {
+    const oc = getOC();
     const p1 = new oc.gp_Pnt(0, 0, 0);
     const p2 = new oc.gp_Pnt(10, 0, 0);
     const p3 = new oc.gp_Pnt(10, 10, 0);
