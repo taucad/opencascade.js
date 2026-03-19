@@ -7,7 +7,7 @@ describe.skipIf(!wasmExists)('Smoke: Advanced modeling', () => {
 
   it('should shell a box preserving outer dimensions with MakeThickSolid', async () => {
     const oc = getOC();
-    const box = new oc.BRepPrimAPI_MakeBox_2(20, 20, 20);
+    const box = new oc.BRepPrimAPI_MakeBox(20, 20, 20);
     const boxShape = box.Shape();
 
     const faceExplorer = new oc.TopExp_Explorer(
@@ -18,8 +18,8 @@ describe.skipIf(!wasmExists)('Smoke: Advanced modeling', () => {
     faceExplorer.Next();
     const faceToRemove = faceExplorer.Current();
 
-    const facesToRemove = new oc.TopTools_ListOfShape_1();
-    facesToRemove.Append_1(faceToRemove);
+    const facesToRemove = new oc.TopTools_ListOfShape();
+    facesToRemove.Append(faceToRemove);
 
     const thickSolid = new oc.BRepOffsetAPI_MakeThickSolid();
     thickSolid.MakeThickSolidByJoin(
@@ -51,17 +51,17 @@ describe.skipIf(!wasmExists)('Smoke: Advanced modeling', () => {
 
   it('should produce loft with correct height and max diameter via ThruSections', async () => {
     const oc = getOC();
-    const ax1 = new oc.gp_Ax2_4(new oc.gp_Pnt(0, 0, 0), new oc.gp_Dir_5(0, 0, 1));
-    const ax2 = new oc.gp_Ax2_4(new oc.gp_Pnt(0, 0, 10), new oc.gp_Dir_5(0, 0, 1));
+    const ax1 = new oc.gp_Ax2(new oc.gp_Pnt(0, 0, 0), new oc.gp_Dir(0, 0, 1));
+    const ax2 = new oc.gp_Ax2(new oc.gp_Pnt(0, 0, 10), new oc.gp_Dir(0, 0, 1));
 
     const circle1 = new oc.Geom_Circle(ax1, 5);
     const circle2 = new oc.Geom_Circle(ax2, 3);
 
-    const edge1 = new oc.BRepBuilderAPI_MakeEdge_24(circle1);
-    const edge2 = new oc.BRepBuilderAPI_MakeEdge_24(circle2);
+    const edge1 = new oc.BRepBuilderAPI_MakeEdge(circle1);
+    const edge2 = new oc.BRepBuilderAPI_MakeEdge(circle2);
 
-    const wire1 = new oc.BRepBuilderAPI_MakeWire_2(edge1.Edge());
-    const wire2 = new oc.BRepBuilderAPI_MakeWire_2(edge2.Edge());
+    const wire1 = new oc.BRepBuilderAPI_MakeWire(edge1.Edge());
+    const wire2 = new oc.BRepBuilderAPI_MakeWire(edge2.Edge());
 
     const loft = new oc.BRepOffsetAPI_ThruSections(true, false, 1e-6);
     loft.AddWire(wire1.Wire());
@@ -93,13 +93,13 @@ describe.skipIf(!wasmExists)('Smoke: Advanced modeling', () => {
     const oc = getOC();
     const p1 = new oc.gp_Pnt(0, 0, 0);
     const p2 = new oc.gp_Pnt(10, 0, 0);
-    const lineEdge = new oc.BRepBuilderAPI_MakeEdge_3(p1, p2);
-    const spineWire = new oc.BRepBuilderAPI_MakeWire_2(lineEdge.Edge());
+    const lineEdge = new oc.BRepBuilderAPI_MakeEdge(p1, p2);
+    const spineWire = new oc.BRepBuilderAPI_MakeWire(lineEdge.Edge());
 
-    const ax = new oc.gp_Ax2_4(new oc.gp_Pnt(0, 0, 0), new oc.gp_Dir_5(1, 0, 0));
+    const ax = new oc.gp_Ax2(new oc.gp_Pnt(0, 0, 0), new oc.gp_Dir(1, 0, 0));
     const circle = new oc.Geom_Circle(ax, 2);
-    const profileEdge = new oc.BRepBuilderAPI_MakeEdge_24(circle);
-    const profileWire = new oc.BRepBuilderAPI_MakeWire_2(profileEdge.Edge());
+    const profileEdge = new oc.BRepBuilderAPI_MakeEdge(circle);
+    const profileWire = new oc.BRepBuilderAPI_MakeWire(profileEdge.Edge());
 
     const pipe = new oc.BRepOffsetAPI_MakePipe(spineWire.Wire(), profileWire.Wire());
     const result = pipe.Shape();

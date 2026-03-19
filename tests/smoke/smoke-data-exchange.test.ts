@@ -6,7 +6,7 @@ describe.skipIf(!wasmExists)('Smoke: Data exchange (STEP, STL)', () => {
 
   it('should transfer a shape successfully with STEPControl_Writer', () => {
     const oc = getOC();
-    const box = new oc.BRepPrimAPI_MakeBox_2(10, 20, 30);
+    const box = new oc.BRepPrimAPI_MakeBox(10, 20, 30);
     const shape = box.Shape();
     expect(shape.IsNull()).toBe(false);
 
@@ -56,7 +56,7 @@ describe.skipIf(!wasmExists)('Smoke: Data exchange (STEP, STL)', () => {
 
   it('should mesh shape and write STL via FS with BRepMesh_IncrementalMesh', () => {
     const oc = getOC();
-    const box = new oc.BRepPrimAPI_MakeBox_2(5, 5, 5);
+    const box = new oc.BRepPrimAPI_MakeBox(5, 5, 5);
     const shape = box.Shape();
 
     const mesh = new oc.BRepMesh_IncrementalMesh(shape, 0.1, false, 0.5, false);
@@ -64,7 +64,7 @@ describe.skipIf(!wasmExists)('Smoke: Data exchange (STEP, STL)', () => {
 
     const stlPath = '/test.stl';
     const stlWriter = new oc.StlAPI_Writer();
-    const stlSuccess = stlWriter.Write_1(
+    const stlSuccess = stlWriter.Write(
       shape,
       stlPath,
       new oc.Message_ProgressRange()

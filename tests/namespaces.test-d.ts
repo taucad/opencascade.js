@@ -175,7 +175,7 @@ it('namespace types should be identical to flat types', () => {
   expectTypeOf<TopAbs.ShapeEnum>().toEqualTypeOf<TopAbs_ShapeEnum>();
 });
 
-it('constructor subclass types should be in the same namespace as the base', () => {
-  expectTypeOf<BRepPrimAPI.MakeBox_2>().toMatchTypeOf<BRepPrimAPI.MakeBox>();
-  expectTypeOf<BRepPrimAPI.MakeBox_3>().toMatchTypeOf<BRepPrimAPI.MakeBox>();
+it('namespace should expose Compute free functions for FairCurve', () => {
+  expectTypeOf<FairCurve.Batten_Compute>().toBeFunction();
+  expectTypeOf<FairCurve.MinimalVariation_Compute>().toBeFunction();
 });

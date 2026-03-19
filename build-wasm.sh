@@ -446,6 +446,7 @@ step_sources_cmake() {
     else
       cxxflags="$cxxflags -fwasm-exceptions"
     fi
+    cxxflags="$cxxflags -DOCJS_EXCEPTIONS_ENABLED=1"
   fi
 
   if [ "$THREADING" = "multi-threaded" ]; then

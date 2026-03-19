@@ -41,11 +41,19 @@ public:
   static Standard_Failure* getStandard_FailureData(intptr_t exceptionPtr) {
     return reinterpret_cast<Standard_Failure*>(exceptionPtr);
   }
+  static bool exceptionsEnabled() {
+#ifdef OCJS_EXCEPTIONS_ENABLED
+    return true;
+#else
+    return false;
+#endif
+  }
 };
 using namespace emscripten;
 EMSCRIPTEN_BINDINGS(ocjs_builtins) {
   class_<OCJS>("OCJS")
     .class_function("getStandard_FailureData", &OCJS::getStandard_FailureData, allow_raw_pointers())
+    .class_function("exceptionsEnabled", &OCJS::exceptionsEnabled)
     ;
   class_<NCollection_IndexedDataMap<TCollection_AsciiString, TCollection_AsciiString>>("TColStd_IndexedDataMapOfStringString")
     .constructor<>()
@@ -298,8 +306,6 @@ def main():
     raise Exception(v.errors)
   buildConfig = v.normalized(buildConfig)
 
-  typescriptDefinitions = _collect_dts_fragments(buildConfig, libraryBasePath)
-
   if not args.dts_only:
     try:
       shutil.rmtree(libraryBasePath + "/bindings/myMain.h")
@@ -333,6 +339,8 @@ def main():
     for extraBuild in buildConfig["extraBuilds"]:
       runBuild(extraBuild, libraryBasePath)
 
+  typescriptDefinitions = _collect_dts_fragments(buildConfig, libraryBasePath)
+
   if buildConfig["generateTypescriptDefinitions"]:
     typescriptDefinitionOutput = ""
     typescriptExports = []
@@ -353,6 +361,8 @@ def main():
       {"export": "TColStd_IndexedDataMapOfStringString", "kind": "class"},
       {"export": "TopoDS", "kind": "class"},
       {"export": "OCJS", "kind": "class"},
+      {"export": "FairCurve_Batten_Compute", "kind": "function"},
+      {"export": "FairCurve_MinimalVariation_Compute", "kind": "function"},
     ])
 
     with open(os.path.join(declarations_dir, 'emscripten-fs.d.ts'), 'r') as f:

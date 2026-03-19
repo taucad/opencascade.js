@@ -14,6 +14,7 @@ USE_WASM_EXCEPTIONS = os.environ.get("OCJS_EXCEPTIONS", "0") == "1"
 _EH_MODE = os.environ.get("OCJS_EH_MODE", "wasm")
 if USE_WASM_EXCEPTIONS:
   WASM_EXCEPTION_FLAGS = ["-fexceptions"] if _EH_MODE == "js" else ["-fwasm-exceptions"]
+  WASM_EXCEPTION_FLAGS.append("-DOCJS_EXCEPTIONS_ENABLED=1")
 else:
   WASM_EXCEPTION_FLAGS = []
 

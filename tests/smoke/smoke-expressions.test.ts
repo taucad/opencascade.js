@@ -6,7 +6,7 @@ describe.skipIf(!wasmExists)('Smoke: Expression parser', () => {
 
   it('should create and query Expr_NamedUnknown', () => {
     const oc = getOC();
-    const x = new oc.Expr_NamedUnknown(new oc.TCollection_AsciiString_3('x'));
+    const x = new oc.Expr_NamedUnknown(new oc.TCollection_AsciiString('x'));
     expect(x.IsShareable()).toBe(true);
 
     const name = x.GetName();

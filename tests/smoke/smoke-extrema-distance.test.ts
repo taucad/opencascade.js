@@ -15,8 +15,8 @@ describe.skipIf(!wasmExists)('Smoke: Extrema and distance', () => {
 
   it('should compute distance between two separated boxes with BRepExtrema_DistShapeShape', () => {
     const oc = getOC();
-    const box1 = new oc.BRepPrimAPI_MakeBox_2(10, 10, 10);
-    const box2Maker = new oc.BRepPrimAPI_MakeBox_3(
+    const box1 = new oc.BRepPrimAPI_MakeBox(10, 10, 10);
+    const box2Maker = new oc.BRepPrimAPI_MakeBox(
       new oc.gp_Pnt(20, 0, 0),
       10,
       10,
@@ -46,8 +46,8 @@ describe.skipIf(!wasmExists)('Smoke: Extrema and distance', () => {
 
   it('should return 0 distance for overlapping shapes with BRepExtrema_DistShapeShape', () => {
     const oc = getOC();
-    const box1 = new oc.BRepPrimAPI_MakeBox_2(10, 10, 10);
-    const box2 = new oc.BRepPrimAPI_MakeBox_2(10, 10, 10);
+    const box1 = new oc.BRepPrimAPI_MakeBox(10, 10, 10);
+    const box2 = new oc.BRepPrimAPI_MakeBox(10, 10, 10);
 
     const dist = new oc.BRepExtrema_DistShapeShape(
       box1.Shape(),
@@ -67,8 +67,8 @@ describe.skipIf(!wasmExists)('Smoke: Extrema and distance', () => {
 
   it('should compute distance between box and sphere with BRepExtrema_DistShapeShape', () => {
     const oc = getOC();
-    const box = new oc.BRepPrimAPI_MakeBox_2(10, 10, 10);
-    const sphere = new oc.BRepPrimAPI_MakeSphere_5(
+    const box = new oc.BRepPrimAPI_MakeBox(10, 10, 10);
+    const sphere = new oc.BRepPrimAPI_MakeSphere(
       new oc.gp_Pnt(30, 5, 5),
       5,
     );
@@ -91,8 +91,8 @@ describe.skipIf(!wasmExists)('Smoke: Extrema and distance', () => {
 
   it('should compute distance between two separated bounding boxes with Bnd_Box', () => {
     const oc = getOC();
-    const box1 = new oc.BRepPrimAPI_MakeBox_2(10, 10, 10);
-    const box2 = new oc.BRepPrimAPI_MakeBox_3(
+    const box1 = new oc.BRepPrimAPI_MakeBox(10, 10, 10);
+    const box2 = new oc.BRepPrimAPI_MakeBox(
       new oc.gp_Pnt(20, 0, 0),
       10,
       10,
@@ -107,7 +107,7 @@ describe.skipIf(!wasmExists)('Smoke: Extrema and distance', () => {
     const distance = bnd1.Distance(bnd2);
     expect(distance).toBeCloseTo(10, 5);
 
-    expect(bnd1.IsOut_4(bnd2)).toBe(true);
+    expect(bnd1.IsOut(bnd2)).toBe(true);
 
     bnd2.delete();
     bnd1.delete();

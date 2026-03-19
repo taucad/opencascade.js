@@ -2,11 +2,28 @@ import clang.cindex
 import json
 import os
 import re
+from collections import defaultdict, namedtuple
+from dataclasses import dataclass, field
 
 from wasmGenerator.Common import SkipException, isAbstractClass, isTransientDerived, getMethodOverloadPostfix
 from filter.filterClasses import filterClass
 from filter.filterMethodOrProperties import filterMethodOrProperty
-from typing import Tuple, List
+from typing import Tuple, List, Any, Optional, Dict
+
+JsType = namedtuple('JsType', ['category', 'name'])
+
+@dataclass
+class DispatchLeaf:
+  overload: Any
+
+@dataclass
+class DispatchBranch:
+  arg_position: int
+  branches: dict = field(default_factory=dict)
+
+@dataclass
+class DispatchAmbiguous:
+  overloads: list = field(default_factory=list)
 
 def merge(sep: str, *strings: List[str]):
   return sep.join(strings)
@@ -75,6 +92,13 @@ cStringTypes = [
   "char *const",
 ]
 
+unbindablePointerTypes = [
+  "const char16_t *",
+  "const char16_t *const",
+  "char16_t *",
+  "char16_t *const",
+]
+
 def isCString(type):
   return type.get_canonical().spelling in cStringTypes
 
@@ -86,12 +110,20 @@ class Bindings:
     self.tuInfo = tuInfo
 
   _MEMBER_TYPEDEFS = {"value_type", "const_reference", "reference", "Array1Type", "Array2Type", "SequenceType"}
+  _DEPRECATED_TYPEDEFS = {
+    "Standard_Real", "Standard_Integer", "Standard_Boolean",
+    "Standard_ShortReal", "Standard_Character", "Standard_Byte",
+    "Standard_Size", "Standard_CString", "Standard_ExtCharacter",
+    "Standard_Utf8Char", "Standard_Utf8UChar",
+  }
   _TYPE_PARAM_RE = None
+  _reverse_typedef_cache = None
 
   _UNBINDABLE_PATTERNS = [
     "std::istream", "std::ostream", "std::ifstream", "std::ofstream",
     "std::istringstream", "std::ostringstream", "std::stringstream",
     "std::streambuf", "std::basic_istream", "std::basic_ostream",
+    "std::string_view", "std::basic_string_view",
     "void *", "void*",
     "NCollection_Vec2", "NCollection_Vec3", "NCollection_Vec4",
   ]
@@ -132,6 +164,269 @@ class Bindings:
     )
     return not hasCStringArgs
 
+  # ---------------------------------------------------------------------------
+  # Safe overload filtering
+  # ---------------------------------------------------------------------------
+
+  def _is_move_constructor(self, ctor):
+    """Detect T(T&&) move constructors — no JS equivalent."""
+    args = list(ctor.get_arguments())
+    if len(args) != 1:
+      return False
+    return args[0].type.kind == clang.cindex.TypeKind.RVALUEREFERENCE
+
+  def _is_float_only_variant(self, ctor):
+    """Check if constructor uses float (not double) args."""
+    for arg in ctor.get_arguments():
+      if arg.type.get_canonical().kind == clang.cindex.TypeKind.FLOAT:
+        return True
+    return False
+
+  def _dedupe_float_double(self, overloads):
+    """Remove overloads that are float variants when a double variant exists at the same arity."""
+    if len(overloads) <= 1:
+      return overloads
+    by_arity = defaultdict(list)
+    for ov in overloads:
+      by_arity[len(list(ov.get_arguments()))].append(ov)
+    result = []
+    for group in by_arity.values():
+      if len(group) <= 1:
+        result.extend(group)
+        continue
+      has_float = any(self._is_float_only_variant(ov) for ov in group)
+      has_non_float = any(not self._is_float_only_variant(ov) for ov in group)
+      if has_float and has_non_float:
+        result.extend(ov for ov in group if not self._is_float_only_variant(ov))
+      else:
+        result.extend(group)
+    return result
+
+  def _is_wider_string_ctor(self, ctor):
+    """Check if constructor uses wide string types (char16_t, char32_t, wchar_t)."""
+    for arg in ctor.get_arguments():
+      canonical = arg.type.get_canonical().spelling
+      if any(ws in canonical for ws in ('char16_t', 'char32_t', 'wchar_t')):
+        return True
+    return False
+
+  def _dedupe_string_encodings(self, overloads):
+    """Remove overloads that use wide string encodings (keep UTF-8/char*)."""
+    if len(overloads) <= 1:
+      return overloads
+    has_narrow = any(not self._is_wider_string_ctor(ov) for ov in overloads)
+    if not has_narrow:
+      return overloads
+    return [ov for ov in overloads if not self._is_wider_string_ctor(ov)]
+
+  def _filter_overloads(self, overloads):
+    """Apply all safe filters: move ctors, float/double dedup, string encoding dedup."""
+    filtered = [c for c in overloads if not self._is_move_constructor(c)]
+    filtered = self._dedupe_float_double(filtered)
+    filtered = self._dedupe_string_encodings(filtered)
+    return filtered
+
+  # ---------------------------------------------------------------------------
+  # Default parameter detection
+  # ---------------------------------------------------------------------------
+
+  def _countTrailingDefaults(self, cursor):
+    """Count trailing parameters with default values from clang AST."""
+    args = list(cursor.get_arguments())
+    count = 0
+    for arg in reversed(args):
+      tokens = list(arg.get_tokens())
+      if any(t.spelling == "=" for t in tokens):
+        count += 1
+      else:
+        break
+    return count
+
+  # ---------------------------------------------------------------------------
+  # JS type classification for dispatch
+  # ---------------------------------------------------------------------------
+
+  _JS_INTEGER_KINDS = frozenset({
+    clang.cindex.TypeKind.INT, clang.cindex.TypeKind.UINT,
+    clang.cindex.TypeKind.LONG, clang.cindex.TypeKind.ULONG,
+    clang.cindex.TypeKind.LONGLONG, clang.cindex.TypeKind.ULONGLONG,
+    clang.cindex.TypeKind.SHORT, clang.cindex.TypeKind.USHORT,
+    clang.cindex.TypeKind.ENUM,
+  })
+
+  _JS_FLOAT_KINDS = frozenset({
+    clang.cindex.TypeKind.FLOAT, clang.cindex.TypeKind.DOUBLE,
+    clang.cindex.TypeKind.LONGDOUBLE,
+  })
+
+  _JS_NUMERIC_KINDS = _JS_INTEGER_KINDS | _JS_FLOAT_KINDS
+
+  _JS_STRING_KINDS = frozenset({
+    clang.cindex.TypeKind.CHAR_U, clang.cindex.TypeKind.UCHAR,
+    clang.cindex.TypeKind.CHAR16, clang.cindex.TypeKind.CHAR32,
+    clang.cindex.TypeKind.CHAR_S, clang.cindex.TypeKind.SCHAR,
+  })
+
+  def _strip_type_qualifiers(self, clang_type):
+    """Strip const, reference, and pointer qualifiers for dispatch classification."""
+    t = clang_type
+    if t.kind == clang.cindex.TypeKind.LVALUEREFERENCE:
+      t = t.get_pointee()
+    if t.kind == clang.cindex.TypeKind.RVALUEREFERENCE:
+      t = t.get_pointee()
+    if t.kind == clang.cindex.TypeKind.POINTER:
+      t = t.get_pointee()
+    return t
+
+  def _resolve_template_typedef(self, type_spelling):
+    """Resolve a template instantiation like NCollection_Array1<gp_Pnt> to its typedef name like TColgp_Array1OfPnt."""
+    if Bindings._reverse_typedef_cache is None:
+      Bindings._reverse_typedef_cache = {}
+      for underlying_spelling, typedef_cursor in self.tuInfo.typedefUnderlyingDict.items():
+        clean = underlying_spelling.replace("const ", "").replace("&", "").replace("*", "").strip()
+        Bindings._reverse_typedef_cache[clean] = typedef_cursor.spelling
+    clean_spelling = type_spelling.replace("const ", "").replace("&", "").replace("*", "").strip()
+    return Bindings._reverse_typedef_cache.get(clean_spelling)
+
+  def _classify_js_type(self, clang_type, templateDecl=None, templateArgs=None):
+    """Map a C++ type to its JS runtime type category for dispatch discrimination."""
+    t = self._strip_type_qualifiers(clang_type)
+
+    if t.get_num_template_arguments() == 1:
+      decl = t.get_declaration()
+      if decl and decl.spelling == "handle":
+        parent = decl.semantic_parent
+        if parent and parent.spelling in ("opencascade", "occ"):
+          inner = t.get_template_argument_type(0)
+          inner_decl = inner.get_declaration()
+          name = inner_decl.spelling if (inner_decl and inner_decl.spelling) else inner.spelling
+          return JsType('object', name)
+
+    canonical = t.get_canonical()
+    kind = canonical.kind
+
+    if kind in self._JS_INTEGER_KINDS:
+      return JsType('number_int', 'number')
+    if kind in self._JS_FLOAT_KINDS:
+      return JsType('number_float', 'number')
+    if kind == clang.cindex.TypeKind.BOOL:
+      return JsType('boolean', 'boolean')
+    if kind in self._JS_STRING_KINDS:
+      return JsType('string', 'string')
+    if isCString(clang_type):
+      return JsType('string', 'string')
+
+    decl = t.get_declaration()
+    if decl and decl.spelling:
+      if '<' in t.spelling:
+        typedef_name = self._resolve_template_typedef(t.spelling)
+        if typedef_name:
+          return JsType('object', typedef_name)
+      return JsType('object', decl.spelling)
+
+    decl = canonical.get_declaration()
+    if decl and decl.spelling:
+      if '<' in canonical.spelling:
+        typedef_name = self._resolve_template_typedef(canonical.spelling)
+        if typedef_name:
+          return JsType('object', typedef_name)
+      return JsType('object', decl.spelling)
+
+    if templateArgs and "type-parameter-" in canonical.spelling:
+      import re
+      if Bindings._TYPE_PARAM_RE is None:
+        Bindings._TYPE_PARAM_RE = re.compile(r'type-parameter-(\d+)-(\d+)')
+      m = Bindings._TYPE_PARAM_RE.search(canonical.spelling)
+      if m:
+        depth, index = int(m.group(1)), int(m.group(2))
+        if depth == 0:
+          argValues = list(templateArgs.values())
+          if index < len(argValues):
+            resolved_type = argValues[index]
+            resolved_decl = resolved_type.get_declaration()
+            resolved_name = resolved_decl.spelling if (resolved_decl and resolved_decl.spelling) else resolved_type.spelling
+            return JsType('object', resolved_name)
+
+    return JsType('number_float', 'number')
+
+  # ---------------------------------------------------------------------------
+  # Dispatch tree construction
+  # ---------------------------------------------------------------------------
+
+  def _build_dispatch_tree(self, group, available_positions=None, templateDecl=None, templateArgs=None):
+    """Recursively partition same-arity overloads by JS type checks.
+    Returns DispatchLeaf, DispatchBranch, or DispatchAmbiguous."""
+    if len(group) == 1:
+      return DispatchLeaf(group[0])
+
+    if available_positions is None:
+      available_positions = list(range(len(list(group[0].get_arguments()))))
+
+    if not available_positions:
+      return DispatchAmbiguous(group)
+
+    best_pos = None
+    best_count = 0
+    for p in available_positions:
+      types = set()
+      for ov in group:
+        args = list(ov.get_arguments())
+        if p < len(args):
+          types.add(self._classify_js_type(args[p].type, templateDecl, templateArgs))
+      if len(types) > best_count:
+        best_count = len(types)
+        best_pos = p
+
+    if best_pos is None or best_count <= 1:
+      return DispatchAmbiguous(group)
+
+    type_groups = defaultdict(list)
+    for ov in group:
+      args = list(ov.get_arguments())
+      js_type = self._classify_js_type(args[best_pos].type, templateDecl, templateArgs)
+      type_groups[js_type].append(ov)
+
+    remaining = [p for p in available_positions if p != best_pos]
+    branches = {}
+    for js_type, sub_group in type_groups.items():
+      branches[js_type] = self._build_dispatch_tree(sub_group, remaining, templateDecl, templateArgs)
+
+    return DispatchBranch(best_pos, branches)
+
+  def _collect_ambiguous_overloads(self, tree):
+    """Collect all overloads from DispatchAmbiguous nodes in the tree."""
+    if isinstance(tree, DispatchLeaf):
+      return []
+    if isinstance(tree, DispatchAmbiguous):
+      return list(tree.overloads)
+    if isinstance(tree, DispatchBranch):
+      result = []
+      for subtree in tree.branches.values():
+        result.extend(self._collect_ambiguous_overloads(subtree))
+      return result
+    return []
+
+  def _collect_ambiguous_primaries(self, tree, primaries):
+    """Collect the id() of the first overload in each DispatchAmbiguous group (the dispatch fallback)."""
+    if isinstance(tree, DispatchLeaf):
+      return
+    if isinstance(tree, DispatchAmbiguous):
+      primaries.add(id(tree.overloads[0]))
+      return
+    if isinstance(tree, DispatchBranch):
+      for subtree in tree.branches.values():
+        self._collect_ambiguous_primaries(subtree, primaries)
+
+  def _tree_has_only_leaves(self, tree):
+    """Check if tree has only DispatchLeaf nodes (no ambiguous, no nested branches)."""
+    if isinstance(tree, DispatchLeaf):
+      return True
+    if isinstance(tree, DispatchAmbiguous):
+      return False
+    if isinstance(tree, DispatchBranch):
+      return all(isinstance(v, DispatchLeaf) for v in tree.branches.values())
+    return False
+
   def resolveWithCanonicalFallback(self, spelling, clangType, templateDecl = None, templateArgs = None):
     """Resolve a type spelling, falling back to canonical type for member typedefs.
     
@@ -141,6 +436,10 @@ class Bindings:
     (template definitions), we map it through templateArgs to the concrete type.
     """
     resolved = self.getTypedefedTemplateTypeAsString(spelling, templateDecl, templateArgs)
+    if any(td in resolved for td in self._DEPRECATED_TYPEDEFS):
+      canonical = clangType.get_canonical().spelling
+      if "type-parameter-" not in canonical:
+        return canonical
     if not any(td in resolved for td in self._MEMBER_TYPEDEFS):
       return resolved
 
@@ -209,22 +508,51 @@ class Bindings:
         output += self.processSimpleConstructor(theClass, templateDecl, templateArgs)
       except SkipException as e:
         print(str(e))
-    arity_seen_by_method = {}
-    for method in theClass.get_children():
+
+    # Group methods by name to detect same-arity overloads
+    method_groups = defaultdict(list)
+    all_children = list(theClass.get_children())
+    for method in all_children:
       if not filterMethodOrProperty(theClass, method):
         continue
-      nargs = len(list(method.get_arguments()))
-      key = (method.spelling, nargs)
-      arity_idx = arity_seen_by_method.get(key, 0)
-      arity_seen_by_method[key] = arity_idx + 1
+      if method.access_specifier == clang.cindex.AccessSpecifier.PUBLIC and method.kind == clang.cindex.CursorKind.CXX_METHOD and not method.spelling.startswith("operator"):
+        method_groups[method.spelling].append(method)
+      elif method.access_specifier == clang.cindex.AccessSpecifier.PUBLIC and method.kind == clang.cindex.CursorKind.FIELD_DECL:
+        try:
+          output += self.processMethodOrProperty(theClass, method, templateDecl, templateArgs)
+        except SkipException as e:
+          print(str(e))
+
+    # Process each method group
+    processed_groups = set()
+    for method_name, methods in method_groups.items():
+      if method_name in processed_groups:
+        continue
+      processed_groups.add(method_name)
       try:
-        output += self.processMethodOrProperty(theClass, method, templateDecl, templateArgs, overload_index=arity_idx)
+        output += self.processMethodGroup(theClass, methods, templateDecl, templateArgs)
       except SkipException as e:
         print(str(e))
+
     output += self.processFinalizeClass()
     if not isAbstract:
       try:
         output += self.processOverloadedConstructors(theClass, None, templateDecl, templateArgs)
+      except SkipException as e:
+        print(str(e))
+    return output
+
+  def processMethodGroup(self, theClass, methods, templateDecl=None, templateArgs=None):
+    """Process a group of methods with the same name. Override in subclasses."""
+    output = ""
+    arity_seen = {}
+    for method in methods:
+      nargs = len(list(method.get_arguments()))
+      key = nargs
+      arity_idx = arity_seen.get(key, 0)
+      arity_seen[key] = arity_idx + 1
+      try:
+        output += self.processMethodOrProperty(theClass, method, templateDecl, templateArgs, overload_index=arity_idx)
       except SkipException as e:
         print(str(e))
     return output
@@ -312,6 +640,102 @@ class EmbindBindings(Bindings):
       "    }))\n"
     )
 
+  def _codegen_dispatch_tree(self, tree, className, useHandleOverride, templateDecl, templateArgs, ind=6, arity=None):
+    """Recursively generate C++ if/else dispatch from a dispatch tree."""
+    sp = " " * ind
+    if isinstance(tree, DispatchLeaf):
+      args = list(tree.overload.get_arguments())
+      if arity is not None:
+        args = args[:arity]
+      conversions = []
+      for i, arg in enumerate(args):
+        cpp_type = self.getOriginalArgumentType(arg, templateDecl, templateArgs)
+        js_type = self._classify_js_type(arg.type, templateDecl, templateArgs)
+        if js_type.category == 'object':
+          conversions.append(f'arg{i}.as<{cpp_type}>(emscripten::allow_raw_pointers())')
+        elif js_type.category == 'string' and isCString(arg.type):
+          conversions.append(f'arg{i}.as<std::string>().c_str()')
+        else:
+          canon = arg.type.get_canonical().spelling
+          if "type-parameter-" in canon:
+            canon = self.resolveWithCanonicalFallback(arg.type.spelling, arg.type, templateDecl, templateArgs)
+          conversions.append(f'arg{i}.as<{canon}>()')
+      args_str = ", ".join(conversions)
+      if useHandleOverride:
+        return f'{sp}return opencascade::handle<{className}>(new {className}({args_str}));\n'
+      return f'{sp}return new {className}({args_str});\n'
+
+    if isinstance(tree, DispatchBranch):
+      code = ''
+      first = True
+      primitives = []
+      objects = []
+      for js_type, subtree in tree.branches.items():
+        if js_type.category == 'object':
+          objects.append((js_type, subtree))
+        else:
+          primitives.append((js_type, subtree))
+      has_int = any(jt.category == 'number_int' for jt, _ in primitives)
+      has_float = any(jt.category == 'number_float' for jt, _ in primitives)
+      int_float_split = has_int and has_float
+      if int_float_split:
+        primitives.sort(key=lambda x: (0 if x[0].category == 'number_int' else 1))
+      ordered = primitives + objects
+      for idx, (js_type, subtree) in enumerate(ordered):
+        is_last = (idx == len(ordered) - 1)
+        if first:
+          keyword = "if"
+        elif is_last:
+          keyword = "else"
+        else:
+          keyword = "else if"
+        first = False
+        if is_last:
+          code += f'{sp}{keyword} {{\n'
+        elif js_type.category == 'object':
+          check = f'arg{tree.arg_position}.typeOf().as<std::string>() == "object" && !emscripten::val::module_property("{js_type.name}").isUndefined() && arg{tree.arg_position}.instanceof(emscripten::val::module_property("{js_type.name}"))'
+          code += f'{sp}{keyword} ({check}) {{\n'
+        elif js_type.category == 'boolean':
+          check = f'arg{tree.arg_position}.typeOf().as<std::string>() == "boolean"'
+          code += f'{sp}{keyword} ({check}) {{\n'
+        elif js_type.category == 'string':
+          check = f'arg{tree.arg_position}.typeOf().as<std::string>() == "string"'
+          code += f'{sp}{keyword} ({check}) {{\n'
+        elif js_type.category == 'number_int' and int_float_split:
+          check = f'arg{tree.arg_position}.typeOf().as<std::string>() == "number" && emscripten::val::global("Number").call<bool>("isInteger", arg{tree.arg_position})'
+          code += f'{sp}{keyword} ({check}) {{\n'
+        elif js_type.category == 'number_float' and int_float_split:
+          check = f'arg{tree.arg_position}.typeOf().as<std::string>() == "number"'
+          code += f'{sp}{keyword} ({check}) {{\n'
+        else:
+          check = f'arg{tree.arg_position}.typeOf().as<std::string>() == "number"'
+          code += f'{sp}{keyword} ({check}) {{\n'
+        code += self._codegen_dispatch_tree(subtree, className, useHandleOverride, templateDecl, templateArgs, ind + 2, arity=arity)
+        code += f'{sp}}}\n'
+      return code
+
+    if isinstance(tree, DispatchAmbiguous):
+      fallback = DispatchLeaf(tree.overloads[0])
+      return self._codegen_dispatch_tree(fallback, className, useHandleOverride, templateDecl, templateArgs, ind, arity=arity)
+
+    return ''
+
+  def _emitValDispatchConstructor(self, className, arity, tree, useHandleOverride, templateDecl, templateArgs):
+    """Emit a single optional_override constructor with val-based dispatch for a same-arity group."""
+    val_args = ", ".join([f"emscripten::val arg{i}" for i in range(arity)])
+    if useHandleOverride:
+      ret_type = f"opencascade::handle<{className}>"
+    else:
+      ret_type = f"{className}*"
+    output = f"    .constructor(optional_override([]({val_args}) -> {ret_type} {{\n"
+    output += self._codegen_dispatch_tree(tree, className, useHandleOverride, templateDecl, templateArgs, ind=6, arity=arity)
+    if useHandleOverride:
+      output += f"      return opencascade::handle<{className}>();\n"
+    else:
+      output += f"      return nullptr;\n"
+    output += "    }))\n"
+    return output
+
   def processSimpleConstructor(self, theClass, templateDecl = None, templateArgs = None):
     output = ""
     children = list(theClass.get_children())
@@ -331,23 +755,72 @@ class EmbindBindings(Bindings):
     if len(publicConstructors) == 0:
       return output
 
-    if len(publicConstructors) == 1:
-      standardConstructor = publicConstructors[0]
-      args = list(standardConstructor.get_arguments())
-      self._checkUnbindableArgs("constructor", theClass.spelling, args)
-      output += self._emitConstructor(className, args, templateDecl, templateArgs, useHandleOverride)
+    # Apply safe filtering
+    filtered = self._filter_overloads(publicConstructors)
+    filtered = [c for c in filtered if filterMethodOrProperty(theClass, c)]
+    bindable = []
+    for c in filtered:
+      try:
+        self._checkUnbindableArgs("constructor", theClass.spelling, list(c.get_arguments()))
+        bindable.append(c)
+      except SkipException as e:
+        print(str(e))
+
+    if len(bindable) == 0:
       return output
 
-    if self._constructorsHaveUniqueArities(publicConstructors):
-      for constructor in filter(lambda x: filterMethodOrProperty(theClass, x), publicConstructors):
-        try:
-          args = list(constructor.get_arguments())
-          self._checkUnbindableArgs("constructor", theClass.spelling, args)
-          output += self._emitConstructor(className, args, templateDecl, templateArgs, useHandleOverride)
-        except SkipException as e:
-          print(str(e))
-          continue
+    if len(bindable) == 1:
+      args = list(bindable[0].get_arguments())
+      output += self._emitConstructor(className, args, templateDecl, templateArgs, useHandleOverride)
+      # Default parameter expansion for single constructor
+      nDefaults = self._countTrailingDefaults(bindable[0])
+      nArgs = len(args)
+      for d in range(1, nDefaults + 1):
+        truncated = args[:nArgs - d]
+        output += self._emitConstructor(className, truncated, templateDecl, templateArgs, useHandleOverride)
       return output
+
+    # Group by arity and handle each group
+    by_arity = defaultdict(list)
+    for c in bindable:
+      by_arity[len(list(c.get_arguments()))].append(c)
+
+    # Collect default expansions and merge into by_arity groups (collisions handled by dispatch)
+    default_expansions = []
+    for c in bindable:
+      nDefaults = self._countTrailingDefaults(c)
+      nArgs = len(list(c.get_arguments()))
+      for d in range(1, nDefaults + 1):
+        trunc_arity = nArgs - d
+        default_expansions.append((c, trunc_arity))
+
+    # Merge default expansions into by_arity using a synthetic "truncated" constructor proxy
+    for c, trunc_arity in default_expansions:
+      by_arity[trunc_arity].append(c)
+
+    for arity, group in sorted(by_arity.items()):
+      # Deduplicate: same constructor may appear via default expansion and explicit arity
+      seen_ids = set()
+      deduped = []
+      for c in group:
+        if id(c) not in seen_ids:
+          seen_ids.add(id(c))
+          deduped.append(c)
+      group = deduped
+
+      if len(group) == 1:
+        c = group[0]
+        actual_args = list(c.get_arguments())
+        # If this arity comes from default expansion, emit truncated constructor
+        emit_args = actual_args[:arity]
+        if not any(isCString(a.type) for a in emit_args):
+          output += self._emitConstructor(className, emit_args, templateDecl, templateArgs, useHandleOverride)
+        else:
+          tree = DispatchLeaf(c)
+          output += self._emitValDispatchConstructor(className, arity, tree, useHandleOverride, templateDecl, templateArgs)
+      else:
+        tree = self._build_dispatch_tree(group, available_positions=list(range(arity)), templateDecl=templateDecl, templateArgs=templateArgs)
+        output += self._emitValDispatchConstructor(className, arity, tree, useHandleOverride, templateDecl, templateArgs)
 
     return output
 
@@ -399,13 +872,15 @@ class EmbindBindings(Bindings):
       return [argBinding, changed]
     return f
 
-  def processMethodOrProperty(self, theClass, method, templateDecl = None, templateArgs = None, overload_index = 0):
+  def processMethodOrProperty(self, theClass, method, templateDecl = None, templateArgs = None, overload_index = 0, override_postfix = None):
     output = ""
     className = getClassTypeName(theClass, templateDecl)
     if className == "":
       className = theClass.type.spelling
     if method.access_specifier == clang.cindex.AccessSpecifier.PUBLIC and method.kind == clang.cindex.CursorKind.CXX_METHOD and not method.spelling.startswith("operator"):
       [overloadPostfix, numOverloads] = getMethodOverloadPostfix(theClass, method)
+      if override_postfix is not None:
+        overloadPostfix = override_postfix
 
       def needsWrapper(type):
         return (
@@ -588,7 +1063,238 @@ class EmbindBindings(Bindings):
         output += f"{indent(2)}.property(\"{method.spelling}\", &{className}::{method.spelling})\n"
     return output
 
+  def _emitValDispatchMethod(self, theClass, methodName, arity, tree, className, isStatic, templateDecl, templateArgs, mixed_returns=False):
+    """Emit a single optional_override method binding with val-based dispatch for same-arity overloads."""
+    val_args = ", ".join([f"emscripten::val arg{i}" for i in range(arity)])
+    if isStatic:
+      sig_args = val_args
+      functionCommand = "class_function"
+    else:
+      sig_args = f"{className}& self" + (", " + val_args if val_args else "")
+      functionCommand = "function"
+
+    ret_type = " -> emscripten::val" if mixed_returns else ""
+    output = f'{indent(2)}.{functionCommand}("{methodName}", optional_override([]({sig_args}){ret_type} {{\n'
+    output += self._codegen_method_dispatch_tree(tree, className, isStatic, templateDecl, templateArgs, ind=6, mixed_returns=mixed_returns)
+    output += "    }), allow_raw_pointers())\n"
+    return output
+
+  def _codegen_method_dispatch_tree(self, tree, className, isStatic, templateDecl, templateArgs, ind=6, mixed_returns=False):
+    """Generate C++ dispatch code for a method dispatch tree."""
+    sp = " " * ind
+    if isinstance(tree, DispatchLeaf):
+      method = tree.overload
+      args = list(method.get_arguments())
+      conversions = []
+      for i, arg in enumerate(args):
+        cpp_type = self.getOriginalArgumentType(arg, templateDecl, templateArgs)
+        js_type = self._classify_js_type(arg.type, templateDecl, templateArgs)
+        if js_type.category == 'object':
+          conversions.append(f'arg{i}.as<{cpp_type}>(emscripten::allow_raw_pointers())')
+        elif js_type.category == 'string' and isCString(arg.type):
+          conversions.append(f'arg{i}.as<std::string>().c_str()')
+        else:
+          canon = arg.type.get_canonical().spelling
+          if "type-parameter-" in canon:
+            canon = self.resolveWithCanonicalFallback(arg.type.spelling, arg.type, templateDecl, templateArgs)
+          conversions.append(f'arg{i}.as<{canon}>()')
+      args_str = ", ".join(conversions)
+      caller = f"{className}::" if method.is_static_method() else "self."
+      has_return = method.result_type.spelling != "void"
+      if mixed_returns:
+        if has_return:
+          return f'{sp}return emscripten::val({caller}{method.spelling}({args_str}));\n'
+        return f'{sp}{caller}{method.spelling}({args_str});\n{sp}return emscripten::val::undefined();\n'
+      if has_return:
+        return f'{sp}return {caller}{method.spelling}({args_str});\n'
+      return f'{sp}{caller}{method.spelling}({args_str});\n{sp}return;\n'
+
+    if isinstance(tree, DispatchBranch):
+      code = ''
+      first = True
+      primitives = []
+      objects = []
+      for js_type, subtree in tree.branches.items():
+        if js_type.category == 'object':
+          objects.append((js_type, subtree))
+        else:
+          primitives.append((js_type, subtree))
+      has_int = any(jt.category == 'number_int' for jt, _ in primitives)
+      has_float = any(jt.category == 'number_float' for jt, _ in primitives)
+      int_float_split = has_int and has_float
+      if int_float_split:
+        primitives.sort(key=lambda x: (0 if x[0].category == 'number_int' else 1))
+      ordered = primitives + objects
+      for idx, (js_type, subtree) in enumerate(ordered):
+        is_last = (idx == len(ordered) - 1)
+        if first:
+          keyword = "if"
+        elif is_last:
+          keyword = "else"
+        else:
+          keyword = "else if"
+        first = False
+        if is_last:
+          code += f'{sp}{keyword} {{\n'
+        elif js_type.category == 'object':
+          check = f'arg{tree.arg_position}.typeOf().as<std::string>() == "object" && !emscripten::val::module_property("{js_type.name}").isUndefined() && arg{tree.arg_position}.instanceof(emscripten::val::module_property("{js_type.name}"))'
+          code += f'{sp}{keyword} ({check}) {{\n'
+        elif js_type.category == 'boolean':
+          check = f'arg{tree.arg_position}.typeOf().as<std::string>() == "boolean"'
+          code += f'{sp}{keyword} ({check}) {{\n'
+        elif js_type.category == 'string':
+          check = f'arg{tree.arg_position}.typeOf().as<std::string>() == "string"'
+          code += f'{sp}{keyword} ({check}) {{\n'
+        elif js_type.category == 'number_int' and int_float_split:
+          check = f'arg{tree.arg_position}.typeOf().as<std::string>() == "number" && emscripten::val::global("Number").call<bool>("isInteger", arg{tree.arg_position})'
+          code += f'{sp}{keyword} ({check}) {{\n'
+        elif js_type.category == 'number_float' and int_float_split:
+          check = f'arg{tree.arg_position}.typeOf().as<std::string>() == "number"'
+          code += f'{sp}{keyword} ({check}) {{\n'
+        else:
+          check = f'arg{tree.arg_position}.typeOf().as<std::string>() == "number"'
+          code += f'{sp}{keyword} ({check}) {{\n'
+        code += self._codegen_method_dispatch_tree(subtree, className, isStatic, templateDecl, templateArgs, ind + 2, mixed_returns=mixed_returns)
+        code += f'{sp}}}\n'
+      return code
+
+    if isinstance(tree, DispatchAmbiguous):
+      fallback = DispatchLeaf(tree.overloads[0])
+      return self._codegen_method_dispatch_tree(fallback, className, isStatic, templateDecl, templateArgs, ind, mixed_returns=mixed_returns)
+
+    return ''
+
+  def _emitSuffixedMethod(self, theClass, m, suffix, className, templateDecl, templateArgs):
+    """Emit a single method binding with a _N suffix for ambiguous overloads."""
+    args = list(m.get_arguments())
+    argsNeedingWrapper = any(
+      m_arg.type.kind == clang.cindex.TypeKind.LVALUEREFERENCE and (
+        m_arg.type.get_pointee().get_canonical().spelling in builtInTypes or
+        m_arg.type.get_pointee().kind == clang.cindex.TypeKind.ENUM
+      ) or isCString(m_arg.type)
+      for m_arg in args
+    )
+    if argsNeedingWrapper:
+      try:
+        return self.processMethodOrProperty(theClass, m, templateDecl, templateArgs, overload_index=0)
+      except SkipException as e:
+        print(str(e))
+        return ""
+    argList = list(m.get_arguments())
+    returnType = self.resolveWithCanonicalFallback(m.result_type.spelling, m.result_type, templateDecl, templateArgs)
+    argTypesStr = ', '.join(self.getOriginalArgumentType(a, templateDecl, templateArgs) for a in argList)
+    constStr = "const" if m.is_const_method() else ""
+    classTypeName = getClassTypeName(theClass, templateDecl)
+    if m.is_static_method():
+      selectStr = f' select_overload<{returnType}({argTypesStr})>(&{className}::{m.spelling})'
+    else:
+      selectStr = f' select_overload<{returnType}({argTypesStr}){constStr}, {classTypeName}>(&{className}::{m.spelling})'
+    funcCmd = "class_function" if m.is_static_method() else "function"
+    return f'{indent(2)}.{funcCmd}("{m.spelling}{suffix}",{selectStr}, allow_raw_pointers())\n'
+
+  def processMethodGroup(self, theClass, methods, templateDecl=None, templateArgs=None):
+    """Process a group of methods with the same name, using dispatch for same-arity groups."""
+    output = ""
+    className = getClassTypeName(theClass, templateDecl)
+    if className == "":
+      className = theClass.type.spelling
+
+    bindable = []
+    for m in methods:
+      try:
+        self._checkUnbindableArgs(m.spelling, theClass.spelling, list(m.get_arguments()))
+        bindable.append(m)
+      except SkipException as e:
+        print(str(e))
+
+    if not bindable:
+      return output
+
+    by_arity = defaultdict(list)
+    for m in bindable:
+      by_arity[len(list(m.get_arguments()))].append(m)
+
+    all_unique_arities = all(len(group) == 1 for group in by_arity.values())
+
+    if all_unique_arities:
+      arity_idx = {}
+      for m in bindable:
+        nargs = len(list(m.get_arguments()))
+        idx = arity_idx.get(nargs, 0)
+        arity_idx[nargs] = idx + 1
+        try:
+          output += self.processMethodOrProperty(theClass, m, templateDecl, templateArgs, overload_index=idx, override_postfix="")
+        except SkipException as e:
+          print(str(e))
+      return output
+
+    # Some arities collide — handle per-arity group
+    all_methods_of_name = [m for m in theClass.get_children()
+                           if m.kind == clang.cindex.CursorKind.CXX_METHOD
+                           and m.access_specifier == clang.cindex.AccessSpecifier.PUBLIC
+                           and m.spelling == bindable[0].spelling]
+
+    for arity, group in sorted(by_arity.items()):
+      if len(group) == 1:
+        try:
+          output += self.processMethodOrProperty(theClass, group[0], templateDecl, templateArgs, overload_index=0, override_postfix="")
+        except SkipException as e:
+          print(str(e))
+      else:
+        def _method_has_wrapper_args(m):
+          return any(
+            (m_arg.type.kind == clang.cindex.TypeKind.LVALUEREFERENCE and
+             not m_arg.type.get_pointee().is_const_qualified() and (
+               m_arg.type.get_pointee().get_canonical().spelling in builtInTypes or
+               m_arg.type.get_pointee().get_canonical().kind == clang.cindex.TypeKind.ENUM
+             ))
+            or isCString(m_arg.type)
+            or m_arg.type.get_canonical().spelling in unbindablePointerTypes
+            for m_arg in m.get_arguments()
+          )
+
+        dispatchable = [m for m in group if not _method_has_wrapper_args(m)]
+        wrapper_methods = [m for m in group if _method_has_wrapper_args(m)]
+
+        if not dispatchable:
+          arity_idx = {}
+          for m in group:
+            nargs = len(list(m.get_arguments()))
+            idx = arity_idx.get(nargs, 0)
+            arity_idx[nargs] = idx + 1
+            try:
+              output += self.processMethodOrProperty(theClass, m, templateDecl, templateArgs, overload_index=idx)
+            except SkipException as e:
+              print(str(e))
+        else:
+          if len(dispatchable) == 1:
+            try:
+              output += self.processMethodOrProperty(theClass, dispatchable[0], templateDecl, templateArgs, overload_index=0, override_postfix="")
+            except SkipException as e:
+              print(str(e))
+          else:
+            return_types = set(m.result_type.get_canonical().spelling for m in dispatchable)
+            mixed_returns = len(return_types) > 1
+
+            tree = self._build_dispatch_tree(dispatchable, templateDecl=templateDecl, templateArgs=templateArgs)
+            ambiguous = self._collect_ambiguous_overloads(tree)
+
+            isStatic = all(m.is_static_method() for m in dispatchable)
+            output += self._emitValDispatchMethod(theClass, dispatchable[0].spelling, arity, tree, className, isStatic, templateDecl, templateArgs, mixed_returns=mixed_returns)
+            for m in ambiguous:
+              idx = all_methods_of_name.index(m) if m in all_methods_of_name else 0
+              suffix = "_" + str(idx + 1)
+              output += self._emitSuffixedMethod(theClass, m, suffix, className, templateDecl, templateArgs)
+
+          for m in wrapper_methods:
+            idx = all_methods_of_name.index(m) if m in all_methods_of_name else 0
+            suffix = "_" + str(idx + 1)
+            output += self._emitSuffixedMethod(theClass, m, suffix, className, templateDecl, templateArgs)
+
+    return output
+
   def processOverloadedConstructors(self, theClass, children = None, templateDecl = None, templateArgs = None):
+    """Emit _N subclass bindings ONLY for genuinely ambiguous constructor overloads."""
     output = ""
     if children is None:
       children = list(theClass.get_children())
@@ -596,41 +1302,58 @@ class EmbindBindings(Bindings):
     if len(constructors) <= 1:
       return output
 
-    if self._constructorsHaveUniqueArities(constructors):
+    filtered = self._filter_overloads(constructors)
+    filtered = [c for c in filtered if filterMethodOrProperty(theClass, c)]
+    bindable = []
+    for c in filtered:
+      try:
+        self._checkUnbindableArgs("constructor", theClass.spelling, list(c.get_arguments()))
+        bindable.append(c)
+      except SkipException:
+        continue
+
+    # Find same-arity groups that are genuinely ambiguous
+    by_arity = defaultdict(list)
+    for c in bindable:
+      by_arity[len(list(c.get_arguments()))].append(c)
+
+    ambiguous_ctors = []
+    for group in by_arity.values():
+      if len(group) <= 1:
+        continue
+      tree = self._build_dispatch_tree(group, templateDecl=templateDecl, templateArgs=templateArgs)
+      ambiguous_ctors.extend(self._collect_ambiguous_overloads(tree))
+
+    if not ambiguous_ctors:
       return output
 
     useHandleOverride = isTransientDerived(theClass, self.tuInfo.classDict)
-    constructorBindings = ""
+    name = getClassTypeName(theClass, templateDecl)
     allOverloads = constructors
-    for constructor in filter(lambda x: filterMethodOrProperty(theClass, x), constructors):
+
+    for constructor in ambiguous_ctors:
       try:
-        ctorArgs = list(constructor.get_arguments())
-        self._checkUnbindableArgs("constructor", theClass.spelling, ctorArgs)
-
         overloadPostfix = "_" + str(allOverloads.index(constructor) + 1)
-
         args = ", ".join(list(map(lambda x: ("std::string " + x.spelling) if isCString(x.type) else self.getSingleArgumentBinding(True, True, templateDecl, templateArgs)(x)[0], constructor.get_arguments())))
         argNames = ", ".join(list(map(lambda x: (x.spelling + ".c_str()") if isCString(x.type) else x.spelling, constructor.get_arguments())))
         argTypes = ", ".join(list(map(lambda x: "std::string" if isCString(x.type) else self.getSingleArgumentBinding(False, True, templateDecl, templateArgs)(x)[0], constructor.get_arguments())))
 
-        name = getClassTypeName(theClass, templateDecl)
-        constructorBindings += "    struct " + name + overloadPostfix + " : public " + name + " {\n"
-        constructorBindings += "      " + name + overloadPostfix + "(" + args + ") : " + name + "(" + argNames + ") {}\n"
-        constructorBindings += "    };\n"
-        constructorBindings += "    class_<" + name + overloadPostfix + ", base<" + name + ">>(\"" + name + overloadPostfix + "\")\n"
+        output += "    struct " + name + overloadPostfix + " : public " + name + " {\n"
+        output += "      " + name + overloadPostfix + "(" + args + ") : " + name + "(" + argNames + ") {}\n"
+        output += "    };\n"
+        output += "    class_<" + name + overloadPostfix + ", base<" + name + ">>(\"" + name + overloadPostfix + "\")\n"
         if useHandleOverride:
-          constructorBindings += "      .smart_ptr<opencascade::handle<" + name + overloadPostfix + ">>(\"Handle_" + name + overloadPostfix + "\")\n"
-          constructorBindings += "      .constructor(optional_override([](" + args + ") {\n"
-          constructorBindings += "        return opencascade::handle<" + name + overloadPostfix + ">(new " + name + overloadPostfix + "(" + argNames + "));\n"
-          constructorBindings += "      }))\n"
+          output += "      .smart_ptr<opencascade::handle<" + name + overloadPostfix + ">>(\"Handle_" + name + overloadPostfix + "\")\n"
+          output += "      .constructor(optional_override([](" + args + ") {\n"
+          output += "        return opencascade::handle<" + name + overloadPostfix + ">(new " + name + overloadPostfix + "(" + argNames + "));\n"
+          output += "      }))\n"
         else:
-          constructorBindings += "      .constructor<" + argTypes + ">()\n"
-        constructorBindings += "    ;\n"
+          output += "      .constructor<" + argTypes + ">()\n"
+        output += "    ;\n"
 
       except SkipException as e:
         print(str(e))
         continue
-    output += constructorBindings
     return output
 
   def processEnum(self, theEnum):
@@ -855,6 +1578,22 @@ class TypescriptBindings(Bindings):
     output += "}\n\n"
     return output
 
+  def _emitTsConstructor(self, className, args, templateDecl, templateArgs, tplName, numOptional=0):
+    """Emit a single TypeScript constructor signature, marking trailing args as optional."""
+    parts = []
+    nArgs = len(args)
+    for i, arg in enumerate(args):
+      name = self._argname(arg, i)
+      typeName = self.resolve_type(arg.type, templateDecl, templateArgs)
+      if i >= nArgs - numOptional:
+        parts.append(f"{name}?: {typeName}")
+      else:
+        parts.append(f"{name}: {typeName}")
+    argsStr = ", ".join(parts)
+    output = self._jsdoc(className, className, "  ", param_count=nArgs, template_name=tplName)
+    output += f"  constructor({argsStr});\n"
+    return output
+
   def processSimpleConstructor(self, theClass, templateDecl = None, templateArgs = None):
     output = ""
     children = list(theClass.get_children())
@@ -870,26 +1609,62 @@ class TypescriptBindings(Bindings):
     if len(publicConstructors) == 0:
       return output
 
-    if len(publicConstructors) == 1:
-      standardConstructor = publicConstructors[0]
-      ctorArgs = list(standardConstructor.get_arguments())
-      argsTypescriptDef = ", ".join(list(map(lambda x: self.getTypescriptDefFromArg(x), ctorArgs)))
-      output += self._jsdoc(className, className, "  ", param_count=len(ctorArgs), template_name=tplName)
-      output += "  constructor(" + argsTypescriptDef + ")\n"
+    # Apply safe filtering
+    filtered = self._filter_overloads(publicConstructors)
+    filtered = [c for c in filtered if filterMethodOrProperty(theClass, c)]
+    bindable = []
+    for c in filtered:
+      try:
+        self._checkUnbindableArgs("constructor", theClass.spelling, list(c.get_arguments()))
+        bindable.append(c)
+      except SkipException as e:
+        print(str(e))
+
+    if len(bindable) == 0:
       return output
 
-    if self._constructorsHaveUniqueArities(publicConstructors):
-      for constructor in filter(lambda x: filterMethodOrProperty(theClass, x), publicConstructors):
-        try:
-          args = list(constructor.get_arguments())
-          self._checkUnbindableArgs("constructor", theClass.spelling, args)
-          argsTypescriptDef = ", ".join(list(map(lambda x: self.getTypescriptDefFromArg(x, "", templateDecl, templateArgs), args)))
-          output += self._jsdoc(className, className, "  ", param_count=len(args), template_name=tplName)
-          output += "  constructor(" + argsTypescriptDef + ");\n"
-        except SkipException as e:
-          print(str(e))
-          continue
+    if len(bindable) == 1:
+      args = list(bindable[0].get_arguments())
+      nDefaults = self._countTrailingDefaults(bindable[0])
+      output += self._emitTsConstructor(className, args, templateDecl, templateArgs, tplName, numOptional=nDefaults)
       return output
+
+    # Group by arity — emit overloaded constructor() signatures for all distinguishable overloads
+    by_arity = defaultdict(list)
+    for c in bindable:
+      by_arity[len(list(c.get_arguments()))].append(c)
+
+    # Merge default expansions into by_arity (collisions handled by dispatch)
+    for c in bindable:
+      nDefaults = self._countTrailingDefaults(c)
+      nArgs = len(list(c.get_arguments()))
+      for d in range(1, nDefaults + 1):
+        trunc_arity = nArgs - d
+        by_arity[trunc_arity].append(c)
+
+    for arity, group in sorted(by_arity.items()):
+      seen_ids = set()
+      deduped = []
+      for c in group:
+        if id(c) not in seen_ids:
+          seen_ids.add(id(c))
+          deduped.append(c)
+      group = deduped
+
+      if len(group) == 1:
+        c = group[0]
+        actual_args = list(c.get_arguments())
+        nDefaults = self._countTrailingDefaults(c)
+        actual_arity = len(actual_args)
+        trailing_optional = actual_arity - arity if actual_arity > arity else nDefaults
+        output += self._emitTsConstructor(className, actual_args[:arity] if actual_arity > arity else actual_args, templateDecl, templateArgs, tplName, numOptional=trailing_optional if actual_arity == arity else 0)
+      else:
+        tree = self._build_dispatch_tree(group, available_positions=list(range(arity)), templateDecl=templateDecl, templateArgs=templateArgs)
+        ambiguous = self._collect_ambiguous_overloads(tree)
+        distinguishable = [ov for ov in group if ov not in ambiguous]
+        for ov in distinguishable:
+          actual_args = list(ov.get_arguments())
+          output += self._emitTsConstructor(className, actual_args[:arity], templateDecl, templateArgs, tplName)
 
     return output
 
@@ -1140,10 +1915,12 @@ class TypescriptBindings(Bindings):
     typeName = self.resolve_type(arg.type, templateDecl, templateArgs)
     return self._argname(arg, suffix) + ": " + typeName
 
-  def processMethodOrProperty(self, theClass, method, templateDecl = None, templateArgs = None, overload_index = 0):
+  def processMethodOrProperty(self, theClass, method, templateDecl = None, templateArgs = None, overload_index = 0, override_postfix = None):
     output = ""
     if method.access_specifier == clang.cindex.AccessSpecifier.PUBLIC and method.kind == clang.cindex.CursorKind.CXX_METHOD and not method.spelling.startswith("operator"):
       [overloadPostfix, numOverloads] = getMethodOverloadPostfix(theClass, method)
+      if override_postfix is not None:
+        overloadPostfix = override_postfix
 
       args = ", ".join(list(map(lambda x: self.getTypescriptDefFromArg(x[1], x[0], templateDecl, templateArgs), enumerate(method.get_arguments()))))
       returnType = self.getTypescriptDefFromResultType(method.result_type, templateDecl, templateArgs)
@@ -1155,7 +1932,120 @@ class TypescriptBindings(Bindings):
       output += "  " + ("static " if method.is_static_method() else "") + method.spelling + overloadPostfix + "(" + args + "): " + returnType + ";\n"
     return output
 
+  def processMethodGroup(self, theClass, methods, templateDecl=None, templateArgs=None):
+    """Process a group of methods with the same name — emit overloaded signatures."""
+    output = ""
+    className = getClassTypeName(theClass, templateDecl)
+    tplName = theClass.spelling if templateDecl is not None else None
+
+    bindable = []
+    for m in methods:
+      try:
+        self._checkUnbindableArgs(m.spelling, theClass.spelling, list(m.get_arguments()))
+        bindable.append(m)
+      except SkipException as e:
+        print(str(e))
+
+    if not bindable:
+      return output
+
+    by_arity = defaultdict(list)
+    for m in bindable:
+      by_arity[len(list(m.get_arguments()))].append(m)
+
+    all_unique_arities = all(len(group) == 1 for group in by_arity.values())
+
+    if all_unique_arities:
+      arity_idx = {}
+      for m in bindable:
+        nargs = len(list(m.get_arguments()))
+        idx = arity_idx.get(nargs, 0)
+        arity_idx[nargs] = idx + 1
+        try:
+          output += self.processMethodOrProperty(theClass, m, templateDecl, templateArgs, overload_index=idx, override_postfix="")
+        except SkipException as e:
+          print(str(e))
+      return output
+
+    # Same-arity groups exist — determine which need _N suffix
+    all_methods_of_name = [m for m in theClass.get_children()
+                           if m.kind == clang.cindex.CursorKind.CXX_METHOD
+                           and m.access_specifier == clang.cindex.AccessSpecifier.PUBLIC
+                           and m.spelling == bindable[0].spelling]
+    arity_idx_map = {}
+    for arity, group in sorted(by_arity.items()):
+      if len(group) == 1:
+        idx = arity_idx_map.get(arity, 0)
+        arity_idx_map[arity] = idx + 1
+        args = ", ".join(list(map(lambda x: self.getTypescriptDefFromArg(x[1], x[0], templateDecl, templateArgs), enumerate(group[0].get_arguments()))))
+        returnType = self.getTypescriptDefFromResultType(group[0].result_type, templateDecl, templateArgs)
+        methodArgs = list(group[0].get_arguments())
+        output += self._jsdoc(className, group[0].spelling, "  ", param_count=len(methodArgs), overload_index=idx, template_name=tplName)
+        output += "  " + ("static " if group[0].is_static_method() else "") + group[0].spelling + "(" + args + "): " + returnType + ";\n"
+      else:
+        def _ts_method_has_wrapper_args(m):
+          return any(
+            (m_arg.type.kind == clang.cindex.TypeKind.LVALUEREFERENCE and
+             not m_arg.type.get_pointee().is_const_qualified() and (
+               m_arg.type.get_pointee().get_canonical().spelling in builtInTypes or
+               m_arg.type.get_pointee().get_canonical().kind == clang.cindex.TypeKind.ENUM
+             ))
+            or isCString(m_arg.type)
+            or m_arg.type.get_canonical().spelling in unbindablePointerTypes
+            for m_arg in m.get_arguments()
+          )
+
+        dispatchable = [m for m in group if not _ts_method_has_wrapper_args(m)]
+        wrapper_methods = [m for m in group if _ts_method_has_wrapper_args(m)]
+
+        if dispatchable:
+          tree = self._build_dispatch_tree(dispatchable, templateDecl=templateDecl, templateArgs=templateArgs) if len(dispatchable) > 1 else None
+          ambiguous = self._collect_ambiguous_overloads(tree) if tree else []
+          distinguishable = [ov for ov in dispatchable if ov not in ambiguous]
+
+          ambiguous_primaries = set()
+          if tree:
+            self._collect_ambiguous_primaries(tree, ambiguous_primaries)
+
+          for ov in distinguishable:
+            idx = arity_idx_map.get(arity, 0)
+            arity_idx_map[arity] = idx + 1
+            args = ", ".join(list(map(lambda x: self.getTypescriptDefFromArg(x[1], x[0], templateDecl, templateArgs), enumerate(ov.get_arguments()))))
+            returnType = self.getTypescriptDefFromResultType(ov.result_type, templateDecl, templateArgs)
+            methodArgs = list(ov.get_arguments())
+            output += self._jsdoc(className, ov.spelling, "  ", param_count=len(methodArgs), overload_index=idx, template_name=tplName)
+            output += "  " + ("static " if ov.is_static_method() else "") + ov.spelling + "(" + args + "): " + returnType + ";\n"
+
+          for ov in ambiguous:
+            ovIdx = all_methods_of_name.index(ov) if ov in all_methods_of_name else 0
+            suffix = "_" + str(ovIdx + 1)
+            idx = arity_idx_map.get(arity, 0)
+            arity_idx_map[arity] = idx + 1
+            args = ", ".join(list(map(lambda x: self.getTypescriptDefFromArg(x[1], x[0], templateDecl, templateArgs), enumerate(ov.get_arguments()))))
+            returnType = self.getTypescriptDefFromResultType(ov.result_type, templateDecl, templateArgs)
+            methodArgs = list(ov.get_arguments())
+            is_primary = id(ov) in ambiguous_primaries
+            if is_primary:
+              output += self._jsdoc(className, ov.spelling, "  ", param_count=len(methodArgs), overload_index=idx, template_name=tplName)
+              output += "  " + ("static " if ov.is_static_method() else "") + ov.spelling + "(" + args + "): " + returnType + ";\n"
+            output += self._jsdoc(className, ov.spelling, "  ", param_count=len(methodArgs), overload_index=idx, template_name=tplName)
+            output += "  " + ("static " if ov.is_static_method() else "") + ov.spelling + suffix + "(" + args + "): " + returnType + ";\n"
+
+        for ov in wrapper_methods:
+          ovIdx = all_methods_of_name.index(ov) if ov in all_methods_of_name else 0
+          suffix = "_" + str(ovIdx + 1)
+          idx = arity_idx_map.get(arity, 0)
+          arity_idx_map[arity] = idx + 1
+          args = ", ".join(list(map(lambda x: self.getTypescriptDefFromArg(x[1], x[0], templateDecl, templateArgs), enumerate(ov.get_arguments()))))
+          returnType = self.getTypescriptDefFromResultType(ov.result_type, templateDecl, templateArgs)
+          methodArgs = list(ov.get_arguments())
+          output += self._jsdoc(className, ov.spelling, "  ", param_count=len(methodArgs), overload_index=idx, template_name=tplName)
+          output += "  " + ("static " if ov.is_static_method() else "") + ov.spelling + suffix + "(" + args + "): " + returnType + ";\n"
+
+    return output
+
   def processOverloadedConstructors(self, theClass, children = None, templateDecl = None, templateArgs = None):
+    """Emit _N subclass TypeScript declarations ONLY for genuinely ambiguous constructor overloads."""
     output = ""
     if children is None:
       children = list(theClass.get_children())
@@ -1163,32 +2053,49 @@ class TypescriptBindings(Bindings):
     if len(constructors) <= 1:
       return output
 
-    if self._constructorsHaveUniqueArities(constructors):
+    filtered = self._filter_overloads(constructors)
+    filtered = [c for c in filtered if filterMethodOrProperty(theClass, c)]
+    bindable = []
+    for c in filtered:
+      try:
+        self._checkUnbindableArgs("constructor", theClass.spelling, list(c.get_arguments()))
+        bindable.append(c)
+      except SkipException:
+        continue
+
+    by_arity = defaultdict(list)
+    for c in bindable:
+      by_arity[len(list(c.get_arguments()))].append(c)
+
+    ambiguous_ctors = []
+    for group in by_arity.values():
+      if len(group) <= 1:
+        continue
+      tree = self._build_dispatch_tree(group, templateDecl=templateDecl, templateArgs=templateArgs)
+      ambiguous_ctors.extend(self._collect_ambiguous_overloads(tree))
+
+    if not ambiguous_ctors:
       return output
 
-    constructorTypescriptDef = ""
-    allOverloadedConstructors = []
+    name = getClassTypeName(theClass, templateDecl)
+    tplName = theClass.spelling if templateDecl is not None else None
     allOverloads = constructors
+    allOverloadedConstructors = []
     arity_seen = {}
 
-    for constructor in filter(lambda x: filterMethodOrProperty(theClass, x), constructors):
+    for constructor in ambiguous_ctors:
       overloadPostfix = "_" + str(allOverloads.index(constructor) + 1)
-
       ctorArgs = list(constructor.get_arguments())
       nargs = len(ctorArgs)
       arity_idx = arity_seen.get(nargs, 0)
       arity_seen[nargs] = arity_idx + 1
-
       argsTypescriptDef = ", ".join(list(map(lambda x: self.getTypescriptDefFromArg(x, "", templateDecl, templateArgs), ctorArgs)))
-      name = getClassTypeName(theClass, templateDecl)
-      tplName = theClass.spelling if templateDecl is not None else None
-      constructorTypescriptDef += self._jsdoc(name, name, "  ", param_count=nargs, overload_index=arity_idx, template_name=tplName)
-      constructorTypescriptDef += "  export declare class " + name + overloadPostfix + " extends " + name + " {\n"
-      constructorTypescriptDef += self._jsdoc(name, name, "    ", param_count=nargs, overload_index=arity_idx, template_name=tplName)
-      constructorTypescriptDef += "    constructor(" + argsTypescriptDef + ");\n"
-      constructorTypescriptDef += "  }\n\n"
+      output += self._jsdoc(name, name, "  ", param_count=nargs, overload_index=arity_idx, template_name=tplName)
+      output += "  export declare class " + name + overloadPostfix + " extends " + name + " {\n"
+      output += self._jsdoc(name, name, "    ", param_count=nargs, overload_index=arity_idx, template_name=tplName)
+      output += "    constructor(" + argsTypescriptDef + ");\n"
+      output += "  }\n\n"
       allOverloadedConstructors.append(name + overloadPostfix)
-    output += constructorTypescriptDef
     self.exports.extend(allOverloadedConstructors)
     return output
 

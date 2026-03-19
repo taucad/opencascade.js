@@ -21,7 +21,7 @@ describe.skipIf(!wasmExists)('Smoke: Wire and face building', () => {
     const p2 = new oc.gp_Pnt(10, 0, 0);
     const p3 = new oc.gp_Pnt(5, 10, 0);
 
-    const poly = new oc.BRepBuilderAPI_MakePolygon_3(p1, p2, p3, true);
+    const poly = new oc.BRepBuilderAPI_MakePolygon(p1, p2, p3, true);
     expect(poly.IsDone()).toBe(true);
 
     const wire = poly.Wire();
@@ -40,7 +40,7 @@ describe.skipIf(!wasmExists)('Smoke: Wire and face building', () => {
     const p3 = new oc.gp_Pnt(20, 15, 0);
     const p4 = new oc.gp_Pnt(0, 15, 0);
 
-    const poly = new oc.BRepBuilderAPI_MakePolygon_4(p1, p2, p3, p4, true);
+    const poly = new oc.BRepBuilderAPI_MakePolygon(p1, p2, p3, p4, true);
     expect(poly.IsDone()).toBe(true);
 
     const wire = poly.Wire();
@@ -55,7 +55,7 @@ describe.skipIf(!wasmExists)('Smoke: Wire and face building', () => {
 
   it('should create an arbitrary polygon with MakePolygon.Add', () => {
     const oc = getOC();
-    const poly = new oc.BRepBuilderAPI_MakePolygon_1();
+    const poly = new oc.BRepBuilderAPI_MakePolygon();
     const pts = [
       new oc.gp_Pnt(0, 0, 0),
       new oc.gp_Pnt(10, 0, 0),
@@ -65,7 +65,7 @@ describe.skipIf(!wasmExists)('Smoke: Wire and face building', () => {
     ];
 
     for (const pt of pts) {
-      poly.Add_1(pt);
+      poly.Add(pt);
     }
     poly.Close();
 
@@ -84,8 +84,8 @@ describe.skipIf(!wasmExists)('Smoke: Wire and face building', () => {
     const p3 = new oc.gp_Pnt(20, 15, 0);
     const p4 = new oc.gp_Pnt(0, 15, 0);
 
-    const poly = new oc.BRepBuilderAPI_MakePolygon_4(p1, p2, p3, p4, true);
-    const face = new oc.BRepBuilderAPI_MakeFace_15(poly.Wire(), false);
+    const poly = new oc.BRepBuilderAPI_MakePolygon(p1, p2, p3, p4, true);
+    const face = new oc.BRepBuilderAPI_MakeFace(poly.Wire(), false);
 
     expect(face.IsDone()).toBe(true);
     const faceShape = face.Face();
@@ -106,11 +106,11 @@ describe.skipIf(!wasmExists)('Smoke: Wire and face building', () => {
     const p3 = new oc.gp_Pnt(20, 15, 0);
     const p4 = new oc.gp_Pnt(0, 15, 0);
 
-    const poly = new oc.BRepBuilderAPI_MakePolygon_4(p1, p2, p3, p4, true);
-    const face = new oc.BRepBuilderAPI_MakeFace_15(poly.Wire(), false);
+    const poly = new oc.BRepBuilderAPI_MakePolygon(p1, p2, p3, p4, true);
+    const face = new oc.BRepBuilderAPI_MakeFace(poly.Wire(), false);
     const prism = new oc.BRepPrimAPI_MakePrism(
       face.Face(),
-      new oc.gp_Vec_4(0, 0, 10),
+      new oc.gp_Vec(0, 0, 10),
       false,
       true,
     );
@@ -139,8 +139,8 @@ describe.skipIf(!wasmExists)('Smoke: Wire and face building', () => {
     const p2 = new oc.gp_Pnt(10, 0, 0);
     const p3 = new oc.gp_Pnt(10, 10, 0);
     const p4 = new oc.gp_Pnt(0, 10, 0);
-    const face1 = new oc.BRepBuilderAPI_MakeFace_15(
-      new oc.BRepBuilderAPI_MakePolygon_4(p1, p2, p3, p4, true).Wire(),
+    const face1 = new oc.BRepBuilderAPI_MakeFace(
+      new oc.BRepBuilderAPI_MakePolygon(p1, p2, p3, p4, true).Wire(),
       false,
     );
 
@@ -148,8 +148,8 @@ describe.skipIf(!wasmExists)('Smoke: Wire and face building', () => {
     const p6 = new oc.gp_Pnt(20, 0, 0);
     const p7 = new oc.gp_Pnt(20, 10, 0);
     const p8 = new oc.gp_Pnt(10, 10, 0);
-    const face2 = new oc.BRepBuilderAPI_MakeFace_15(
-      new oc.BRepBuilderAPI_MakePolygon_4(p5, p6, p7, p8, true).Wire(),
+    const face2 = new oc.BRepBuilderAPI_MakeFace(
+      new oc.BRepBuilderAPI_MakePolygon(p5, p6, p7, p8, true).Wire(),
       false,
     );
 

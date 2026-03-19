@@ -6,7 +6,7 @@ describe.skipIf(!wasmExists)('Smoke: Topology', () => {
 
   it('should count 6 faces, 24 edges, and 8 vertices on box with TopExp_Explorer', () => {
     const oc = getOC();
-    const box = new oc.BRepPrimAPI_MakeBox_2(10, 10, 10);
+    const box = new oc.BRepPrimAPI_MakeBox(10, 10, 10);
     const shape = box.Shape();
 
     let faceCount = 0;
@@ -51,7 +51,7 @@ describe.skipIf(!wasmExists)('Smoke: Topology', () => {
 
   it('should build compound from box with BRep_Builder and TopoDS_Compound', () => {
     const oc = getOC();
-    const box = new oc.BRepPrimAPI_MakeBox_2(10, 10, 10);
+    const box = new oc.BRepPrimAPI_MakeBox(10, 10, 10);
     const builder = new oc.BRep_Builder();
     const compound = new oc.TopoDS_Compound();
     builder.MakeCompound(compound);
@@ -65,7 +65,7 @@ describe.skipIf(!wasmExists)('Smoke: Topology', () => {
 
   it('should convert explorer Current to Face/Edge/Vertex with TopoDS cast functions', () => {
     const oc = getOC();
-    const box = new oc.BRepPrimAPI_MakeBox_2(10, 10, 10);
+    const box = new oc.BRepPrimAPI_MakeBox(10, 10, 10);
     const shape = box.Shape();
 
     const faceExplorer = new oc.TopExp_Explorer(

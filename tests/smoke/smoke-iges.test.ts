@@ -6,16 +6,16 @@ describe.skipIf(!wasmExists)('Smoke: IGESControl Writer and Reader', () => {
 
   it('should write box to IGES and read back with shape verification', () => {
     const oc = getOC();
-    const box = new oc.BRepPrimAPI_MakeBox_2(10, 20, 30);
+    const box = new oc.BRepPrimAPI_MakeBox(10, 20, 30);
     const shape = box.Shape();
 
     const igesPath = '/test.igs';
-    const writer = new oc.IGESControl_Writer_1();
+    const writer = new oc.IGESControl_Writer();
     const addOk = writer.AddShape(shape, new oc.Message_ProgressRange());
     expect(addOk).toBe(true);
 
     writer.ComputeModel();
-    writer.Write_2(igesPath, false);
+    writer.Write(igesPath, false);
 
     const fileData = oc.FS.readFile(igesPath);
     expect(fileData.byteLength ?? fileData.length).toBeGreaterThan(500);

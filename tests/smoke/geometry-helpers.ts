@@ -13,6 +13,7 @@ import { NodeIO } from '@gltf-transform/core';
 import type { InspectReport } from '@gltf-transform/functions';
 import { inspect } from '@gltf-transform/functions';
 import { expect } from 'vitest';
+import type { TopoDS_Shape } from '../../build-configs/opencascade_full.js';
 import { getOC } from './helpers.js';
 
 // =============================================================================
@@ -49,14 +50,14 @@ export type GeometryStats = {
  * 4. Read the GLB bytes from the Emscripten virtual filesystem
  */
 export function shapeToGlb(
-  shape: any,
+  shape: TopoDS_Shape,
   options?: { linearDeflection?: number; angularDeflection?: number },
 ): Uint8Array {
   const oc = getOC();
   const linearDeflection = options?.linearDeflection ?? 0.1;
   const angularDeflection = options?.angularDeflection ?? 0.5;
 
-  const docName = new oc.TCollection_ExtendedString_1();
+  const docName = new oc.TCollection_ExtendedString();
   const doc = new oc.TDocStd_Document(docName);
   const mainLabel = doc.Main();
   const shapeTool = oc.XCAFDoc_DocumentTool.ShapeTool(mainLabel);
@@ -72,7 +73,7 @@ export function shapeToGlb(
   );
 
   const glbPath = '/tmp/_smoke_test_export.glb';
-  const asciiPath = new oc.TCollection_AsciiString_3(glbPath);
+  const asciiPath = new oc.TCollection_AsciiString(glbPath);
   const writer = new oc.RWGltf_CafWriter(asciiPath, true);
   const metadata = new oc.TColStd_IndexedDataMapOfStringString();
   const progress = new oc.Message_ProgressRange();
@@ -146,7 +147,7 @@ export async function analyzeGlb(glbData: Uint8Array): Promise<GeometryStats> {
  * Export shape to GLB and analyze it in one step.
  */
 export async function analyzeShape(
-  shape: any,
+  shape: TopoDS_Shape,
   options?: { linearDeflection?: number; angularDeflection?: number },
 ): Promise<GeometryStats> {
   const glbData = shapeToGlb(shape, options);
@@ -262,7 +263,7 @@ export async function expectMinVertexCount(
  * Full geometry assertion: export shape to GLB and validate dimensions.
  */
 export async function expectShapeGeometry(
-  shape: any,
+  shape: TopoDS_Shape,
   expected: {
     size: Vec3;
     center?: Vec3;

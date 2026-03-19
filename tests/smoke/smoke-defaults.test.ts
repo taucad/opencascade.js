@@ -1,0 +1,72 @@
+import { describe, it, expect, beforeAll } from 'vitest';
+import { initOC, getOC, wasmExists } from './helpers.js';
+import { expectShapeGeometry } from './geometry-helpers.js';
+
+describe.skipIf(!wasmExists)('Smoke: default parameter support', () => {
+  beforeAll(async () => { await initOC(); });
+
+  describe('BRepMesh_IncrementalMesh — omitting trailing defaults', () => {
+    it('should accept 2 args (shape, linearDeflection) omitting isRelative, angDeflection, isInParallel', () => {
+      const oc = getOC();
+      const box = new oc.BRepPrimAPI_MakeBox(10, 20, 30);
+      const shape = box.Shape();
+
+      const mesh = new oc.BRepMesh_IncrementalMesh(shape, 0.1);
+      expect(mesh).toBeDefined();
+      mesh.delete();
+      box.delete();
+    });
+
+    it('should accept 3 args (shape, linearDeflection, isRelative) omitting angDeflection, isInParallel', () => {
+      const oc = getOC();
+      const box = new oc.BRepPrimAPI_MakeBox(10, 20, 30);
+      const shape = box.Shape();
+
+      const mesh = new oc.BRepMesh_IncrementalMesh(shape, 0.1, false);
+      expect(mesh).toBeDefined();
+      mesh.delete();
+      box.delete();
+    });
+
+    it('should accept 4 args (shape, linearDeflection, isRelative, angDeflection) omitting isInParallel', () => {
+      const oc = getOC();
+      const box = new oc.BRepPrimAPI_MakeBox(10, 20, 30);
+      const shape = box.Shape();
+
+      const mesh = new oc.BRepMesh_IncrementalMesh(shape, 0.1, false, 0.5);
+      expect(mesh).toBeDefined();
+      mesh.delete();
+      box.delete();
+    });
+
+    it('should still accept full 5 args', () => {
+      const oc = getOC();
+      const box = new oc.BRepPrimAPI_MakeBox(10, 20, 30);
+      const shape = box.Shape();
+
+      const mesh = new oc.BRepMesh_IncrementalMesh(shape, 0.1, false, 0.5, false);
+      expect(mesh).toBeDefined();
+      mesh.delete();
+      box.delete();
+    });
+  });
+
+  describe('BRepAlgoAPI_Fuse — omitting trailing defaults', () => {
+    it('should accept 2 args (S1, S2) omitting Message_ProgressRange', async () => {
+      const oc = getOC();
+      const box1 = new oc.BRepPrimAPI_MakeBox(10, 10, 10);
+      const box2 = new oc.BRepPrimAPI_MakeBox(5, 5, 5);
+
+      const fuse = new oc.BRepAlgoAPI_Fuse(box1.Shape(), box2.Shape());
+      fuse.Build(new oc.Message_ProgressRange());
+      const shape = fuse.Shape();
+      expect(shape.IsNull()).toBe(false);
+
+      await expectShapeGeometry(shape, { size: [10, 10, 10] });
+
+      fuse.delete();
+      box2.delete();
+      box1.delete();
+    });
+  });
+});

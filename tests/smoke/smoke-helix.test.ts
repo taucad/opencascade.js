@@ -13,7 +13,7 @@ describe.skipIf(!wasmExists)('Smoke: Helix geometry', () => {
 
   it('should construct and configure HelixGeom_BuilderHelix', () => {
     const oc = getOC();
-    const ax = new oc.gp_Ax2_4(new oc.gp_Pnt(0, 0, 0), new oc.gp_Dir_5(0, 0, 1));
+    const ax = new oc.gp_Ax2(new oc.gp_Pnt(0, 0, 0), new oc.gp_Dir(0, 0, 1));
     const builder = new oc.HelixGeom_BuilderHelix();
     builder.SetPosition(ax);
     builder.SetCurveParameters(0, 2 * Math.PI * 3, 10, 5, 0, false);

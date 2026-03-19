@@ -15,7 +15,8 @@
   },
   "type": "module",
   "scripts": {
-    "test:smoke": "vitest run tests/smoke/"
+    "test:smoke": "vitest run tests/smoke/",
+    "typecheck": "tsc --project tests/tsconfig.json"
   },
   "dependencies": {
     "@gltf-transform/core": "^4.3.0",

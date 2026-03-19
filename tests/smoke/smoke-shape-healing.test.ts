@@ -6,7 +6,7 @@ describe.skipIf(!wasmExists)('Smoke: Shape healing', () => {
 
   it('should fix a valid shape without error with ShapeFix_Shape', () => {
     const oc = getOC();
-    const box = new oc.BRepPrimAPI_MakeBox_2(10, 20, 30);
+    const box = new oc.BRepPrimAPI_MakeBox(10, 20, 30);
     const shape = box.Shape();
 
     const fixer = new oc.ShapeFix_Shape(shape);
@@ -37,15 +37,15 @@ describe.skipIf(!wasmExists)('Smoke: Shape healing', () => {
     const p2 = new oc.gp_Pnt(10, 0, 0);
     const p3 = new oc.gp_Pnt(10, 10, 0);
 
-    const e1 = new oc.BRepBuilderAPI_MakeEdge_3(p1, p2).Edge();
-    const e2 = new oc.BRepBuilderAPI_MakeEdge_3(p2, p3).Edge();
+    const e1 = new oc.BRepBuilderAPI_MakeEdge(p1, p2).Edge();
+    const e2 = new oc.BRepBuilderAPI_MakeEdge(p2, p3).Edge();
 
-    const wireBuilder = new oc.BRepBuilderAPI_MakeWire_1();
-    wireBuilder.Add_1(e1);
-    wireBuilder.Add_1(e2);
+    const wireBuilder = new oc.BRepBuilderAPI_MakeWire();
+    wireBuilder.Add(e1);
+    wireBuilder.Add(e2);
     const wire = wireBuilder.Wire();
 
-    const face = new oc.BRepBuilderAPI_MakeFace_15(wire, true).Face();
+    const face = new oc.BRepBuilderAPI_MakeFace(wire, true).Face();
     const fixer = new oc.ShapeFix_Wire(wire, face, 1e-6);
     const result = fixer.Perform();
     expect(typeof result).toBe('boolean');

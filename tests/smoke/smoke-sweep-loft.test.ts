@@ -19,15 +19,15 @@ describe.skipIf(!wasmExists)('Smoke: Sweep and loft', () => {
     const oc = getOC();
     const p1 = new oc.gp_Pnt(0, 0, 0);
     const p2 = new oc.gp_Pnt(0, 0, 30);
-    const spineEdge = new oc.BRepBuilderAPI_MakeEdge_3(p1, p2);
-    const spineWire = new oc.BRepBuilderAPI_MakeWire_2(spineEdge.Edge());
+    const spineEdge = new oc.BRepBuilderAPI_MakeEdge(p1, p2);
+    const spineWire = new oc.BRepBuilderAPI_MakeWire(spineEdge.Edge());
 
     const axOrigin = new oc.gp_Pnt(0, 0, 0);
-    const axDir = new oc.gp_Dir_5(0, 0, 1);
-    const ax = new oc.gp_Ax2_4(axOrigin, axDir);
+    const axDir = new oc.gp_Dir(0, 0, 1);
+    const ax = new oc.gp_Ax2(axOrigin, axDir);
     const circle = new oc.Geom_Circle(ax, 5);
-    const profileEdge = new oc.BRepBuilderAPI_MakeEdge_24(circle);
-    const profileWire = new oc.BRepBuilderAPI_MakeWire_2(profileEdge.Edge());
+    const profileEdge = new oc.BRepBuilderAPI_MakeEdge(circle);
+    const profileWire = new oc.BRepBuilderAPI_MakeWire(profileEdge.Edge());
 
     const pipeShell = new oc.BRepOffsetAPI_MakePipeShell(spineWire.Wire());
     pipeShell.Add(profileWire.Wire(), false, false);
@@ -67,16 +67,16 @@ describe.skipIf(!wasmExists)('Smoke: Sweep and loft', () => {
       { z: 30, radius: 8 },
     ];
 
-    const wireMakers: ReturnType<typeof oc.BRepBuilderAPI_MakeWire_2>[] = [];
+    const wireMakers: InstanceType<typeof oc.BRepBuilderAPI_MakeWire>[] = [];
     const toDelete: Array<{ delete: () => void }> = [];
 
     for (const { z, radius } of profiles) {
       const center = new oc.gp_Pnt(0, 0, z);
-      const dir = new oc.gp_Dir_5(0, 0, 1);
-      const ax = new oc.gp_Ax2_4(center, dir);
+      const dir = new oc.gp_Dir(0, 0, 1);
+      const ax = new oc.gp_Ax2(center, dir);
       const circle = new oc.Geom_Circle(ax, radius);
-      const edge = new oc.BRepBuilderAPI_MakeEdge_24(circle);
-      const wireMaker = new oc.BRepBuilderAPI_MakeWire_2(edge.Edge());
+      const edge = new oc.BRepBuilderAPI_MakeEdge(circle);
+      const wireMaker = new oc.BRepBuilderAPI_MakeWire(edge.Edge());
       wireMakers.push(wireMaker);
       toDelete.push(wireMaker, edge, circle, ax, dir, center);
     }
@@ -107,10 +107,10 @@ describe.skipIf(!wasmExists)('Smoke: Sweep and loft', () => {
     const p3 = new oc.gp_Pnt(10, 10, 0);
     const p4 = new oc.gp_Pnt(0, 10, 0);
 
-    const em1 = new oc.BRepBuilderAPI_MakeEdge_3(p1, p2);
-    const em2 = new oc.BRepBuilderAPI_MakeEdge_3(p2, p3);
-    const em3 = new oc.BRepBuilderAPI_MakeEdge_3(p3, p4);
-    const em4 = new oc.BRepBuilderAPI_MakeEdge_3(p4, p1);
+    const em1 = new oc.BRepBuilderAPI_MakeEdge(p1, p2);
+    const em2 = new oc.BRepBuilderAPI_MakeEdge(p2, p3);
+    const em3 = new oc.BRepBuilderAPI_MakeEdge(p3, p4);
+    const em4 = new oc.BRepBuilderAPI_MakeEdge(p4, p1);
     const e1 = em1.Edge();
     const e2 = em2.Edge();
     const e3 = em3.Edge();
@@ -129,10 +129,10 @@ describe.skipIf(!wasmExists)('Smoke: Sweep and loft', () => {
       9, // MaxSegments
     );
 
-    filling.Add_1(e1, oc.GeomAbs_Shape.GeomAbs_C0, true);
-    filling.Add_1(e2, oc.GeomAbs_Shape.GeomAbs_C0, true);
-    filling.Add_1(e3, oc.GeomAbs_Shape.GeomAbs_C0, true);
-    filling.Add_1(e4, oc.GeomAbs_Shape.GeomAbs_C0, true);
+    filling.Add(e1, oc.GeomAbs_Shape.GeomAbs_C0, true);
+    filling.Add(e2, oc.GeomAbs_Shape.GeomAbs_C0, true);
+    filling.Add(e3, oc.GeomAbs_Shape.GeomAbs_C0, true);
+    filling.Add(e4, oc.GeomAbs_Shape.GeomAbs_C0, true);
 
     const progress = new oc.Message_ProgressRange();
     filling.Build(progress);
@@ -159,15 +159,15 @@ describe.skipIf(!wasmExists)('Smoke: Sweep and loft', () => {
     const p2 = new oc.gp_Pnt(10, -5, 0);
     const p3 = new oc.gp_Pnt(10, 5, 0);
     const p4 = new oc.gp_Pnt(-10, 5, 0);
-    const rectPoly = new oc.BRepBuilderAPI_MakePolygon_4(p1, p2, p3, p4, true);
+    const rectPoly = new oc.BRepBuilderAPI_MakePolygon(p1, p2, p3, p4, true);
     const rectWire = rectPoly.Wire();
 
     const axCenter = new oc.gp_Pnt(0, 0, 20);
-    const axDir = new oc.gp_Dir_5(0, 0, 1);
-    const ax = new oc.gp_Ax2_4(axCenter, axDir);
+    const axDir = new oc.gp_Dir(0, 0, 1);
+    const ax = new oc.gp_Ax2(axCenter, axDir);
     const circle = new oc.Geom_Circle(ax, 8);
-    const circEdge = new oc.BRepBuilderAPI_MakeEdge_24(circle);
-    const circWireMaker = new oc.BRepBuilderAPI_MakeWire_2(circEdge.Edge());
+    const circEdge = new oc.BRepBuilderAPI_MakeEdge(circle);
+    const circWireMaker = new oc.BRepBuilderAPI_MakeWire(circEdge.Edge());
     const circWire = circWireMaker.Wire();
 
     const loft = new oc.BRepOffsetAPI_ThruSections(true, false, 1e-6);

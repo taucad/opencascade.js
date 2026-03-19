@@ -1,8 +1,19 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import { initOC, getOC, wasmExists, isExceptionsEnabled } from './helpers.js';
 
-interface CppException extends Error {
-  excPtr: number;
+function extractExceptionInfo(oc: any, e: unknown): { type: string; message: string } {
+  if (typeof e === 'number') {
+    const failureData = oc.OCJS.getStandard_FailureData(e);
+    return {
+      type: failureData?.constructor?.name ?? '',
+      message: failureData?.GetMessageString?.() ?? '',
+    };
+  }
+  const exc = e as Error;
+  return {
+    type: exc.name ?? '',
+    message: exc.message ?? String(e),
+  };
 }
 
 /* eslint-disable @typescript-eslint/naming-convention -- OpenCASCADE C++ API naming */
@@ -18,16 +29,13 @@ describe.skipIf(!wasmExists)('Smoke: Exception handling', () => {
     let exceptionMessage = '';
 
     try {
-      const cone = new oc.BRepPrimAPI_MakeCone_1(1, 0.5, 0);
+      const cone = new oc.BRepPrimAPI_MakeCone(1, 0.5, 0);
       cone.delete();
     } catch (e) {
       caught = true;
-      const exc = e as CppException;
-      exceptionType = exc.name ?? '';
-      exceptionMessage = exc.message ?? String(e);
-      if (!exceptionMessage && typeof exc.toString === 'function') {
-        exceptionMessage = exc.toString();
-      }
+      const info = extractExceptionInfo(oc, e);
+      exceptionType = info.type;
+      exceptionMessage = info.message;
     }
 
     expect(caught).toBe(true);
@@ -43,7 +51,7 @@ describe.skipIf(!wasmExists)('Smoke: Exception handling', () => {
     let exceptionType = '';
 
     try {
-      const box = new oc.BRepPrimAPI_MakeBox_2(0, 0, 0);
+      const box = new oc.BRepPrimAPI_MakeBox(0, 0, 0);
       if (!box.IsDone()) {
         caught = true;
         exceptionType = 'Standard_ConstructionError';
@@ -51,8 +59,8 @@ describe.skipIf(!wasmExists)('Smoke: Exception handling', () => {
       box.delete();
     } catch (e) {
       caught = true;
-      const exc = e as CppException;
-      exceptionType = exc.name ?? String(e);
+      const info = extractExceptionInfo(oc, e);
+      exceptionType = info.type;
     }
 
     expect(caught).toBe(true);

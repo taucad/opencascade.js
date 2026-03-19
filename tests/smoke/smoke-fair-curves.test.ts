@@ -12,7 +12,7 @@ describe.skipIf(!wasmExists)('Smoke: Fair curves', () => {
     const batten = new oc.FairCurve_Batten(p1, p2, 2.0, 1);
 
     const codeRef = { current: 0 };
-    (oc.FairCurve_Batten_Compute as any)(batten, codeRef, 50, 1e-3);
+    oc.FairCurve_Batten_Compute(batten, codeRef, 50, 1e-3);
     expect(typeof codeRef.current).toBe('number');
 
     const curve = batten.Curve();
@@ -30,7 +30,7 @@ describe.skipIf(!wasmExists)('Smoke: Fair curves', () => {
     const mv = new oc.FairCurve_MinimalVariation(p1, p2, 2.0, 1, 0);
 
     const codeRef = { current: 0 };
-    (oc.FairCurve_MinimalVariation_Compute as any)(mv, codeRef, 50, 1e-3);
+    oc.FairCurve_MinimalVariation_Compute(mv, codeRef, 50, 1e-3);
     expect(typeof codeRef.current).toBe('number');
 
     const curve = mv.Curve();

@@ -6,10 +6,10 @@ describe.skipIf(!wasmExists)('Smoke: RWPly_CafWriter PLY export', () => {
 
   it('should export box to PLY via XCAF document with correct geometry', () => {
     const oc = getOC();
-    const box = new oc.BRepPrimAPI_MakeBox_2(10, 20, 30);
+    const box = new oc.BRepPrimAPI_MakeBox(10, 20, 30);
     const shape = box.Shape();
 
-    const doc = new oc.TDocStd_Document(new oc.TCollection_ExtendedString_1());
+    const doc = new oc.TDocStd_Document(new oc.TCollection_ExtendedString());
     const shapeTool = oc.XCAFDoc_DocumentTool.ShapeTool(doc.Main());
     const newShape = shapeTool.NewShape();
     shapeTool.SetShape(newShape, shape);
@@ -17,7 +17,7 @@ describe.skipIf(!wasmExists)('Smoke: RWPly_CafWriter PLY export', () => {
 
     const plyPath = '/test.ply';
     const cafWriter = new oc.RWPly_CafWriter(
-      new oc.TCollection_AsciiString_3(plyPath),
+      new oc.TCollection_AsciiString(plyPath),
     );
     cafWriter.Perform(
       doc,

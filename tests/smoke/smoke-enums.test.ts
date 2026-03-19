@@ -69,7 +69,7 @@ describe.skipIf(!wasmExists)('Smoke: Enum Bindings', () => {
 
   it('should accept enum values in API functions', () => {
     const oc = getOC();
-    const box = new oc.BRepPrimAPI_MakeBox_2(10, 10, 10).Shape();
+    const box = new oc.BRepPrimAPI_MakeBox(10, 10, 10).Shape();
     const explorer = new oc.TopExp_Explorer(
       box,
       oc.TopAbs_ShapeEnum.TopAbs_FACE,

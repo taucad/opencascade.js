@@ -18,11 +18,11 @@ describe.skipIf(!wasmExists)('Smoke: overloaded constructors and methods', () =>
     pnt3.delete();
   });
 
-  it('should support _2 and _3 subclass constructors for BRepPrimAPI_MakeBox', () => {
+  it('should support overloaded constructors for BRepPrimAPI_MakeBox', () => {
     const oc = getOC();
-    const box2 = new oc.BRepPrimAPI_MakeBox_2(10, 20, 30);
+    const box2 = new oc.BRepPrimAPI_MakeBox(10, 20, 30);
     const origin = new oc.gp_Pnt(1, 2, 3);
-    const box3 = new oc.BRepPrimAPI_MakeBox_3(origin, 10, 20, 30);
+    const box3 = new oc.BRepPrimAPI_MakeBox(origin, 10, 20, 30);
     expect(box2.Shape().IsNull()).toBe(false);
     expect(box3.Shape().IsNull()).toBe(false);
     box2.delete();

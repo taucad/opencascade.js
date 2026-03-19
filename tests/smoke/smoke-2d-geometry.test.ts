@@ -28,9 +28,9 @@ describe.skipIf(!wasmExists)('Smoke: 2D geometry', () => {
 
   it('should compute magnitude and direction for gp_Vec2d', () => {
     const oc = getOC();
-    const vec = new oc.gp_Vec2d_4(3, 4);
+    const vec = new oc.gp_Vec2d(3, 4);
     expect(vec.Magnitude()).toBe(5);
-    expect(vec.IsNormal(new oc.gp_Vec2d_4(-4, 3), 1e-6)).toBe(true);
+    expect(vec.IsNormal(new oc.gp_Vec2d(-4, 3), 1e-6)).toBe(true);
 
     vec.delete();
   });
@@ -38,8 +38,8 @@ describe.skipIf(!wasmExists)('Smoke: 2D geometry', () => {
   it('should create a 2D circle with correct radius using Geom2d_Circle', () => {
     const oc = getOC();
     const center = new oc.gp_Pnt2d(0, 0);
-    const dir = new oc.gp_Dir2d_5(1, 0);
-    const ax = new oc.gp_Ax2d_2(center, dir);
+    const dir = new oc.gp_Dir2d(1, 0);
+    const ax = new oc.gp_Ax2d(center, dir);
 
     const circle = new oc.Geom2d_Circle(ax, 10, true);
     expect(circle.Radius()).toBe(10);
@@ -61,10 +61,10 @@ describe.skipIf(!wasmExists)('Smoke: 2D geometry', () => {
   it('should create a 2D line with correct direction using Geom2d_Line', () => {
     const oc = getOC();
     const origin = new oc.gp_Pnt2d(0, 0);
-    const dir = new oc.gp_Dir2d_5(1, 1);
-    const ax = new oc.gp_Ax2d_2(origin, dir);
+    const dir = new oc.gp_Dir2d(1, 1);
+    const ax = new oc.gp_Ax2d(origin, dir);
 
-    const line = new oc.Geom2d_Line_1(ax);
+    const line = new oc.Geom2d_Line(ax);
     const pt = line.EvalD0(Math.SQRT2);
 
     expect(pt.X()).toBe(1);
@@ -80,7 +80,7 @@ describe.skipIf(!wasmExists)('Smoke: 2D geometry', () => {
     const oc = getOC();
     const pt = new oc.gp_Pnt2d(5, 5);
     const trsf = new oc.gp_Trsf2d();
-    trsf.SetTranslation(new oc.gp_Vec2d_4(10, 20));
+    trsf.SetTranslation(new oc.gp_Vec2d(10, 20));
 
     const transformed = pt.Transformed(trsf);
     expect(transformed.X()).toBe(15);
@@ -107,8 +107,8 @@ describe.skipIf(!wasmExists)('Smoke: 2D geometry', () => {
   it('should construct a circle from center and radius with GCE2d_MakeCirc2d', () => {
     const oc = getOC();
     const center = new oc.gp_Pnt2d(5, 5);
-    const ax = new oc.gp_Ax2d_2(center, new oc.gp_Dir2d_5(1, 0));
-    const maker = new oc.GCE2d_MakeCircle_2(ax, 8, true);
+    const ax = new oc.gp_Ax2d(center, new oc.gp_Dir2d(1, 0));
+    const maker = new oc.GCE2d_MakeCircle(ax, 8, true);
 
     const circle = maker.Value();
     expect(circle.Radius()).toBe(8);
