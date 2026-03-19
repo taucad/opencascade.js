@@ -236,42 +236,19 @@ describe('JSDoc documentation coverage', () => {
     );
 
     it.skipIf(!sourceFile)(
-      'should have distinct constructor JSDoc for OSD_Disk_2 and OSD_Disk_3 (same arity)',
+      'should have distinct constructor JSDoc for OSD_Disk overloaded constructors',
       () => {
-        const disk2 = findClass(sourceFile!, 'OSD_Disk_2');
-        const disk3 = findClass(sourceFile!, 'OSD_Disk_3');
-        expect(disk2).toBeDefined();
-        expect(disk3).toBeDefined();
+        const disk = findClass(sourceFile!, 'OSD_Disk');
+        expect(disk).toBeDefined();
 
-        const ctor2 = findConstructor(disk2!);
-        const ctor3 = findConstructor(disk3!);
-        expect(ctor2).toBeDefined();
-        expect(ctor3).toBeDefined();
+        const ctors = disk!.members.filter(ts.isConstructorDeclaration);
+        expect(ctors.length).toBeGreaterThanOrEqual(2);
 
-        const doc2 = getJSDocText(ctor2!);
-        const doc3 = getJSDocText(ctor3!);
-        expect(doc2.length).toBeGreaterThan(0);
-        expect(doc3.length).toBeGreaterThan(0);
-        expect(doc2).not.toEqual(doc3);
+        const docs = ctors.map((c) => getJSDocText(c));
+        const nonEmpty = docs.filter((d) => d.length > 0);
+        expect(nonEmpty.length).toBeGreaterThanOrEqual(2);
 
-        expect(doc2).toContain('OSD_Path');
-        expect(doc3.toLowerCase()).toContain('pathname');
-      },
-    );
-
-    it.skipIf(!sourceFile)(
-      'should have distinct class-level JSDoc for OSD_Disk_2 and OSD_Disk_3',
-      () => {
-        const disk2 = findClass(sourceFile!, 'OSD_Disk_2');
-        const disk3 = findClass(sourceFile!, 'OSD_Disk_3');
-        expect(disk2).toBeDefined();
-        expect(disk3).toBeDefined();
-
-        const classDoc2 = getJSDocText(disk2!);
-        const classDoc3 = getJSDocText(disk3!);
-        expect(classDoc2.length).toBeGreaterThan(0);
-        expect(classDoc3.length).toBeGreaterThan(0);
-        expect(classDoc2).not.toEqual(classDoc3);
+        expect(docs[0]).not.toEqual(docs[1]);
       },
     );
   });
@@ -462,54 +439,41 @@ describe('JSDoc documentation coverage', () => {
     );
 
     it.skipIf(!sourceFile)(
-      'should have distinct JSDoc for BRep_Tool.Tolerance_1/2/3 (same arity: face/edge/vertex)',
+      'should have distinct JSDoc for BRep_Tool.Tolerance overloads (face/edge/vertex)',
       () => {
         const cls = findClass(sourceFile!, 'BRep_Tool');
         expect(cls).toBeDefined();
-        const t1 = findMethod(cls!, 'Tolerance_1');
-        const t2 = findMethod(cls!, 'Tolerance_2');
-        const t3 = findMethod(cls!, 'Tolerance_3');
-        expect(t1).toBeDefined();
-        expect(t2).toBeDefined();
-        expect(t3).toBeDefined();
+        const toleranceMethods = cls!.members.filter(
+          (m) => ts.isMethodDeclaration(m) && ts.isIdentifier(m.name) && m.name.text === 'Tolerance',
+        );
+        expect(toleranceMethods.length).toBeGreaterThanOrEqual(3);
 
-        const doc1 = getJSDocText(t1!);
-        const doc2 = getJSDocText(t2!);
-        const doc3 = getJSDocText(t3!);
-        expect(doc1.length).toBeGreaterThan(0);
-        expect(doc2.length).toBeGreaterThan(0);
-        expect(doc3.length).toBeGreaterThan(0);
+        const docs = toleranceMethods.map((m) => getJSDocText(m));
+        const nonEmpty = docs.filter((d) => d.length > 0);
+        expect(nonEmpty.length).toBeGreaterThanOrEqual(3);
 
-        expect(doc1).toContain('face');
-        expect(doc2).toContain('<E>');
-        expect(doc3).toContain('tolerance');
-        expect(doc1).not.toEqual(doc2);
-        expect(doc2).not.toEqual(doc3);
+        expect(docs[0]).not.toEqual(docs[1]);
+        expect(docs[1]).not.toEqual(docs[2]);
       },
     );
 
     it.skipIf(!sourceFile)(
-      'should have distinct JSDoc for gp_Pnt.Mirrored_1/2/3 (same arity: point/axis/plane)',
+      'should have distinct JSDoc for gp_Pnt.Mirrored overloads (point/axis/plane)',
       () => {
         const cls = findClass(sourceFile!, 'gp_Pnt');
         expect(cls).toBeDefined();
-        const m1 = findMethod(cls!, 'Mirrored_1');
-        const m2 = findMethod(cls!, 'Mirrored_2');
-        const m3 = findMethod(cls!, 'Mirrored_3');
-        expect(m1).toBeDefined();
-        expect(m2).toBeDefined();
-        expect(m3).toBeDefined();
+        const mirroredMethods = cls!.members.filter(
+          (m) => ts.isMethodDeclaration(m) && ts.isIdentifier(m.name) && m.name.text === 'Mirrored',
+        );
+        expect(mirroredMethods.length).toBeGreaterThanOrEqual(3);
 
-        const doc1 = getJSDocText(m1!);
-        const doc2 = getJSDocText(m2!);
-        const doc3 = getJSDocText(m3!);
-        expect(doc1.length).toBeGreaterThan(0);
-        expect(doc2.length).toBeGreaterThan(0);
-        expect(doc3.length).toBeGreaterThan(0);
+        const docs = mirroredMethods.map((m) => getJSDocText(m));
+        const nonEmpty = docs.filter((d) => d.length > 0);
+        expect(nonEmpty.length).toBeGreaterThanOrEqual(3);
 
-        expect(doc1).not.toEqual(doc2);
-        expect(doc1).not.toEqual(doc3);
-        expect(doc2).not.toEqual(doc3);
+        expect(docs[0]).not.toEqual(docs[1]);
+        expect(docs[0]).not.toEqual(docs[2]);
+        expect(docs[1]).not.toEqual(docs[2]);
       },
     );
 

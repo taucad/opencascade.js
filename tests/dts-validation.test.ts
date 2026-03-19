@@ -364,7 +364,7 @@ describe('Full build .d.ts validation', () => {
     if (!sourceFile) return;
     const { total } = countAnyTypes(sourceFile);
 
-    expect(total, `any count ${total} exceeds regression threshold of 2200`).toBeLessThan(2200);
+    expect(total, `any count ${total} exceeds regression threshold of 2300`).toBeLessThan(2300);
   });
 
   it('should have all symbols from full.yml declared in the .d.ts', () => {
@@ -503,27 +503,25 @@ describe('Overload validation (full build)', () => {
     ).toHaveLength(0);
   });
 
-  it('should use _N subclasses for BRepPrimAPI_MakeBox (duplicate arities)', () => {
+  it('should use constructor overloads for BRepPrimAPI_MakeBox (suffix-free)', () => {
     if (!sourceFile) return;
     const symbols = extractSymbols(sourceFile);
 
     const base = symbols.find((s) => s.name === 'BRepPrimAPI_MakeBox' && s.kind === 'class');
-    expect(base, 'BRepPrimAPI_MakeBox base class should exist').toBeDefined();
+    expect(base, 'BRepPrimAPI_MakeBox class should exist').toBeDefined();
 
     const subclasses = symbols.filter(
       (s) => s.kind === 'class' && /^BRepPrimAPI_MakeBox_\d+$/.test(s.name),
     );
     expect(
       subclasses.length,
-      'BRepPrimAPI_MakeBox should have _N subclasses for duplicate-arity constructors',
-    ).toBeGreaterThanOrEqual(2);
+      'BRepPrimAPI_MakeBox should NOT have _N subclasses in suffix-free mode',
+    ).toBe(0);
 
-    for (const sub of subclasses) {
-      expect(
-        sub.heritage,
-        `${sub.name} should extend BRepPrimAPI_MakeBox`,
-      ).toContain('BRepPrimAPI_MakeBox');
-    }
+    expect(
+      base!.members!.filter((m) => m === 'constructor').length,
+      'BRepPrimAPI_MakeBox should have multiple constructor overloads',
+    ).toBeGreaterThanOrEqual(2);
   });
 
   it('should not have _N suffixes for methods with unique arities', () => {

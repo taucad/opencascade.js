@@ -385,8 +385,8 @@ def main():
       typescriptDefinitionOutput += f"export namespace {ns_name} {{\n"
       for short_name, ex in sorted(entries, key=lambda e: e[0]):
         full_name = ex["export"]
-        if ex["kind"] in ("class", "enum"):
-          typescriptDefinitionOutput += f"  export type {short_name} = {full_name};\n"
+        if ex["kind"] == "function":
+          typescriptDefinitionOutput += f"  export type {short_name} = typeof {full_name};\n"
         else:
           typescriptDefinitionOutput += f"  export type {short_name} = {full_name};\n"
       typescriptDefinitionOutput += "}\n\n"
@@ -432,7 +432,7 @@ def main():
       " * OCCT binding as a property (e.g. `oc.BRepPrimAPI_MakeBox`) and use `oc.FS`\n" + \
       " * for virtual filesystem operations.\n" + \
       " */\n" + \
-      "export type OpenCascadeInstance = {FS: typeof FS} & {\n  " + ";\n  ".join(map(lambda x: x["export"] + ": typeof " + x["export"] if x["kind"] in ("class", "enum") else x["export"] + ": " + x["export"], typescriptExports)) + ";\n" + \
+      "export type OpenCascadeInstance = {FS: typeof FS} & {\n  " + ";\n  ".join(map(lambda x: x["export"] + ": typeof " + x["export"], typescriptExports)) + ";\n" + \
       "};\n\n" + \
       "/**\n" + \
       " * Initialize the OpenCASCADE WASM module and return the fully populated instance.\n" + \
