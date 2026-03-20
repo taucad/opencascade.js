@@ -69,8 +69,8 @@ it('should expose BRepAlgoAPI namespace with boolean operations', () => {
 });
 
 it('should expose TopAbs namespace with topology enums', () => {
-  expectTypeOf<TopAbs.ShapeEnum>().toBeNumber();
-  expectTypeOf<TopAbs.Orientation>().toBeNumber();
+  expectTypeOf<TopAbs.ShapeEnum>().toBeString();
+  expectTypeOf<TopAbs.Orientation>().toBeString();
 });
 
 it('should expose TopExp namespace with topology explorer', () => {
@@ -92,8 +92,8 @@ it('should expose Geom namespace with geometry classes', () => {
 });
 
 it('should expose GeomAbs namespace with enums', () => {
-  expectTypeOf<GeomAbs.CurveType>().toBeNumber();
-  expectTypeOf<GeomAbs.Shape>().toBeNumber();
+  expectTypeOf<GeomAbs.CurveType>().toBeString();
+  expectTypeOf<GeomAbs.Shape>().toBeString();
 });
 
 it('should expose BRepOffsetAPI namespace', () => {
@@ -109,7 +109,7 @@ it('should expose collection namespaces', () => {
 it('should expose data exchange namespaces', () => {
   expectTypeOf<STEPControl.Writer>().toHaveProperty('Write');
   expectTypeOf<STEPControl.Reader>().toHaveProperty('ReadFile');
-  expectTypeOf<IFSelect.ReturnStatus>().toBeNumber();
+  expectTypeOf<IFSelect.ReturnStatus>().toBeString();
 });
 
 it('should expose application framework namespaces', () => {

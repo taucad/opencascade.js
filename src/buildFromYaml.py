@@ -11,7 +11,7 @@ import yaml
 import shutil
 from cerberus import Validator
 from argparse import ArgumentParser
-from Common import OCJS_ROOT, getFlatIncludePaths, PCH_FILE, WASM_EXCEPTION_FLAGS, USE_WASM_EXCEPTIONS, EXTRA_COMPILE_FLAGS
+from Common import OCJS_ROOT, getFlatIncludePaths, PCH_FILE, WASM_EXCEPTION_FLAGS, USE_WASM_EXCEPTIONS, SIMD_FLAGS, EXTRA_COMPILE_FLAGS, validate_build_flags, BuildFlagMismatch
 from filter.filterPackages import filterPackages
 try:
     import provenance as prov
@@ -113,7 +113,37 @@ def shouldProcessSymbol(symbol: str, bindings) -> bool:
     return True
   return False
 
+def _validate_yaml_env_consistency(build):
+  """Fail fast if YAML emccFlags disagree with OCJS_EXCEPTIONS env var."""
+  yaml_flags = build.get("emccFlags", [])
+  yaml_has_exc = any(f in ("-fwasm-exceptions", "-fexceptions") for f in yaml_flags)
+  yaml_disables_exc = any("-sDISABLE_EXCEPTION_CATCHING=1" in f for f in yaml_flags)
+  env_exc = os.environ.get("OCJS_EXCEPTIONS", "0") == "1"
+
+  if env_exc and yaml_disables_exc:
+    raise BuildFlagMismatch(
+      "ERROR: YAML↔env exception mismatch.\n"
+      f"  OCJS_EXCEPTIONS=1 but YAML emccFlags contains -sDISABLE_EXCEPTION_CATCHING=1.\n"
+      f"  YAML config: {build.get('name', '?')}\n\n"
+      "To fix: either set OCJS_EXCEPTIONS=0 or remove -sDISABLE_EXCEPTION_CATCHING=1 from the YAML."
+    )
+  if not env_exc and yaml_has_exc:
+    raise BuildFlagMismatch(
+      "ERROR: YAML↔env exception mismatch.\n"
+      f"  OCJS_EXCEPTIONS=0 but YAML emccFlags contains exception flags ({[f for f in yaml_flags if f in ('-fwasm-exceptions', '-fexceptions')]}).\n"
+      f"  YAML config: {build.get('name', '?')}\n\n"
+      "To fix: either set OCJS_EXCEPTIONS=1 or use a YAML config without exception flags."
+    )
+
+
 def runBuild(build, libraryBasePath):
+  try:
+    validate_build_flags()
+  except BuildFlagMismatch as e:
+    print(str(e), flush=True)
+    raise SystemExit(1)
+  _validate_yaml_env_consistency(build)
+
   def getAdditionalBindCodeO():
     combined = BUILTIN_ADDITIONAL_BIND_CODE
     if "additionalBindCode" in build:
@@ -135,6 +165,7 @@ def runBuild(build, libraryBasePath):
       "-std=c++17",
       *(["-flto"] if USE_LTO else []),
       *exception_flags,
+      *SIMD_FLAGS,
       *EXTRA_COMPILE_FLAGS,
       "-DIGNORE_NO_ATOMICS=1",
       "-DOCCT_NO_PLUGINS",
@@ -211,10 +242,16 @@ def runBuild(build, libraryBasePath):
     *yaml_flags,
     *allowed_undef_flags,
   ]
+  if os.environ.get("OCJS_BIGINT", "0") == "1":
+    linkCmd.append("-sWASM_BIGINT=1")
   if os.environ.get("OCJS_CLOSURE", "false") == "true":
     linkCmd.extend(["--closure", "1"])
   if os.environ.get("OCJS_EVAL_CTORS", "false") == "true":
-    linkCmd.append("-sEVAL_CTORS=1")
+    eval_ctors_level = os.environ.get("OCJS_EVAL_CTORS_LEVEL", "1")
+    linkCmd.append(f"-sEVAL_CTORS={eval_ctors_level}")
+  if not USE_WASM_EXCEPTIONS:
+    linkCmd.append("-sSUPPORT_LONGJMP=0")
+    linkCmd.append("-sDISABLE_EXCEPTION_CATCHING=1")
   print(f"Linking {len(bindingsO)} bindings + {len(sourcesO)} sources ...", flush=True)
   link_start = time.time()
   subprocess.check_call(linkCmd)
@@ -239,6 +276,9 @@ def runBuild(build, libraryBasePath):
     wasmOptCmd = [wasmOptPath] + wasm_opt_flag_list
     wasmOptCmd.append("--enable-exception-handling")
     wasm_opt_flag_list.append("--enable-exception-handling")
+    if os.environ.get("OCJS_SIMD", "0") == "1":
+      wasmOptCmd.extend(["--enable-simd", "--enable-relaxed-simd"])
+      wasm_opt_flag_list.extend(["--enable-simd", "--enable-relaxed-simd"])
     if os.environ.get("THREADING") == "multi-threaded":
       wasmOptCmd.append("--enable-threads")
       wasm_opt_flag_list.append("--enable-threads")

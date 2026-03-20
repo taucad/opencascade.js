@@ -27,8 +27,8 @@ it('should have delete method on all bound classes', () => {
   expectTypeOf<BRepPrimAPI.MakeBox>().toHaveProperty('delete');
 });
 
-it('should have members with numeric literal types for enum lookup objects', () => {
-  expectTypeOf<TopAbs.ShapeEnum>().toBeNumber();
+it('should have members with string literal types for enum lookup objects', () => {
+  expectTypeOf<TopAbs.ShapeEnum>().toBeString();
 });
 
 it('should resolve NCollection_Vec types to fixed-length tuples not number[]', () => {

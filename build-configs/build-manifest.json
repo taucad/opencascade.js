@@ -1,7 +1,7 @@
 {
-  "timestamp": "2026-03-18T11:57:41Z",
-  "yaml_config": "full-exceptions.yml",
-  "yaml_hash": "05a3747dcc34",
+  "timestamp": "2026-03-20T01:47:45Z",
+  "yaml_config": "full.yml",
+  "yaml_hash": "79ea6e71d625",
   "validation_passed": false,
   "symbols": {
     "requested": [
@@ -4480,16 +4480,16 @@
       "name": "opencascade_full.js",
       "wasm_file": "opencascade_full.wasm",
       "wasm_exists": true,
-      "wasm_size": 64212392,
+      "wasm_size": 49246038,
       "js_exists": true,
-      "js_size": 289028,
+      "js_size": 299680,
       "pass": true
     }
   ],
   "binding_report": {
     "total": 4454,
-    "succeeded": 4446,
-    "cached": 0,
+    "succeeded": 0,
+    "cached": 4446,
     "failed": 8,
     "error_categories": {
       "overload_resolution": 3,

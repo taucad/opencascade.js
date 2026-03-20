@@ -6,7 +6,7 @@ import subprocess
 import multiprocessing
 from functools import partial
 
-from Common import OCJS_ROOT, PCH_FILE, getFlatIncludePaths, FLAT_INCLUDE_DIR, WASM_EXCEPTION_FLAGS, EXTRA_COMPILE_FLAGS
+from Common import OCJS_ROOT, PCH_FILE, getFlatIncludePaths, FLAT_INCLUDE_DIR, WASM_EXCEPTION_FLAGS, SIMD_FLAGS, EXTRA_COMPILE_FLAGS, validate_build_flags, BuildFlagMismatch
 from filter.filterPackages import filterPackages
 
 from argparse import ArgumentParser
@@ -55,6 +55,7 @@ def buildOneFile(args, item):
       "-std=c++17",
       *(["-flto"] if USE_LTO else []),
       *exception_flags,
+      *SIMD_FLAGS,
       *EXTRA_COMPILE_FLAGS,
       "-DIGNORE_NO_ATOMICS=1",
       "-DOCCT_NO_PLUGINS",
@@ -108,6 +109,12 @@ def _is_filtered_binding(filepath):
   return False
 
 if __name__ == "__main__":
+  try:
+    validate_build_flags()
+  except BuildFlagMismatch as e:
+    print(str(e), flush=True)
+    raise SystemExit(1)
+
   parser = ArgumentParser()
   parser.add_argument(dest="threading", choices=["single-threaded", "multi-threaded"], help="Build in single vs. multi-threaded mode")
   args = parser.parse_args()

@@ -16,7 +16,10 @@ if USE_WASM_EXCEPTIONS:
   WASM_EXCEPTION_FLAGS = ["-fexceptions"] if _EH_MODE == "js" else ["-fwasm-exceptions"]
   WASM_EXCEPTION_FLAGS.append("-DOCJS_EXCEPTIONS_ENABLED=1")
 else:
-  WASM_EXCEPTION_FLAGS = []
+  WASM_EXCEPTION_FLAGS = ["-sSUPPORT_LONGJMP=0", "-sDISABLE_EXCEPTION_CATCHING=1"]
+
+USE_SIMD = os.environ.get("OCJS_SIMD", "0") == "1"
+SIMD_FLAGS = ["-msimd128", "-mrelaxed-simd"] if USE_SIMD else []
 
 def _parse_extra_compile_flags():
   flags = []
@@ -35,6 +38,83 @@ occtBasePath = OCCT_ROOT + "/src/"
 FLAT_INCLUDE_DIR = OCJS_ROOT + "/build/occt-includes"
 PCH_HEADER = OCJS_ROOT + "/build/pch.h"
 PCH_FILE = OCJS_ROOT + "/build/pch.h.pch"
+BUILD_FLAGS_PATH = OCJS_ROOT + "/build/build-flags.json"
+
+_BUILD_FLAG_KEYS = [
+  "OCJS_OPT", "OCJS_LTO", "OCJS_EXCEPTIONS", "OCJS_EH_MODE",
+  "OCJS_SIMD", "THREADING", "OCJS_DEFINES", "OCJS_UNDEFINES",
+]
+
+_BUILD_FLAG_DEFAULTS = {
+  "OCJS_OPT": "-O2",
+  "OCJS_LTO": "1",
+  "OCJS_EXCEPTIONS": "0",
+  "OCJS_EH_MODE": "wasm",
+  "OCJS_SIMD": "0",
+  "THREADING": "single-threaded",
+  "OCJS_DEFINES": "",
+  "OCJS_UNDEFINES": "",
+}
+
+
+class BuildFlagMismatch(Exception):
+  pass
+
+
+def _current_build_flags() -> dict:
+  return {k: os.environ.get(k, _BUILD_FLAG_DEFAULTS[k]) for k in _BUILD_FLAG_KEYS}
+
+
+def write_build_flags(path: str = "") -> None:
+  import json
+  from datetime import datetime, timezone
+  if not path:
+    path = BUILD_FLAGS_PATH
+  flags = _current_build_flags()
+  flags["timestamp"] = datetime.now(timezone.utc).isoformat()
+  os.makedirs(os.path.dirname(path), exist_ok=True)
+  with open(path, "w") as f:
+    json.dump(flags, f, indent=2)
+  print(f"Build flags written to {path}")
+
+
+def validate_build_flags(path: str = "") -> None:
+  import json
+  if not path:
+    path = BUILD_FLAGS_PATH
+  if not os.path.isfile(path):
+    return
+  with open(path) as f:
+    stored = json.load(f)
+  current = _current_build_flags()
+  mismatches = []
+  for key in _BUILD_FLAG_KEYS:
+    stored_val = stored.get(key, _BUILD_FLAG_DEFAULTS[key])
+    current_val = current[key]
+    if stored_val != current_val:
+      mismatches.append((key, current_val, stored_val))
+  if not mismatches:
+    return
+  lines = [
+    "ERROR: Build flag mismatch — artifacts in build/ were compiled with different settings.",
+    "",
+    f"  {'Flag':<20s} {'Environment':<20s} {'build/build-flags.json':<25s}",
+    f"  {'─' * 20} {'─' * 20} {'─' * 25}",
+  ]
+  for key, cur, stored_val in mismatches:
+    lines.append(f"  {key:<20s} {cur:<20s} {stored_val:<25s}")
+  lines.extend([
+    "",
+    "Artifacts cannot be mixed across different compile-flag configurations.",
+    "",
+    "To fix, choose one of:",
+    "  1. Rebuild everything:  ./build-wasm.sh full <yaml>",
+    "  2. Rebuild from PCH:    ./build-wasm.sh pch bindings link <yaml>",
+  ])
+  example_key, example_val, _ = mismatches[0]
+  lines.append(f"  3. Match the artifacts: export {example_key}={stored.get(example_key, '')}")
+  msg = "\n".join(lines)
+  raise BuildFlagMismatch(msg)
 
 _DEPRECATED_DIR = "Deprecated"
 
@@ -254,6 +334,7 @@ def buildPch(threading="single-threaded"):
     "-std=c++17",
     *(["-flto"] if USE_LTO else []),
     *exception_flags,
+    *SIMD_FLAGS,
     *EXTRA_COMPILE_FLAGS,
     "-DIGNORE_NO_ATOMICS=1",
     "-DOCCT_NO_PLUGINS",
@@ -282,3 +363,4 @@ def buildPch(threading="single-threaded"):
 
   size_mb = os.path.getsize(PCH_FILE) / (1024 * 1024)
   print(f"PCH ready: {PCH_FILE} ({size_mb:.0f} MB)")
+  write_build_flags()

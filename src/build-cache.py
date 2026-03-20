@@ -1,9 +1,11 @@
 """
 Build cache management for WASM compilation artifacts.
 
-Provides config-keyed caching of compiled .o files, PCH, and flat includes.
-The cache key is derived from all inputs that affect .o file output:
-  OCJS_OPT, OCJS_LTO, OCJS_EXCEPTIONS, THREADING, filterPackages.py hash, OCCT commit.
+Provides config-keyed caching of compiled .o files, PCH, flat includes,
+CMake static libraries (occt-cmake), and the .cmake-lib-dir marker.
+The cache key is derived from all inputs that affect .o / .a file output:
+  OCJS_OPT, OCJS_LTO, OCJS_EXCEPTIONS, OCJS_EH_MODE, OCJS_PATCH_DUMP,
+  THREADING, filterPackages.py hash, OCCT commit, DEPS.json hash.
 
 Cache entries live under cache/<key>/ and are symlinked into build/ so that
 compilation writes directly into the cache — no post-compile copy required.
@@ -32,8 +34,8 @@ CACHE_DIR = os.path.join(OCJS_ROOT, "cache")
 BUILD_DIR = os.path.join(OCJS_ROOT, "build")
 INDEX_FILE = os.path.join(CACHE_DIR, "index.json")
 
-CACHED_SUBDIRS = ["bindings", "sources", "occt-includes"]
-CACHED_FILES = ["pch.h", "pch.h.pch"]
+CACHED_SUBDIRS = ["bindings", "sources", "occt-includes", "occt-cmake"]
+CACHED_FILES = ["pch.h", "pch.h.pch", ".cmake-lib-dir", "build-flags.json"]
 
 COMPLETE_MARKER = ".complete"
 
@@ -99,25 +101,49 @@ def _bindgen_code_hash() -> str:
     return h.hexdigest()[:8]
 
 
+def _deps_hash() -> str:
+    """Hash DEPS.json to capture rapidjson/freetype/emscripten version pins."""
+    deps_file = os.path.join(OCJS_ROOT, "DEPS.json")
+    if os.path.isfile(deps_file):
+        return _file_hash(deps_file)[:8]
+    return "nodeps"
+
+
+def _exc_slug() -> str:
+    """Encode exception mode including EH mechanism (wasm vs js)."""
+    if os.environ.get("OCJS_EXCEPTIONS", "0") != "1":
+        return "noExc"
+    eh_mode = os.environ.get("OCJS_EH_MODE", "wasm")
+    return "wasmExc" if eh_mode == "wasm" else "jsExc"
+
+
 def compute_key() -> str:
     opt = os.environ.get("OCJS_OPT", "-O2")
     lto = "LTO" if os.environ.get("OCJS_LTO", "1") == "1" else "noLTO"
-    exc = "wasmExc" if os.environ.get("OCJS_EXCEPTIONS", "0") == "1" else "noExc"
+    exc = _exc_slug()
     threading = os.environ.get("THREADING", "single-threaded")
     thread_slug = "multi" if "multi" in threading else "single"
     filt = _filter_hash()
     occt = _occt_commit()[:6]
     emcc_ver = _get_emscripten_version()
     bg = _bindgen_code_hash()
+    deps = _deps_hash()
+    patch_dump = "patched" if os.environ.get("OCJS_PATCH_DUMP", "false") == "true" else ""
 
     defines = os.environ.get("OCJS_DEFINES", "")
     undefines = os.environ.get("OCJS_UNDEFINES", "")
     extra = f"{defines}|{undefines}"
     extra_hash = hashlib.sha256(extra.encode()).hexdigest()[:6] if extra != "|" else ""
 
+    simd = "simd" if os.environ.get("OCJS_SIMD", "0") == "1" else ""
+
     key_parts = [
-        _opt_slug(opt), lto, exc, thread_slug, filt, occt, f"bg{bg}", f"em{emcc_ver}",
+        _opt_slug(opt), lto, exc, thread_slug, filt, occt, f"bg{bg}", f"em{emcc_ver}", f"dp{deps}",
     ]
+    if patch_dump:
+        key_parts.append(patch_dump)
+    if simd:
+        key_parts.append(simd)
     if extra_hash:
         key_parts.append(extra_hash)
     return "-".join(key_parts)
@@ -237,8 +263,11 @@ def finalize(key: str) -> None:
             "OCJS_OPT": os.environ.get("OCJS_OPT", "-O2"),
             "OCJS_LTO": os.environ.get("OCJS_LTO", "1"),
             "OCJS_EXCEPTIONS": os.environ.get("OCJS_EXCEPTIONS", "0"),
+            "OCJS_EH_MODE": os.environ.get("OCJS_EH_MODE", "wasm"),
+            "OCJS_PATCH_DUMP": os.environ.get("OCJS_PATCH_DUMP", "false"),
             "THREADING": os.environ.get("THREADING", "single-threaded"),
         },
+        "depsHash": _deps_hash(),
         "occtCommit": _occt_commit(),
         "filterHash": _filter_hash(),
         "emscriptenVersion": _get_emscripten_version(),

@@ -302,6 +302,8 @@ export OCJS_CONVERGE="${OCJS_CONVERGE:-false}"
 export OCJS_DEFINES="${OCJS_DEFINES:-}"
 export OCJS_UNDEFINES="${OCJS_UNDEFINES:-}"
 export OCJS_PATCH_DUMP="${OCJS_PATCH_DUMP:-false}"
+export OCJS_SIMD="${OCJS_SIMD:-0}"
+export OCJS_BIGINT="${OCJS_BIGINT:-0}"
 export OCJS_FORCE_GENERATE="${OCJS_FORCE_GENERATE:-0}"
 export OCJS_FORCE_MISS="${OCJS_FORCE_MISS:-0}"
 export THREADING="${THREADING:-single-threaded}"
@@ -335,6 +337,20 @@ mkdir -p build/{bindings,sources,dist}
 # ── Provenance init (only for builds that produce output) ────────────
 
 python3 src/provenance.py init 2>/dev/null || true
+
+# ── Build flag validation ─────────────────────────────────────────────
+
+validate_build_flags() {
+  python3 -c "
+import sys; sys.path.insert(0, 'src')
+from Common import validate_build_flags, BuildFlagMismatch
+try:
+    validate_build_flags()
+except BuildFlagMismatch as e:
+    print(str(e), flush=True)
+    sys.exit(1)
+"
+}
 
 # ── Step functions ───────────────────────────────────────────────────
 
@@ -447,6 +463,14 @@ step_sources_cmake() {
       cxxflags="$cxxflags -fwasm-exceptions"
     fi
     cxxflags="$cxxflags -DOCJS_EXCEPTIONS_ENABLED=1"
+  else
+    cflags="$cflags -sSUPPORT_LONGJMP=0"
+    cxxflags="$cxxflags -sSUPPORT_LONGJMP=0"
+  fi
+
+  if [ "$OCJS_SIMD" = "1" ]; then
+    cflags="$cflags -msimd128 -mrelaxed-simd"
+    cxxflags="$cxxflags -msimd128 -mrelaxed-simd"
   fi
 
   if [ "$THREADING" = "multi-threaded" ]; then
@@ -473,6 +497,13 @@ step_sources_cmake() {
     "-DCMAKE_C_FLAGS=$cflags"
     "-DCMAKE_CXX_FLAGS=$cxxflags"
   )
+
+  if [ "$OCJS_EXCEPTIONS" != "1" ]; then
+    cmake_flags+=(
+      "-DCMAKE_C_FLAGS_RELEASE=-O3 -DNDEBUG -sDISABLE_EXCEPTION_CATCHING=1 -sSUPPORT_LONGJMP=0 -UOCC_CONVERT_SIGNALS"
+      "-DCMAKE_CXX_FLAGS_RELEASE=-O3 -DNDEBUG -sDISABLE_EXCEPTION_CATCHING=1 -sSUPPORT_LONGJMP=0 -UOCC_CONVERT_SIGNALS"
+    )
+  fi
 
   echo "  Configuring OCCT via CMake..."
   emcmake cmake -B "$cmake_build_dir" \
@@ -684,11 +715,11 @@ for cmd in "${COMMANDS[@]}"; do
     pch)       step_pch ;;
     docs)      step_docs ;;
     generate)  step_generate ;;
-    bindings)  step_bindings ;;
+    bindings)  validate_build_flags && step_bindings ;;
     sources)   step_sources ;;
     sources-legacy) step_sources_legacy ;;
     dts)       step_dts "$YAML_CONFIG" ;;
-    link)      step_link "$YAML_CONFIG" ;;
+    link)      validate_build_flags && step_link "$YAML_CONFIG" ;;
     validate)
       echo "═══ Validating YAML config: $YAML_CONFIG ═══"
       python3 -c "

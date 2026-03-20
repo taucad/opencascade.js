@@ -1,13 +1,15 @@
 /**
- * Smoke tests: Enum bindings as const object pattern.
+ * Smoke tests: Enum bindings as string literal pattern.
  *
- * Validates that OCCT enums are exposed as plain numeric values via embind's
- * enum_value_type::number mode, producing idiomatic JavaScript objects where
- * each member is a plain integer. This ensures:
- * - Zero WASM boundary overhead (identity fromWireType/toWireType)
+ * Validates that OCCT enums are exposed as plain string values via embind's
+ * enum_value_type::string mode, producing idiomatic JavaScript objects where
+ * each member is its own name as a string. This ensures:
+ * - Self-documenting values (e.g., "TopAbs_FACE" instead of 4)
  * - JSON-serializable values
  * - Correct strict equality semantics
+ * - Distinct value spaces across different enum types
  * - API compatibility with TopExp_Explorer and other enum-consuming functions
+ * - Transparent wire-type conversion (embind maps strings to C++ integers)
  */
 import { describe, it, expect, beforeAll } from 'vitest';
 import { initOC, getOC, wasmExists } from './helpers.js';
@@ -15,24 +17,24 @@ import { initOC, getOC, wasmExists } from './helpers.js';
 describe.skipIf(!wasmExists)('Smoke: Enum Bindings', () => {
   beforeAll(async () => { await initOC(); });
 
-  it('should represent enum values as plain numbers', () => {
+  it('should represent enum values as plain strings', () => {
     const oc = getOC();
-    expect(typeof oc.TopAbs_ShapeEnum.TopAbs_FACE).toBe('number');
-    expect(typeof oc.TopAbs_ShapeEnum.TopAbs_EDGE).toBe('number');
-    expect(typeof oc.TopAbs_Orientation.TopAbs_FORWARD).toBe('number');
+    expect(typeof oc.TopAbs_ShapeEnum.TopAbs_FACE).toBe('string');
+    expect(typeof oc.TopAbs_ShapeEnum.TopAbs_EDGE).toBe('string');
+    expect(typeof oc.TopAbs_Orientation.TopAbs_FORWARD).toBe('string');
   });
 
-  it('should have correct numeric values for enum members', () => {
+  it('should have correct string values matching member names', () => {
     const oc = getOC();
-    expect(oc.TopAbs_ShapeEnum.TopAbs_COMPOUND).toBe(0);
-    expect(oc.TopAbs_ShapeEnum.TopAbs_COMPSOLID).toBe(1);
-    expect(oc.TopAbs_ShapeEnum.TopAbs_SOLID).toBe(2);
-    expect(oc.TopAbs_ShapeEnum.TopAbs_SHELL).toBe(3);
-    expect(oc.TopAbs_ShapeEnum.TopAbs_FACE).toBe(4);
-    expect(oc.TopAbs_ShapeEnum.TopAbs_WIRE).toBe(5);
-    expect(oc.TopAbs_ShapeEnum.TopAbs_EDGE).toBe(6);
-    expect(oc.TopAbs_ShapeEnum.TopAbs_VERTEX).toBe(7);
-    expect(oc.TopAbs_ShapeEnum.TopAbs_SHAPE).toBe(8);
+    expect(oc.TopAbs_ShapeEnum.TopAbs_COMPOUND).toBe('TopAbs_COMPOUND');
+    expect(oc.TopAbs_ShapeEnum.TopAbs_COMPSOLID).toBe('TopAbs_COMPSOLID');
+    expect(oc.TopAbs_ShapeEnum.TopAbs_SOLID).toBe('TopAbs_SOLID');
+    expect(oc.TopAbs_ShapeEnum.TopAbs_SHELL).toBe('TopAbs_SHELL');
+    expect(oc.TopAbs_ShapeEnum.TopAbs_FACE).toBe('TopAbs_FACE');
+    expect(oc.TopAbs_ShapeEnum.TopAbs_WIRE).toBe('TopAbs_WIRE');
+    expect(oc.TopAbs_ShapeEnum.TopAbs_EDGE).toBe('TopAbs_EDGE');
+    expect(oc.TopAbs_ShapeEnum.TopAbs_VERTEX).toBe('TopAbs_VERTEX');
+    expect(oc.TopAbs_ShapeEnum.TopAbs_SHAPE).toBe('TopAbs_SHAPE');
   });
 
   it('should not have .value property on enum values', () => {
@@ -41,12 +43,12 @@ describe.skipIf(!wasmExists)('Smoke: Enum Bindings', () => {
     expect(face).not.toHaveProperty('value');
   });
 
-  it('should serialize enum values to JSON', () => {
+  it('should serialize enum values to JSON as strings', () => {
     const oc = getOC();
     const face = oc.TopAbs_ShapeEnum.TopAbs_FACE;
     const json = JSON.stringify({ shapeType: face });
-    expect(json).toBe('{"shapeType":4}');
-    expect(JSON.parse(json).shapeType).toBe(4);
+    expect(json).toBe('{"shapeType":"TopAbs_FACE"}');
+    expect(JSON.parse(json).shapeType).toBe('TopAbs_FACE');
   });
 
   it('should support strict equality for enum values', () => {
@@ -87,25 +89,25 @@ describe.skipIf(!wasmExists)('Smoke: Enum Bindings', () => {
     box.delete();
   });
 
-  it('should have correct values for TopAbs_Orientation enum', () => {
+  it('should have correct string values for TopAbs_Orientation enum', () => {
     const oc = getOC();
-    expect(typeof oc.TopAbs_Orientation.TopAbs_FORWARD).toBe('number');
-    expect(oc.TopAbs_Orientation.TopAbs_FORWARD).toBe(0);
-    expect(oc.TopAbs_Orientation.TopAbs_REVERSED).toBe(1);
-    expect(oc.TopAbs_Orientation.TopAbs_INTERNAL).toBe(2);
-    expect(oc.TopAbs_Orientation.TopAbs_EXTERNAL).toBe(3);
+    expect(typeof oc.TopAbs_Orientation.TopAbs_FORWARD).toBe('string');
+    expect(oc.TopAbs_Orientation.TopAbs_FORWARD).toBe('TopAbs_FORWARD');
+    expect(oc.TopAbs_Orientation.TopAbs_REVERSED).toBe('TopAbs_REVERSED');
+    expect(oc.TopAbs_Orientation.TopAbs_INTERNAL).toBe('TopAbs_INTERNAL');
+    expect(oc.TopAbs_Orientation.TopAbs_EXTERNAL).toBe('TopAbs_EXTERNAL');
   });
 
-  it('should have correct values for ChFi3d_FilletShape enum', () => {
+  it('should have correct string values for ChFi3d_FilletShape enum', () => {
     const oc = getOC();
-    expect(typeof oc.ChFi3d_FilletShape.ChFi3d_Rational).toBe('number');
-    expect(oc.ChFi3d_FilletShape.ChFi3d_Rational).toBe(0);
+    expect(typeof oc.ChFi3d_FilletShape.ChFi3d_Rational).toBe('string');
+    expect(oc.ChFi3d_FilletShape.ChFi3d_Rational).toBe('ChFi3d_Rational');
   });
 
-  it('should have independent value spaces for different enum types', () => {
+  it('should have distinct value spaces for different enum types', () => {
     const oc = getOC();
-    expect(oc.TopAbs_ShapeEnum.TopAbs_COMPOUND).toBe(0);
-    expect(oc.TopAbs_Orientation.TopAbs_FORWARD).toBe(0);
-    expect(oc.TopAbs_ShapeEnum.TopAbs_COMPOUND).toBe(oc.TopAbs_Orientation.TopAbs_FORWARD);
+    expect(oc.TopAbs_ShapeEnum.TopAbs_COMPOUND).toBe('TopAbs_COMPOUND');
+    expect(oc.TopAbs_Orientation.TopAbs_FORWARD).toBe('TopAbs_FORWARD');
+    expect(oc.TopAbs_ShapeEnum.TopAbs_COMPOUND).not.toBe(oc.TopAbs_Orientation.TopAbs_FORWARD);
   });
 });

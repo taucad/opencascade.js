@@ -251,7 +251,6 @@ class Bindings:
     clang.cindex.TypeKind.LONG, clang.cindex.TypeKind.ULONG,
     clang.cindex.TypeKind.LONGLONG, clang.cindex.TypeKind.ULONGLONG,
     clang.cindex.TypeKind.SHORT, clang.cindex.TypeKind.USHORT,
-    clang.cindex.TypeKind.ENUM,
   })
 
   _JS_FLOAT_KINDS = frozenset({
@@ -305,6 +304,12 @@ class Bindings:
     canonical = t.get_canonical()
     kind = canonical.kind
 
+    if kind == clang.cindex.TypeKind.ENUM:
+      decl = canonical.get_declaration()
+      if decl and decl.spelling:
+        return JsType('string_enum', decl.spelling)
+      return JsType('string', 'string')
+
     if kind in self._JS_INTEGER_KINDS:
       return JsType('number_int', 'number')
     if kind in self._JS_FLOAT_KINDS:
@@ -348,6 +353,22 @@ class Bindings:
             return JsType('object', resolved_name)
 
     return JsType('number_float', 'number')
+
+  def _dispatch_primitive_sort_key(self, js_type_subtree_pair):
+    """Order primitive JS branches: string_enum (membership) before generic string/number."""
+    jt = js_type_subtree_pair[0]
+    cat = jt.category
+    if cat == 'string_enum':
+      return (0, jt.name)
+    if cat == 'boolean':
+      return (1, '')
+    if cat == 'number_int':
+      return (2, '')
+    if cat == 'number_float':
+      return (3, '')
+    if cat == 'string':
+      return (4, '')
+    return (5, cat)
 
   # ---------------------------------------------------------------------------
   # Dispatch tree construction
@@ -598,7 +619,7 @@ class EmbindBindings(Bindings):
         enumName = className + "_" + child.spelling
         isScoped = child.is_scoped_enum()
         valuePrefix = className + "::" + child.spelling + "::" if isScoped else className + "::"
-        output += "  enum_<" + className + "::" + child.spelling + ">(\"" + enumName + "\", emscripten::enum_value_type::number)\n"
+        output += "  enum_<" + className + "::" + child.spelling + ">(\"" + enumName + "\", emscripten::enum_value_type::string)\n"
         for enumChild in list(child.get_children()):
           if enumChild.kind == clang.cindex.CursorKind.ENUM_CONSTANT_DECL:
             output += "    .value(\"" + enumChild.spelling + "\", " + valuePrefix + enumChild.spelling + ")\n"
@@ -678,8 +699,7 @@ class EmbindBindings(Bindings):
       has_int = any(jt.category == 'number_int' for jt, _ in primitives)
       has_float = any(jt.category == 'number_float' for jt, _ in primitives)
       int_float_split = has_int and has_float
-      if int_float_split:
-        primitives.sort(key=lambda x: (0 if x[0].category == 'number_int' else 1))
+      primitives.sort(key=self._dispatch_primitive_sort_key)
       ordered = primitives + objects
       for idx, (js_type, subtree) in enumerate(ordered):
         is_last = (idx == len(ordered) - 1)
@@ -697,6 +717,13 @@ class EmbindBindings(Bindings):
           code += f'{sp}{keyword} ({check}) {{\n'
         elif js_type.category == 'boolean':
           check = f'arg{tree.arg_position}.typeOf().as<std::string>() == "boolean"'
+          code += f'{sp}{keyword} ({check}) {{\n'
+        elif js_type.category == 'string_enum':
+          check = (
+            f'arg{tree.arg_position}.typeOf().as<std::string>() == "string"'
+            f' && !emscripten::val::module_property("{js_type.name}")'
+            f'[arg{tree.arg_position}.as<std::string>()].isUndefined()'
+          )
           code += f'{sp}{keyword} ({check}) {{\n'
         elif js_type.category == 'string':
           check = f'arg{tree.arg_position}.typeOf().as<std::string>() == "string"'
@@ -1122,8 +1149,7 @@ class EmbindBindings(Bindings):
       has_int = any(jt.category == 'number_int' for jt, _ in primitives)
       has_float = any(jt.category == 'number_float' for jt, _ in primitives)
       int_float_split = has_int and has_float
-      if int_float_split:
-        primitives.sort(key=lambda x: (0 if x[0].category == 'number_int' else 1))
+      primitives.sort(key=self._dispatch_primitive_sort_key)
       ordered = primitives + objects
       for idx, (js_type, subtree) in enumerate(ordered):
         is_last = (idx == len(ordered) - 1)
@@ -1141,6 +1167,13 @@ class EmbindBindings(Bindings):
           code += f'{sp}{keyword} ({check}) {{\n'
         elif js_type.category == 'boolean':
           check = f'arg{tree.arg_position}.typeOf().as<std::string>() == "boolean"'
+          code += f'{sp}{keyword} ({check}) {{\n'
+        elif js_type.category == 'string_enum':
+          check = (
+            f'arg{tree.arg_position}.typeOf().as<std::string>() == "string"'
+            f' && !emscripten::val::module_property("{js_type.name}")'
+            f'[arg{tree.arg_position}.as<std::string>()].isUndefined()'
+          )
           code += f'{sp}{keyword} ({check}) {{\n'
         elif js_type.category == 'string':
           check = f'arg{tree.arg_position}.typeOf().as<std::string>() == "string"'
@@ -1359,7 +1392,7 @@ class EmbindBindings(Bindings):
   def processEnum(self, theEnum):
     output = "EMSCRIPTEN_BINDINGS(" + theEnum.spelling + ") {\n"
 
-    bindingsOutput = "  enum_<" + theEnum.spelling + ">(\"" + theEnum.spelling + "\", emscripten::enum_value_type::number)\n"
+    bindingsOutput = "  enum_<" + theEnum.spelling + ">(\"" + theEnum.spelling + "\", emscripten::enum_value_type::string)\n"
     enumChildren = list(theEnum.get_children())
     prefix = (theEnum.spelling + "::") if theEnum.is_scoped_enum() else ""
     for enumChild in enumChildren:
@@ -1564,7 +1597,7 @@ class TypescriptBindings(Bindings):
         for enumChild in list(child.get_children()):
           if enumChild.kind == clang.cindex.CursorKind.ENUM_CONSTANT_DECL:
             output += self._enum_member_jsdoc(enumName, enumChild.spelling)
-            output += "  readonly " + enumChild.spelling + ": " + str(enumChild.enum_value) + ";\n"
+            output += "  readonly " + enumChild.spelling + ": '" + enumChild.spelling + "';\n"
         output += "};\n\n"
         self.exports.append(enumName)
 
@@ -2107,7 +2140,7 @@ class TypescriptBindings(Bindings):
     output += "export declare const " + enumName + ": {\n"
     for enumChild in list(theEnum.get_children()):
       output += self._enum_member_jsdoc(enumName, enumChild.spelling)
-      output += "  readonly " + enumChild.spelling + ": " + str(enumChild.enum_value) + ";\n"
+      output += "  readonly " + enumChild.spelling + ": '" + enumChild.spelling + "';\n"
     output += "};\n\n"
     self.exports.append(enumName)
     return output
