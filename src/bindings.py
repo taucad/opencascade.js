@@ -154,6 +154,11 @@ def isPrimitiveOutputParam(arg_type):
   canonical = pointee.get_canonical()
   return canonical.spelling in builtInTypes or pointee.kind == clang.cindex.TypeKind.ENUM or canonical.kind == clang.cindex.TypeKind.ENUM
 
+def isRawPointerParam(arg_type):
+  """Check if an argument type is a raw pointer (not a reference).
+  Raw pointers cannot be passed from JS via val::as<T*>() — Embind forbids it."""
+  return arg_type.get_canonical().kind == clang.cindex.TypeKind.POINTER
+
 def shouldStripParam(arg_type, method):
   """Whether to remove the param from the JS-visible signature.
   Handles are always stripped. Primitives are stripped only for const methods."""
@@ -995,12 +1000,45 @@ class EmbindBindings(Bindings):
   def _needsCStringWrapper(self, type):
     return type.get_canonical().kind == clang.cindex.TypeKind.POINTER and isCString(type)
 
-  def _emitOutputParamBinding(self, theClass, method, args, className, classTypeName, overloadPostfix, templateDecl, templateArgs):
-    """Generate value_object return binding for methods with output params.
-    Returns None if the method can't use value_object (e.g. raw pointer return type)."""
+  def _canDoRbv(self, method):
+    """Check if a method with output params can use the RBV value_object pattern."""
+    ret_type = method.result_type
+    if ret_type.spelling != "void" and ret_type.get_canonical().kind == clang.cindex.TypeKind.POINTER:
+      return False
+    if ret_type.kind == clang.cindex.TypeKind.LVALUEREFERENCE:
+      pointee = ret_type.get_pointee()
+      if not pointee.is_const_qualified():
+        return False
+    return True
+
+  def _getJsArity(self, method):
+    """Get the JS-visible arity after RBV output param stripping."""
+    args = list(method.get_arguments())
+    if not any(isOutputParam(a.type) for a in args):
+      return len(args)
+    if not self._canDoRbv(method):
+      return len(args)
+    return sum(1 for a in args if not shouldStripParam(a.type, method) and not isRawPointerParam(a.type))
+
+  def _getJsVisibleArgs(self, method):
+    """Get list of (original_cpp_index, arg) for JS-visible args."""
+    args = list(method.get_arguments())
+    if not any(isOutputParam(a.type) for a in args):
+      return [(i, a) for i, a in enumerate(args)]
+    if not self._canDoRbv(method):
+      return [(i, a) for i, a in enumerate(args)]
+    return [(i, a) for i, a in enumerate(args) if not shouldStripParam(a.type, method) and not isRawPointerParam(a.type)]
+
+  def _ensureResultStruct(self, method, args, className, overloadPostfix, templateDecl, templateArgs):
+    """Register the value_object result struct for an RBV method.
+    Returns (structName, struct_fields, output_params, stripped_indices) or None."""
     ret_type = method.result_type
     if ret_type.spelling != "void" and ret_type.get_canonical().kind == clang.cindex.TypeKind.POINTER:
       return None
+    if ret_type.kind == clang.cindex.TypeKind.LVALUEREFERENCE:
+      pointee = ret_type.get_pointee()
+      if not pointee.is_const_qualified():
+        return None
 
     output_params = [(i, a) for i, a in enumerate(args) if isOutputParam(a.type)]
     stripped_indices = set(i for i, a in enumerate(args) if shouldStripParam(a.type, method))
@@ -1029,6 +1067,10 @@ class EmbindBindings(Bindings):
         ret = ret.get_pointee()
       retSpelling = ret.spelling.replace("const ", "").strip()
       retType = self.resolveWithCanonicalFallback(retSpelling, ret, templateDecl, templateArgs)
+      if retType.endswith(' &'):
+        retType = retType[:-2].strip()
+      if retType.startswith('const '):
+        retType = retType[6:].strip()
       ret_field_name = "result"
       existing_names = {n for n, _ in struct_fields}
       if ret_field_name in existing_names:
@@ -1056,6 +1098,213 @@ class EmbindBindings(Bindings):
         reg += f"    .field(\"{fname}\", &{structName}::{fname})\n"
       reg += f"  ;\n"
       self._result_struct_registrations.append(reg)
+
+    return (structName, struct_fields, output_params, stripped_indices)
+
+  def _emitRbvCollisionDispatch(self, theClass, colliding_methods, js_arity, className, templateDecl, templateArgs):
+    """Emit val-based dispatch for methods that collide at the same JS arity due to RBV stripping."""
+    classTypeName = getClassTypeName(theClass, templateDecl)
+    isStatic = all(m.is_static_method() for m in colliding_methods)
+    methodName = colliding_methods[0].spelling
+
+    method_info = []
+    for m in colliding_methods:
+      args = list(m.get_arguments())
+      has_output = any(isOutputParam(a.type) for a in args)
+      js_visible = self._getJsVisibleArgs(m)
+
+      rbv_data = None
+      if has_output:
+        [overloadPostfix, _] = getMethodOverloadPostfix(theClass, m)
+        rbv_data = self._ensureResultStruct(m, args, className, overloadPostfix, templateDecl, templateArgs)
+
+      method_info.append({
+        'method': m,
+        'args': args,
+        'has_output': has_output,
+        'js_visible': js_visible,
+        'rbv_data': rbv_data,
+      })
+
+    dispatch_pos = None
+    for pos in range(js_arity):
+      types_at_pos = set()
+      for info in method_info:
+        if pos < len(info['js_visible']):
+          _, arg = info['js_visible'][pos]
+          js_type = self._classify_js_type(arg.type, templateDecl, templateArgs)
+          types_at_pos.add((js_type.category, js_type.name))
+      if len(types_at_pos) > 1:
+        dispatch_pos = pos
+        break
+
+    if dispatch_pos is None:
+      print(f"WARNING: Cannot distinguish JS-arity collision for {className}::{methodName} at arity {js_arity}")
+      for info in method_info[1:]:
+        print(f"  Skipping overload (C++ arity {len(info['args'])})")
+      info = method_info[0]
+      try:
+        return self.processMethodOrProperty(theClass, info['method'], templateDecl, templateArgs, overload_index=0, override_postfix="")
+      except SkipException as e:
+        print(str(e))
+        return ""
+
+    val_args = ", ".join([f"emscripten::val arg{i}" for i in range(js_arity)])
+    if isStatic:
+      sig_args = val_args
+      functionCommand = "class_function"
+    else:
+      sig_args = f"{classTypeName}& self" + (", " + val_args if val_args else "")
+      functionCommand = "function"
+
+    output = f'{indent(2)}.{functionCommand}("{methodName}", optional_override([]({sig_args}) -> emscripten::val {{\n'
+
+    first = True
+    for info in method_info:
+      m = info['method']
+      _, dispatch_arg = info['js_visible'][dispatch_pos]
+      js_type = self._classify_js_type(dispatch_arg.type, templateDecl, templateArgs)
+
+      if first:
+        keyword = "if"
+        first = False
+      elif info is method_info[-1]:
+        keyword = "else"
+      else:
+        keyword = "else if"
+
+      if info is method_info[-1]:
+        output += f'      {keyword} {{\n'
+      elif js_type.category == 'object':
+        check = (
+          f'arg{dispatch_pos}.typeOf().as<std::string>() == "object"'
+          f' && !emscripten::val::module_property("{js_type.name}").isUndefined()'
+          f' && arg{dispatch_pos}.instanceof(emscripten::val::module_property("{js_type.name}"))'
+        )
+        output += f'      {keyword} ({check}) {{\n'
+      elif js_type.category in ('number_int', 'number_float'):
+        check = f'arg{dispatch_pos}.typeOf().as<std::string>() == "number"'
+        output += f'      {keyword} ({check}) {{\n'
+      elif js_type.category == 'string':
+        check = f'arg{dispatch_pos}.typeOf().as<std::string>() == "string"'
+        output += f'      {keyword} ({check}) {{\n'
+      elif js_type.category == 'boolean':
+        check = f'arg{dispatch_pos}.typeOf().as<std::string>() == "boolean"'
+        output += f'      {keyword} ({check}) {{\n'
+      else:
+        check = f'arg{dispatch_pos}.typeOf().as<std::string>() == "object"'
+        output += f'      {keyword} ({check}) {{\n'
+
+      if info['has_output'] and info['rbv_data'] is not None:
+        structName, struct_fields, output_params, stripped_indices = info['rbv_data']
+        has_nonvoid_return = m.result_type.spelling != "void"
+        output_param_indices = set(i for i, _ in output_params)
+
+        non_stripped_output_js_idx = {}
+        js_idx_scan = 0
+        for i, arg in enumerate(info['args']):
+          if i in stripped_indices:
+            continue
+          if isOutputParam(arg.type) and i not in stripped_indices:
+            non_stripped_output_js_idx[i] = js_idx_scan
+          js_idx_scan += 1
+
+        for i, arg in output_params:
+          name = self._getArgName(arg, i)
+          pointee = arg.type.get_pointee()
+          if i in stripped_indices:
+            if _isHandleType(pointee):
+              cppType = pointee.spelling
+              output += f"        {cppType} {name};\n"
+            elif pointee.get_canonical().spelling in builtInTypes:
+              cppType = pointee.get_canonical().spelling
+              output += f"        {cppType} {name} = 0;\n"
+            elif pointee.kind == clang.cindex.TypeKind.ENUM or pointee.get_canonical().kind == clang.cindex.TypeKind.ENUM:
+              cppType = pointee.spelling
+              output += f"        {cppType} {name}{{}};\n"
+          else:
+            if pointee.get_canonical().spelling in builtInTypes:
+              cppType = pointee.get_canonical().spelling
+              js_idx = non_stripped_output_js_idx[i]
+              output += f"        {cppType} {name} = arg{js_idx}.as<{cppType}>();\n"
+            elif pointee.kind == clang.cindex.TypeKind.ENUM or pointee.get_canonical().kind == clang.cindex.TypeKind.ENUM:
+              cppType = pointee.spelling
+              js_idx = non_stripped_output_js_idx[i]
+              output += f"        {cppType} {name} = arg{js_idx}.as<{cppType}>();\n"
+
+        call_args = []
+        js_arg_idx = 0
+        for i, arg in enumerate(info['args']):
+          name = self._getArgName(arg, i)
+          if isOutputParam(arg.type) and i in output_param_indices:
+            call_args.append(name)
+            if i not in stripped_indices:
+              js_arg_idx += 1
+          elif isRawPointerParam(arg.type):
+            call_args.append('nullptr')
+          else:
+            argType = self.getOriginalArgumentType(arg, templateDecl, templateArgs)
+            js_type_local = self._classify_js_type(arg.type, templateDecl, templateArgs)
+            if js_type_local.category == 'object':
+              call_args.append(f'arg{js_arg_idx}.as<{argType}>(emscripten::allow_raw_pointers())')
+            else:
+              canon = arg.type.get_canonical().spelling
+              if "type-parameter-" in canon:
+                canon = self.resolveWithCanonicalFallback(arg.type.spelling, arg.type, templateDecl, templateArgs)
+              call_args.append(f'arg{js_arg_idx}.as<{canon}>()')
+            js_arg_idx += 1
+
+        caller = f"{className}::" if m.is_static_method() else "self."
+        call_str = f"{caller}{m.spelling}({', '.join(call_args)})"
+
+        if has_nonvoid_return:
+          output += f"        auto ret = {call_str};\n"
+        else:
+          output += f"        {call_str};\n"
+
+        return_fields = []
+        if has_nonvoid_return:
+          return_fields.append("ret")
+        for i, arg in output_params:
+          name = self._getArgName(arg, i)
+          return_fields.append(name)
+        output += f"        return emscripten::val({structName}{{{', '.join(return_fields)}}});\n"
+      else:
+        conversions = []
+        for js_pos, (cpp_idx, arg) in enumerate(info['js_visible']):
+          cpp_type = self.getOriginalArgumentType(arg, templateDecl, templateArgs)
+          js_type_local = self._classify_js_type(arg.type, templateDecl, templateArgs)
+          if js_type_local.category == 'object':
+            conversions.append(f'arg{js_pos}.as<{cpp_type}>(emscripten::allow_raw_pointers())')
+          elif js_type_local.category == 'string' and isCString(arg.type):
+            conversions.append(f'arg{js_pos}.as<std::string>().c_str()')
+          else:
+            canon = arg.type.get_canonical().spelling
+            if "type-parameter-" in canon:
+              canon = self.resolveWithCanonicalFallback(arg.type.spelling, arg.type, templateDecl, templateArgs)
+            conversions.append(f'arg{js_pos}.as<{canon}>()')
+        args_str = ", ".join(conversions)
+        caller = f"{className}::" if m.is_static_method() else "self."
+        has_return = m.result_type.spelling != "void"
+        if has_return:
+          output += f'        return emscripten::val({caller}{m.spelling}({args_str}));\n'
+        else:
+          output += f'        {caller}{m.spelling}({args_str});\n'
+          output += f'        return emscripten::val::undefined();\n'
+
+      output += f'      }}\n'
+
+    output += "    }), allow_raw_pointers())\n"
+    return output
+
+  def _emitOutputParamBinding(self, theClass, method, args, className, classTypeName, overloadPostfix, templateDecl, templateArgs):
+    """Generate value_object return binding for methods with output params.
+    Returns None if the method can't use value_object (e.g. raw pointer return type)."""
+    result = self._ensureResultStruct(method, args, className, overloadPostfix, templateDecl, templateArgs)
+    if result is None:
+      return None
+    structName, struct_fields, output_params, stripped_indices = result
+    has_nonvoid_return = method.result_type.spelling != "void"
 
     lambda_params = []
     if not method.is_static_method():
@@ -1464,6 +1713,28 @@ class EmbindBindings(Bindings):
       by_arity[len(list(m.get_arguments()))].append(m)
 
     all_unique_arities = all(len(group) == 1 for group in by_arity.values())
+
+    by_js_arity = defaultdict(list)
+    for m in bindable:
+      by_js_arity[self._getJsArity(m)].append(m)
+
+    js_collisions = {
+      js_arity: group
+      for js_arity, group in by_js_arity.items()
+      if len(group) > 1 and len(set(len(list(m.get_arguments())) for m in group)) > 1
+    }
+
+    if js_collisions:
+      collision_methods = set(id(m) for group in js_collisions.values() for m in group)
+      for js_arity, group in sorted(js_collisions.items()):
+        output += self._emitRbvCollisionDispatch(theClass, group, js_arity, className, templateDecl, templateArgs)
+      bindable = [m for m in bindable if id(m) not in collision_methods]
+      if not bindable:
+        return output
+      by_arity = defaultdict(list)
+      for m in bindable:
+        by_arity[len(list(m.get_arguments()))].append(m)
+      all_unique_arities = all(len(group) == 1 for group in by_arity.values())
 
     if all_unique_arities:
       arity_idx = {}
