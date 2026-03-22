@@ -102,6 +102,67 @@ unbindablePointerTypes = [
 def isCString(type):
   return type.get_canonical().spelling in cStringTypes
 
+def isOutputParam(arg_type):
+  """Non-const lvalue reference to primitive, enum, or handle = output parameter.
+  Excludes pointer references (char*&, etc.) which need C-string or val wrapping instead."""
+  if arg_type.kind != clang.cindex.TypeKind.LVALUEREFERENCE:
+    return False
+  pointee = arg_type.get_pointee()
+  if pointee.is_const_qualified():
+    return False
+  if pointee.kind == clang.cindex.TypeKind.POINTER:
+    return False
+  canonical = pointee.get_canonical()
+  if canonical.spelling in builtInTypes:
+    return True
+  if pointee.kind == clang.cindex.TypeKind.ENUM or canonical.kind == clang.cindex.TypeKind.ENUM:
+    return True
+  if _isHandleType(pointee):
+    return True
+  return False
+
+def _isHandleType(pointee):
+  """Check if a type is opencascade::handle<T> or Handle(T)."""
+  decl = pointee.get_declaration()
+  if decl is None:
+    return False
+  if decl.spelling == "handle":
+    parent = decl.semantic_parent
+    if parent is not None and parent.spelling in ("opencascade", "occ"):
+      return True
+  if pointee.get_num_template_arguments() == 1:
+    if decl.spelling == "handle":
+      return True
+  return False
+
+def isHandleOutputParam(arg_type):
+  """Non-const lvalue reference to handle<T> specifically."""
+  if arg_type.kind != clang.cindex.TypeKind.LVALUEREFERENCE:
+    return False
+  pointee = arg_type.get_pointee()
+  if pointee.is_const_qualified():
+    return False
+  return _isHandleType(pointee)
+
+def isPrimitiveOutputParam(arg_type):
+  """Non-const lvalue reference to builtin type or enum."""
+  if arg_type.kind != clang.cindex.TypeKind.LVALUEREFERENCE:
+    return False
+  pointee = arg_type.get_pointee()
+  if pointee.is_const_qualified():
+    return False
+  canonical = pointee.get_canonical()
+  return canonical.spelling in builtInTypes or pointee.kind == clang.cindex.TypeKind.ENUM or canonical.kind == clang.cindex.TypeKind.ENUM
+
+def shouldStripParam(arg_type, method):
+  """Whether to remove the param from the JS-visible signature.
+  Handles are always stripped. Primitives are stripped only for const methods."""
+  if isHandleOutputParam(arg_type):
+    return True
+  if isPrimitiveOutputParam(arg_type) and method.is_const_method():
+    return True
+  return False
+
 def getClassTypeName(theClass, templateDecl = None):
   return templateDecl.spelling if templateDecl is not None else theClass.spelling
 
@@ -584,6 +645,9 @@ class EmbindBindings(Bindings):
     tuInfo
   ):
     super().__init__(tuInfo)
+    self._result_struct_defs = []
+    self._result_struct_registrations = []
+    self._emitted_structs = {}
 
   def processClass(self, theClass, templateDecl = None, templateArgs = None):
     output = ""
@@ -602,7 +666,20 @@ class EmbindBindings(Bindings):
     else:
       baseClassBinding = ""
 
+    self._result_struct_defs = []
+    self._result_struct_registrations = []
+    self._emitted_structs = {}
+
+    method_output = super().processClass(theClass, templateDecl, templateArgs)
+
+    for struct_def in self._result_struct_defs:
+      output += struct_def
+
     output += "EMSCRIPTEN_BINDINGS(" + (theClass.spelling if templateDecl is None else templateDecl.spelling) + ") {\n"
+
+    for reg in self._result_struct_registrations:
+      output += reg
+
     output += "  class_<" + className + baseClassBinding + ">(\"" + className + "\")\n"
 
     if isTransientDerived(theClass, self.tuInfo.classDict):
@@ -612,7 +689,7 @@ class EmbindBindings(Bindings):
       output += "    .function(\"isNull\", &handle_isNull<Standard_Transient>)\n"
       output += "    .function(\"nullify\", &handle_nullify<Standard_Transient>)\n"
 
-    output += super().processClass(theClass, templateDecl, templateArgs)
+    output += method_output
 
     for child in theClass.get_children():
       if child.kind == clang.cindex.CursorKind.ENUM_DECL and child.access_specifier == clang.cindex.AccessSpecifier.PUBLIC and child.spelling != "" and child.spelling.isidentifier():
@@ -899,6 +976,161 @@ class EmbindBindings(Bindings):
       return [argBinding, changed]
     return f
 
+  def _resolveArgType(self, arg, templateDecl, templateArgs):
+    """Resolve an argument's C++ type, substituting template args."""
+    pointee = arg.type.get_pointee()
+    if pointee.kind != clang.cindex.TypeKind.INVALID:
+      spelling = pointee.spelling
+    else:
+      spelling = arg.type.spelling
+    if templateArgs is not None:
+      bare = spelling.replace("const ", "")
+      if bare in templateArgs:
+        spelling = spelling.replace(bare, templateArgs[bare].spelling)
+    return spelling
+
+  def _getArgName(self, arg, index):
+    return arg.spelling if arg.spelling else f"argNo{index}"
+
+  def _needsCStringWrapper(self, type):
+    return type.get_canonical().kind == clang.cindex.TypeKind.POINTER and isCString(type)
+
+  def _emitOutputParamBinding(self, theClass, method, args, className, classTypeName, overloadPostfix, templateDecl, templateArgs):
+    """Generate value_object return binding for methods with output params.
+    Returns None if the method can't use value_object (e.g. raw pointer return type)."""
+    ret_type = method.result_type
+    if ret_type.spelling != "void" and ret_type.get_canonical().kind == clang.cindex.TypeKind.POINTER:
+      return None
+
+    output_params = [(i, a) for i, a in enumerate(args) if isOutputParam(a.type)]
+    stripped_indices = set(i for i, a in enumerate(args) if shouldStripParam(a.type, method))
+
+    structName = f"{className}_{method.spelling}_Result"
+    if overloadPostfix:
+      structName += overloadPostfix
+
+    struct_fields = []
+    for i, arg in output_params:
+      name = self._getArgName(arg, i)
+      pointee = arg.type.get_pointee()
+      cppType = self._resolveArgType(arg, templateDecl, templateArgs)
+      if _isHandleType(pointee):
+        cppType = pointee.spelling
+      elif pointee.get_canonical().spelling in builtInTypes:
+        cppType = pointee.get_canonical().spelling
+      elif pointee.kind == clang.cindex.TypeKind.ENUM or pointee.get_canonical().kind == clang.cindex.TypeKind.ENUM:
+        cppType = pointee.spelling
+      struct_fields.append((name, cppType))
+
+    has_nonvoid_return = method.result_type.spelling != "void"
+    if has_nonvoid_return:
+      ret = method.result_type
+      if ret.kind == clang.cindex.TypeKind.LVALUEREFERENCE:
+        ret = ret.get_pointee()
+      retSpelling = ret.spelling.replace("const ", "").strip()
+      retType = self.resolveWithCanonicalFallback(retSpelling, ret, templateDecl, templateArgs)
+      ret_field_name = "result"
+      existing_names = {n for n, _ in struct_fields}
+      if ret_field_name in existing_names:
+        ret_field_name = "return_value"
+      struct_fields.insert(0, (ret_field_name, retType))
+
+    field_key = tuple((fname, ftype) for fname, ftype in struct_fields)
+    existing = self._emitted_structs.get(structName)
+    if existing is not None and existing != field_key:
+      counter = 2
+      while f"{structName}_{counter}" in self._emitted_structs:
+        counter += 1
+      structName = f"{structName}_{counter}"
+
+    if structName not in self._emitted_structs:
+      self._emitted_structs[structName] = field_key
+      struct_def = f"struct {structName} {{\n"
+      for fname, ftype in struct_fields:
+        struct_def += f"  {ftype} {fname};\n"
+      struct_def += f"}};\n\n"
+      self._result_struct_defs.append(struct_def)
+
+      reg = f"  value_object<{structName}>(\"{structName}\")\n"
+      for fname, ftype in struct_fields:
+        reg += f"    .field(\"{fname}\", &{structName}::{fname})\n"
+      reg += f"  ;\n"
+      self._result_struct_registrations.append(reg)
+
+    lambda_params = []
+    if not method.is_static_method():
+      constPrefix = "const " if method.is_const_method() else ""
+      lambda_params.append(f"{constPrefix}{classTypeName}& self")
+
+    for i, arg in enumerate(args):
+      if i in stripped_indices:
+        continue
+      name = self._getArgName(arg, i)
+      if self._needsCStringWrapper(arg.type):
+        lambda_params.append(f"emscripten::val {name}")
+      else:
+        argType = self.getOriginalArgumentType(arg, templateDecl, templateArgs)
+        if isOutputParam(arg.type):
+          pointee = arg.type.get_pointee()
+          if pointee.get_canonical().spelling in builtInTypes:
+            argType = pointee.get_canonical().spelling
+          elif pointee.kind == clang.cindex.TypeKind.ENUM or pointee.get_canonical().kind == clang.cindex.TypeKind.ENUM:
+            argType = pointee.spelling
+        lambda_params.append(f"{argType} {name}")
+
+    body = ""
+    for i, arg in output_params:
+      name = self._getArgName(arg, i)
+      pointee = arg.type.get_pointee()
+      if i in stripped_indices:
+        if _isHandleType(pointee):
+          cppType = pointee.spelling
+          body += f"        {cppType} {name};\n"
+        elif pointee.get_canonical().spelling in builtInTypes:
+          cppType = pointee.get_canonical().spelling
+          body += f"        {cppType} {name} = 0;\n"
+        elif pointee.kind == clang.cindex.TypeKind.ENUM or pointee.get_canonical().kind == clang.cindex.TypeKind.ENUM:
+          cppType = pointee.spelling
+          body += f"        {cppType} {name}{{}};\n"
+      else:
+        pass
+
+    call_args = []
+    for i, arg in enumerate(args):
+      name = self._getArgName(arg, i)
+      if self._needsCStringWrapper(arg.type):
+        if not arg.type.get_canonical().get_pointee().is_const_qualified() or arg.type.is_const_qualified():
+          call_args.append(f"{name}.isNull() ? nullptr : strdup({name}.as<std::string>().c_str())")
+        else:
+          call_args.append(f"{name}.isNull() ? nullptr : {name}.as<std::string>().c_str()")
+      elif isOutputParam(arg.type):
+        call_args.append(name)
+      else:
+        call_args.append(name)
+
+    caller = "self." if not method.is_static_method() else f"{className}::"
+    call_str = f"{caller}{method.spelling}({', '.join(call_args)})"
+
+    if has_nonvoid_return:
+      body += f"        auto ret = {call_str};\n"
+    else:
+      body += f"        {call_str};\n"
+
+    return_fields = []
+    if has_nonvoid_return:
+      return_fields.append("ret")
+    for i, arg in output_params:
+      name = self._getArgName(arg, i)
+      return_fields.append(name)
+    body += f"        return {structName}{{{', '.join(return_fields)}}};\n"
+
+    params_str = ", ".join(lambda_params)
+    code = f"\n      optional_override([]({params_str}) -> {structName} {{\n"
+    code += body
+    code += f"      }})"
+
+    return code
+
   def processMethodOrProperty(self, theClass, method, templateDecl = None, templateArgs = None, overload_index = 0, override_postfix = None):
     output = ""
     className = getClassTypeName(theClass, templateDecl)
@@ -909,27 +1141,38 @@ class EmbindBindings(Bindings):
       if override_postfix is not None:
         overloadPostfix = override_postfix
 
-      def needsWrapper(type):
-        return (
-          type.kind == clang.cindex.TypeKind.LVALUEREFERENCE and (
-            type.get_pointee().get_canonical().spelling in builtInTypes or
-            type.get_pointee().kind == clang.cindex.TypeKind.ENUM or
-            type.get_pointee().kind == clang.cindex.TypeKind.POINTER or (
-              theClass.kind == clang.cindex.CursorKind.CLASS_TEMPLATE and
-              type.get_pointee().spelling in templateArgs and
-              templateArgs[type.get_pointee().spelling].get_canonical().spelling in builtInTypes
-            )
-          ) or (
-            type.get_canonical().kind == clang.cindex.TypeKind.POINTER and 
-            isCString(type)
-          )
-        )
-
       args = list(method.get_arguments())
       self._checkUnbindableArgs(method.spelling, theClass.spelling, args)
-      argsNeedingWrapper = list(map(lambda arg: needsWrapper(arg.type), args))
-      returnNeedsWrapper = needsWrapper(method.result_type)
-      if any(argsNeedingWrapper) or returnNeedsWrapper:
+
+      hasOutputParams = any(isOutputParam(a.type) for a in args)
+      hasCStringArgs = any(self._needsCStringWrapper(a.type) for a in args)
+      returnIsCString = self._needsCStringWrapper(method.result_type)
+
+      functionBinding = None
+      if hasOutputParams:
+        classTypeName = getClassTypeName(theClass, templateDecl)
+        functionBinding = self._emitOutputParamBinding(
+          theClass, method, args, className, classTypeName, overloadPostfix, templateDecl, templateArgs)
+      if functionBinding is None and hasOutputParams:
+        print(f"Skipping {className}::{method.spelling}: output params with unbindable return type")
+        return ""
+      if functionBinding is None and (hasCStringArgs or returnIsCString):
+        def needsCStringOrLvalueWrapper(type):
+          return (
+            type.kind == clang.cindex.TypeKind.LVALUEREFERENCE and (
+              type.get_pointee().kind == clang.cindex.TypeKind.POINTER or (
+                theClass.kind == clang.cindex.CursorKind.CLASS_TEMPLATE and
+                templateArgs is not None and
+                type.get_pointee().spelling in templateArgs and
+                templateArgs[type.get_pointee().spelling].get_canonical().spelling in builtInTypes
+              )
+            ) or (
+              type.get_canonical().kind == clang.cindex.TypeKind.POINTER and
+              isCString(type)
+            )
+          )
+        argsNeedingWrapper = list(map(lambda arg: needsCStringOrLvalueWrapper(arg.type), args))
+        returnNeedsWrapper = needsCStringOrLvalueWrapper(method.result_type)
         def replaceTemplateArgs(x):
           if templateArgs is not None and args[x[0]].type.get_pointee().spelling.replace("const ", "") in templateArgs:
             return args[x[0]].type.spelling.replace(args[x[0]].type.get_pointee().spelling.replace("const ", ""), templateArgs[args[x[0]].type.get_pointee().spelling.replace("const ", "")].spelling)
@@ -941,11 +1184,6 @@ class EmbindBindings(Bindings):
             args[x[0]].spelling,
             f"argNo{str(x[0])}"
           )
-        def getArgTypeName(type):
-          if templateArgs is not None and type.get_pointee().spelling.replace("const ", "") in templateArgs:
-            return type.get_pointee().spelling.replace(type.get_pointee().spelling.replace("const ", ""), templateArgs[type.get_pointee().spelling.replace("const ", "")].spelling)
-          else:
-            return type.get_pointee().spelling
         classTypeName = getClassTypeName(theClass, templateDecl)
         wrappedParamTypes = merge(", ", *map(lambda x:
           pick(
@@ -961,35 +1199,15 @@ class EmbindBindings(Bindings):
             f"emscripten::val {getArgName(x)}",
             f"{replaceTemplateArgs(x)} {getArgName(x)}",
           ), enumerate(argsNeedingWrapper)))
-        def generateGetReferenceValue(x):
-          if x[1] and not isCString(args[x[0]].type):
-            return (
-              merge("",
-                indent(4),
-                "auto ref_",
-                pick(not args[x[0]].spelling == "",
-                  args[x[0]].spelling,
-                  f"argNo{str(x[0])}"
-                ),
-                f" = getReferenceValue<{getArgTypeName(args[x[0]].type)}>({getArgName(x)});\n"
-              )
-            )
-          else:
-            return ""
-        def generateUpdateReferenceValue(x):
-          if x[1] and not isCString(args[x[0]].type):
-            return  f"{indent(4)}updateReferenceValue<{getArgTypeName(args[x[0]].type)}>({getArgName(x)}, ref_{getArgName(x)});\n"
-          else:
-            return ""
         def generateInvocationArgs(x):
           if x[1]:
-            if not isCString(args[x[0]].type):
-              return f"ref_{getArgName(x)}"
-            else:
+            if isCString(args[x[0]].type):
               if not args[x[0]].type.get_canonical().get_pointee().is_const_qualified() or args[x[0]].type.is_const_qualified():
                 return f"{getArgName(x)}.isNull() ? nullptr : strdup({getArgName(x)}.as<std::string>().c_str())"
               else:
                 return f"{getArgName(x)}.isNull() ? nullptr : {getArgName(x)}.as<std::string>().c_str()"
+            else:
+              return getArgName(x)
           else:
             return getArgName(x)
         resultTypeSpelling = \
@@ -1015,7 +1233,6 @@ class EmbindBindings(Bindings):
               ")",
             ),
             f" -> {resultTypeSpelling} {{\n",
-            merge("", *map(lambda x: generateGetReferenceValue(x), enumerate(argsNeedingWrapper))),
           )
         functionBindingBody = \
           merge("",
@@ -1035,7 +1252,6 @@ class EmbindBindings(Bindings):
               f'{method.spelling}({merge(", ", *map(lambda x: generateInvocationArgs(x), enumerate(argsNeedingWrapper)))})',
             ),
             ";\n",
-            merge("", *map(lambda x: generateUpdateReferenceValue(x), enumerate(argsNeedingWrapper))),
             pick(
               method.result_type.spelling == "void",
               "",
@@ -1062,7 +1278,7 @@ class EmbindBindings(Bindings):
             f"{indent(3)}}}\n",
             f"{indent(2)})",
           )
-      else:
+      if functionBinding is None:
         if numOverloads == 1:
           functionBinding = " &" + className + "::" + method.spelling
         else:
@@ -1948,6 +2164,39 @@ class TypescriptBindings(Bindings):
     typeName = self.resolve_type(arg.type, templateDecl, templateArgs)
     return self._argname(arg, suffix) + ": " + typeName
 
+  def _buildOutputParamReturnType(self, method, allArgs, templateDecl, templateArgs):
+    """Build a TS inline object return type from output params, or None if no output params."""
+    outputArgs = [(i, a) for i, a in enumerate(allArgs) if isOutputParam(a.type)]
+    if not outputArgs:
+      return None
+    ret_type = method.result_type
+    if ret_type.spelling != "void" and ret_type.get_canonical().kind == clang.cindex.TypeKind.POINTER:
+      return None
+
+    fields = []
+    hasNonVoidReturn = method.result_type.spelling != "void"
+    output_names = {self._argname(a, i) for i, a in outputArgs}
+    if hasNonVoidReturn:
+      origReturn = self.getTypescriptDefFromResultType(method.result_type, templateDecl, templateArgs)
+      ret_field_name = "return_value" if "result" in output_names else "result"
+      fields.append(f"{ret_field_name}: {origReturn}")
+
+    for i, arg in outputArgs:
+      name = self._argname(arg, i)
+      tsType = self.resolve_type(arg.type, templateDecl, templateArgs)
+      fields.append(f"{name}: {tsType}")
+
+    return "{ " + "; ".join(fields) + " }"
+
+  def _buildKeptArgs(self, method, allArgs, templateDecl, templateArgs):
+    """Build args string with stripped output params removed."""
+    keptArgs = []
+    for i, arg in enumerate(allArgs):
+      if shouldStripParam(arg.type, method):
+        continue
+      keptArgs.append(self.getTypescriptDefFromArg(arg, i, templateDecl, templateArgs))
+    return ", ".join(keptArgs)
+
   def processMethodOrProperty(self, theClass, method, templateDecl = None, templateArgs = None, overload_index = 0, override_postfix = None):
     output = ""
     if method.access_specifier == clang.cindex.AccessSpecifier.PUBLIC and method.kind == clang.cindex.CursorKind.CXX_METHOD and not method.spelling.startswith("operator"):
@@ -1955,13 +2204,19 @@ class TypescriptBindings(Bindings):
       if override_postfix is not None:
         overloadPostfix = override_postfix
 
-      args = ", ".join(list(map(lambda x: self.getTypescriptDefFromArg(x[1], x[0], templateDecl, templateArgs), enumerate(method.get_arguments()))))
-      returnType = self.getTypescriptDefFromResultType(method.result_type, templateDecl, templateArgs)
+      allArgs = list(method.get_arguments())
+      outputReturnType = self._buildOutputParamReturnType(method, allArgs, templateDecl, templateArgs)
+
+      if outputReturnType is not None:
+        args = self._buildKeptArgs(method, allArgs, templateDecl, templateArgs)
+        returnType = outputReturnType
+      else:
+        args = ", ".join(list(map(lambda x: self.getTypescriptDefFromArg(x[1], x[0], templateDecl, templateArgs), enumerate(allArgs))))
+        returnType = self.getTypescriptDefFromResultType(method.result_type, templateDecl, templateArgs)
 
       className = getClassTypeName(theClass, templateDecl)
       tplName = theClass.spelling if templateDecl is not None else None
-      methodArgs = list(method.get_arguments())
-      output += self._jsdoc(className, method.spelling, "  ", param_count=len(methodArgs), overload_index=overload_index, template_name=tplName)
+      output += self._jsdoc(className, method.spelling, "  ", param_count=len(allArgs), overload_index=overload_index, template_name=tplName)
       output += "  " + ("static " if method.is_static_method() else "") + method.spelling + overloadPostfix + "(" + args + "): " + returnType + ";\n"
     return output
 
@@ -2005,25 +2260,31 @@ class TypescriptBindings(Bindings):
                            if m.kind == clang.cindex.CursorKind.CXX_METHOD
                            and m.access_specifier == clang.cindex.AccessSpecifier.PUBLIC
                            and m.spelling == bindable[0].spelling]
+    def _ts_args_and_return(m):
+      """Get TS args string and return type, accounting for output params."""
+      allArgs = list(m.get_arguments())
+      outputReturnType = self._buildOutputParamReturnType(m, allArgs, templateDecl, templateArgs)
+      if outputReturnType is not None:
+        args = self._buildKeptArgs(m, allArgs, templateDecl, templateArgs)
+        returnType = outputReturnType
+      else:
+        args = ", ".join(list(map(lambda x: self.getTypescriptDefFromArg(x[1], x[0], templateDecl, templateArgs), enumerate(allArgs))))
+        returnType = self.getTypescriptDefFromResultType(m.result_type, templateDecl, templateArgs)
+      return args, returnType
+
     arity_idx_map = {}
     for arity, group in sorted(by_arity.items()):
       if len(group) == 1:
         idx = arity_idx_map.get(arity, 0)
         arity_idx_map[arity] = idx + 1
-        args = ", ".join(list(map(lambda x: self.getTypescriptDefFromArg(x[1], x[0], templateDecl, templateArgs), enumerate(group[0].get_arguments()))))
-        returnType = self.getTypescriptDefFromResultType(group[0].result_type, templateDecl, templateArgs)
+        args, returnType = _ts_args_and_return(group[0])
         methodArgs = list(group[0].get_arguments())
         output += self._jsdoc(className, group[0].spelling, "  ", param_count=len(methodArgs), overload_index=idx, template_name=tplName)
         output += "  " + ("static " if group[0].is_static_method() else "") + group[0].spelling + "(" + args + "): " + returnType + ";\n"
       else:
         def _ts_method_has_wrapper_args(m):
           return any(
-            (m_arg.type.kind == clang.cindex.TypeKind.LVALUEREFERENCE and
-             not m_arg.type.get_pointee().is_const_qualified() and (
-               m_arg.type.get_pointee().get_canonical().spelling in builtInTypes or
-               m_arg.type.get_pointee().get_canonical().kind == clang.cindex.TypeKind.ENUM
-             ))
-            or isCString(m_arg.type)
+            isCString(m_arg.type)
             or m_arg.type.get_canonical().spelling in unbindablePointerTypes
             for m_arg in m.get_arguments()
           )
@@ -2043,8 +2304,7 @@ class TypescriptBindings(Bindings):
           for ov in distinguishable:
             idx = arity_idx_map.get(arity, 0)
             arity_idx_map[arity] = idx + 1
-            args = ", ".join(list(map(lambda x: self.getTypescriptDefFromArg(x[1], x[0], templateDecl, templateArgs), enumerate(ov.get_arguments()))))
-            returnType = self.getTypescriptDefFromResultType(ov.result_type, templateDecl, templateArgs)
+            args, returnType = _ts_args_and_return(ov)
             methodArgs = list(ov.get_arguments())
             output += self._jsdoc(className, ov.spelling, "  ", param_count=len(methodArgs), overload_index=idx, template_name=tplName)
             output += "  " + ("static " if ov.is_static_method() else "") + ov.spelling + "(" + args + "): " + returnType + ";\n"
@@ -2054,8 +2314,7 @@ class TypescriptBindings(Bindings):
             suffix = "_" + str(ovIdx + 1)
             idx = arity_idx_map.get(arity, 0)
             arity_idx_map[arity] = idx + 1
-            args = ", ".join(list(map(lambda x: self.getTypescriptDefFromArg(x[1], x[0], templateDecl, templateArgs), enumerate(ov.get_arguments()))))
-            returnType = self.getTypescriptDefFromResultType(ov.result_type, templateDecl, templateArgs)
+            args, returnType = _ts_args_and_return(ov)
             methodArgs = list(ov.get_arguments())
             is_primary = id(ov) in ambiguous_primaries
             if is_primary:
@@ -2069,8 +2328,7 @@ class TypescriptBindings(Bindings):
           suffix = "_" + str(ovIdx + 1)
           idx = arity_idx_map.get(arity, 0)
           arity_idx_map[arity] = idx + 1
-          args = ", ".join(list(map(lambda x: self.getTypescriptDefFromArg(x[1], x[0], templateDecl, templateArgs), enumerate(ov.get_arguments()))))
-          returnType = self.getTypescriptDefFromResultType(ov.result_type, templateDecl, templateArgs)
+          args, returnType = _ts_args_and_return(ov)
           methodArgs = list(ov.get_arguments())
           output += self._jsdoc(className, ov.spelling, "  ", param_count=len(methodArgs), overload_index=idx, template_name=tplName)
           output += "  " + ("static " if ov.is_static_method() else "") + ov.spelling + suffix + "(" + args + "): " + returnType + ";\n"

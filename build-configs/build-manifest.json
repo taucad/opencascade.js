@@ -1,7 +1,7 @@
 {
-  "timestamp": "2026-03-20T01:47:45Z",
-  "yaml_config": "full.yml",
-  "yaml_hash": "79ea6e71d625",
+  "timestamp": "2026-03-22T01:39:16Z",
+  "yaml_config": "full-exceptions.yml",
+  "yaml_hash": "05a3747dcc34",
   "validation_passed": false,
   "symbols": {
     "requested": [
@@ -4458,10 +4458,16 @@
       "math_Uzawa",
       "math_ValueAndWeight"
     ],
-    "compiled": 4445,
+    "compiled": 4441,
     "missing": [
       "BOPTools_AlgoTools",
+      "BRep_Tool",
+      "Contap_TheIWLineOfTheIWalking",
+      "HLRAlgo_PolyAlgo",
+      "HLRBRep_PolyAlgo",
       "Handle_Standard_Type",
+      "IntPatch_TheIWLineOfTheIWalking",
+      "IntPatch_WLine",
       "TColStd_Array1OfTransient",
       "TColStd_Array2OfTransient",
       "TColStd_HArray1OfTransient",
@@ -4470,9 +4476,11 @@
       "TColStd_SequenceOfHAsciiString",
       "TColStd_SequenceOfHExtendedString",
       "TColStd_SequenceOfTransient",
-      "TColgp_SequenceOfArray1OfPnt2d"
+      "TColgp_SequenceOfArray1OfPnt2d",
+      "TopOpeBRepDS_DataStructure",
+      "TopOpeBRepTool_C2DF"
     ],
-    "extra_compiled": 4,
+    "extra_compiled": 8,
     "pass": false
   },
   "outputs": [
@@ -4480,37 +4488,26 @@
       "name": "opencascade_full.js",
       "wasm_file": "opencascade_full.wasm",
       "wasm_exists": true,
-      "wasm_size": 49246038,
+      "wasm_size": 104647663,
       "js_exists": true,
-      "js_size": 299680,
+      "js_size": 511451,
       "pass": true
     }
   ],
   "binding_report": {
     "total": 4454,
-    "succeeded": 0,
-    "cached": 4446,
-    "failed": 8,
+    "succeeded": 4442,
+    "cached": 0,
+    "failed": 12,
     "error_categories": {
-      "overload_resolution": 3,
       "compile_error": 2,
-      "template_error": 3
+      "template_error": 10
     },
     "failures": [
       {
-        "file": "XCAFDimTolObjects_DatumObject.cpp",
-        "error_type": "overload_resolution",
-        "message": "/Users/rifont/git/tau/repos/assimpjs/emsdk/upstream/emscripten/cache/sysroot/include/emscripten/bind.h:390:9: error: no matching function for call to object of type 'std::function<void (XCAFDimTolObjects_DatumObject &, XCAFDimTolObjects_DatumModifWithValue &, emscripten::val)>'"
-      },
-      {
-        "file": "XCAFDimTolObjects_DimensionObject.cpp",
-        "error_type": "overload_resolution",
-        "message": "/Users/rifont/git/tau/repos/assimpjs/emsdk/upstream/emscripten/cache/sysroot/include/emscripten/bind.h:377:13: error: no matching function for call to object of type 'std::function<bool (XCAFDimTolObjects_DimensionObject &, emscripten::val, XCAFDimTolObjects_DimensionFormVariance &, XCAFDimTolObjects_DimensionGrade &)>'"
-      },
-      {
         "file": "Message_ProgressScope.cpp",
         "error_type": "compile_error",
-        "message": "/Users/rifont/git/tau/repos/opencascade.js/build/bindings/FoundationClasses/TKernel/Message/Message_ProgressScope.hxx/Message_ProgressScope.cpp:4857:130: error: unknown type name 'NullString'"
+        "message": "/Users/rifont/git/tau/repos/opencascade.js/build/bindings/FoundationClasses/TKernel/Message/Message_ProgressScope.hxx/Message_ProgressScope.cpp:4840:130: error: unknown type name 'NullString'"
       },
       {
         "file": "BOPTools_AlgoTools.cpp",
@@ -4518,14 +4515,44 @@
         "message": "/Users/rifont/git/tau/repos/assimpjs/emsdk/upstream/emscripten/cache/sysroot/include/emscripten/wire.h:124:19: error: static assertion failed due to requirement '!std::is_pointer<int *>::value': Implicitly binding raw pointers is illegal.  Specify allow_raw_pointer<arg<?>>"
       },
       {
-        "file": "ShapeProcess.cpp",
-        "error_type": "compile_error",
-        "message": "/Users/rifont/git/tau/repos/opencascade.js/build/bindings/ModelingAlgorithms/TKShHealing/ShapeProcess/ShapeProcess.hxx/ShapeProcess.cpp:4864:102: error: unknown type name 'OperationsFlags'; did you mean 'ShapeProcess::OperationsFlags'?"
+        "file": "TopOpeBRepDS_DataStructure.cpp",
+        "error_type": "template_error",
+        "message": "/Users/rifont/git/tau/repos/opencascade.js/build/bindings/ModelingAlgorithms/TKBool/TopOpeBRepDS/TopOpeBRepDS_DataStructure.hxx/TopOpeBRepDS_DataStructure.cpp:4839:22: error: cannot form a pointer-to-member to member 'result' of reference type 'NCollection_IndexedDataMap<TopoDS_Shape, TopOpeBRepDS_ShapeWithState, TopTools_ShapeMapHasher> &'"
       },
       {
-        "file": "ShapeProcess_ShapeContext.cpp",
-        "error_type": "overload_resolution",
-        "message": "/Users/rifont/git/tau/repos/assimpjs/emsdk/upstream/emscripten/cache/sysroot/include/emscripten/bind.h:377:13: error: no matching function for call to object of type 'std::function<bool (ShapeProcess_ShapeContext &, emscripten::val, GeomAbs_Shape &)>'"
+        "file": "TopOpeBRepTool_C2DF.cpp",
+        "error_type": "template_error",
+        "message": "/Users/rifont/git/tau/repos/opencascade.js/build/bindings/ModelingAlgorithms/TKBool/TopOpeBRepTool/TopOpeBRepTool_C2DF.hxx/TopOpeBRepTool_C2DF.cpp:4841:22: error: cannot form a pointer-to-member to member 'result' of reference type 'const occ::handle<Geom2d_Curve> &' (aka 'const opencascade::handle<Geom2d_Curve> &')"
+      },
+      {
+        "file": "IntPatch_TheIWLineOfTheIWalking.cpp",
+        "error_type": "template_error",
+        "message": "/Users/rifont/git/tau/repos/opencascade.js/build/bindings/ModelingAlgorithms/TKGeomAlgo/IntPatch/IntPatch_TheIWLineOfTheIWalking.hxx/IntPatch_TheIWLineOfTheIWalking.cpp:4848:22: error: cannot form a pointer-to-member to member 'result' of reference type 'const gp_Vec &'"
+      },
+      {
+        "file": "IntPatch_WLine.cpp",
+        "error_type": "template_error",
+        "message": "/Users/rifont/git/tau/repos/opencascade.js/build/bindings/ModelingAlgorithms/TKGeomAlgo/IntPatch/IntPatch_WLine.hxx/IntPatch_WLine.cpp:4844:22: error: cannot form a pointer-to-member to member 'result' of reference type 'const IntPatch_Point &'"
+      },
+      {
+        "file": "Contap_TheIWLineOfTheIWalking.cpp",
+        "error_type": "template_error",
+        "message": "/Users/rifont/git/tau/repos/opencascade.js/build/bindings/ModelingAlgorithms/TKHLR/Contap/Contap_TheIWLineOfTheIWalking.hxx/Contap_TheIWLineOfTheIWalking.cpp:4848:22: error: cannot form a pointer-to-member to member 'result' of reference type 'const gp_Vec &'"
+      },
+      {
+        "file": "HLRAlgo_PolyAlgo.cpp",
+        "error_type": "template_error",
+        "message": "/Users/rifont/git/tau/repos/opencascade.js/build/bindings/ModelingAlgorithms/TKHLR/HLRAlgo/HLRAlgo_PolyAlgo.hxx/HLRAlgo_PolyAlgo.cpp:4852:22: error: cannot form a pointer-to-member to member 'result' of reference type 'HLRAlgo_BiPoint::PointsT &'"
+      },
+      {
+        "file": "HLRBRep_PolyAlgo.cpp",
+        "error_type": "template_error",
+        "message": "/Users/rifont/git/tau/repos/opencascade.js/build/bindings/ModelingAlgorithms/TKHLR/HLRBRep/HLRBRep_PolyAlgo.hxx/HLRBRep_PolyAlgo.cpp:4850:22: error: cannot form a pointer-to-member to member 'result' of reference type 'HLRAlgo_BiPoint::PointsT &'"
+      },
+      {
+        "file": "ShapeProcess.cpp",
+        "error_type": "compile_error",
+        "message": "/Users/rifont/git/tau/repos/opencascade.js/build/bindings/ModelingAlgorithms/TKShHealing/ShapeProcess/ShapeProcess.hxx/ShapeProcess.cpp:4856:102: error: unknown type name 'OperationsFlags'; did you mean 'ShapeProcess::OperationsFlags'?"
       },
       {
         "file": "BRepClass3d_SolidExplorer.cpp",
@@ -4533,9 +4560,9 @@
         "message": "/Users/rifont/git/tau/repos/assimpjs/emsdk/upstream/emscripten/cache/sysroot/include/emscripten/wire.h:391:20: error: call to implicitly-deleted copy constructor of 'ActualT' (aka 'IntCurvesFace_Intersector')"
       },
       {
-        "file": "TopAbs.cpp",
+        "file": "BRep_Tool.cpp",
         "error_type": "template_error",
-        "message": "/Users/rifont/git/tau/repos/assimpjs/emsdk/upstream/emscripten/cache/sysroot/include/emscripten/bind.h:352:16: error: non-const lvalue reference to type 'TopAbs_ShapeEnum' cannot bind to a temporary of type 'TopAbs_ShapeEnum'"
+        "message": "/Users/rifont/git/tau/repos/opencascade.js/build/bindings/ModelingData/TKBRep/BRep/BRep_Tool.hxx/BRep_Tool.cpp:4898:22: error: cannot form a pointer-to-member to member 'result' of reference type 'const occ::handle<Geom_Curve> &' (aka 'const opencascade::handle<Geom_Curve> &')"
       }
     ]
   }

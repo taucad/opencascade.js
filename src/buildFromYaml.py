@@ -249,9 +249,6 @@ def runBuild(build, libraryBasePath):
   if os.environ.get("OCJS_EVAL_CTORS", "false") == "true":
     eval_ctors_level = os.environ.get("OCJS_EVAL_CTORS_LEVEL", "1")
     linkCmd.append(f"-sEVAL_CTORS={eval_ctors_level}")
-  if not USE_WASM_EXCEPTIONS:
-    linkCmd.append("-sSUPPORT_LONGJMP=0")
-    linkCmd.append("-sDISABLE_EXCEPTION_CATCHING=1")
   print(f"Linking {len(bindingsO)} bindings + {len(sourcesO)} sources ...", flush=True)
   link_start = time.time()
   subprocess.check_call(linkCmd)

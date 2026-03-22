@@ -235,23 +235,6 @@ referenceTypeTemplateDefs = \
   "#include <stdexcept>\n" + \
   "#include \"ocjs_smart_ptr.h\"\n" + \
   "#include \"ocjs_handle_helpers.h\"\n" + \
-  "\n" + \
-  "template<typename T>\n" + \
-  "T getReferenceValue(const emscripten::val& v) {\n" + \
-  "  if(!(v.typeOf().as<std::string>() == \"object\")) {\n" + \
-  "    return v.as<T>(allow_raw_pointers());\n" + \
-  "  } else if(v.typeOf().as<std::string>() == \"object\" && v.hasOwnProperty(\"current\")) {\n" + \
-  "    return v[\"current\"].as<T>(allow_raw_pointers());\n" + \
-  "  }\n" + \
-  "  throw(\"unsupported type\");\n" + \
-  "}\n" + \
-  "\n" + \
-  "template<typename T>\n" + \
-  "void updateReferenceValue(emscripten::val& v, T& val) {\n" + \
-  "  if(v.typeOf().as<std::string>() == \"object\" && v.hasOwnProperty(\"current\")) {\n" + \
-  "    v.set(\"current\", val);\n" + \
-  "  }\n" + \
-  "}\n" + \
   "\n"
 
 def generateCustomCodeBindings(customCode):

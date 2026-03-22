@@ -15,7 +15,9 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import { initOC, getOC, wasmExists } from './helpers.js';
 
 describe.skipIf(!wasmExists)('Smoke: Enum Bindings', () => {
-  beforeAll(async () => { await initOC(); });
+  beforeAll(async () => {
+    await initOC();
+  });
 
   it('should represent enum values as plain strings', () => {
     const oc = getOC();
@@ -72,11 +74,7 @@ describe.skipIf(!wasmExists)('Smoke: Enum Bindings', () => {
   it('should accept enum values in API functions', () => {
     const oc = getOC();
     const box = new oc.BRepPrimAPI_MakeBox(10, 10, 10).Shape();
-    const explorer = new oc.TopExp_Explorer(
-      box,
-      oc.TopAbs_ShapeEnum.TopAbs_FACE,
-      oc.TopAbs_ShapeEnum.TopAbs_SHAPE,
-    );
+    const explorer = new oc.TopExp_Explorer(box, oc.TopAbs_ShapeEnum.TopAbs_FACE, oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
 
     let faceCount = 0;
     while (explorer.More()) {
