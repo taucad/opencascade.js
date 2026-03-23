@@ -593,6 +593,17 @@ exclude:
     ## Naming clash with BRepMesh
     - XBRepMesh
 
+    ## Deprecated in OCCT 8 (TopOpe*), STEP header internals, approximation / plate / projection
+    ## packages pulled in transitively — excluded for WASM binary size reduction.
+    - TopOpeBRepBuild
+    - TopOpeBRepDS
+    - TopOpeBRepTool
+    - TopOpeBRep
+    - HeaderSection
+    - AppDef
+    - GeomPlate
+    - ProjLib
+
   # Semantic rules that remain in code (not configurable):
   # - Methods with void*, istream/ostream params (type-based)
   # - Methods with non-const lvalue enum ref params (OCCT V8)
