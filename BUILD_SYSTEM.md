@@ -35,20 +35,20 @@ All named compile-time configurations live in `build-configs/configurations.json
 
 ### Supported keys
 
-| Key | Description | Default |
-|---|---|---|
-| `OCJS_OPT` | Compile optimization level (`-O0`, `-O2`, `-O3`, `-Os`) | `-O2` |
-| `OCJS_LTO` | Enable LTO at compile time (`0` or `1`) | `0` |
-| `OCJS_EXCEPTIONS` | Enable native WASM exceptions (`0` or `1`) | `0` |
-| `OCJS_SIMD` | Enable SIMD instructions (`0` or `1`) | `0` |
-| `THREADING` | Threading mode (`single-threaded` or `multi-threaded`) | `single-threaded` |
-| `OCJS_DEFINES` | Comma-separated C preprocessor defines | _(empty)_ |
-| `OCJS_UNDEFINES` | Comma-separated C preprocessor undefines | _(empty)_ |
-| `OCJS_WASM_OPT_LEVEL` | wasm-opt optimization level | `-O3` |
-| `OCJS_CLOSURE` | Run Closure Compiler (`true` or `false`) | `false` |
-| `OCJS_EVAL_CTORS` | Enable Emscripten eval ctors (`true` or `false`) | `false` |
-| `OCJS_CONVERGE` | Use `--converge` in wasm-opt (`true` or `false`) | `false` |
-| `OCJS_PATCH_DUMP` | Patch OCCT Standard_Dump.hxx (`true` or `false`) | `false` |
+| Key                   | Description                                             | Default           |
+| --------------------- | ------------------------------------------------------- | ----------------- |
+| `OCJS_OPT`            | Compile optimization level (`-O0`, `-O2`, `-O3`, `-Os`) | `-O2`             |
+| `OCJS_LTO`            | Enable LTO at compile time (`0` or `1`)                 | `0`               |
+| `OCJS_EXCEPTIONS`     | Enable native WASM exceptions (`0` or `1`)              | `0`               |
+| `OCJS_SIMD`           | Enable SIMD instructions (`0` or `1`)                   | `0`               |
+| `THREADING`           | Threading mode (`single-threaded` or `multi-threaded`)  | `single-threaded` |
+| `OCJS_DEFINES`        | Comma-separated C preprocessor defines                  | _(empty)_         |
+| `OCJS_UNDEFINES`      | Comma-separated C preprocessor undefines                | _(empty)_         |
+| `OCJS_WASM_OPT_LEVEL` | wasm-opt optimization level                             | `-O3`             |
+| `OCJS_CLOSURE`        | Run Closure Compiler (`true` or `false`)                | `false`           |
+| `OCJS_EVAL_CTORS`     | Enable Emscripten eval ctors (`true` or `false`)        | `false`           |
+| `OCJS_CONVERGE`       | Use `--converge` in wasm-opt (`true` or `false`)        | `false`           |
+| `OCJS_PATCH_DUMP`     | Patch OCCT Standard_Dump.hxx (`true` or `false`)        | `false`           |
 
 ### Adding a new configuration
 
@@ -210,18 +210,18 @@ The script is idempotent and validates pinned commits when `OCJS_STRICT_DEPS=1`.
 
 ## Migration from Old System
 
-| Old | New |
-|---|---|
-| `--preset O3-maxperf` | `--config O3-maxperf` |
-| `build-configs/presets/*.yml` | `build-configs/configurations.json` |
-| `scripts/experiments/*.yml` | Entries in `configurations.json` + separate consumer YAML |
-| `build-cache.py compute-key` | Nx content-hash based caching |
-| `cache-list` / `cache-gc` | `npx nx reset` to clear all caches |
-| `step_compile_all()` | Nx `dependsOn` task graph |
-| `../assimpjs/emsdk` | `deps/emsdk/` (via `setup-deps.sh`) |
-| Flag stripping in `buildFromYaml.py` | Fill-not-strip (consumer flags verbatim) |
-| `OCJS_BIGINT` env var appendage | Consumer specifies `-sWASM_BIGINT` directly in emccFlags |
-| `OCJS_EVAL_CTORS` env var appendage | Consumer specifies `-sEVAL_CTORS=N` directly in emccFlags |
+| Old                                  | New                                                       |
+| ------------------------------------ | --------------------------------------------------------- |
+| `--preset O3-maxperf`                | `--config O3-maxperf`                                     |
+| `build-configs/presets/*.yml`        | `build-configs/configurations.json`                       |
+| `scripts/experiments/*.yml`          | Entries in `configurations.json` + separate consumer YAML |
+| `build-cache.py compute-key`         | Nx content-hash based caching                             |
+| `cache-list` / `cache-gc`            | `npx nx reset` to clear all caches                        |
+| `step_compile_all()`                 | Nx `dependsOn` task graph                                 |
+| `../assimpjs/emsdk`                  | `deps/emsdk/` (via `setup-deps.sh`)                       |
+| Flag stripping in `buildFromYaml.py` | Fill-not-strip (consumer flags verbatim)                  |
+| `OCJS_BIGINT` env var appendage      | Consumer specifies `-sWASM_BIGINT` directly in emccFlags  |
+| `OCJS_EVAL_CTORS` env var appendage  | Consumer specifies `-sEVAL_CTORS=N` directly in emccFlags |
 
 ## Troubleshooting
 
