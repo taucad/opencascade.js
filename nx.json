@@ -22,6 +22,15 @@
     ],
     "toolchain": [{ "runtime": "emcc --version 2>/dev/null || echo not-installed" }],
     "depsVersion": ["{projectRoot}/DEPS.json"],
-    "generatorCode": ["{projectRoot}/src/**/*.py", "{projectRoot}/bindgen-filters.yaml"]
+    "generatorCode": ["{projectRoot}/src/**/*.py", "{projectRoot}/bindgen-filters.yaml"],
+    "buildScript": ["{projectRoot}/build-wasm.sh"],
+    "compileBindingsScript": [
+      "{projectRoot}/src/compileBindings.py",
+      "{projectRoot}/src/Common.py"
+    ],
+    "linkScript": [
+      "{projectRoot}/src/buildFromYaml.py",
+      "{projectRoot}/src/Common.py"
+    ]
   }
 }

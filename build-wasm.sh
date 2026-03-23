@@ -591,6 +591,7 @@ step_link() {
   yaml_abs="$(cd "$(dirname "$yaml")" && pwd)/$(basename "$yaml")"
   echo "═══ Linking WASM from $yaml_abs ═══"
   echo "  Output dir: $OCJS_OUTPUT_DIR"
+  rm -rf "$OCJS_OUTPUT_DIR"
   mkdir -p "$OCJS_OUTPUT_DIR"
   cd "$OCJS_OUTPUT_DIR"
   python3 "$OCJS_ROOT/src/buildFromYaml.py" "$yaml_abs"
