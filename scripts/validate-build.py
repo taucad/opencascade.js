@@ -127,18 +127,24 @@ def compute_config_hash(yaml_path):
         return hashlib.sha256(f.read()).hexdigest()[:12]
 
 
+def build_name_from_config(config):
+    """Extract the variant name from the YAML config (e.g. 'replicad_single' from 'replicad_single.js')."""
+    return os.path.splitext(config["mainBuild"]["name"])[0]
+
+
 def main():
     parser = ArgumentParser(description="Validate an opencascade.js WASM build against its YAML config")
     parser.add_argument("yaml_config", help="Path to the YAML build configuration")
     parser.add_argument("output_dir", help="Directory containing the build output (.wasm, .js)")
     parser.add_argument("--build-dir", default=None, help="Build directory containing bindings/ and sources/ (default: $OCJS_ROOT/build)")
-    parser.add_argument("--json-output", default=None, help="Path to write the build manifest JSON (default: <output_dir>/build-manifest.json)")
+    parser.add_argument("--json-output", default=None, help="Path to write the build manifest JSON (default: <output_dir>/<variant>.build-manifest.json)")
     args = parser.parse_args()
 
     build_dir = args.build_dir or os.path.join(OCJS_ROOT, "build")
-    json_output = args.json_output or os.path.join(args.output_dir, "build-manifest.json")
-
     config = load_yaml_config(args.yaml_config)
+    variant = build_name_from_config(config)
+    json_output = args.json_output or os.path.join(args.output_dir, f"{variant}.build-manifest.json")
+
     config_hash = compute_config_hash(args.yaml_config)
 
     print(f"Validating build: {args.yaml_config} (hash: {config_hash})")

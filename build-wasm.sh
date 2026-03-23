@@ -325,7 +325,11 @@ export OCJS_FORCE_GENERATE="${OCJS_FORCE_GENERATE:-0}"
 export THREADING="${THREADING:-single-threaded}"
 export PYTHONPATH="$OCJS_ROOT/src:${PYTHONPATH:-}"
 export BUILD_DIR="${BUILD_DIR:-$OCJS_ROOT/build}"
-export OCJS_OUTPUT_DIR="${OCJS_OUTPUT_DIR:-$OCJS_ROOT/dist}"
+OCJS_OUTPUT_DIR="${OCJS_OUTPUT_DIR:-$OCJS_ROOT/dist}"
+if [[ "$OCJS_OUTPUT_DIR" != /* ]]; then
+  OCJS_OUTPUT_DIR="$OCJS_ROOT/$OCJS_OUTPUT_DIR"
+fi
+export OCJS_OUTPUT_DIR
 
 # ── Print config ─────────────────────────────────────────────────────
 
@@ -646,7 +650,7 @@ while [ $# -gt 0 ]; do
       YAML_CONFIG="$(cd "$(dirname "$1")" && pwd)/$(basename "$1")"
       shift
       ;;
-    dts|link|full)
+    dts|link|full|provenance)
       COMMANDS+=("$1")
       shift
       if [ $# -eq 0 ]; then
@@ -704,6 +708,12 @@ else:
 "
       echo ""
       ;;
+    provenance)
+      echo "═══ Generating build provenance ═══"
+      python3 src/provenance.py init
+      python3 src/provenance.py finalize --wasm-dir "$OCJS_OUTPUT_DIR" --yaml "${YAML_CONFIG:-}" --duration 0
+      echo ""
+      ;;
     full)
       if [ "$OCJS_PATCH_DUMP" = "true" ]; then
         echo "=== Patching OCCT Standard_Dump.hxx ==="
@@ -727,7 +737,7 @@ ELAPSED=$((END_TIME - START_TIME))
 # ── Finalize provenance ──────────────────────────────────────────────
 
 if [ -n "$YAML_CONFIG" ]; then
-  python3 src/provenance.py finalize --wasm-dir "$OCJS_OUTPUT_DIR" --duration "$ELAPSED" 2>/dev/null || true
+  python3 src/provenance.py finalize --wasm-dir "$OCJS_OUTPUT_DIR" --yaml "$YAML_CONFIG" --duration "$ELAPSED" 2>/dev/null || true
 fi
 
 echo ""

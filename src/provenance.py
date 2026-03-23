@@ -353,7 +353,19 @@ def add_linking(
     _save(prov)
 
 
-def finalize(wasm_dir: str = "", total_duration: int = 0) -> None:
+def _variant_name_from_yaml(yaml_path: str) -> str:
+    """Extract the variant name from a YAML config (e.g. 'replicad_single' from mainBuild.name 'replicad_single.js')."""
+    try:
+        import yaml
+        with open(yaml_path) as f:
+            config = yaml.safe_load(f)
+        name = config.get("mainBuild", {}).get("name", "")
+        return os.path.splitext(name)[0] if name else ""
+    except Exception:
+        return ""
+
+
+def finalize(wasm_dir: str = "", total_duration: int = 0, yaml_config: str = "") -> None:
     prov = _load()
     if not prov:
         return
@@ -393,7 +405,10 @@ def finalize(wasm_dir: str = "", total_duration: int = 0) -> None:
 
         prov["output"] = outputs
 
-    dest = os.path.join(wasm_dir, "provenance.json") if wasm_dir else PROVENANCE_FILE
+    variant = _variant_name_from_yaml(yaml_config) if yaml_config else ""
+    filename = f"{variant}.provenance.json" if variant else "provenance.json"
+    dest = os.path.join(wasm_dir, filename) if wasm_dir else PROVENANCE_FILE
+
     with open(PROVENANCE_FILE, "w") as f:
         json.dump(prov, f, indent=2)
     if dest != PROVENANCE_FILE:
@@ -442,6 +457,7 @@ def main() -> None:
     elif command == "finalize":
         wasm_dir = ""
         duration = 0
+        yaml_config = ""
         args = sys.argv[2:]
         i = 0
         while i < len(args):
@@ -451,9 +467,12 @@ def main() -> None:
             elif args[i] == "--duration" and i + 1 < len(args):
                 duration = int(args[i + 1])
                 i += 2
+            elif args[i] == "--yaml" and i + 1 < len(args):
+                yaml_config = args[i + 1]
+                i += 2
             else:
                 i += 1
-        finalize(wasm_dir=wasm_dir, total_duration=duration)
+        finalize(wasm_dir=wasm_dir, total_duration=duration, yaml_config=yaml_config)
     else:
         print(f"Unknown command: {command}")
         sys.exit(1)
