@@ -279,7 +279,7 @@ exclude:
     Graphic3d_GraduatedTrihedron: [CubicAxesCallback]
     AIS_ViewController: [Keys, ChangeKeys]
     Aspect_WindowInputListener: [Keys, ChangeKeys]
-    BRepClass3d_SolidExplorer: [GetTree]
+    BRepClass3d_SolidExplorer: [GetTree, Intersector]
     NCollection_Lerp: [Interpolate]
     Geom2dHatch_Hatcher: [IsDone]
     Geom2dAPI_Interpolate: [ClearTangents]
