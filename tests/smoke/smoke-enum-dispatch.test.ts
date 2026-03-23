@@ -15,8 +15,8 @@ describe.skipIf(!wasmExists)('Smoke: IntPatch Enum Dispatch', () => {
   describe('IntPatch_ALine', () => {
     it('should construct with IntSurf_TypeTrans parameters via base class', () => {
       const oc = getOC();
-      const curve = new oc.IntAna_Curve();
-      const aline = new oc.IntPatch_ALine(
+      using curve = new oc.IntAna_Curve();
+      using aline = new oc.IntPatch_ALine(
         curve,
         false,
         oc.IntSurf_TypeTrans.IntSurf_In,
@@ -25,15 +25,12 @@ describe.skipIf(!wasmExists)('Smoke: IntPatch Enum Dispatch', () => {
 
       expect(aline.TransitionOnS1()).toBe('IntSurf_In');
       expect(aline.TransitionOnS2()).toBe('IntSurf_Out');
-
-      aline.delete();
-      curve.delete();
     });
 
     it('should construct with IntSurf_Situation parameters via base class', () => {
       const oc = getOC();
-      const curve = new oc.IntAna_Curve();
-      const aline = new oc.IntPatch_ALine(
+      using curve = new oc.IntAna_Curve();
+      using aline = new oc.IntPatch_ALine(
         curve,
         false,
         oc.IntSurf_Situation.IntSurf_Inside,
@@ -42,17 +39,14 @@ describe.skipIf(!wasmExists)('Smoke: IntPatch Enum Dispatch', () => {
 
       expect(aline.SituationS1()).toBe('IntSurf_Inside');
       expect(aline.SituationS2()).toBe('IntSurf_Outside');
-
-      aline.delete();
-      curve.delete();
     });
   });
 
   describe('IntPatch_GLine (gp_Lin geometry)', () => {
     it('should construct with IntSurf_TypeTrans parameters', () => {
       const oc = getOC();
-      const line = new oc.gp_Lin(new oc.gp_Pnt(0, 0, 0), new oc.gp_Dir(1, 0, 0));
-      const gline = new oc.IntPatch_GLine(
+      using line = new oc.gp_Lin(new oc.gp_Pnt(0, 0, 0), new oc.gp_Dir(1, 0, 0));
+      using gline = new oc.IntPatch_GLine(
         line,
         false,
         oc.IntSurf_TypeTrans.IntSurf_In,
@@ -61,15 +55,12 @@ describe.skipIf(!wasmExists)('Smoke: IntPatch Enum Dispatch', () => {
 
       expect(gline.TransitionOnS1()).toBe('IntSurf_In');
       expect(gline.TransitionOnS2()).toBe('IntSurf_Out');
-
-      gline.delete();
-      line.delete();
     });
 
     it('should construct with IntSurf_Situation parameters', () => {
       const oc = getOC();
-      const line = new oc.gp_Lin(new oc.gp_Pnt(0, 0, 0), new oc.gp_Dir(1, 0, 0));
-      const gline = new oc.IntPatch_GLine(
+      using line = new oc.gp_Lin(new oc.gp_Pnt(0, 0, 0), new oc.gp_Dir(1, 0, 0));
+      using gline = new oc.IntPatch_GLine(
         line,
         false,
         oc.IntSurf_Situation.IntSurf_Inside,
@@ -78,9 +69,6 @@ describe.skipIf(!wasmExists)('Smoke: IntPatch Enum Dispatch', () => {
 
       expect(gline.SituationS1()).toBe('IntSurf_Inside');
       expect(gline.SituationS2()).toBe('IntSurf_Outside');
-
-      gline.delete();
-      line.delete();
     });
   });
 });

@@ -17,12 +17,12 @@ describe.skipIf(!wasmExists)('Smoke: Curve analysis and sampling', () => {
 
   it('should wrap a line edge and evaluate endpoints with BRepAdaptor_Curve', () => {
     const oc = getOC();
-    const p1 = new oc.gp_Pnt(0, 0, 0);
-    const p2 = new oc.gp_Pnt(10, 0, 0);
-    const edgeMaker = new oc.BRepBuilderAPI_MakeEdge(p1, p2);
+    using p1 = new oc.gp_Pnt(0, 0, 0);
+    using p2 = new oc.gp_Pnt(10, 0, 0);
+    using edgeMaker = new oc.BRepBuilderAPI_MakeEdge(p1, p2);
     const edge = edgeMaker.Edge();
 
-    const adaptor = new oc.BRepAdaptor_Curve(edge);
+    using adaptor = new oc.BRepAdaptor_Curve(edge);
 
     const first = adaptor.FirstParameter();
     const last = adaptor.LastParameter();
@@ -37,45 +37,35 @@ describe.skipIf(!wasmExists)('Smoke: Curve analysis and sampling', () => {
 
     const endPt = adaptor.Value(last);
     expect(endPt.X()).toBe(10);
-
-    adaptor.delete();
-    edgeMaker.delete();
-    p2.delete();
-    p1.delete();
   });
 
   it('should identify a circular edge with BRepAdaptor_Curve', () => {
     const oc = getOC();
-    const ax = new oc.gp_Ax2(
+    using ax = new oc.gp_Ax2(
       new oc.gp_Pnt(0, 0, 0),
       new oc.gp_Dir(0, 0, 1),
     );
-    const circle = new oc.Geom_Circle(ax, 10);
-    const edgeMaker = new oc.BRepBuilderAPI_MakeEdge(circle);
+    using circle = new oc.Geom_Circle(ax, 10);
+    using edgeMaker = new oc.BRepBuilderAPI_MakeEdge(circle);
     const edge = edgeMaker.Edge();
 
-    const adaptor = new oc.BRepAdaptor_Curve(edge);
+    using adaptor = new oc.BRepAdaptor_Curve(edge);
 
     expect(adaptor.GetType()).toBe(oc.GeomAbs_CurveType.GeomAbs_Circle);
 
     const circleData = adaptor.Circle();
     expect(circleData.Radius()).toBe(10);
-
-    adaptor.delete();
-    edgeMaker.delete();
-    circle.delete();
-    ax.delete();
   });
 
   it('should sample a line at equal intervals with GCPnts_UniformAbscissa', () => {
     const oc = getOC();
-    const p1 = new oc.gp_Pnt(0, 0, 0);
-    const p2 = new oc.gp_Pnt(100, 0, 0);
-    const edgeMaker = new oc.BRepBuilderAPI_MakeEdge(p1, p2);
+    using p1 = new oc.gp_Pnt(0, 0, 0);
+    using p2 = new oc.gp_Pnt(100, 0, 0);
+    using edgeMaker = new oc.BRepBuilderAPI_MakeEdge(p1, p2);
     const edge = edgeMaker.Edge();
-    const adaptor = new oc.BRepAdaptor_Curve(edge);
+    using adaptor = new oc.BRepAdaptor_Curve(edge);
 
-    const sampler = new oc.GCPnts_UniformAbscissa(adaptor, 11, 1e-6);
+    using sampler = new oc.GCPnts_UniformAbscissa(adaptor, 11, 1e-6);
 
     expect(sampler.IsDone()).toBe(true);
     expect(sampler.NbPoints()).toBe(11);
@@ -92,26 +82,20 @@ describe.skipIf(!wasmExists)('Smoke: Curve analysis and sampling', () => {
     const midParam = sampler.Parameter(6);
     const midPt = adaptor.Value(midParam);
     expect(midPt.X()).toBe(50);
-
-    sampler.delete();
-    adaptor.delete();
-    edgeMaker.delete();
-    p2.delete();
-    p1.delete();
   });
 
   it('should sample a circle at equal arc-lengths with GCPnts_UniformAbscissa', () => {
     const oc = getOC();
-    const ax = new oc.gp_Ax2(
+    using ax = new oc.gp_Ax2(
       new oc.gp_Pnt(0, 0, 0),
       new oc.gp_Dir(0, 0, 1),
     );
-    const circle = new oc.Geom_Circle(ax, 10);
-    const edgeMaker = new oc.BRepBuilderAPI_MakeEdge(circle);
+    using circle = new oc.Geom_Circle(ax, 10);
+    using edgeMaker = new oc.BRepBuilderAPI_MakeEdge(circle);
     const edge = edgeMaker.Edge();
-    const adaptor = new oc.BRepAdaptor_Curve(edge);
+    using adaptor = new oc.BRepAdaptor_Curve(edge);
 
-    const sampler = new oc.GCPnts_UniformAbscissa(adaptor, 37, 1e-6);
+    using sampler = new oc.GCPnts_UniformAbscissa(adaptor, 37, 1e-6);
 
     expect(sampler.IsDone()).toBe(true);
     expect(sampler.NbPoints()).toBe(37);
@@ -119,26 +103,20 @@ describe.skipIf(!wasmExists)('Smoke: Curve analysis and sampling', () => {
     const p0 = adaptor.Value(sampler.Parameter(1));
     expect(p0.X()).toBe(10);
     expect(p0.Y()).toBe(0);
-
-    sampler.delete();
-    adaptor.delete();
-    edgeMaker.delete();
-    circle.delete();
-    ax.delete();
   });
 
   it('should sample with chord deviation control using GCPnts_UniformDeflection', () => {
     const oc = getOC();
-    const ax = new oc.gp_Ax2(
+    using ax = new oc.gp_Ax2(
       new oc.gp_Pnt(0, 0, 0),
       new oc.gp_Dir(0, 0, 1),
     );
-    const circle = new oc.Geom_Circle(ax, 10);
-    const edgeMaker = new oc.BRepBuilderAPI_MakeEdge(circle);
+    using circle = new oc.Geom_Circle(ax, 10);
+    using edgeMaker = new oc.BRepBuilderAPI_MakeEdge(circle);
     const edge = edgeMaker.Edge();
-    const adaptor = new oc.BRepAdaptor_Curve(edge);
+    using adaptor = new oc.BRepAdaptor_Curve(edge);
 
-    const sampler = new oc.GCPnts_UniformDeflection(adaptor, 0.1, true);
+    using sampler = new oc.GCPnts_UniformDeflection(adaptor, 0.1, true);
 
     expect(sampler.IsDone()).toBe(true);
     expect(sampler.NbPoints()).toBe(24);
@@ -148,11 +126,5 @@ describe.skipIf(!wasmExists)('Smoke: Curve analysis and sampling', () => {
       const distFromCenter = Math.sqrt(pt.X() ** 2 + pt.Y() ** 2);
       expect(distFromCenter).toBeCloseTo(10, 0);
     }
-
-    sampler.delete();
-    adaptor.delete();
-    edgeMaker.delete();
-    circle.delete();
-    ax.delete();
   });
 });

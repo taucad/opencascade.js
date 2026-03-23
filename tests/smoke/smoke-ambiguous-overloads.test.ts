@@ -18,84 +18,71 @@ describe.skipIf(!wasmExists)('Smoke: int/double dispatch (formerly ambiguous)', 
   describe('2D SetCoord — int-indexed overload via dispatch', () => {
     it('gp_XY.SetCoord routes integers to indexed overload', () => {
       const oc = getOC();
-      const xy = new oc.gp_XY(0, 0);
+      using xy = new oc.gp_XY(0, 0);
       xy.SetCoord(1, 5.0);
       expect(xy.X()).toBe(5.0);
 
       xy.SetCoord(2, 7.0);
       expect(xy.Y()).toBe(7.0);
-      xy.delete();
     });
 
     it('gp_Pnt2d.SetCoord routes integers to indexed overload', () => {
       const oc = getOC();
-      const pnt = new oc.gp_Pnt2d(0, 0);
+      using pnt = new oc.gp_Pnt2d(0, 0);
       pnt.SetCoord(1, 7.0);
       expect(pnt.X()).toBe(7.0);
 
       pnt.SetCoord(2, 4.0);
       expect(pnt.Y()).toBe(4.0);
-      pnt.delete();
     });
 
     it('gp_Vec2d.SetCoord routes integers to indexed overload', () => {
       const oc = getOC();
-      const vec = new oc.gp_Vec2d(0, 0);
+      using vec = new oc.gp_Vec2d(0, 0);
       vec.SetCoord(1, 9.0);
       expect(vec.X()).toBe(9.0);
 
       vec.SetCoord(2, 3.0);
       expect(vec.Y()).toBe(3.0);
-      vec.delete();
     });
 
     it('gp_Dir2d.SetCoord routes integers to indexed overload', () => {
       const oc = getOC();
-      const dir = new oc.gp_Dir2d(1, 0);
+      using dir = new oc.gp_Dir2d(1, 0);
       dir.SetCoord(1, 3.0);
       dir.SetCoord(2, 4.0);
       const len = Math.sqrt(dir.X() ** 2 + dir.Y() ** 2);
       expect(len).toBeCloseTo(1.0, 5);
       expect(dir.Y()).not.toBe(0);
-      dir.delete();
     });
   });
 
   describe('TCollection constructors — Standard_Integer vs Standard_Real at arity 1', () => {
     it('TCollection_AsciiString dispatches integer vs real', () => {
       const oc = getOC();
-      const fromInt = new oc.TCollection_AsciiString(42);
+      using fromInt = new oc.TCollection_AsciiString(42);
       expect(fromInt.Length()).toBeGreaterThan(0);
 
-      const fromReal = new oc.TCollection_AsciiString(3.14);
+      using fromReal = new oc.TCollection_AsciiString(3.14);
       expect(fromReal.Length()).toBeGreaterThan(0);
-
-      fromInt.delete();
-      fromReal.delete();
     });
 
     it('TCollection_ExtendedString dispatches integer vs real', () => {
       const oc = getOC();
-      const fromInt = new oc.TCollection_ExtendedString(42);
+      using fromInt = new oc.TCollection_ExtendedString(42);
       expect(fromInt.Length()).toBeGreaterThan(0);
 
-      const fromReal = new oc.TCollection_ExtendedString(3.14);
+      using fromReal = new oc.TCollection_ExtendedString(3.14);
       expect(fromReal.Length()).toBeGreaterThan(0);
-
-      fromInt.delete();
-      fromReal.delete();
     });
 
     it.skip('TCollection_HAsciiString — not constructable in current build', () => {
       const oc = getOC();
-      const fromInt = new oc.TCollection_HAsciiString(42);
+      using fromInt = new oc.TCollection_HAsciiString(42);
       expect(fromInt.Length()).toBeGreaterThan(0);
 
-      const fromReal = new oc.TCollection_HAsciiString(3.14);
+      using fromReal = new oc.TCollection_HAsciiString(3.14);
       expect(fromReal.Length()).toBeGreaterThan(0);
-
-      fromInt.delete();
-      fromReal.delete();
     });
   });
 });

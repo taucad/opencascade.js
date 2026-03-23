@@ -6,15 +6,15 @@ describe.skipIf(!wasmExists)('Smoke: Shape healing', () => {
 
   it('should fix a valid shape without error with ShapeFix_Shape', () => {
     const oc = getOC();
-    const box = new oc.BRepPrimAPI_MakeBox(10, 20, 30);
+    using box = new oc.BRepPrimAPI_MakeBox(10, 20, 30);
     const shape = box.Shape();
 
-    const fixer = new oc.ShapeFix_Shape(shape);
+    using fixer = new oc.ShapeFix_Shape(shape);
     fixer.Perform(new oc.Message_ProgressRange());
     const fixed = fixer.Shape();
     expect(fixed.IsNull()).toBe(false);
 
-    const explorer = new oc.TopExp_Explorer(
+    using explorer = new oc.TopExp_Explorer(
       fixed,
       oc.TopAbs_ShapeEnum.TopAbs_FACE,
       oc.TopAbs_ShapeEnum.TopAbs_SHAPE,
@@ -25,35 +25,31 @@ describe.skipIf(!wasmExists)('Smoke: Shape healing', () => {
       explorer.Next();
     }
     expect(faceCount).toBe(6);
-
-    explorer.delete();
-    fixer.delete();
-    box.delete();
   });
 
   it('should fix a wire and preserve topology with ShapeFix_Wire', () => {
     const oc = getOC();
-    const p1 = new oc.gp_Pnt(0, 0, 0);
-    const p2 = new oc.gp_Pnt(10, 0, 0);
-    const p3 = new oc.gp_Pnt(10, 10, 0);
+    using p1 = new oc.gp_Pnt(0, 0, 0);
+    using p2 = new oc.gp_Pnt(10, 0, 0);
+    using p3 = new oc.gp_Pnt(10, 10, 0);
 
     const e1 = new oc.BRepBuilderAPI_MakeEdge(p1, p2).Edge();
     const e2 = new oc.BRepBuilderAPI_MakeEdge(p2, p3).Edge();
 
-    const wireBuilder = new oc.BRepBuilderAPI_MakeWire();
+    using wireBuilder = new oc.BRepBuilderAPI_MakeWire();
     wireBuilder.Add(e1);
     wireBuilder.Add(e2);
     const wire = wireBuilder.Wire();
 
     const face = new oc.BRepBuilderAPI_MakeFace(wire, true).Face();
-    const fixer = new oc.ShapeFix_Wire(wire, face, 1e-6);
+    using fixer = new oc.ShapeFix_Wire(wire, face, 1e-6);
     const result = fixer.Perform();
     expect(typeof result).toBe('boolean');
 
     const fixedWire = fixer.Wire();
     expect(fixedWire.IsNull()).toBe(false);
 
-    const edgeExplorer = new oc.TopExp_Explorer(
+    using edgeExplorer = new oc.TopExp_Explorer(
       fixedWire,
       oc.TopAbs_ShapeEnum.TopAbs_EDGE,
       oc.TopAbs_ShapeEnum.TopAbs_SHAPE,
@@ -64,12 +60,5 @@ describe.skipIf(!wasmExists)('Smoke: Shape healing', () => {
       edgeExplorer.Next();
     }
     expect(edgeCount).toBe(2);
-
-    edgeExplorer.delete();
-    fixer.delete();
-    wireBuilder.delete();
-    p1.delete();
-    p2.delete();
-    p3.delete();
   });
 });

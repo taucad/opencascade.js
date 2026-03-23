@@ -73,8 +73,8 @@ describe.skipIf(!wasmExists)('Smoke: Enum Bindings', () => {
 
   it('should accept enum values in API functions', () => {
     const oc = getOC();
-    const box = new oc.BRepPrimAPI_MakeBox(10, 10, 10).Shape();
-    const explorer = new oc.TopExp_Explorer(box, oc.TopAbs_ShapeEnum.TopAbs_FACE, oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
+    using box = new oc.BRepPrimAPI_MakeBox(10, 10, 10);
+    using explorer = new oc.TopExp_Explorer(box.Shape(), oc.TopAbs_ShapeEnum.TopAbs_FACE, oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
 
     let faceCount = 0;
     while (explorer.More()) {
@@ -82,9 +82,6 @@ describe.skipIf(!wasmExists)('Smoke: Enum Bindings', () => {
       explorer.Next();
     }
     expect(faceCount).toBe(6);
-
-    explorer.delete();
-    box.delete();
   });
 
   it('should have correct string values for TopAbs_Orientation enum', () => {

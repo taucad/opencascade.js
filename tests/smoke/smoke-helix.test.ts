@@ -6,44 +6,36 @@ describe.skipIf(!wasmExists)('Smoke: Helix geometry', () => {
 
   it('should construct HelixBRep_BuilderHelix', () => {
     const oc = getOC();
-    const builder = new oc.HelixBRep_BuilderHelix();
+    using builder = new oc.HelixBRep_BuilderHelix();
     expect(builder.ErrorStatus()).toBe(1);
-    builder.delete();
   });
 
   it('should construct and configure HelixGeom_BuilderHelix', () => {
     const oc = getOC();
-    const ax = new oc.gp_Ax2(new oc.gp_Pnt(0, 0, 0), new oc.gp_Dir(0, 0, 1));
-    const builder = new oc.HelixGeom_BuilderHelix();
+    using ax = new oc.gp_Ax2(new oc.gp_Pnt(0, 0, 0), new oc.gp_Dir(0, 0, 1));
+    using builder = new oc.HelixGeom_BuilderHelix();
     builder.SetPosition(ax);
     builder.SetCurveParameters(0, 2 * Math.PI * 3, 10, 5, 0, false);
     builder.Perform();
 
     expect(builder.ErrorStatus()).toBe(0);
-
-    builder.delete();
-    ax.delete();
   });
 
   it('should construct and configure HelixGeom_BuilderHelixCoil', () => {
     const oc = getOC();
-    const builder = new oc.HelixGeom_BuilderHelixCoil();
+    using builder = new oc.HelixGeom_BuilderHelixCoil();
     builder.SetCurveParameters(0, 2 * Math.PI * 2, 8, 4, 0, true);
     builder.Perform();
 
     expect(builder.ErrorStatus()).toBe(0);
-
-    builder.delete();
   });
 
   it('should load HelixGeom_HelixCurve with parameters', () => {
     const oc = getOC();
-    const curve = new oc.HelixGeom_HelixCurve();
+    using curve = new oc.HelixGeom_HelixCurve();
     curve.Load(0, 2 * Math.PI * 3, 10, 5, 0, false);
 
     expect(curve.FirstParameter()).toBe(0);
     expect(curve.LastParameter()).toBeCloseTo(2 * Math.PI * 3, 3);
-
-    curve.delete();
   });
 });

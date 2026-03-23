@@ -57,14 +57,14 @@ export function shapeToGlb(
   const linearDeflection = options?.linearDeflection ?? 0.1;
   const angularDeflection = options?.angularDeflection ?? 0.5;
 
-  const docName = new oc.TCollection_ExtendedString();
-  const doc = new oc.TDocStd_Document(docName);
-  const mainLabel = doc.Main();
-  const shapeTool = oc.XCAFDoc_DocumentTool.ShapeTool(mainLabel);
-  const label = shapeTool.NewShape();
+  using docName = new oc.TCollection_ExtendedString();
+  using doc = new oc.TDocStd_Document(docName);
+  using mainLabel = doc.Main();
+  using shapeTool = oc.XCAFDoc_DocumentTool.ShapeTool(mainLabel);
+  using label = shapeTool.NewShape();
   shapeTool.SetShape(label, shape);
 
-  const mesh = new oc.BRepMesh_IncrementalMesh(
+  using mesh = new oc.BRepMesh_IncrementalMesh(
     shape,
     linearDeflection,
     false,
@@ -73,25 +73,14 @@ export function shapeToGlb(
   );
 
   const glbPath = '/tmp/_smoke_test_export.glb';
-  const asciiPath = new oc.TCollection_AsciiString(glbPath);
-  const writer = new oc.RWGltf_CafWriter(asciiPath, true);
-  const metadata = new oc.TColStd_IndexedDataMapOfStringString();
-  const progress = new oc.Message_ProgressRange();
+  using asciiPath = new oc.TCollection_AsciiString(glbPath);
+  using writer = new oc.RWGltf_CafWriter(asciiPath, true);
+  using metadata = new oc.TColStd_IndexedDataMapOfStringString();
+  using progress = new oc.Message_ProgressRange();
   writer.Perform(doc, metadata, progress);
 
   const data = oc.FS.readFile(glbPath) as Uint8Array;
   oc.FS.unlink(glbPath);
-
-  progress.delete();
-  metadata.delete();
-  writer.delete();
-  asciiPath.delete();
-  mesh.delete();
-  label.delete();
-  shapeTool.delete();
-  mainLabel.delete();
-  doc.delete();
-  docName.delete();
 
   return data;
 }

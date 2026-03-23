@@ -17,14 +17,14 @@ describe.skipIf(!wasmExists)('Smoke: BSpline and NURBS', () => {
 
   it('should approximate a curve through control points with GeomAPI_PointsToBSpline', () => {
     const oc = getOC();
-    const points = new oc.TColgp_Array1OfPnt(1, 5);
+    using points = new oc.TColgp_Array1OfPnt(1, 5);
     points.SetValue(1, new oc.gp_Pnt(0, 0, 0));
     points.SetValue(2, new oc.gp_Pnt(5, 5, 0));
     points.SetValue(3, new oc.gp_Pnt(10, 0, 0));
     points.SetValue(4, new oc.gp_Pnt(15, -5, 0));
     points.SetValue(5, new oc.gp_Pnt(20, 0, 0));
 
-    const approx = new oc.GeomAPI_PointsToBSpline(
+    using approx = new oc.GeomAPI_PointsToBSpline(
       points,
       3, // DegMin
       8, // DegMax
@@ -45,22 +45,19 @@ describe.skipIf(!wasmExists)('Smoke: BSpline and NURBS', () => {
     const endPt = curve.EndPoint();
     expect(endPt.X()).toBe(20);
     expect(endPt.Y()).toBe(0);
-
-    approx.delete();
-    points.delete();
   });
 
   it('should create curve passing exactly through given points with GeomAPI_Interpolate', (ctx) => {
     if (!isExceptionsEnabled()) ctx.skip();
 
     const oc = getOC();
-    const points = new oc.TColgp_Array1OfPnt(1, 4);
+    using points = new oc.TColgp_Array1OfPnt(1, 4);
     points.SetValue(1, new oc.gp_Pnt(0, 0, 0));
     points.SetValue(2, new oc.gp_Pnt(10, 10, 0));
     points.SetValue(3, new oc.gp_Pnt(20, 0, 0));
     points.SetValue(4, new oc.gp_Pnt(30, 10, 0));
 
-    const approx = new oc.GeomAPI_PointsToBSpline(
+    using approx = new oc.GeomAPI_PointsToBSpline(
       points,
       3,
       8,
@@ -78,20 +75,17 @@ describe.skipIf(!wasmExists)('Smoke: BSpline and NURBS', () => {
     const endPt = curve.EndPoint();
     expect(endPt.X()).toBe(30);
     expect(endPt.Y()).toBe(10);
-
-    approx.delete();
-    points.delete();
   });
 
   it('should build BSpline curve into an edge and wire', () => {
     const oc = getOC();
-    const points = new oc.TColgp_Array1OfPnt(1, 4);
+    using points = new oc.TColgp_Array1OfPnt(1, 4);
     points.SetValue(1, new oc.gp_Pnt(0, 0, 0));
     points.SetValue(2, new oc.gp_Pnt(10, 15, 0));
     points.SetValue(3, new oc.gp_Pnt(20, -5, 0));
     points.SetValue(4, new oc.gp_Pnt(30, 10, 0));
 
-    const approx = new oc.GeomAPI_PointsToBSpline(
+    using approx = new oc.GeomAPI_PointsToBSpline(
       points,
       3,
       8,
@@ -101,30 +95,25 @@ describe.skipIf(!wasmExists)('Smoke: BSpline and NURBS', () => {
     expect(approx.IsDone()).toBe(true);
 
     const curve = approx.Curve();
-    const edge = new oc.BRepBuilderAPI_MakeEdge(curve);
+    using edge = new oc.BRepBuilderAPI_MakeEdge(curve);
     expect(edge.IsDone()).toBe(true);
 
-    const wire = new oc.BRepBuilderAPI_MakeWire(edge.Edge());
+    using wire = new oc.BRepBuilderAPI_MakeWire(edge.Edge());
     expect(wire.IsDone()).toBe(true);
 
     const wireShape = wire.Wire();
     expect(wireShape.IsNull()).toBe(false);
-
-    wire.delete();
-    edge.delete();
-    approx.delete();
-    points.delete();
   });
 
   it('should create a cubic Bezier from 4 poles with Geom_BezierCurve', () => {
     const oc = getOC();
-    const poles = new oc.TColgp_Array1OfPnt(1, 4);
+    using poles = new oc.TColgp_Array1OfPnt(1, 4);
     poles.SetValue(1, new oc.gp_Pnt(0, 0, 0));
     poles.SetValue(2, new oc.gp_Pnt(5, 15, 0));
     poles.SetValue(3, new oc.gp_Pnt(15, 15, 0));
     poles.SetValue(4, new oc.gp_Pnt(20, 0, 0));
 
-    const bezier = new oc.Geom_BezierCurve(poles);
+    using bezier = new oc.Geom_BezierCurve(poles);
 
     expect(bezier.Degree()).toBe(3);
     expect(bezier.NbPoles()).toBe(4);
@@ -141,20 +130,17 @@ describe.skipIf(!wasmExists)('Smoke: BSpline and NURBS', () => {
 
     const midPt = bezier.EvalD0(0.5);
     expect(midPt.Y()).toBe(11.25);
-
-    bezier.delete();
-    poles.delete();
   });
 
   it('should produce valid geometry when extruding BSpline curve into a surface', async () => {
     const oc = getOC();
-    const points = new oc.TColgp_Array1OfPnt(1, 4);
+    using points = new oc.TColgp_Array1OfPnt(1, 4);
     points.SetValue(1, new oc.gp_Pnt(0, 0, 0));
     points.SetValue(2, new oc.gp_Pnt(10, 5, 0));
     points.SetValue(3, new oc.gp_Pnt(20, -5, 0));
     points.SetValue(4, new oc.gp_Pnt(30, 0, 0));
 
-    const approx = new oc.GeomAPI_PointsToBSpline(
+    using approx = new oc.GeomAPI_PointsToBSpline(
       points,
       3,
       8,
@@ -162,10 +148,10 @@ describe.skipIf(!wasmExists)('Smoke: BSpline and NURBS', () => {
       1e-3,
     );
     const curve = approx.Curve();
-    const edge = new oc.BRepBuilderAPI_MakeEdge(curve);
-    const wire = new oc.BRepBuilderAPI_MakeWire(edge.Edge());
+    using edge = new oc.BRepBuilderAPI_MakeEdge(curve);
+    using wire = new oc.BRepBuilderAPI_MakeWire(edge.Edge());
 
-    const prism = new oc.BRepPrimAPI_MakePrism(
+    using prism = new oc.BRepPrimAPI_MakePrism(
       wire.Wire(),
       new oc.gp_Vec(0, 0, 10),
       false,
@@ -180,11 +166,5 @@ describe.skipIf(!wasmExists)('Smoke: BSpline and NURBS', () => {
       tolerance: 2,
       minVertices: 10,
     });
-
-    prism.delete();
-    wire.delete();
-    edge.delete();
-    approx.delete();
-    points.delete();
   });
 });

@@ -6,17 +6,17 @@ describe.skipIf(!wasmExists)('Smoke: RWObj_CafWriter OBJ export', () => {
 
   it('should export box to OBJ via XCAF document with correct geometry', () => {
     const oc = getOC();
-    const box = new oc.BRepPrimAPI_MakeBox(10, 20, 30);
+    using box = new oc.BRepPrimAPI_MakeBox(10, 20, 30);
     const shape = box.Shape();
 
-    const doc = new oc.TDocStd_Document(new oc.TCollection_ExtendedString());
+    using doc = new oc.TDocStd_Document(new oc.TCollection_ExtendedString());
     const shapeTool = oc.XCAFDoc_DocumentTool.ShapeTool(doc.Main());
     const newShape = shapeTool.NewShape();
     shapeTool.SetShape(newShape, shape);
     new oc.BRepMesh_IncrementalMesh(shape, 0.1, false, 0.1, false);
 
     const objPath = '/test.obj';
-    const cafWriter = new oc.RWObj_CafWriter(new oc.TCollection_AsciiString(objPath));
+    using cafWriter = new oc.RWObj_CafWriter(new oc.TCollection_AsciiString(objPath));
     cafWriter.Perform(doc, new oc.TColStd_IndexedDataMapOfStringString(), new oc.Message_ProgressRange());
 
     const fileData = oc.FS.readFile(objPath, { encoding: 'utf8' }) as string;
@@ -30,8 +30,5 @@ describe.skipIf(!wasmExists)('Smoke: RWObj_CafWriter OBJ export', () => {
     expect(faceCount).toBeGreaterThanOrEqual(12);
 
     oc.FS.unlink(objPath);
-    cafWriter.delete();
-    doc.delete();
-    box.delete();
   });
 });

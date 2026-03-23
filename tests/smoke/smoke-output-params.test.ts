@@ -21,17 +21,17 @@ describe.skipIf(!wasmExists)('Smoke: Output parameter return-by-value', () => {
     it('should return Curve1 and Curve2 from Geom2dAPI_InterCurveCurve.Segment', () => {
       const oc = getOC();
 
-      const p1 = new oc.gp_Pnt2d(0, 0);
-      const p2 = new oc.gp_Pnt2d(10, 10);
-      const d1 = new oc.gp_Dir2d(1, 0);
-      const d2 = new oc.gp_Dir2d(0, 1);
-      const ax1 = new oc.gp_Ax2d(p1, d1);
-      const ax2 = new oc.gp_Ax2d(p2, d2);
+      using p1 = new oc.gp_Pnt2d(0, 0);
+      using p2 = new oc.gp_Pnt2d(10, 10);
+      using d1 = new oc.gp_Dir2d(1, 0);
+      using d2 = new oc.gp_Dir2d(0, 1);
+      using ax1 = new oc.gp_Ax2d(p1, d1);
+      using ax2 = new oc.gp_Ax2d(p2, d2);
 
-      const line1 = new oc.Geom2d_Line(ax1);
-      const line2 = new oc.Geom2d_Line(ax2);
+      using line1 = new oc.Geom2d_Line(ax1);
+      using line2 = new oc.Geom2d_Line(ax2);
 
-      const intersector = new oc.Geom2dAPI_InterCurveCurve(line1, line2);
+      using intersector = new oc.Geom2dAPI_InterCurveCurve(line1, line2);
       const nSegments = intersector.NbSegments();
 
       if (nSegments > 0) {
@@ -43,32 +43,22 @@ describe.skipIf(!wasmExists)('Smoke: Output parameter return-by-value', () => {
         result.Curve1.delete();
         result.Curve2.delete();
       }
-
-      intersector.delete();
-      line2.delete();
-      line1.delete();
-      ax2.delete();
-      ax1.delete();
-      d2.delete();
-      d1.delete();
-      p2.delete();
-      p1.delete();
     });
 
     it('should return valid Curve objects usable after Segment call', () => {
       const oc = getOC();
 
-      const center = new oc.gp_Pnt2d(0, 0);
-      const dir = new oc.gp_Dir2d(1, 0);
-      const ax = new oc.gp_Ax2d(center, dir);
-      const circle = new oc.Geom2d_Circle(ax, 5.0, true);
+      using center = new oc.gp_Pnt2d(0, 0);
+      using dir = new oc.gp_Dir2d(1, 0);
+      using ax = new oc.gp_Ax2d(center, dir);
+      using circle = new oc.Geom2d_Circle(ax, 5.0, true);
 
-      const p = new oc.gp_Pnt2d(0, 0);
-      const lineDir = new oc.gp_Dir2d(1, 1);
-      const lineAx = new oc.gp_Ax2d(p, lineDir);
-      const line = new oc.Geom2d_Line(lineAx);
+      using p = new oc.gp_Pnt2d(0, 0);
+      using lineDir = new oc.gp_Dir2d(1, 1);
+      using lineAx = new oc.gp_Ax2d(p, lineDir);
+      using line = new oc.Geom2d_Line(lineAx);
 
-      const intersector = new oc.Geom2dAPI_InterCurveCurve(circle, line);
+      using intersector = new oc.Geom2dAPI_InterCurveCurve(circle, line);
       const nSegments = intersector.NbSegments();
 
       if (nSegments > 0) {
@@ -83,16 +73,6 @@ describe.skipIf(!wasmExists)('Smoke: Output parameter return-by-value', () => {
         Curve1.delete();
         Curve2.delete();
       }
-
-      intersector.delete();
-      line.delete();
-      lineAx.delete();
-      lineDir.delete();
-      p.delete();
-      circle.delete();
-      ax.delete();
-      dir.delete();
-      center.delete();
     });
   });
 
@@ -100,8 +80,8 @@ describe.skipIf(!wasmExists)('Smoke: Output parameter return-by-value', () => {
     it('should return U1, U2, V1, V2 from Geom_Surface.Bounds', () => {
       const oc = getOC();
 
-      const ax3 = new oc.gp_Ax3(new oc.gp_Pnt(), new oc.gp_Dir(0, 0, 1));
-      const sphere = new oc.Geom_SphericalSurface(ax3, 10.0);
+      using ax3 = new oc.gp_Ax3(new oc.gp_Pnt(), new oc.gp_Dir(0, 0, 1));
+      using sphere = new oc.Geom_SphericalSurface(ax3, 10.0);
 
       const bounds = sphere.Bounds();
       expect(bounds).toHaveProperty('U1');
@@ -115,19 +95,16 @@ describe.skipIf(!wasmExists)('Smoke: Output parameter return-by-value', () => {
       expect(typeof bounds.V2).toBe('number');
 
       expect(bounds.U2).toBeGreaterThan(bounds.U1);
-
-      sphere.delete();
-      ax3.delete();
     });
 
     it('should return U and V from GeomAPI_ProjectPointOnSurf.LowerDistanceParameters', () => {
       const oc = getOC();
 
-      const ax3 = new oc.gp_Ax3(new oc.gp_Pnt(), new oc.gp_Dir(0, 0, 1));
-      const sphere = new oc.Geom_SphericalSurface(ax3, 10.0);
-      const point = new oc.gp_Pnt(10, 0, 0);
+      using ax3 = new oc.gp_Ax3(new oc.gp_Pnt(), new oc.gp_Dir(0, 0, 1));
+      using sphere = new oc.Geom_SphericalSurface(ax3, 10.0);
+      using point = new oc.gp_Pnt(10, 0, 0);
 
-      const projector = new oc.GeomAPI_ProjectPointOnSurf(point, sphere);
+      using projector = new oc.GeomAPI_ProjectPointOnSurf(point, sphere);
 
       if (projector.NbPoints() > 0) {
         const params = projector.LowerDistanceParameters();
@@ -136,11 +113,6 @@ describe.skipIf(!wasmExists)('Smoke: Output parameter return-by-value', () => {
         expect(typeof params.U).toBe('number');
         expect(typeof params.V).toBe('number');
       }
-
-      projector.delete();
-      point.delete();
-      sphere.delete();
-      ax3.delete();
     });
   });
 
@@ -148,10 +120,10 @@ describe.skipIf(!wasmExists)('Smoke: Output parameter return-by-value', () => {
     it('should return UMin, UMax, VMin, VMax from BRepTools.UVBounds', () => {
       const oc = getOC();
 
-      const box = new oc.BRepPrimAPI_MakeBox(10, 20, 30);
+      using box = new oc.BRepPrimAPI_MakeBox(10, 20, 30);
       const shape = box.Shape();
 
-      const explorer = new oc.TopExp_Explorer(shape, oc.TopAbs_ShapeEnum.TopAbs_FACE);
+      using explorer = new oc.TopExp_Explorer(shape, oc.TopAbs_ShapeEnum.TopAbs_FACE);
       expect(explorer.More()).toBe(true);
 
       const face = oc.TopoDS.Face(explorer.Current());
@@ -164,9 +136,6 @@ describe.skipIf(!wasmExists)('Smoke: Output parameter return-by-value', () => {
       expect(typeof result.UMin).toBe('number');
       expect(typeof result.UMax).toBe('number');
       expect(result.UMax).toBeGreaterThanOrEqual(result.UMin);
-
-      explorer.delete();
-      box.delete();
     });
   });
 });

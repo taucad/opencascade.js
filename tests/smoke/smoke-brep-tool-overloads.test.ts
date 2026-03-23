@@ -23,9 +23,8 @@ describe.skipIf(!wasmExists)('Smoke: BRep_Tool overload dispatch (RBV arity coll
     const box = new oc.BRepPrimAPI_MakeBox(10, 20, 30);
     const shape = box.Shape();
     const mesh = new oc.BRepMesh_IncrementalMesh(shape, 0.5, false, 0.5, false);
-    const progressRange = new oc.Message_ProgressRange();
+    using progressRange = new oc.Message_ProgressRange();
     mesh.Perform(progressRange);
-    progressRange.delete();
     return {
       shape,
       cleanup: () => {
@@ -38,7 +37,7 @@ describe.skipIf(!wasmExists)('Smoke: BRep_Tool overload dispatch (RBV arity coll
   function getFirstTriangulatedEdge() {
     const oc = getOC();
     const { shape, cleanup } = makeTriangulatedBox();
-    const explorer = new oc.TopExp_Explorer(shape, oc.TopAbs_ShapeEnum.TopAbs_EDGE, oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
+    using explorer = new oc.TopExp_Explorer(shape, oc.TopAbs_ShapeEnum.TopAbs_EDGE, oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
 
     let edge: ReturnType<typeof oc.TopoDS.Edge> | undefined;
     let triangulation: InstanceType<typeof oc.Poly_Triangulation> | undefined;
@@ -47,7 +46,7 @@ describe.skipIf(!wasmExists)('Smoke: BRep_Tool overload dispatch (RBV arity coll
     while (explorer.More()) {
       const currentEdge = oc.TopoDS.Edge(explorer.Current());
       const loc = new oc.TopLoc_Location();
-      const faceExplorer = new oc.TopExp_Explorer(
+      using faceExplorer = new oc.TopExp_Explorer(
         shape,
         oc.TopAbs_ShapeEnum.TopAbs_FACE,
         oc.TopAbs_ShapeEnum.TopAbs_SHAPE,
@@ -55,26 +54,22 @@ describe.skipIf(!wasmExists)('Smoke: BRep_Tool overload dispatch (RBV arity coll
 
       if (faceExplorer.More()) {
         const face = oc.TopoDS.Face(faceExplorer.Current());
-        const tri = oc.BRep_Tool.Triangulation(face, loc);
+        const tri = oc.BRep_Tool.Triangulation(face, loc, 0);
         if (!tri.isNull()) {
-          const polyOnTri = oc.BRep_Tool.PolygonOnTriangulation(currentEdge, tri, loc);
+          using polyOnTri = oc.BRep_Tool.PolygonOnTriangulation(currentEdge, tri, loc);
           if (!polyOnTri.isNull()) {
             edge = currentEdge;
             triangulation = tri;
             location = loc;
-            faceExplorer.delete();
             break;
           }
-          polyOnTri.delete();
         }
         tri.delete();
         face.delete();
       }
-      faceExplorer.delete();
       loc.delete();
       explorer.Next();
     }
-    explorer.delete();
     return { edge, triangulation, location, cleanup };
   }
 
@@ -88,13 +83,12 @@ describe.skipIf(!wasmExists)('Smoke: BRep_Tool overload dispatch (RBV arity coll
         return;
       }
 
-      const handle = oc.BRep_Tool.PolygonOnTriangulation(edge, triangulation, location);
+      using handle = oc.BRep_Tool.PolygonOnTriangulation(edge, triangulation, location);
 
       expect(handle).toBeDefined();
       expect(typeof handle.isNull).toBe('function');
       expect(handle.isNull()).toBe(false);
 
-      handle.delete();
       location.delete();
       triangulation.delete();
       edge.delete();
@@ -110,14 +104,13 @@ describe.skipIf(!wasmExists)('Smoke: BRep_Tool overload dispatch (RBV arity coll
         return;
       }
 
-      const loc = new oc.TopLoc_Location();
+      using loc = new oc.TopLoc_Location();
       const result = oc.BRep_Tool.PolygonOnTriangulation(edge, loc);
 
       expect(result).toBeDefined();
       expect(result).toHaveProperty('P');
       expect(result).toHaveProperty('T');
 
-      loc.delete();
       edge.delete();
       cleanup();
     });
@@ -127,12 +120,12 @@ describe.skipIf(!wasmExists)('Smoke: BRep_Tool overload dispatch (RBV arity coll
     it('2-arg non-RBV: (Edge, Face) → Handle<Poly_Polygon2D>', () => {
       const oc = getOC();
       const { shape, cleanup } = makeTriangulatedBox();
-      const faceExplorer = new oc.TopExp_Explorer(
+      using faceExplorer = new oc.TopExp_Explorer(
         shape,
         oc.TopAbs_ShapeEnum.TopAbs_FACE,
         oc.TopAbs_ShapeEnum.TopAbs_SHAPE,
       );
-      const edgeExplorer = new oc.TopExp_Explorer(
+      using edgeExplorer = new oc.TopExp_Explorer(
         shape,
         oc.TopAbs_ShapeEnum.TopAbs_EDGE,
         oc.TopAbs_ShapeEnum.TopAbs_SHAPE,
@@ -150,15 +143,13 @@ describe.skipIf(!wasmExists)('Smoke: BRep_Tool overload dispatch (RBV arity coll
         face.delete();
       }
 
-      edgeExplorer.delete();
-      faceExplorer.delete();
       cleanup();
     });
 
     it('2-arg RBV: (Edge, Location) → { C, S }', () => {
       const oc = getOC();
       const { shape, cleanup } = makeTriangulatedBox();
-      const edgeExplorer = new oc.TopExp_Explorer(
+      using edgeExplorer = new oc.TopExp_Explorer(
         shape,
         oc.TopAbs_ShapeEnum.TopAbs_EDGE,
         oc.TopAbs_ShapeEnum.TopAbs_SHAPE,
@@ -166,18 +157,16 @@ describe.skipIf(!wasmExists)('Smoke: BRep_Tool overload dispatch (RBV arity coll
 
       if (edgeExplorer.More()) {
         const edge = oc.TopoDS.Edge(edgeExplorer.Current());
-        const loc = new oc.TopLoc_Location();
+        using loc = new oc.TopLoc_Location();
 
         const result = oc.BRep_Tool.PolygonOnSurface(edge, loc);
         expect(result).toBeDefined();
         expect(result).toHaveProperty('C');
         expect(result).toHaveProperty('S');
 
-        loc.delete();
         edge.delete();
       }
 
-      edgeExplorer.delete();
       cleanup();
     });
   });

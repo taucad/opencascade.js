@@ -15,11 +15,11 @@ describe.skipIf(!wasmExists)('Smoke: Collections', () => {
 
   it('should support append, size, and access on TopTools_ListOfShape', () => {
     const oc = getOC();
-    const box1 = new oc.BRepPrimAPI_MakeBox(10, 10, 10);
-    const box2 = new oc.BRepPrimAPI_MakeBox(20, 20, 20);
-    const box3 = new oc.BRepPrimAPI_MakeBox(30, 30, 30);
+    using box1 = new oc.BRepPrimAPI_MakeBox(10, 10, 10);
+    using box2 = new oc.BRepPrimAPI_MakeBox(20, 20, 20);
+    using box3 = new oc.BRepPrimAPI_MakeBox(30, 30, 30);
 
-    const list = new oc.TopTools_ListOfShape();
+    using list = new oc.TopTools_ListOfShape();
     expect(list.Size()).toBe(0);
 
     list.Append(box1.Shape());
@@ -33,19 +33,14 @@ describe.skipIf(!wasmExists)('Smoke: Collections', () => {
 
     const last = list.Last();
     expect(last.IsNull()).toBe(false);
-
-    list.delete();
-    box3.delete();
-    box2.delete();
-    box1.delete();
   });
 
   it('should support prepend and reverse on TopTools_ListOfShape', () => {
     const oc = getOC();
-    const box1 = new oc.BRepPrimAPI_MakeBox(5, 5, 5);
-    const box2 = new oc.BRepPrimAPI_MakeBox(10, 10, 10);
+    using box1 = new oc.BRepPrimAPI_MakeBox(5, 5, 5);
+    using box2 = new oc.BRepPrimAPI_MakeBox(10, 10, 10);
 
-    const list = new oc.TopTools_ListOfShape();
+    using list = new oc.TopTools_ListOfShape();
     list.Append(box1.Shape());
     list.Prepend(box2.Shape());
 
@@ -56,20 +51,16 @@ describe.skipIf(!wasmExists)('Smoke: Collections', () => {
 
     list.RemoveFirst();
     expect(list.Size()).toBe(1);
-
-    list.delete();
-    box2.delete();
-    box1.delete();
   });
 
   it('should collect unique faces from a box with TopTools_IndexedMapOfShape', () => {
     const oc = getOC();
-    const box = new oc.BRepPrimAPI_MakeBox(10, 10, 10);
+    using box = new oc.BRepPrimAPI_MakeBox(10, 10, 10);
     const shape = box.Shape();
 
-    const map = new oc.TopTools_IndexedMapOfShape();
+    using map = new oc.TopTools_IndexedMapOfShape();
 
-    const explorer = new oc.TopExp_Explorer(
+    using explorer = new oc.TopExp_Explorer(
       shape,
       oc.TopAbs_ShapeEnum.TopAbs_FACE,
       oc.TopAbs_ShapeEnum.TopAbs_SHAPE,
@@ -89,20 +80,16 @@ describe.skipIf(!wasmExists)('Smoke: Collections', () => {
 
     const faceIndex = map.FindIndex(face1);
     expect(faceIndex).toBe(1);
-
-    map.delete();
-    explorer.delete();
-    box.delete();
   });
 
   it('should collect unique edges from a box with TopTools_IndexedMapOfShape', () => {
     const oc = getOC();
-    const box = new oc.BRepPrimAPI_MakeBox(10, 10, 10);
+    using box = new oc.BRepPrimAPI_MakeBox(10, 10, 10);
     const shape = box.Shape();
 
-    const edgeMap = new oc.TopTools_IndexedMapOfShape();
+    using edgeMap = new oc.TopTools_IndexedMapOfShape();
 
-    const explorer = new oc.TopExp_Explorer(
+    using explorer = new oc.TopExp_Explorer(
       shape,
       oc.TopAbs_ShapeEnum.TopAbs_EDGE,
       oc.TopAbs_ShapeEnum.TopAbs_SHAPE,
@@ -114,26 +101,21 @@ describe.skipIf(!wasmExists)('Smoke: Collections', () => {
     }
 
     expect(edgeMap.Size()).toBe(12);
-
-    edgeMap.delete();
-    explorer.delete();
-    box.delete();
   });
 
   it('should store and retrieve points in TColgp_Array1OfPnt', () => {
     const oc = getOC();
-    const arr = new oc.TColgp_Array1OfPnt(1, 5);
+    using arr = new oc.TColgp_Array1OfPnt(1, 5);
     expect(arr.Length()).toBe(5);
     expect(arr.Lower()).toBe(1);
     expect(arr.Upper()).toBe(5);
 
-    const pts = [
-      new oc.gp_Pnt(0, 0, 0),
-      new oc.gp_Pnt(1, 2, 3),
-      new oc.gp_Pnt(4, 5, 6),
-      new oc.gp_Pnt(7, 8, 9),
-      new oc.gp_Pnt(10, 11, 12),
-    ];
+    using pt0 = new oc.gp_Pnt(0, 0, 0);
+    using pt1 = new oc.gp_Pnt(1, 2, 3);
+    using pt2 = new oc.gp_Pnt(4, 5, 6);
+    using pt3 = new oc.gp_Pnt(7, 8, 9);
+    using pt4 = new oc.gp_Pnt(10, 11, 12);
+    const pts = [pt0, pt1, pt2, pt3, pt4];
 
     for (let i = 0; i < pts.length; i++) {
       arr.SetValue(i + 1, pts[i]!);
@@ -149,33 +131,30 @@ describe.skipIf(!wasmExists)('Smoke: Collections', () => {
 
     const last = arr.Last();
     expect(last.X()).toBe(10);
-
-    arr.delete();
-    for (const pt of pts) pt.delete();
   });
 
   it('should count unique topology elements of a cylinder with IndexedMapOfShape', () => {
     const oc = getOC();
-    const cyl = new oc.BRepPrimAPI_MakeCylinder(5, 10);
+    using cyl = new oc.BRepPrimAPI_MakeCylinder(5, 10);
     const shape = cyl.Shape();
 
-    const faceMap = new oc.TopTools_IndexedMapOfShape();
-    const edgeMap = new oc.TopTools_IndexedMapOfShape();
-    const vertexMap = new oc.TopTools_IndexedMapOfShape();
+    using faceMap = new oc.TopTools_IndexedMapOfShape();
+    using edgeMap = new oc.TopTools_IndexedMapOfShape();
+    using vertexMap = new oc.TopTools_IndexedMapOfShape();
 
-    const faceExp = new oc.TopExp_Explorer(shape, oc.TopAbs_ShapeEnum.TopAbs_FACE, oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
+    using faceExp = new oc.TopExp_Explorer(shape, oc.TopAbs_ShapeEnum.TopAbs_FACE, oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
     while (faceExp.More()) {
       faceMap.Add(faceExp.Current());
       faceExp.Next();
     }
 
-    const edgeExp = new oc.TopExp_Explorer(shape, oc.TopAbs_ShapeEnum.TopAbs_EDGE, oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
+    using edgeExp = new oc.TopExp_Explorer(shape, oc.TopAbs_ShapeEnum.TopAbs_EDGE, oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
     while (edgeExp.More()) {
       edgeMap.Add(edgeExp.Current());
       edgeExp.Next();
     }
 
-    const vertExp = new oc.TopExp_Explorer(shape, oc.TopAbs_ShapeEnum.TopAbs_VERTEX, oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
+    using vertExp = new oc.TopExp_Explorer(shape, oc.TopAbs_ShapeEnum.TopAbs_VERTEX, oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
     while (vertExp.More()) {
       vertexMap.Add(vertExp.Current());
       vertExp.Next();
@@ -184,13 +163,22 @@ describe.skipIf(!wasmExists)('Smoke: Collections', () => {
     expect(faceMap.Size()).toBe(3);
     expect(edgeMap.Size()).toBe(3);
     expect(vertexMap.Size()).toBe(2);
+  });
 
-    vertexMap.delete();
-    edgeMap.delete();
-    faceMap.delete();
-    vertExp.delete();
-    edgeExp.delete();
-    faceExp.delete();
-    cyl.delete();
+  it('should report correct size after appending items to TopTools_ListOfShape', () => {
+    const oc = getOC();
+    using box1 = new oc.BRepPrimAPI_MakeBox(1, 1, 1);
+    using box2 = new oc.BRepPrimAPI_MakeBox(2, 2, 2);
+    using box3 = new oc.BRepPrimAPI_MakeBox(3, 3, 3);
+
+    using list = new oc.TopTools_ListOfShape();
+
+    list.Append(box1.Shape());
+    list.Append(box2.Shape());
+    list.Append(box3.Shape());
+
+    expect(list.Size()).toBe(3);
+    expect(list.First().IsNull()).toBe(false);
+    expect(list.Last().IsNull()).toBe(false);
   });
 });

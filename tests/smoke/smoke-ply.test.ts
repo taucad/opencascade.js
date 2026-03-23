@@ -6,17 +6,17 @@ describe.skipIf(!wasmExists)('Smoke: RWPly_CafWriter PLY export', () => {
 
   it('should export box to PLY via XCAF document with correct geometry', () => {
     const oc = getOC();
-    const box = new oc.BRepPrimAPI_MakeBox(10, 20, 30);
+    using box = new oc.BRepPrimAPI_MakeBox(10, 20, 30);
     const shape = box.Shape();
 
-    const doc = new oc.TDocStd_Document(new oc.TCollection_ExtendedString());
+    using doc = new oc.TDocStd_Document(new oc.TCollection_ExtendedString());
     const shapeTool = oc.XCAFDoc_DocumentTool.ShapeTool(doc.Main());
     const newShape = shapeTool.NewShape();
     shapeTool.SetShape(newShape, shape);
     new oc.BRepMesh_IncrementalMesh(shape, 0.1, false, 0.1, false);
 
     const plyPath = '/test.ply';
-    const cafWriter = new oc.RWPly_CafWriter(
+    using cafWriter = new oc.RWPly_CafWriter(
       new oc.TCollection_AsciiString(plyPath),
     );
     cafWriter.Perform(
@@ -41,8 +41,5 @@ describe.skipIf(!wasmExists)('Smoke: RWPly_CafWriter PLY export', () => {
     expect(faceCount).toBeGreaterThanOrEqual(12);
 
     oc.FS.unlink(plyPath);
-    cafWriter.delete();
-    doc.delete();
-    box.delete();
   });
 });

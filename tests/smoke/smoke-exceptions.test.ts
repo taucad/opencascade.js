@@ -37,8 +37,8 @@ describe.skipIf(!wasmExists)('Smoke: Exception handling', () => {
     let exceptionMessage = '';
 
     try {
-      const cone = new oc.BRepPrimAPI_MakeCone(1, 0.5, 0);
-      cone.delete();
+      using cone = new oc.BRepPrimAPI_MakeCone(1, 0.5, 0);
+      void cone;
     } catch (e) {
       caught = true;
       const info = extractExceptionInfo(oc, e);
@@ -59,12 +59,11 @@ describe.skipIf(!wasmExists)('Smoke: Exception handling', () => {
     let exceptionType = '';
 
     try {
-      const box = new oc.BRepPrimAPI_MakeBox(0, 0, 0);
+      using box = new oc.BRepPrimAPI_MakeBox(0, 0, 0);
       if (!box.IsDone()) {
         caught = true;
         exceptionType = 'Standard_ConstructionError';
       }
-      box.delete();
     } catch (e) {
       caught = true;
       const info = extractExceptionInfo(oc, e);

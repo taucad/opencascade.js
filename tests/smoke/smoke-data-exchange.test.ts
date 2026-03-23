@@ -6,11 +6,11 @@ describe.skipIf(!wasmExists)('Smoke: Data exchange (STEP, STL)', () => {
 
   it('should transfer a shape successfully with STEPControl_Writer', () => {
     const oc = getOC();
-    const box = new oc.BRepPrimAPI_MakeBox(10, 20, 30);
+    using box = new oc.BRepPrimAPI_MakeBox(10, 20, 30);
     const shape = box.Shape();
     expect(shape.IsNull()).toBe(false);
 
-    const writer = new oc.STEPControl_Writer();
+    using writer = new oc.STEPControl_Writer();
     const transferStatus = writer.Transfer(
       shape,
       oc.STEPControl_StepModelType.STEPControl_AsIs,
@@ -22,9 +22,6 @@ describe.skipIf(!wasmExists)('Smoke: Data exchange (STEP, STL)', () => {
 
     const model = writer.Model(false);
     expect(model.NbEntities()).toBeGreaterThan(0);
-
-    writer.delete();
-    box.delete();
   });
 
   it('should read and transfer shapes from STEP data with STEPControl_Reader', () => {
@@ -46,24 +43,23 @@ describe.skipIf(!wasmExists)('Smoke: Data exchange (STEP, STL)', () => {
     const stepPath = '/test_minimal.stp';
     oc.FS.writeFile(stepPath, stepContent);
 
-    const reader = new oc.STEPControl_Reader();
+    using reader = new oc.STEPControl_Reader();
     const readStatus = reader.ReadFile(stepPath);
     expect(readStatus).toBe(oc.IFSelect_ReturnStatus.IFSelect_RetDone);
 
     try { oc.FS.unlink(stepPath); } catch { /* file may not exist if ReadFile failed */ }
-    reader.delete();
   });
 
   it('should mesh shape and write STL via FS with BRepMesh_IncrementalMesh', () => {
     const oc = getOC();
-    const box = new oc.BRepPrimAPI_MakeBox(5, 5, 5);
+    using box = new oc.BRepPrimAPI_MakeBox(5, 5, 5);
     const shape = box.Shape();
 
-    const mesh = new oc.BRepMesh_IncrementalMesh(shape, 0.1, false, 0.5, false);
+    using mesh = new oc.BRepMesh_IncrementalMesh(shape, 0.1, false, 0.5, false);
     mesh.Perform(new oc.Message_ProgressRange());
 
     const stlPath = '/test.stl';
-    const stlWriter = new oc.StlAPI_Writer();
+    using stlWriter = new oc.StlAPI_Writer();
     const stlSuccess = stlWriter.Write(
       shape,
       stlPath,
@@ -75,8 +71,5 @@ describe.skipIf(!wasmExists)('Smoke: Data exchange (STEP, STL)', () => {
     expect(fileData.byteLength ?? fileData.length).toBeGreaterThan(0);
 
     oc.FS.unlink(stlPath);
-    mesh.delete();
-    stlWriter.delete();
-    box.delete();
   });
 });
