@@ -514,6 +514,37 @@ class Bindings:
       return all(isinstance(v, DispatchLeaf) for v in tree.branches.values())
     return False
 
+  def _qualify_nested_type(self, type_spelling, clang_type):
+    """Qualify nested class/typedef names with their parent class scope.
+
+    In EMSCRIPTEN_BINDINGS blocks (global scope), nested type names like
+    'NullString' or 'OperationsFlags' must be fully qualified as
+    'Message_ProgressScope::NullString' or 'ShapeProcess::OperationsFlags'.
+    Also recurses into template arguments (e.g. std::pair<Operation, bool>).
+    """
+    result = type_spelling
+    base = clang_type
+    if base.kind in (clang.cindex.TypeKind.POINTER, clang.cindex.TypeKind.LVALUEREFERENCE, clang.cindex.TypeKind.RVALUEREFERENCE):
+      base = base.get_pointee()
+    decl = base.get_declaration()
+    if decl and decl.spelling:
+      parent = decl.semantic_parent
+      if parent and parent.kind in (
+        clang.cindex.CursorKind.CLASS_DECL,
+        clang.cindex.CursorKind.STRUCT_DECL,
+        clang.cindex.CursorKind.CLASS_TEMPLATE,
+      ):
+        unqualified = decl.spelling
+        qualified = f"{parent.spelling}::{unqualified}"
+        if unqualified in result and qualified not in result:
+          result = result.replace(unqualified, qualified, 1)
+    num_targs = base.get_num_template_arguments()
+    for idx in range(num_targs):
+      targ = base.get_template_argument_type(idx)
+      if targ and targ.kind != clang.cindex.TypeKind.INVALID:
+        result = self._qualify_nested_type(result, targ)
+    return result
+
   def resolveWithCanonicalFallback(self, spelling, clangType, templateDecl = None, templateArgs = None):
     """Resolve a type spelling, falling back to canonical type for member typedefs.
     
@@ -521,6 +552,7 @@ class Bindings:
     (value_type, const_reference) that resolve to concrete types (gp_Pnt, const gp_Pnt&)
     in the canonical form. When clang returns type-parameter-0-N for the canonical type
     (template definitions), we map it through templateArgs to the concrete type.
+    Nested types are always qualified with their parent class scope.
     """
     resolved = self.getTypedefedTemplateTypeAsString(spelling, templateDecl, templateArgs)
     if any(td in resolved for td in self._DEPRECATED_TYPEDEFS):
@@ -528,14 +560,14 @@ class Bindings:
       if "type-parameter-" not in canonical:
         return canonical
     if not any(td in resolved for td in self._MEMBER_TYPEDEFS):
-      return resolved
+      return self._qualify_nested_type(resolved, clangType)
 
     canonical = clangType.get_canonical().spelling
     if "type-parameter-" not in canonical:
       return canonical
 
     if not templateArgs:
-      return resolved
+      return self._qualify_nested_type(resolved, clangType)
 
     import re
     if Bindings._TYPE_PARAM_RE is None:
@@ -549,7 +581,7 @@ class Bindings:
           return argValues[index].spelling
       return m.group(0)
 
-    return Bindings._TYPE_PARAM_RE.sub(replacer, canonical)
+    return self._qualify_nested_type(Bindings._TYPE_PARAM_RE.sub(replacer, canonical), clangType)
 
   def getTypedefedTemplateTypeAsString(self, theTypeSpelling, templateDecl = None, templateArgs = None):
     if templateDecl is None:
@@ -752,6 +784,9 @@ class EmbindBindings(Bindings):
         args = args[:arity]
       conversions = []
       for i, arg in enumerate(args):
+        if isRawPointerParam(arg.type) and not isCString(arg.type):
+          conversions.append('nullptr')
+          continue
         cpp_type = self.getOriginalArgumentType(arg, templateDecl, templateArgs)
         js_type = self._classify_js_type(arg.type, templateDecl, templateArgs)
         if js_type.category == 'object':
@@ -1205,6 +1240,8 @@ class EmbindBindings(Bindings):
         for i, arg in enumerate(info['args']):
           if i in stripped_indices:
             continue
+          if isRawPointerParam(arg.type):
+            continue
           if isOutputParam(arg.type) and i not in stripped_indices:
             non_stripped_output_js_idx[i] = js_idx_scan
           js_idx_scan += 1
@@ -1579,6 +1616,9 @@ class EmbindBindings(Bindings):
       args = list(method.get_arguments())
       conversions = []
       for i, arg in enumerate(args):
+        if isRawPointerParam(arg.type) and not isCString(arg.type):
+          conversions.append('nullptr')
+          continue
         cpp_type = self.getOriginalArgumentType(arg, templateDecl, templateArgs)
         js_type = self._classify_js_type(arg.type, templateDecl, templateArgs)
         if js_type.category == 'object':
