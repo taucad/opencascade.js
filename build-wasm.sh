@@ -543,8 +543,8 @@ step_sources_cmake() {
 
   if [ "$OCJS_EXCEPTIONS" != "1" ]; then
     cmake_flags+=(
-      "-DCMAKE_C_FLAGS_RELEASE=-O3 -DNDEBUG -sDISABLE_EXCEPTION_CATCHING=1 -sSUPPORT_LONGJMP=0 -UOCC_CONVERT_SIGNALS"
-      "-DCMAKE_CXX_FLAGS_RELEASE=-O3 -DNDEBUG -sDISABLE_EXCEPTION_CATCHING=1 -sSUPPORT_LONGJMP=0 -UOCC_CONVERT_SIGNALS"
+      "-DCMAKE_C_FLAGS_RELEASE=-DNDEBUG -sDISABLE_EXCEPTION_CATCHING=1 -sSUPPORT_LONGJMP=0 -UOCC_CONVERT_SIGNALS"
+      "-DCMAKE_CXX_FLAGS_RELEASE=-DNDEBUG -sDISABLE_EXCEPTION_CATCHING=1 -sSUPPORT_LONGJMP=0 -UOCC_CONVERT_SIGNALS"
     )
   fi
 
@@ -591,8 +591,8 @@ step_link() {
   yaml_abs="$(cd "$(dirname "$yaml")" && pwd)/$(basename "$yaml")"
   echo "═══ Linking WASM from $yaml_abs ═══"
   echo "  Output dir: $OCJS_OUTPUT_DIR"
-  rm -rf "$OCJS_OUTPUT_DIR"
   mkdir -p "$OCJS_OUTPUT_DIR"
+  find "$OCJS_OUTPUT_DIR" -maxdepth 1 \( -name '*.wasm' -o -name '*.js' -o -name '*.d.ts' -o -name '*.js.symbols' -o -name '*.provenance.json' -o -name 'build-manifest.json' \) -delete 2>/dev/null || true
   cd "$OCJS_OUTPUT_DIR"
   python3 "$OCJS_ROOT/src/buildFromYaml.py" "$yaml_abs"
   cd "$SCRIPT_DIR"

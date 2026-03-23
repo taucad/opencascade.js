@@ -8,22 +8,29 @@
       { "env": "OCJS_OPT" },
       { "env": "OCJS_LTO" },
       { "env": "OCJS_EXCEPTIONS" },
+      { "env": "OCJS_EH_MODE" },
       { "env": "OCJS_SIMD" },
       { "env": "THREADING" },
       { "env": "OCJS_DEFINES" },
-      { "env": "OCJS_UNDEFINES" }
+      { "env": "OCJS_UNDEFINES" },
+      { "env": "OCJS_PATCH_DUMP" },
+      { "env": "OCJS_PATCH_STEPCAF" }
     ],
     "linkConfig": [
       { "env": "OCJS_WASM_OPT_LEVEL" },
       { "env": "OCJS_CLOSURE" },
       { "env": "OCJS_CONVERGE" },
-      { "env": "OCJS_PATCH_DUMP" },
-      { "env": "OCJS_SKIP_WASM_OPT" }
+      { "env": "OCJS_EVAL_CTORS" },
+      { "env": "OCJS_EVAL_CTORS_LEVEL" },
+      { "env": "OCJS_BIGINT" },
+      { "env": "OCJS_SKIP_WASM_OPT" },
+      { "env": "BINARYEN_EXTRA_PASSES" }
     ],
     "toolchain": [{ "runtime": "emcc --version 2>/dev/null || echo not-installed" }],
     "depsVersion": ["{projectRoot}/DEPS.json"],
     "generatorCode": ["{projectRoot}/src/**/*.py", "{projectRoot}/bindgen-filters.yaml"],
     "buildScript": ["{projectRoot}/build-wasm.sh"],
+    "patchScripts": ["{projectRoot}/src/patches/*.py"],
     "compileBindingsScript": [
       "{projectRoot}/src/compileBindings.py",
       "{projectRoot}/src/Common.py"

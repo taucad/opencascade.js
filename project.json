@@ -19,8 +19,10 @@
         "compileConfig",
         "toolchain",
         "buildScript",
+        "patchScripts",
         "depsVersion",
-        { "runtime": "git -C deps/OCCT rev-parse HEAD 2>/dev/null || echo missing" }
+        { "runtime": "git -C deps/OCCT rev-parse HEAD 2>/dev/null || echo missing" },
+        { "runtime": "git -C deps/OCCT diff HEAD --stat 2>/dev/null | shasum -a 256 || echo clean" }
       ],
       "outputs": [
         "{projectRoot}/build/pch.h.pch",
@@ -74,8 +76,10 @@
         "compileConfig",
         "toolchain",
         "buildScript",
+        "patchScripts",
         "depsVersion",
-        { "runtime": "git -C deps/OCCT rev-parse HEAD 2>/dev/null || echo missing" }
+        { "runtime": "git -C deps/OCCT rev-parse HEAD 2>/dev/null || echo missing" },
+        { "runtime": "git -C deps/OCCT diff HEAD --stat 2>/dev/null | shasum -a 256 || echo clean" }
       ],
       "outputs": ["{projectRoot}/build/occt-cmake/", "{projectRoot}/build/.cmake-lib-dir"],
       "options": {

@@ -278,6 +278,8 @@ def runBuild(build, libraryBasePath):
     wasm_opt_flag_list = [wasm_opt_level, "--strip-debug", "--strip-producers", "--enable-mutable-globals", "--enable-bulk-memory", "--enable-sign-ext", "--enable-nontrapping-float-to-int", "--traps-never-happen"]
     if os.environ.get("OCJS_CONVERGE", "false") == "true":
       wasm_opt_flag_list.append("--converge")
+    # --closed-world disabled: interacts badly with exception handling code present in non-No_Exception builds
+    # wasm_opt_flag_list.append("--closed-world")
     wasmOptCmd = [wasmOptPath] + wasm_opt_flag_list
     wasmOptCmd.append("--enable-exception-handling")
     wasm_opt_flag_list.append("--enable-exception-handling")
@@ -287,6 +289,12 @@ def runBuild(build, libraryBasePath):
     if os.environ.get("THREADING") == "multi-threaded":
       wasmOptCmd.append("--enable-threads")
       wasm_opt_flag_list.append("--enable-threads")
+    binaryen_extra_passes = os.environ.get("BINARYEN_EXTRA_PASSES", "").strip()
+    if binaryen_extra_passes:
+      for pass_name in (s.strip() for s in binaryen_extra_passes.split(",")):
+        if pass_name:
+          wasm_opt_flag_list.append(pass_name)
+          wasmOptCmd.append(pass_name)
     wasmOptCmd.extend([wasmFile, "-o", wasmFile])
     opt_start = time.time()
     subprocess.check_call(wasmOptCmd)
