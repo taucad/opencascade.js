@@ -51,7 +51,11 @@
       "executor": "nx:run-commands",
       "cache": true,
       "dependsOn": ["pch", "generate"],
-      "inputs": ["compileConfig", "toolchain", "{projectRoot}/build/bindings/"],
+      "inputs": [
+        "compileConfig",
+        "toolchain",
+        { "dependentTasksOutputFiles": "**/*.cpp", "transitive": false }
+      ],
       "outputs": ["{projectRoot}/build/bindings/**/*.cpp.o", "{projectRoot}/build/binding-report.json"],
       "options": {
         "command": "./build-wasm.sh bindings",
@@ -83,7 +87,8 @@
         "linkConfig",
         "toolchain",
         { "env": "OCJS_YAML" },
-        { "runtime": "shasum -a 256 \"${OCJS_YAML:-/dev/null}\" 2>/dev/null || echo no-yaml" }
+        { "runtime": "shasum -a 256 \"${OCJS_YAML:-/dev/null}\" 2>/dev/null || echo no-yaml" },
+        { "dependentTasksOutputFiles": "**/*", "transitive": false }
       ],
       "outputs": ["{projectRoot}/dist/"],
       "options": {
@@ -94,12 +99,13 @@
         }
       }
     },
-    "build": {
+    "validate": {
       "executor": "nx:run-commands",
       "cache": false,
       "dependsOn": ["link"],
       "options": {
-        "command": "echo 'Build complete. Outputs in dist/'"
+        "command": "python3 scripts/validate-build.py \"${OCJS_YAML}\" dist/ --build-dir build",
+        "cwd": "{projectRoot}"
       }
     },
     "provenance": {
@@ -107,8 +113,19 @@
       "cache": false,
       "dependsOn": ["link"],
       "options": {
-        "command": "python3 src/provenance.py finalize --wasm-dir dist/ --duration 0",
-        "cwd": "{projectRoot}"
+        "command": "./build-wasm.sh provenance \"${OCJS_YAML}\"",
+        "cwd": "{projectRoot}",
+        "env": {
+          "OCJS_OUTPUT_DIR": "{projectRoot}/dist"
+        }
+      }
+    },
+    "build": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "dependsOn": ["validate", "provenance"],
+      "options": {
+        "command": "echo 'Build complete. Outputs in dist/'"
       }
     }
   }
