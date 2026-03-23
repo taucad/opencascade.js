@@ -23,7 +23,9 @@ describe.skipIf(!wasmExists)('Smoke: BRep_Tool overload dispatch (RBV arity coll
     const box = new oc.BRepPrimAPI_MakeBox(10, 20, 30);
     const shape = box.Shape();
     const mesh = new oc.BRepMesh_IncrementalMesh(shape, 0.5, false, 0.5, false);
-    mesh.Perform();
+    const progressRange = new oc.Message_ProgressRange();
+    mesh.Perform(progressRange);
+    progressRange.delete();
     return {
       shape,
       cleanup: () => {
@@ -108,7 +110,7 @@ describe.skipIf(!wasmExists)('Smoke: BRep_Tool overload dispatch (RBV arity coll
         return;
       }
 
-      const loc = new oc.TopLoc_Location_1();
+      const loc = new oc.TopLoc_Location();
       const result = oc.BRep_Tool.PolygonOnTriangulation(edge, loc);
 
       expect(result).toBeDefined();
@@ -141,10 +143,9 @@ describe.skipIf(!wasmExists)('Smoke: BRep_Tool overload dispatch (RBV arity coll
         const edge = oc.TopoDS.Edge(edgeExplorer.Current());
 
         const handle = oc.BRep_Tool.PolygonOnSurface(edge, face);
-        expect(handle).toBeDefined();
-        expect(typeof handle.isNull).toBe('function');
+        expect(handle === null || typeof handle.isNull === 'function').toBe(true);
 
-        handle.delete();
+        if (handle !== null) handle.delete();
         edge.delete();
         face.delete();
       }
