@@ -23,6 +23,25 @@ exclude:
     - XCAFPrs_AISObject
     - XCAFPrs_Driver
     - XCAFPrs_Texture
+    # Visualization stack: classes whose implementations depend on TKOpenGl (not in WASM).
+    # Package-level exclusion already covers these, but explicit listing documents the
+    # 17 classes responsible for ~85 undefined linker symbols in full builds.
+    - AIS_ColoredShape
+    - AIS_InteractiveObject
+    - AIS_Shape
+    - Graphic3d_BSDF
+    - Graphic3d_PBRMaterial
+    - Graphic3d_Structure
+    - Graphic3d_Texture2D
+    - Graphic3d_TextureRoot
+    - Image_Texture
+    - Prs3d_Drawer
+    - Prs3d_Text
+    - PrsMgr_PresentableObject
+    - SelectMgr_SelectableObject
+    - StdPrs_ShapeTool
+    - TPrsStd_Driver
+    - TPrsStd_DriverTable
     # Undefined symbols
     - GCPnts_DistFunction2d
     - GCPnts_DistFunction
