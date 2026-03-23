@@ -20,15 +20,8 @@
       { "env": "OCJS_PATCH_DUMP" },
       { "env": "OCJS_SKIP_WASM_OPT" }
     ],
-    "toolchain": [
-      { "runtime": "emcc --version 2>/dev/null || echo not-installed" }
-    ],
-    "depsVersion": [
-      "{projectRoot}/DEPS.json"
-    ],
-    "generatorCode": [
-      "{projectRoot}/src/**/*.py",
-      "{projectRoot}/bindgen-filters.yaml"
-    ]
+    "toolchain": [{ "runtime": "emcc --version 2>/dev/null || echo not-installed" }],
+    "depsVersion": ["{projectRoot}/DEPS.json"],
+    "generatorCode": ["{projectRoot}/src/**/*.py", "{projectRoot}/bindgen-filters.yaml"]
   }
 }

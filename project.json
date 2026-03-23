@@ -41,9 +41,7 @@
         "depsVersion",
         { "runtime": "git -C deps/OCCT rev-parse HEAD 2>/dev/null || echo missing" }
       ],
-      "outputs": [
-        "{projectRoot}/build/bindings/"
-      ],
+      "outputs": ["{projectRoot}/build/bindings/"],
       "options": {
         "command": "./build-wasm.sh generate",
         "cwd": "{projectRoot}"
@@ -53,15 +51,8 @@
       "executor": "nx:run-commands",
       "cache": true,
       "dependsOn": ["pch", "generate"],
-      "inputs": [
-        "compileConfig",
-        "toolchain",
-        "{projectRoot}/build/bindings/"
-      ],
-      "outputs": [
-        "{projectRoot}/build/bindings/**/*.cpp.o",
-        "{projectRoot}/build/binding-report.json"
-      ],
+      "inputs": ["compileConfig", "toolchain", "{projectRoot}/build/bindings/"],
+      "outputs": ["{projectRoot}/build/bindings/**/*.cpp.o", "{projectRoot}/build/binding-report.json"],
       "options": {
         "command": "./build-wasm.sh bindings",
         "cwd": "{projectRoot}"
@@ -77,10 +68,7 @@
         "depsVersion",
         { "runtime": "git -C deps/OCCT rev-parse HEAD 2>/dev/null || echo missing" }
       ],
-      "outputs": [
-        "{projectRoot}/build/occt-cmake/",
-        "{projectRoot}/build/.cmake-lib-dir"
-      ],
+      "outputs": ["{projectRoot}/build/occt-cmake/", "{projectRoot}/build/.cmake-lib-dir"],
       "options": {
         "command": "./build-wasm.sh sources",
         "cwd": "{projectRoot}"
@@ -97,9 +85,7 @@
         { "env": "OCJS_YAML" },
         { "runtime": "shasum -a 256 \"${OCJS_YAML:-/dev/null}\" 2>/dev/null || echo no-yaml" }
       ],
-      "outputs": [
-        "{projectRoot}/dist/"
-      ],
+      "outputs": ["{projectRoot}/dist/"],
       "options": {
         "command": "./build-wasm.sh link \"${OCJS_YAML}\"",
         "cwd": "{projectRoot}",
