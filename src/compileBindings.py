@@ -6,12 +6,12 @@ import subprocess
 import multiprocessing
 from functools import partial
 
-from Common import OCJS_ROOT, PCH_FILE, getFlatIncludePaths, FLAT_INCLUDE_DIR, WASM_EXCEPTION_FLAGS, SIMD_FLAGS, EXTRA_COMPILE_FLAGS, validate_build_flags, BuildFlagMismatch
+from Common import OCJS_ROOT, PCH_FILE, getFlatIncludePaths, FLAT_INCLUDE_DIR, WASM_EXCEPTION_FLAGS, SIMD_FLAGS, EXTRA_COMPILE_FLAGS, validate_build_flags, BuildFlagMismatch, BUILD_DIR
 from filter.filterPackages import filterPackages
 
 from argparse import ArgumentParser
 
-libraryBasePath = OCJS_ROOT + "/build/bindings"
+libraryBasePath = BUILD_DIR + "/bindings"
 
 OPT_LEVEL = os.environ.get("OCJS_OPT", "-O0")
 USE_LTO = os.environ.get("OCJS_LTO", "0") == "1"
@@ -175,7 +175,7 @@ if __name__ == "__main__":
       for r in failure_details
     ],
   }
-  report_path = os.path.join(OCJS_ROOT, "build", "binding-report.json")
+  report_path = os.path.join(BUILD_DIR, "binding-report.json")
   os.makedirs(os.path.dirname(report_path), exist_ok=True)
   with open(report_path, "w") as rf:
     json.dump(report, rf, indent=2)

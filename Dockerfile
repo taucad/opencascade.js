@@ -3,13 +3,16 @@
 # Build:
 #   docker build -t opencascade-js .
 #
-# Run (default full build with balanced preset):
-#   docker run -v $(pwd)/output:/output opencascade-js full build-configs/full.yml
-#
-# Run with custom config:
-#   docker run -v $(pwd)/my-config.yml:/opencascade.js/build-configs/custom.yml \
+# Run (link with consumer YAML):
+#   docker run -v $(pwd)/my-config.yml:/src/config.yml \
 #     -v $(pwd)/output:/output \
-#     opencascade-js full build-configs/custom.yml
+#     opencascade-js link /src/config.yml
+#
+# Run (full build with configuration):
+#   docker run -e OCJS_CONFIG=O3-maxperf \
+#     -v $(pwd)/my-config.yml:/src/config.yml \
+#     -v $(pwd)/output:/output \
+#     opencascade-js full /src/config.yml
 #
 # Environment variable overrides:
 #   docker run -e OCJS_OPT="-Os" -e OCJS_EXCEPTIONS=1 ... opencascade-js full build-configs/full.yml
@@ -53,8 +56,10 @@ WORKDIR /opencascade.js/
 COPY src ./src
 COPY build-configs ./build-configs
 COPY build-wasm.sh ./build-wasm.sh
+COPY scripts ./scripts
 COPY DEPS.json ./DEPS.json
-RUN chmod +x build-wasm.sh
+COPY bindgen-filters.yaml ./bindgen-filters.yaml
+RUN chmod +x build-wasm.sh scripts/*.sh
 
 # Set default environment
 ENV OCCT_ROOT=/occt
@@ -64,8 +69,9 @@ ENV THREADING=single-threaded
 ENV OCJS_OPT=-O2
 ENV OCJS_LTO=0
 ENV OCJS_EXCEPTIONS=0
+ENV OCJS_OUTPUT_DIR=/output
 
-RUN mkdir -p build/bindings build/sources build/dist /output
+RUN mkdir -p build/bindings build/sources /output
 
 # Apply patches and generate bindings (shared across all builds)
 RUN python3 src/applyPatches.py && \

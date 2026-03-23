@@ -263,7 +263,7 @@ exclude:
     AdvApp2Var_Framework: [IsoU, IsoV]
     GeomPlate_PlateG0Criterion: [Value, IsSatisfied]
     GeomPlate_PlateG1Criterion: [Value, IsSatisfied]
-    Resource_Unicode: []  # entire class methods filtered
+    Resource_Unicode: [] # entire class methods filtered
     OSD_Thread: [Wait]
     TCollection_ExtendedString: [ToUTF8CString]
     Message: [ToOSDMetric, MetricFromString]
@@ -275,7 +275,7 @@ exclude:
     MoniTool_AttrList: [GetStringAttribute]
     MoniTool_CaseData: [Text]
     StepData_StepReaderData: [ReadEnumParam, ReadTypedParam]
-    XSControl_Vars: []  # entire class methods filtered
+    XSControl_Vars: [] # entire class methods filtered
     Graphic3d_GraduatedTrihedron: [CubicAxesCallback]
     AIS_ViewController: [Keys, ChangeKeys]
     Aspect_WindowInputListener: [Keys, ChangeKeys]
@@ -332,14 +332,14 @@ exclude:
     Font_FontMgr: [FindFont]
     OSD_Protection: [User, System, Group, World]
     TColStd_PackedMapOfInteger: [GetPackedMap]
-    STEPCAFControl_GDTProperty: []  # entire class methods filtered
-    NCollection_DataMap: [Find]  # non-const lvalue reference output param
-    NCollection_IndexedDataMap: [FindFromKey]  # non-const lvalue reference output param
+    STEPCAFControl_GDTProperty: [] # entire class methods filtered
+    NCollection_DataMap: [Find] # non-const lvalue reference output param
+    NCollection_IndexedDataMap: [FindFromKey] # non-const lvalue reference output param
 
   # Methods excluded across ALL classes (any class containing these methods)
   global_methods:
-    - Limits        # OCCT V8: deprecated math globals, removed
-    - ReadStreamList  # OCCT V8: removed API
+    - Limits # OCCT V8: deprecated math globals, removed
+    - ReadStreamList # OCCT V8: removed API
 
   typedefs:
     - SelectMgr_Vec3
@@ -403,6 +403,7 @@ exclude:
     - OSD_Parallel.hxx
     - OSD_ThreadPool.hxx
     - Standard_Atomic.hxx
+    - MathLin_Jacobi.hxx
     - BOPTools_Parallel.hxx
     - BVH_DistanceField.hxx
     - IVtk_Types.hxx
@@ -426,7 +427,6 @@ exclude:
     - WNT_Dword.hxx
     - IVtkDraw_HighlightAndSelectionPipeline.hxx
     - math_Householder.hxx
-
 
   packages:
     ## Module Draw (interactive testing tools, not needed in WASM)
@@ -571,14 +571,8 @@ exclude:
     - XmlXCAFDrivers
     - XmlMXCAFDoc
 
-    ## Expression parser — included for math expression evaluation
-    ## Helix geometry — included for helical curves and sweeps
-
     ## Naming clash with BRepMesh
     - XBRepMesh
-
-    ## TKDE plugin framework — included for data exchange
-    ## NOTE: DESTEP is NOT filtered — STEPCAFControl uses DESTEP_Parameters at runtime
 
   # Semantic rules that remain in code (not configurable):
   # - Methods with void*, istream/ostream params (type-based)
@@ -598,6 +592,6 @@ exclude:
 deprecated:
   include: true
   symbols:
-    - Limits             # OCCT V8: removed deprecated math globals
-    - ReadStreamList     # OCCT V8: removed deprecated API
-    - OSD_Protection     # OCCT V8: deprecated protection class
+    - Limits # OCCT V8: removed deprecated math globals
+    - ReadStreamList # OCCT V8: removed deprecated API
+    - OSD_Protection # OCCT V8: deprecated protection class

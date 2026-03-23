@@ -35,10 +35,12 @@ EXTRA_COMPILE_FLAGS = _parse_extra_compile_flags()
 
 occtBasePath = OCCT_ROOT + "/src/"
 
-FLAT_INCLUDE_DIR = OCJS_ROOT + "/build/occt-includes"
-PCH_HEADER = OCJS_ROOT + "/build/pch.h"
-PCH_FILE = OCJS_ROOT + "/build/pch.h.pch"
-BUILD_FLAGS_PATH = OCJS_ROOT + "/build/build-flags.json"
+BUILD_DIR = os.environ.get("BUILD_DIR", OCJS_ROOT + "/build")
+
+FLAT_INCLUDE_DIR = BUILD_DIR + "/occt-includes"
+PCH_HEADER = BUILD_DIR + "/pch.h"
+PCH_FILE = BUILD_DIR + "/pch.h.pch"
+BUILD_FLAGS_PATH = BUILD_DIR + "/build-flags.json"
 
 _BUILD_FLAG_KEYS = [
   "OCJS_OPT", "OCJS_LTO", "OCJS_EXCEPTIONS", "OCJS_EH_MODE",
@@ -320,7 +322,11 @@ def buildPch(threading="single-threaded"):
     f.write(ocIncludeStatements)
     for h in safe_deprecated:
       f.write(f'\n#include "{os.path.basename(h)}"')
-    f.write("\n#include <emscripten/bind.h>\n")
+    _occt_leaked_macros = ["CONSTRUCTOR", "DESTRUCTOR", "OPTIONAL", "DEFINE"]
+    f.write("\n")
+    for m in _occt_leaked_macros:
+      f.write(f"#ifdef {m}\n#undef {m}\n#endif\n")
+    f.write("#include <emscripten/bind.h>\n")
     f.write("#include <functional>\n")
     f.write("#endif\n")
 

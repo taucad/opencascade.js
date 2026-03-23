@@ -15,13 +15,12 @@ set -euo pipefail
 #   ./build-wasm.sh bindings              # Compile bindings only
 #   ./build-wasm.sh sources               # Compile OCCT sources only
 #   ./build-wasm.sh full <yaml>           # Full pipeline: pch + generate + bindings + sources + link
-#   ./build-wasm.sh cache-list            # List all cached compilations
-#   ./build-wasm.sh cache-gc [max]        # Garbage collect old cache entries
+#   ./build-wasm.sh --config O3-maxperf full <yaml>  # Full pipeline with named configuration
 #
 # Environment overrides (all optional, sensible defaults provided):
-#   EMSDK              Path to emsdk (default: ../assimpjs/emsdk)
-#   OCCT_ROOT          Path to OCCT source (default: ../OCCT)
-#   RAPIDJSON_ROOT     Path to rapidjson (default: ./rapidjson)
+#   EMSDK              Path to emsdk (default: deps/emsdk/)
+#   OCCT_ROOT          Path to OCCT source (default: deps/OCCT/)
+#   RAPIDJSON_ROOT     Path to rapidjson (default: deps/rapidjson/)
 #   FREETYPE_ROOT      Path to freetype (default: ./freetype)
 #   OCJS_OPT           Compile optimization level (default: -O2)
 #   OCJS_LTO           Enable LTO at compile time: 0|1 (default: 1)
@@ -38,8 +37,8 @@ set -euo pipefail
 #   # Dev build (fast compile, no LTO)
 #   OCJS_OPT=-O0 OCJS_LTO=0 ./build-wasm.sh link custom_build.yml
 #
-#   # List cached compilations
-#   ./build-wasm.sh cache-list
+#   # Use named configuration
+#   ./build-wasm.sh --config O3-maxperf full consumer.yml
 # ─────────────────────────────────────────────────────────────────────
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -52,7 +51,7 @@ show_help() {
 Usage: ./build-wasm.sh <command> [options] [<yaml-config>]
 
 Commands:
-  full <yaml>           Full pipeline: compile + link (uses cache)
+  full <yaml>           Full pipeline: pch + generate + bindings + sources + link
   link <yaml>           Link only (reuses compiled .o files, fastest)
   pch                   Rebuild flat includes + precompiled header
   generate              Generate binding .cpp files from OCCT headers
@@ -61,38 +60,36 @@ Commands:
   validate <yaml>       Validate YAML config without building
   clean-generated       Remove all generated .d.ts.json and .cpp files (handles symlinks)
   clean-objects         Remove all compiled .o files from bindings (handles symlinks)
-  cache-list            List all cached compilations
-  cache-gc [n]          Garbage collect old cache entries (keep n, default 5)
 
 Options:
   --help                Show this help message
-  --preset <name>       Apply a preset before building (e.g., O2-balanced, O3-maxperf, Os-minsize, O0-debug)
+  --config <name>       Apply a named configuration from build-configs/configurations.json
 
 Environment Variables:
-  EMSDK                 Path to Emscripten SDK (required for native builds)
-  OCCT_ROOT             Path to OCCT source (default: ../OCCT)
-  RAPIDJSON_ROOT        Path to rapidjson (default: ../rapidjson or ./rapidjson)
-  FREETYPE_ROOT         Path to freetype (default: ../freetype or ./freetype)
+  EMSDK                 Path to Emscripten SDK (default: deps/emsdk/)
+  OCCT_ROOT             Path to OCCT source (default: deps/OCCT/)
+  RAPIDJSON_ROOT        Path to rapidjson (default: deps/rapidjson/)
+  FREETYPE_ROOT         Path to freetype (default: deps/freetype/)
+  OCJS_CONFIG           Named configuration (alternative to --config flag)
   OCJS_OPT              Optimization level: -O0, -O2, -O3, -Os, -Oz (default: -O2)
-  OCJS_LTO              Enable LTO: 0|1 (default: 1)
+  OCJS_LTO              Enable LTO: 0|1 (default: 0)
   OCJS_EXCEPTIONS       Native WASM exceptions: 0|1 (default: 0)
   THREADING             Threading mode: single-threaded|multi-threaded (default: single-threaded)
   OCJS_STRICT_DEPS      Fail on dependency commit mismatch: 0|1 (default: 0)
   OCJS_FORCE_GENERATE   Force regeneration of all bindings: 0|1 (default: 0)
-  OCJS_FORCE_MISS       Force cache miss (bypass cache): 0|1 (default: 0)
 
 Examples:
-  # Default production build
-  OCJS_LTO=0 ./build-wasm.sh full build-configs/full.yml
+  # Full build with a named configuration
+  ./build-wasm.sh --config O3-maxperf full build-configs/full.yml
 
-  # Quick rebuild after YAML changes
-  ./build-wasm.sh link build-configs/full.yml
+  # Link only with consumer YAML (reuses compile cache)
+  ./build-wasm.sh --config O3-maxperf link path/to/consumer.yml
 
-  # Use a preset
-  ./build-wasm.sh --preset Os-minsize full build-configs/full.yml
+  # Override a flag from the config
+  OCJS_WASM_OPT_LEVEL=-O4 ./build-wasm.sh --config O3-maxperf full consumer.yml
 
-  # Debug build (fastest compile)
-  OCJS_OPT=-O0 OCJS_LTO=0 ./build-wasm.sh full build-configs/full.yml
+  # Raw env vars, no config (backward compat)
+  OCJS_OPT=-O3 OCJS_LTO=0 ./build-wasm.sh full build-configs/full.yml
 
   # Validate config without building
   ./build-wasm.sh validate build-configs/full.yml
@@ -104,23 +101,7 @@ if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
   show_help
 fi
 
-# ── Handle cache commands before emsdk init ──────────────────────────
-
-if [ "${1:-}" = "cache-list" ]; then
-  export OCJS_ROOT="$SCRIPT_DIR"
-  export OCCT_ROOT="${OCCT_ROOT:-$(cd "$SCRIPT_DIR/../OCCT" 2>/dev/null && pwd || echo "")}"
-  export PYTHONPATH="$OCJS_ROOT/src:${PYTHONPATH:-}"
-  python3 src/build-cache.py list
-  exit 0
-fi
-
-if [ "${1:-}" = "cache-gc" ]; then
-  export OCJS_ROOT="$SCRIPT_DIR"
-  export OCCT_ROOT="${OCCT_ROOT:-$(cd "$SCRIPT_DIR/../OCCT" 2>/dev/null && pwd || echo "")}"
-  export PYTHONPATH="$OCJS_ROOT/src:${PYTHONPATH:-}"
-  python3 src/build-cache.py gc "${2:-5}"
-  exit 0
-fi
+# (cache-list and cache-gc removed -- caching is managed by Nx)
 
 _resolve_symlink_target() {
   local path="$1"
@@ -240,17 +221,22 @@ fi
 
 # ── Resolve paths ────────────────────────────────────────────────────
 
-export EMSDK="${EMSDK:-$(cd ../assimpjs/emsdk 2>/dev/null && pwd || echo "")}"
-if [ -z "$EMSDK" ] || [ ! -d "$EMSDK" ]; then
-  echo "ERROR: EMSDK not found. Set EMSDK= or place emsdk at ../assimpjs/emsdk" >&2
-  exit 1
+if [ -z "${EMSDK:-}" ] || [ ! -d "${EMSDK:-}" ]; then
+  if [ -d "$SCRIPT_DIR/deps/emsdk" ]; then
+    export EMSDK="$SCRIPT_DIR/deps/emsdk"
+  elif [ -d "$SCRIPT_DIR/../assimpjs/emsdk" ]; then
+    export EMSDK="$(cd "$SCRIPT_DIR/../assimpjs/emsdk" && pwd)"
+  else
+    echo "ERROR: EMSDK not found. Run scripts/setup-deps.sh or set EMSDK=" >&2
+    exit 1
+  fi
 fi
 source "$EMSDK/emsdk_env.sh" 2>/dev/null
 
 export OCJS_ROOT="$SCRIPT_DIR"
-export OCCT_ROOT="${OCCT_ROOT:-$(cd "$SCRIPT_DIR/../OCCT" 2>/dev/null && pwd || echo "")}"
-export RAPIDJSON_ROOT="${RAPIDJSON_ROOT:-$(cd "$SCRIPT_DIR/../rapidjson" 2>/dev/null && pwd || echo "$SCRIPT_DIR/rapidjson")}"
-export FREETYPE_ROOT="${FREETYPE_ROOT:-$(cd "$SCRIPT_DIR/../freetype" 2>/dev/null && pwd || echo "$SCRIPT_DIR/freetype")}"
+export OCCT_ROOT="${OCCT_ROOT:-$(cd "$SCRIPT_DIR/deps/OCCT" 2>/dev/null && pwd || { cd "$SCRIPT_DIR/../OCCT" 2>/dev/null && pwd; } || echo "")}"
+export RAPIDJSON_ROOT="${RAPIDJSON_ROOT:-$(cd "$SCRIPT_DIR/deps/rapidjson" 2>/dev/null && pwd || { cd "$SCRIPT_DIR/../rapidjson" 2>/dev/null && pwd; } || echo "$SCRIPT_DIR/rapidjson")}"
+export FREETYPE_ROOT="${FREETYPE_ROOT:-$(cd "$SCRIPT_DIR/deps/freetype" 2>/dev/null && pwd || { cd "$SCRIPT_DIR/../freetype" 2>/dev/null && pwd; } || echo "$SCRIPT_DIR/freetype")}"
 
 for dep_name in OCCT_ROOT RAPIDJSON_ROOT FREETYPE_ROOT; do
   dep_val="${!dep_name}"
@@ -290,12 +276,43 @@ if warnings:
 " || true
 fi
 
+# ── Pre-scan for --config flag ────────────────────────────────────────
+
+_prescan_args=("$@")
+for (( _i=0; _i<${#_prescan_args[@]}; _i++ )); do
+  if [ "${_prescan_args[$_i]}" = "--config" ] && [ $((_i+1)) -lt ${#_prescan_args[@]} ]; then
+    export OCJS_CONFIG="${_prescan_args[$((_i+1))]}"
+    break
+  fi
+done
+
+if [ -n "${OCJS_CONFIG:-}" ]; then
+  _CONFIG_FILE="$SCRIPT_DIR/build-configs/configurations.json"
+  if [ ! -f "$_CONFIG_FILE" ]; then
+    echo "ERROR: configurations.json not found at $_CONFIG_FILE" >&2
+    exit 1
+  fi
+  echo "Loading configuration: $OCJS_CONFIG"
+  eval "$(python3 -c "
+import json, sys
+configs = json.load(open('$_CONFIG_FILE'))
+name = '$OCJS_CONFIG'
+if name not in configs:
+    print(f'echo \"ERROR: Configuration \"{name}\" not found. Available: {\", \".join(configs.keys())}\" >&2; exit 1')
+    sys.exit(0)
+cfg = configs[name]
+for key, val in cfg.items():
+    print(f'export {key}=\"{val}\"')
+")"
+  echo ""
+fi
+
 # ── Build flags ──────────────────────────────────────────────────────
 
-export OCJS_OPT="${OCJS_OPT:--O2}"
-export OCJS_LTO="${OCJS_LTO:-1}"
+export OCJS_OPT="${OCJS_OPT:--O3}"
+export OCJS_LTO="${OCJS_LTO:-0}"
 export OCJS_EXCEPTIONS="${OCJS_EXCEPTIONS:-0}"
-export OCJS_WASM_OPT_LEVEL="${OCJS_WASM_OPT_LEVEL:--O3}"
+export OCJS_WASM_OPT_LEVEL="${OCJS_WASM_OPT_LEVEL:--O4}"
 export OCJS_CLOSURE="${OCJS_CLOSURE:-false}"
 export OCJS_EVAL_CTORS="${OCJS_EVAL_CTORS:-false}"
 export OCJS_CONVERGE="${OCJS_CONVERGE:-false}"
@@ -305,13 +322,12 @@ export OCJS_PATCH_DUMP="${OCJS_PATCH_DUMP:-false}"
 export OCJS_SIMD="${OCJS_SIMD:-0}"
 export OCJS_BIGINT="${OCJS_BIGINT:-0}"
 export OCJS_FORCE_GENERATE="${OCJS_FORCE_GENERATE:-0}"
-export OCJS_FORCE_MISS="${OCJS_FORCE_MISS:-0}"
 export THREADING="${THREADING:-single-threaded}"
 export PYTHONPATH="$OCJS_ROOT/src:${PYTHONPATH:-}"
+export BUILD_DIR="${BUILD_DIR:-$OCJS_ROOT/build}"
+export OCJS_OUTPUT_DIR="${OCJS_OUTPUT_DIR:-$OCJS_ROOT/dist}"
 
 # ── Print config ─────────────────────────────────────────────────────
-
-CACHE_KEY=$(python3 src/build-cache.py compute-key)
 
 echo "╔══════════════════════════════════════════════════════════╗"
 echo "║         OpenCascade.js WASM Build                       ║"
@@ -324,19 +340,13 @@ printf "║  %-14s %s\n" "OCJS_LTO:" "$OCJS_LTO ║"
 printf "║  %-14s %s\n" "OCJS_EXCEPTIONS:" "$OCJS_EXCEPTIONS ║"
 printf "║  %-14s %s\n" "THREADING:" "$THREADING ║"
 printf "║  %-14s %s\n" "wasm-opt:" "$OCJS_WASM_OPT_LEVEL ║"
-printf "║  %-14s %s\n" "cache-key:" "$CACHE_KEY ║"
+printf "║  %-14s %s\n" "BUILD_DIR:" "$BUILD_DIR ║"
+printf "║  %-14s %s\n" "OCJS_CONFIG:" "${OCJS_CONFIG:-<none>} ║"
 echo "╚══════════════════════════════════════════════════════════╝"
 echo ""
 
-# Clean up dangling symlinks before mkdir (left over after cache GC)
-for d in build/bindings build/sources build/occt-includes; do
-  [ -L "$d" ] && [ ! -e "$d" ] && rm -f "$d"
-done
-mkdir -p build/{bindings,sources,dist}
-
-# ── Provenance init (only for builds that produce output) ────────────
-
-python3 src/provenance.py init 2>/dev/null || true
+mkdir -p "$BUILD_DIR"/{bindings,sources}
+mkdir -p "$OCJS_OUTPUT_DIR"
 
 # ── Build flag validation ─────────────────────────────────────────────
 
@@ -354,8 +364,37 @@ except BuildFlagMismatch as e:
 
 # ── Step functions ───────────────────────────────────────────────────
 
+_ensure_standard_version_hxx() {
+  local target="$OCCT_ROOT/src/FoundationClasses/TKernel/Standard/Standard_Version.hxx"
+  local template="$OCCT_ROOT/adm/templates/Standard_Version.hxx.in"
+  if [ -f "$target" ]; then
+    return 0
+  fi
+  if [ ! -f "$template" ]; then
+    echo "  WARNING: Standard_Version.hxx.in template not found" >&2
+    return 0
+  fi
+  echo "  Generating Standard_Version.hxx from cmake template..."
+  python3 -c "
+import re
+with open('$template') as f: c = f.read()
+with open('$OCCT_ROOT/adm/cmake/version.cmake') as f: v = f.read()
+major = re.search(r'OCC_VERSION_MAJOR\s+(\d+)', v).group(1)
+minor = re.search(r'OCC_VERSION_MINOR\s+(\d+)', v).group(1)
+maint = re.search(r'OCC_VERSION_MAINTENANCE\s+(\d+)', v).group(1)
+c = c.replace('@OCC_VERSION_MAJOR@', major)
+c = c.replace('@OCC_VERSION_MINOR@', minor)
+c = c.replace('@OCC_VERSION_MAINTENANCE@', maint)
+c = c.replace('@OCC_VERSION_DATE@', '2024-01-01')
+c = c.replace('@SET_OCC_VERSION_DEVELOPMENT@', '#define OCC_VERSION_DEVELOPMENT \"dev\"')
+with open('$target', 'w') as f: f.write(c)
+print(f'  Generated Standard_Version.hxx (OCCT {major}.{minor}.{maint})')
+"
+}
+
 step_pch() {
   echo "═══ Rebuilding flat includes + PCH ═══"
+  _ensure_standard_version_hxx
   rm -f build/pch.h.pch build/pch.h
   rm -rf build/occt-includes
   python3 -c "
@@ -547,52 +586,15 @@ step_link() {
   local yaml_abs
   yaml_abs="$(cd "$(dirname "$yaml")" && pwd)/$(basename "$yaml")"
   echo "═══ Linking WASM from $yaml_abs ═══"
-  cd "$(dirname "$yaml_abs")"
-  python3 "$OCJS_ROOT/src/buildFromYaml.py" "$(basename "$yaml_abs")"
+  echo "  Output dir: $OCJS_OUTPUT_DIR"
+  mkdir -p "$OCJS_OUTPUT_DIR"
+  cd "$OCJS_OUTPUT_DIR"
+  python3 "$OCJS_ROOT/src/buildFromYaml.py" "$yaml_abs"
   cd "$SCRIPT_DIR"
   echo ""
 }
 
-step_compile_all() {
-  local cache_key="$1"
-
-  if [ "$OCJS_FORCE_MISS" = "1" ]; then
-    echo "═══ Forced cache miss (OCJS_FORCE_MISS=1) ═══"
-    local cache_entry="$OCJS_ROOT/cache/$cache_key"
-    rm -f "$cache_entry/.complete" 2>/dev/null || true
-    echo ""
-  fi
-
-  # setup symlinks build/ → cache/<key>/, returns 0 on hit, 1 on miss
-  if python3 src/build-cache.py setup "$cache_key"; then
-    echo "═══ Cache hit: $cache_key ═══"
-    python3 src/provenance.py add-compilation --cache-hit
-    echo ""
-  else
-    echo "═══ Cache miss: $cache_key — compiling from scratch ═══"
-    echo ""
-
-    local compile_start
-    compile_start=$(date +%s)
-
-    if [ "$OCJS_PATCH_DUMP" = "true" ]; then
-      echo "=== Patching OCCT Standard_Dump.hxx ==="
-      python3 src/patches/patch_standard_dump.py
-    fi
-
-    step_pch
-    step_generate
-    step_bindings
-    step_sources_cmake
-
-    local compile_end
-    compile_end=$(date +%s)
-    local compile_elapsed=$((compile_end - compile_start))
-
-    python3 src/provenance.py add-compilation --duration "$compile_elapsed"
-    python3 src/build-cache.py finalize "$cache_key"
-  fi
-}
+# (step_compile_all removed -- Nx manages task orchestration and caching)
 
 # ── Parse commands ───────────────────────────────────────────────────
 
@@ -607,30 +609,27 @@ if [ $# -eq 0 ]; then
   echo "  sources          Compile OCCT sources only"
   echo "  dts <yaml>       Regenerate .d.ts only from existing fragments (no compile/link)"
   echo "  link <yaml>      Link WASM binary from YAML config"
-  echo "  full <yaml>      Full pipeline with cache (pch + generate + bindings + sources + link)"
+  echo "  full <yaml>      Full pipeline (pch + generate + bindings + sources + link)"
   echo "  clean-generated  Remove generated .d.ts.json and .cpp (handles symlinks)"
   echo "  clean-objects    Remove compiled .o files from bindings (handles symlinks)"
-  echo "  cache-list       List all cached compilations"
-  echo "  cache-gc [n]     Garbage collect old cache entries (keep n, default 5)"
   exit 1
 fi
 
 YAML_CONFIG=""
 COMMANDS=()
-PRESET=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --help|-h)
       show_help
       ;;
-    --preset)
+    --config)
       shift
       if [ $# -eq 0 ]; then
-        echo "ERROR: --preset requires a name (e.g., O2-balanced)" >&2
+        echo "ERROR: --config requires a configuration name" >&2
         exit 1
       fi
-      PRESET="$1"
+      export OCJS_CONFIG="$1"
       shift
       ;;
     pch|docs|generate|bindings|sources|sources-legacy)
@@ -670,44 +669,6 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-# ── Apply preset if specified ────────────────────────────────────────
-
-if [ -n "$PRESET" ]; then
-  PRESET_FILE="$SCRIPT_DIR/build-configs/presets/${PRESET}.yml"
-  if [ ! -f "$PRESET_FILE" ]; then
-    echo "ERROR: Preset '$PRESET' not found at $PRESET_FILE" >&2
-    echo "" >&2
-    echo "Available presets:" >&2
-    for p in "$SCRIPT_DIR/build-configs/presets/"*.yml; do
-      [ -f "$p" ] && echo "  $(basename "$p" .yml)" >&2
-    done
-    exit 1
-  fi
-  echo "Applying preset: $PRESET ($PRESET_FILE)"
-  eval "$(python3 -c "
-import yaml, sys
-with open('$PRESET_FILE') as f:
-    p = yaml.safe_load(f)
-c = p.get('compilation', {})
-if 'optimization' in c: print(f'export OCJS_OPT="{c["optimization"]}"')
-if 'lto' in c: print(f'export OCJS_LTO={"1" if c["lto"] else "0"}')
-if 'exceptions' in c: print(f'export OCJS_EXCEPTIONS={"1" if c["exceptions"] == "wasm-native" else "0"}')
-if 'threading' in c: print(f'export THREADING="{c["threading"]}"')
-defines = c.get('defines', [])
-if defines: print(f'export OCJS_DEFINES="{",".join(defines)}"')
-undefines = c.get('undefines', [])
-if undefines: print(f'export OCJS_UNDEFINES="{",".join(undefines)}"')
-l = p.get('linking', {})
-if 'wasmOptLevel' in l: print(f'export OCJS_WASM_OPT_LEVEL="{l["wasmOptLevel"]}"')
-o = p.get('optimizations', {})
-if 'closure' in o: print(f'export OCJS_CLOSURE={"true" if o["closure"] else "false"}')
-if 'evalCtors' in o: print(f'export OCJS_EVAL_CTORS={"true" if o["evalCtors"] else "false"}')
-if 'converge' in o: print(f'export OCJS_CONVERGE={"true" if o["converge"] else "false"}')
-if 'patchDump' in o: print(f'export OCJS_PATCH_DUMP={"true" if o["patchDump"] else "false"}')
-")"
-  echo ""
-fi
-
 START_TIME=$(date +%s)
 
 for cmd in "${COMMANDS[@]}"; do
@@ -744,10 +705,17 @@ else:
       echo ""
       ;;
     full)
-      step_compile_all "$CACHE_KEY"
+      if [ "$OCJS_PATCH_DUMP" = "true" ]; then
+        echo "=== Patching OCCT Standard_Dump.hxx ==="
+        python3 src/patches/patch_standard_dump.py
+      fi
+      step_pch
+      step_generate
+      step_bindings
+      step_sources_cmake
       step_link "$YAML_CONFIG"
       echo "═══ Post-build validation ═══"
-      python3 "$OCJS_ROOT/scripts/validate-build.py" "$YAML_CONFIG" "$(dirname "$YAML_CONFIG")" --build-dir "$OCJS_ROOT/build" || true
+      python3 "$OCJS_ROOT/scripts/validate-build.py" "$YAML_CONFIG" "$OCJS_OUTPUT_DIR" --build-dir "$BUILD_DIR" || true
       echo ""
       ;;
   esac
@@ -759,8 +727,7 @@ ELAPSED=$((END_TIME - START_TIME))
 # ── Finalize provenance ──────────────────────────────────────────────
 
 if [ -n "$YAML_CONFIG" ]; then
-  WASM_DIR="$(dirname "$YAML_CONFIG")"
-  python3 src/provenance.py finalize --wasm-dir "$WASM_DIR" --duration "$ELAPSED"
+  python3 src/provenance.py finalize --wasm-dir "$OCJS_OUTPUT_DIR" --duration "$ELAPSED" 2>/dev/null || true
 fi
 
 echo ""
@@ -768,10 +735,10 @@ echo "╔═══════════════════════�
 echo "║                  Build Complete                         ║"
 echo "╠══════════════════════════════════════════════════════════╣"
 printf "║  %-14s %s\n" "Duration:" "${ELAPSED}s ║"
+printf "║  %-14s %s\n" "Config:" "${OCJS_CONFIG:-<none>} ║"
 
 if [ -n "$YAML_CONFIG" ]; then
-  WASM_DIR="$(dirname "$YAML_CONFIG")"
-  for wasm in "$WASM_DIR"/*.wasm; do
+  for wasm in "$OCJS_OUTPUT_DIR"/*.wasm; do
     if [ -f "$wasm" ]; then
       BASENAME="$(basename "$wasm")"
       SIZE=$(stat -f%z "$wasm" 2>/dev/null || stat -c%s "$wasm" 2>/dev/null || echo "0")
@@ -781,20 +748,19 @@ if [ -n "$YAML_CONFIG" ]; then
       printf "║  %-14s %s\n" "WASM:" "$BASENAME ($SIZE_MB MB, ${GZIP_MB} MB gzipped) ║"
     fi
   done
-  for js in "$WASM_DIR"/*.js; do
+  for js in "$OCJS_OUTPUT_DIR"/*.js; do
     if [ -f "$js" ] && [[ "$js" != *.d.ts ]]; then
       SIZE=$(stat -f%z "$js" 2>/dev/null || stat -c%s "$js" 2>/dev/null || echo "0")
       SIZE_KB=$(echo "scale=1; $SIZE / 1024" | bc 2>/dev/null || echo "?")
       printf "║  %-14s %s\n" "JS:" "$(basename "$js") (${SIZE_KB} KB) ║"
     fi
   done
-  for dts in "$WASM_DIR"/*.d.ts; do
+  for dts in "$OCJS_OUTPUT_DIR"/*.d.ts; do
     if [ -f "$dts" ]; then
       SIZE=$(stat -f%z "$dts" 2>/dev/null || stat -c%s "$dts" 2>/dev/null || echo "0")
       SIZE_KB=$(echo "scale=1; $SIZE / 1024" | bc 2>/dev/null || echo "?")
       printf "║  %-14s %s\n" "Types:" "$(basename "$dts") (${SIZE_KB} KB) ║"
     fi
   done
-  printf "║  %-14s %s\n" "Cache key:" "$CACHE_KEY ║"
 fi
 echo "╚══════════════════════════════════════════════════════════╝"

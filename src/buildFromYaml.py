@@ -11,7 +11,7 @@ import yaml
 import shutil
 from cerberus import Validator
 from argparse import ArgumentParser
-from Common import OCJS_ROOT, getFlatIncludePaths, PCH_FILE, WASM_EXCEPTION_FLAGS, USE_WASM_EXCEPTIONS, SIMD_FLAGS, EXTRA_COMPILE_FLAGS, validate_build_flags, BuildFlagMismatch
+from Common import OCJS_ROOT, BUILD_DIR, getFlatIncludePaths, PCH_FILE, WASM_EXCEPTION_FLAGS, USE_WASM_EXCEPTIONS, SIMD_FLAGS, EXTRA_COMPILE_FLAGS, validate_build_flags, BuildFlagMismatch
 from filter.filterPackages import filterPackages
 try:
     import provenance as prov
@@ -113,26 +113,34 @@ def shouldProcessSymbol(symbol: str, bindings) -> bool:
     return True
   return False
 
-def _validate_yaml_env_consistency(build):
-  """Fail fast if YAML emccFlags disagree with OCJS_EXCEPTIONS env var."""
+def _warn_consistency(build):
+  """Warn (non-fatal) if consumer emccFlags and compile config are mismatched."""
+  import sys
   yaml_flags = build.get("emccFlags", [])
-  yaml_has_exc = any(f in ("-fwasm-exceptions", "-fexceptions") for f in yaml_flags)
+  yaml_has_wasm_exc = "-fwasm-exceptions" in yaml_flags
+  yaml_has_js_exc = "-fexceptions" in yaml_flags
   yaml_disables_exc = any("-sDISABLE_EXCEPTION_CATCHING=1" in f for f in yaml_flags)
+  yaml_has_simd = "-msimd128" in yaml_flags
   env_exc = os.environ.get("OCJS_EXCEPTIONS", "0") == "1"
+  env_simd = os.environ.get("OCJS_SIMD", "0") == "1"
 
   if env_exc and yaml_disables_exc:
-    raise BuildFlagMismatch(
-      "ERROR: YAML↔env exception mismatch.\n"
-      f"  OCJS_EXCEPTIONS=1 but YAML emccFlags contains -sDISABLE_EXCEPTION_CATCHING=1.\n"
-      f"  YAML config: {build.get('name', '?')}\n\n"
-      "To fix: either set OCJS_EXCEPTIONS=0 or remove -sDISABLE_EXCEPTION_CATCHING=1 from the YAML."
+    print(
+      f"WARNING: Compiled with OCJS_EXCEPTIONS=1 but emccFlags has -sDISABLE_EXCEPTION_CATCHING=1. "
+      f"These are contradictory -- link may not handle exceptions correctly.",
+      file=sys.stderr, flush=True,
     )
-  if not env_exc and yaml_has_exc:
-    raise BuildFlagMismatch(
-      "ERROR: YAML↔env exception mismatch.\n"
-      f"  OCJS_EXCEPTIONS=0 but YAML emccFlags contains exception flags ({[f for f in yaml_flags if f in ('-fwasm-exceptions', '-fexceptions')]}).\n"
-      f"  YAML config: {build.get('name', '?')}\n\n"
-      "To fix: either set OCJS_EXCEPTIONS=1 or use a YAML config without exception flags."
+  if not env_exc and (yaml_has_wasm_exc or yaml_has_js_exc):
+    print(
+      f"WARNING: Compiled with OCJS_EXCEPTIONS=0 but emccFlags has exception flags. "
+      f"Link-time exception support without compile-time support may cause issues.",
+      file=sys.stderr, flush=True,
+    )
+  if env_simd and not yaml_has_simd:
+    print(
+      f"WARNING: Compiled with OCJS_SIMD=1 but emccFlags lacks -msimd128. "
+      f"wasm-opt will enable SIMD, but link may miss relaxed-simd optimizations.",
+      file=sys.stderr, flush=True,
     )
 
 
@@ -142,7 +150,7 @@ def runBuild(build, libraryBasePath):
   except BuildFlagMismatch as e:
     print(str(e), flush=True)
     raise SystemExit(1)
-  _validate_yaml_env_consistency(build)
+  _warn_consistency(build)
 
   def getAdditionalBindCodeO():
     combined = BUILTIN_ADDITIONAL_BIND_CODE
@@ -226,35 +234,35 @@ def runBuild(build, libraryBasePath):
   for sym in build.get("allowedUndefinedSymbols", []):
     allowed_undef_flags.extend(["-Wl,--allow-undefined-symbol=" + sym])
 
-  OPT_LEVEL = os.environ.get("OCJS_LINK_OPT", os.environ.get("OCJS_OPT", "-O2"))
-  USE_LTO = os.environ.get("OCJS_LTO", "1") == "1"
-  yaml_flags = [f for f in build["emccFlags"] if not f.startswith("-O") and f != "-flto"]
-  if os.environ.get("OCJS_EH_MODE", "wasm") == "js":
-    yaml_flags = ["-fexceptions" if f == "-fwasm-exceptions" else f for f in yaml_flags]
-  env_flags = [OPT_LEVEL] + (["-flto"] if USE_LTO else [])
+  emcc_flags = build.get("emccFlags", [])
+  has_opt = any(f.startswith("-O") for f in emcc_flags)
+  has_lto = "-flto" in emcc_flags
+
+  fill_flags = []
+  if not has_opt:
+    fill_flags.append(os.environ.get("OCJS_LINK_OPT", os.environ.get("OCJS_OPT", "-O2")))
+  if not has_lto and os.environ.get("OCJS_LTO", "0") == "1":
+    fill_flags.append("-flto")
+
+  output_dir = os.environ.get("OCJS_OUTPUT_DIR", os.getcwd())
   linkCmd = [
     "emcc", "-lembind",
     *([additionalBindCodeO] if additionalBindCodeO else []),
     *bindingsO, *sourcesO,
-    "-o", os.getcwd() + "/" + build["name"],
+    "-o", output_dir + "/" + build["name"],
     *(["-pthread"] if os.environ["THREADING"] == "multi-threaded" else []),
-    *env_flags,
-    *yaml_flags,
+    *fill_flags,
+    *emcc_flags,
     *allowed_undef_flags,
   ]
-  if os.environ.get("OCJS_BIGINT", "0") == "1":
-    linkCmd.append("-sWASM_BIGINT=1")
   if os.environ.get("OCJS_CLOSURE", "false") == "true":
     linkCmd.extend(["--closure", "1"])
-  if os.environ.get("OCJS_EVAL_CTORS", "false") == "true":
-    eval_ctors_level = os.environ.get("OCJS_EVAL_CTORS_LEVEL", "1")
-    linkCmd.append(f"-sEVAL_CTORS={eval_ctors_level}")
   print(f"Linking {len(bindingsO)} bindings + {len(sourcesO)} sources ...", flush=True)
   link_start = time.time()
   subprocess.check_call(linkCmd)
   link_duration = time.time() - link_start
 
-  wasmFile = os.getcwd() + "/" + os.path.splitext(build["name"])[0] + ".wasm"
+  wasmFile = output_dir + "/" + os.path.splitext(build["name"])[0] + ".wasm"
   emsdk = os.environ.get("EMSDK", "")
   wasmOptPath = shutil.which("wasm-opt") or (os.path.join(emsdk, "upstream", "bin", "wasm-opt") if emsdk else None)
 
@@ -331,7 +339,7 @@ def main():
   parser.add_argument("--dts-only", action="store_true",
                        help="Regenerate only the .d.ts file from existing .d.ts.json fragments (no compile/link)")
   args = parser.parse_args()
-  libraryBasePath = OCJS_ROOT + "/build"
+  libraryBasePath = os.environ.get("BUILD_DIR", OCJS_ROOT + "/build")
 
   global _yaml_config_hash
   with open(args.filename, "rb") as yf:

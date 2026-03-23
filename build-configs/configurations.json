@@ -1,0 +1,82 @@
+{
+  "default": {
+    "OCJS_OPT": "-O2",
+    "OCJS_LTO": "0",
+    "OCJS_EXCEPTIONS": "0",
+    "THREADING": "single-threaded",
+    "OCJS_SIMD": "0",
+    "OCJS_WASM_OPT_LEVEL": "-O3",
+    "OCJS_CLOSURE": "false",
+    "OCJS_EVAL_CTORS": "false",
+    "OCJS_CONVERGE": "false",
+    "OCJS_PATCH_DUMP": "false"
+  },
+  "O0-debug": {
+    "OCJS_OPT": "-O0",
+    "OCJS_LTO": "0",
+    "OCJS_EXCEPTIONS": "0",
+    "THREADING": "single-threaded",
+    "OCJS_SIMD": "0",
+    "OCJS_WASM_OPT_LEVEL": "-O0",
+    "OCJS_CLOSURE": "false",
+    "OCJS_EVAL_CTORS": "false",
+    "OCJS_CONVERGE": "false",
+    "OCJS_PATCH_DUMP": "false"
+  },
+  "O2-balanced": {
+    "OCJS_OPT": "-O2",
+    "OCJS_LTO": "0",
+    "OCJS_EXCEPTIONS": "0",
+    "THREADING": "single-threaded",
+    "OCJS_SIMD": "0",
+    "OCJS_WASM_OPT_LEVEL": "-O3",
+    "OCJS_CLOSURE": "false",
+    "OCJS_EVAL_CTORS": "false",
+    "OCJS_CONVERGE": "false",
+    "OCJS_PATCH_DUMP": "false"
+  },
+  "O3-maxperf": {
+    "OCJS_OPT": "-O3",
+    "OCJS_LTO": "0",
+    "OCJS_EXCEPTIONS": "0",
+    "THREADING": "single-threaded",
+    "OCJS_DEFINES": "OCCT_NO_DUMP",
+    "OCJS_UNDEFINES": "OCC_CONVERT_SIGNALS",
+    "OCJS_SIMD": "0",
+    "OCJS_WASM_OPT_LEVEL": "-O3",
+    "OCJS_CLOSURE": "true",
+    "OCJS_EVAL_CTORS": "true",
+    "OCJS_CONVERGE": "true",
+    "OCJS_PATCH_DUMP": "true"
+  },
+  "Os-minsize": {
+    "OCJS_OPT": "-Os",
+    "OCJS_LTO": "0",
+    "OCJS_EXCEPTIONS": "0",
+    "THREADING": "single-threaded",
+    "OCJS_DEFINES": "OCCT_NO_DUMP",
+    "OCJS_UNDEFINES": "OCC_CONVERT_SIGNALS",
+    "OCJS_SIMD": "0",
+    "OCJS_WASM_OPT_LEVEL": "-Oz",
+    "OCJS_CLOSURE": "true",
+    "OCJS_EVAL_CTORS": "true",
+    "OCJS_CONVERGE": "true",
+    "OCJS_PATCH_DUMP": "true"
+  },
+  "O3-wasm-exc-simd": {
+    "OCJS_OPT": "-O3",
+    "OCJS_LTO": "0",
+    "OCJS_EXCEPTIONS": "1",
+    "OCJS_SIMD": "1",
+    "THREADING": "single-threaded",
+    "OCJS_DEFINES": "OCCT_NO_DUMP",
+    "OCJS_UNDEFINES": "OCC_CONVERT_SIGNALS",
+    "OCJS_WASM_OPT_LEVEL": "-O4",
+    "OCJS_CLOSURE": "true",
+    "OCJS_EVAL_CTORS": "true",
+    "OCJS_EVAL_CTORS_LEVEL": "2",
+    "OCJS_CONVERGE": "true",
+    "OCJS_PATCH_DUMP": "true",
+    "OCJS_BIGINT": "1"
+  }
+}

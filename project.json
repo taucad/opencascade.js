@@ -1,0 +1,129 @@
+{
+  "name": "ocjs",
+  "$schema": "./node_modules/nx/schemas/project-schema.json",
+  "root": ".",
+  "targets": {
+    "setup": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "./scripts/setup-deps.sh",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "pch": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "dependsOn": ["setup"],
+      "inputs": [
+        "compileConfig",
+        "toolchain",
+        "depsVersion",
+        { "runtime": "git -C deps/OCCT rev-parse HEAD 2>/dev/null || echo missing" }
+      ],
+      "outputs": [
+        "{projectRoot}/build/pch.h.pch",
+        "{projectRoot}/build/pch.h",
+        "{projectRoot}/build/occt-includes/",
+        "{projectRoot}/build/build-flags.json"
+      ],
+      "options": {
+        "command": "./build-wasm.sh pch",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "generate": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "dependsOn": ["setup", "pch"],
+      "inputs": [
+        "generatorCode",
+        "depsVersion",
+        { "runtime": "git -C deps/OCCT rev-parse HEAD 2>/dev/null || echo missing" }
+      ],
+      "outputs": [
+        "{projectRoot}/build/bindings/"
+      ],
+      "options": {
+        "command": "./build-wasm.sh generate",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "compile-bindings": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "dependsOn": ["pch", "generate"],
+      "inputs": [
+        "compileConfig",
+        "toolchain",
+        "{projectRoot}/build/bindings/"
+      ],
+      "outputs": [
+        "{projectRoot}/build/bindings/**/*.cpp.o",
+        "{projectRoot}/build/binding-report.json"
+      ],
+      "options": {
+        "command": "./build-wasm.sh bindings",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "compile-sources": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "dependsOn": ["pch"],
+      "inputs": [
+        "compileConfig",
+        "toolchain",
+        "depsVersion",
+        { "runtime": "git -C deps/OCCT rev-parse HEAD 2>/dev/null || echo missing" }
+      ],
+      "outputs": [
+        "{projectRoot}/build/occt-cmake/",
+        "{projectRoot}/build/.cmake-lib-dir"
+      ],
+      "options": {
+        "command": "./build-wasm.sh sources",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "link": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "dependsOn": ["compile-bindings", "compile-sources"],
+      "inputs": [
+        "compileConfig",
+        "linkConfig",
+        "toolchain",
+        { "env": "OCJS_YAML" },
+        { "runtime": "shasum -a 256 \"${OCJS_YAML:-/dev/null}\" 2>/dev/null || echo no-yaml" }
+      ],
+      "outputs": [
+        "{projectRoot}/dist/"
+      ],
+      "options": {
+        "command": "./build-wasm.sh link \"${OCJS_YAML}\"",
+        "cwd": "{projectRoot}",
+        "env": {
+          "OCJS_OUTPUT_DIR": "{projectRoot}/dist"
+        }
+      }
+    },
+    "build": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "dependsOn": ["link"],
+      "options": {
+        "command": "echo 'Build complete. Outputs in dist/'"
+      }
+    },
+    "provenance": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "dependsOn": ["link"],
+      "options": {
+        "command": "python3 src/provenance.py finalize --wasm-dir dist/ --duration 0",
+        "cwd": "{projectRoot}"
+      }
+    }
+  }
+}

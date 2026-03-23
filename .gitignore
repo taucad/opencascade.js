@@ -15,3 +15,12 @@ pull-stages-output.log
 build-configs/*.js
 build-configs/*.d.ts
 build-configs/provenance.json
+
+# Nx
+.nx/
+
+# Self-contained dependencies (Phase 2)
+/deps/
+
+# Build output
+/dist/
