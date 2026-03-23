@@ -1359,7 +1359,6 @@ mainBuild:
   - symbol: HLRTopoBRep_FaceIsoLiner
   - symbol: HLRTopoBRep_OutLiner
   - symbol: HLRTopoBRep_VData
-  - symbol: Handle_Standard_Type
   - symbol: HatchGen_Domain
   - symbol: HatchGen_ErrorStatus
   - symbol: HatchGen_IntersectionPoint
@@ -3651,12 +3650,10 @@ mainBuild:
   - symbol: TColStd_Array1OfInteger
   - symbol: TColStd_Array1OfListOfInteger
   - symbol: TColStd_Array1OfReal
-  - symbol: TColStd_Array1OfTransient
   - symbol: TColStd_Array2OfBoolean
   - symbol: TColStd_Array2OfCharacter
   - symbol: TColStd_Array2OfInteger
   - symbol: TColStd_Array2OfReal
-  - symbol: TColStd_Array2OfTransient
   - symbol: TColStd_HArray1OfAsciiString
   - symbol: TColStd_HArray1OfBoolean
   - symbol: TColStd_HArray1OfByte
@@ -3665,25 +3662,19 @@ mainBuild:
   - symbol: TColStd_HArray1OfInteger
   - symbol: TColStd_HArray1OfListOfInteger
   - symbol: TColStd_HArray1OfReal
-  - symbol: TColStd_HArray1OfTransient
   - symbol: TColStd_HArray2OfBoolean
   - symbol: TColStd_HArray2OfCharacter
   - symbol: TColStd_HArray2OfInteger
   - symbol: TColStd_HArray2OfReal
-  - symbol: TColStd_HArray2OfTransient
   - symbol: TColStd_HPackedMapOfInteger
   - symbol: TColStd_ListOfAsciiString
   - symbol: TColStd_ListOfInteger
   - symbol: TColStd_ListOfReal
-  - symbol: TColStd_ListOfTransient
   - symbol: TColStd_SequenceOfAsciiString
   - symbol: TColStd_SequenceOfBoolean
   - symbol: TColStd_SequenceOfExtendedString
-  - symbol: TColStd_SequenceOfHAsciiString
-  - symbol: TColStd_SequenceOfHExtendedString
   - symbol: TColStd_SequenceOfInteger
   - symbol: TColStd_SequenceOfReal
-  - symbol: TColStd_SequenceOfTransient
   - symbol: TColgp_Array1OfCirc2d
   - symbol: TColgp_Array1OfDir
   - symbol: TColgp_Array1OfDir2d
@@ -3732,7 +3723,6 @@ mainBuild:
   - symbol: TColgp_HSequenceOfVec2d
   - symbol: TColgp_HSequenceOfXY
   - symbol: TColgp_HSequenceOfXYZ
-  - symbol: TColgp_SequenceOfArray1OfPnt2d
   - symbol: TColgp_SequenceOfAx1
   - symbol: TColgp_SequenceOfDir
   - symbol: TColgp_SequenceOfDir2d
@@ -4454,15 +4444,22 @@ mainBuild:
   - symbol: math_Uzawa
   - symbol: math_ValueAndWeight
   emccFlags:
-  - -sMODULARIZE
+  - -fwasm-exceptions
+  - -sEXPORT_EXCEPTION_HANDLING_HELPERS
   - -sEXPORT_ES6=1
+  - -sMODULARIZE
   - -sALLOW_MEMORY_GROWTH=1
-  - -sEXPORTED_RUNTIME_METHODS=["FS"]
   - -sINITIAL_MEMORY=100MB
   - -sMAXIMUM_MEMORY=4GB
+  - -sEXPORTED_RUNTIME_METHODS=["FS"]
   - -sUSE_FREETYPE=1
-  - -sERROR_ON_UNDEFINED_SYMBOLS=0
   - --no-entry
-  - -fexceptions
-  - -sDISABLE_EXCEPTION_CATCHING=0
+  - --emit-symbol-map
+  - -sERROR_ON_UNDEFINED_SYMBOLS=0
   - -Wl,--allow-undefined
+  - -sSTACK_SIZE=8388608
+  - -sWASM_BIGINT
+  - -sEVAL_CTORS=2
+  - -msimd128
+  - -mrelaxed-simd
+  - -O4
