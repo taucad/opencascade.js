@@ -275,7 +275,7 @@ def runBuild(build, libraryBasePath):
   skip_wasm_opt = os.environ.get("OCJS_SKIP_WASM_OPT", "0") == "1"
   if os.path.exists(wasmFile) and wasmOptPath and os.path.exists(wasmOptPath) and wasm_opt_level and not skip_wasm_opt:
     print(f"Running wasm-opt on {wasmFile} ({sizeBefore / (1024*1024):.1f} MB)...", flush=True)
-    wasm_opt_flag_list = [wasm_opt_level, "--strip-debug", "--strip-producers", "--enable-mutable-globals", "--enable-bulk-memory", "--enable-sign-ext", "--enable-nontrapping-float-to-int"]
+    wasm_opt_flag_list = [wasm_opt_level, "--strip-debug", "--strip-producers", "--enable-mutable-globals", "--enable-bulk-memory", "--enable-sign-ext", "--enable-nontrapping-float-to-int", "--traps-never-happen"]
     if os.environ.get("OCJS_CONVERGE", "false") == "true":
       wasm_opt_flag_list.append("--converge")
     wasmOptCmd = [wasmOptPath] + wasm_opt_flag_list
