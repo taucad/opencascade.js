@@ -9,6 +9,14 @@ function extractExceptionInfo(oc: any, e: unknown): { type: string; message: str
       message: failureData?.GetMessageString?.() ?? '',
     };
   }
+  if (typeof WebAssembly !== 'undefined' && e instanceof WebAssembly.Exception) {
+    try {
+      const [type, message] = oc.getExceptionMessage(e);
+      return { type: type ?? '', message: message ?? '' };
+    } catch {
+      return { type: 'WebAssembly.Exception', message: String(e) };
+    }
+  }
   const exc = e as Error;
   return {
     type: exc.name ?? '',
