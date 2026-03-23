@@ -4462,4 +4462,4 @@ mainBuild:
   - -sEVAL_CTORS=2
   - -msimd128
   - -mrelaxed-simd
-  - -O4
+  - -O3
