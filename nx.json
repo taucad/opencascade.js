@@ -31,7 +31,7 @@
     "depsVersion": ["{projectRoot}/DEPS.json"],
     "generatorCode": ["{projectRoot}/src/**/*.py", "{projectRoot}/bindgen-filters.yaml"],
     "buildScript": ["{projectRoot}/build-wasm.sh"],
-    "patchScripts": ["{projectRoot}/src/patches/*.py"],
+    "patchScripts": ["{projectRoot}/src/patches/*.py", "{projectRoot}/src/patches/*.patch"],
     "compileBindingsScript": [
       "{projectRoot}/src/compileBindings.py",
       "{projectRoot}/src/Common.py"
