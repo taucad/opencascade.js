@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll } from 'vitest';
-import { initOC, getOC, wasmExists, isExceptionsEnabled } from './helpers.js';
+import { initOC, getOC, wasmExists } from './helpers.js';
 import { expectShapeGeometry } from './geometry-helpers.js';
 
 describe.skipIf(!wasmExists)('Smoke: Advanced modeling', () => {
@@ -72,8 +72,7 @@ describe.skipIf(!wasmExists)('Smoke: Advanced modeling', () => {
     });
   });
 
-  it('should produce pipe sweep with correct dimensions via MakePipe', async (ctx) => {
-    if (!isExceptionsEnabled()) ctx.skip();
+  it('should produce pipe sweep with correct dimensions via MakePipe', async () => {
 
     const oc = getOC();
     using p1 = new oc.gp_Pnt(0, 0, 0);

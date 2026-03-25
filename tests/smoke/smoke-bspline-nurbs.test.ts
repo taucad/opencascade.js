@@ -9,7 +9,7 @@
  * - Creating BSpline-based edges, wires, and faces
  */
 import { describe, it, expect, beforeAll } from 'vitest';
-import { initOC, getOC, wasmExists, isExceptionsEnabled } from './helpers.js';
+import { initOC, getOC, wasmExists } from './helpers.js';
 import { expectShapeGeometry } from './geometry-helpers.js';
 
 describe.skipIf(!wasmExists)('Smoke: BSpline and NURBS', () => {
@@ -47,8 +47,7 @@ describe.skipIf(!wasmExists)('Smoke: BSpline and NURBS', () => {
     expect(endPt.Y()).toBe(0);
   });
 
-  it('should create curve passing exactly through given points with GeomAPI_Interpolate', (ctx) => {
-    if (!isExceptionsEnabled()) ctx.skip();
+  it('should create curve passing exactly through given points with GeomAPI_Interpolate', () => {
 
     const oc = getOC();
     using points = new oc.TColgp_Array1OfPnt(1, 4);

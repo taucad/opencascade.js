@@ -74,64 +74,69 @@ describe.skipIf(!wasmExists)('Smoke: BRep_Tool overload dispatch (RBV arity coll
   }
 
   describe('PolygonOnTriangulation', () => {
-    it('3-arg non-RBV: (Edge, Triangulation, Location) → Handle<PolyOnTri>', () => {
+    it('should return Handle<PolyOnTri> for 3-arg non-RBV dispatch (Edge, Triangulation, Location)', () => {
       const oc = getOC();
       const { edge, triangulation, location, cleanup } = getFirstTriangulatedEdge();
 
-      if (!edge || !triangulation || !location) {
+      try {
+        if (!edge || !triangulation || !location) {
+          expect.fail('Could not find a triangulated edge in the test shape');
+        }
+
+        using handle = oc.BRep_Tool.PolygonOnTriangulation(edge, triangulation, location);
+        expect(typeof handle.isNull).toBe('function');
+        expect(handle.isNull()).toBe(false);
+      } finally {
+        location?.delete();
+        triangulation?.delete();
+        edge?.delete();
         cleanup();
-        return;
       }
-
-      using handle = oc.BRep_Tool.PolygonOnTriangulation(edge, triangulation, location);
-
-      expect(handle).toBeDefined();
-      expect(typeof handle.isNull).toBe('function');
-      expect(handle.isNull()).toBe(false);
-
-      location.delete();
-      triangulation.delete();
-      edge.delete();
-      cleanup();
     });
 
-    it('2-arg RBV: (Edge, Location) → { P, T }', () => {
+    it('should return {P, T} for 2-arg RBV dispatch (Edge, Location)', () => {
       const oc = getOC();
       const { edge, cleanup } = getFirstTriangulatedEdge();
 
-      if (!edge) {
+      try {
+        if (!edge) {
+          expect.fail('Could not find a triangulated edge in the test shape');
+        }
+
+        using loc = new oc.TopLoc_Location();
+        const result = oc.BRep_Tool.PolygonOnTriangulation(edge, loc);
+
+        expect(result).toEqual(expect.objectContaining({
+          P: expect.anything(),
+          T: expect.anything(),
+        }));
+      } finally {
+        edge?.delete();
         cleanup();
-        return;
       }
-
-      using loc = new oc.TopLoc_Location();
-      const result = oc.BRep_Tool.PolygonOnTriangulation(edge, loc);
-
-      expect(result).toBeDefined();
-      expect(result).toHaveProperty('P');
-      expect(result).toHaveProperty('T');
-
-      edge.delete();
-      cleanup();
     });
   });
 
   describe('PolygonOnSurface', () => {
-    it('2-arg non-RBV: (Edge, Face) → Handle<Poly_Polygon2D>', () => {
+    it('should return Handle<Poly_Polygon2D> for 2-arg non-RBV dispatch (Edge, Face)', () => {
       const oc = getOC();
       const { shape, cleanup } = makeTriangulatedBox();
-      using faceExplorer = new oc.TopExp_Explorer(
-        shape,
-        oc.TopAbs_ShapeEnum.TopAbs_FACE,
-        oc.TopAbs_ShapeEnum.TopAbs_SHAPE,
-      );
-      using edgeExplorer = new oc.TopExp_Explorer(
-        shape,
-        oc.TopAbs_ShapeEnum.TopAbs_EDGE,
-        oc.TopAbs_ShapeEnum.TopAbs_SHAPE,
-      );
 
-      if (faceExplorer.More() && edgeExplorer.More()) {
+      try {
+        using faceExplorer = new oc.TopExp_Explorer(
+          shape,
+          oc.TopAbs_ShapeEnum.TopAbs_FACE,
+          oc.TopAbs_ShapeEnum.TopAbs_SHAPE,
+        );
+        using edgeExplorer = new oc.TopExp_Explorer(
+          shape,
+          oc.TopAbs_ShapeEnum.TopAbs_EDGE,
+          oc.TopAbs_ShapeEnum.TopAbs_SHAPE,
+        );
+
+        expect(faceExplorer.More()).toBe(true);
+        expect(edgeExplorer.More()).toBe(true);
+
         const face = oc.TopoDS.Face(faceExplorer.Current());
         const edge = oc.TopoDS.Edge(edgeExplorer.Current());
 
@@ -141,33 +146,35 @@ describe.skipIf(!wasmExists)('Smoke: BRep_Tool overload dispatch (RBV arity coll
         if (handle !== null) handle.delete();
         edge.delete();
         face.delete();
+      } finally {
+        cleanup();
       }
-
-      cleanup();
     });
 
-    it('2-arg RBV: (Edge, Location) → { C, S }', () => {
+    it('should return {C, S} for 2-arg RBV dispatch (Edge, Location)', () => {
       const oc = getOC();
       const { shape, cleanup } = makeTriangulatedBox();
-      using edgeExplorer = new oc.TopExp_Explorer(
-        shape,
-        oc.TopAbs_ShapeEnum.TopAbs_EDGE,
-        oc.TopAbs_ShapeEnum.TopAbs_SHAPE,
-      );
 
-      if (edgeExplorer.More()) {
+      try {
+        using edgeExplorer = new oc.TopExp_Explorer(
+          shape,
+          oc.TopAbs_ShapeEnum.TopAbs_EDGE,
+          oc.TopAbs_ShapeEnum.TopAbs_SHAPE,
+        );
+
+        expect(edgeExplorer.More()).toBe(true);
+
         const edge = oc.TopoDS.Edge(edgeExplorer.Current());
         using loc = new oc.TopLoc_Location();
 
         const result = oc.BRep_Tool.PolygonOnSurface(edge, loc);
-        expect(result).toBeDefined();
-        expect(result).toHaveProperty('C');
-        expect(result).toHaveProperty('S');
+
+        expect(Object.keys(result).sort()).toEqual(['C', 'S']);
 
         edge.delete();
+      } finally {
+        cleanup();
       }
-
-      cleanup();
     });
   });
 });

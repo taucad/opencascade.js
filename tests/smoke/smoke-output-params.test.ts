@@ -36,8 +36,10 @@ describe.skipIf(!wasmExists)('Smoke: Output parameter return-by-value', () => {
 
       if (nSegments > 0) {
         const result = intersector.Segment(1);
-        expect(result).toHaveProperty('Curve1');
-        expect(result).toHaveProperty('Curve2');
+        expect(result).toEqual(expect.objectContaining({
+          Curve1: expect.anything(),
+          Curve2: expect.anything(),
+        }));
         expect(typeof result.Curve1.delete).toBe('function');
         expect(typeof result.Curve2.delete).toBe('function');
         result.Curve1.delete();
@@ -64,8 +66,8 @@ describe.skipIf(!wasmExists)('Smoke: Output parameter return-by-value', () => {
       if (nSegments > 0) {
         const { Curve1, Curve2 } = intersector.Segment(1);
 
-        expect(Curve1.FirstParameter).toBeDefined();
-        expect(Curve2.FirstParameter).toBeDefined();
+        expect(typeof Curve1.FirstParameter).toBe('function');
+        expect(typeof Curve2.FirstParameter).toBe('function');
 
         const fp1 = Curve1.FirstParameter();
         expect(typeof fp1).toBe('number');
@@ -84,16 +86,12 @@ describe.skipIf(!wasmExists)('Smoke: Output parameter return-by-value', () => {
       using sphere = new oc.Geom_SphericalSurface(ax3, 10.0);
 
       const bounds = sphere.Bounds();
-      expect(bounds).toHaveProperty('U1');
-      expect(bounds).toHaveProperty('U2');
-      expect(bounds).toHaveProperty('V1');
-      expect(bounds).toHaveProperty('V2');
-
-      expect(typeof bounds.U1).toBe('number');
-      expect(typeof bounds.U2).toBe('number');
-      expect(typeof bounds.V1).toBe('number');
-      expect(typeof bounds.V2).toBe('number');
-
+      expect(bounds).toEqual(expect.objectContaining({
+        U1: expect.any(Number),
+        U2: expect.any(Number),
+        V1: expect.any(Number),
+        V2: expect.any(Number),
+      }));
       expect(bounds.U2).toBeGreaterThan(bounds.U1);
     });
 
@@ -105,14 +103,13 @@ describe.skipIf(!wasmExists)('Smoke: Output parameter return-by-value', () => {
       using point = new oc.gp_Pnt(10, 0, 0);
 
       using projector = new oc.GeomAPI_ProjectPointOnSurf(point, sphere);
+      expect(projector.NbPoints()).toBeGreaterThan(0);
 
-      if (projector.NbPoints() > 0) {
-        const params = projector.LowerDistanceParameters();
-        expect(params).toHaveProperty('U');
-        expect(params).toHaveProperty('V');
-        expect(typeof params.U).toBe('number');
-        expect(typeof params.V).toBe('number');
-      }
+      const params = projector.LowerDistanceParameters();
+      expect(params).toEqual(expect.objectContaining({
+        U: expect.any(Number),
+        V: expect.any(Number),
+      }));
     });
   });
 
@@ -129,12 +126,12 @@ describe.skipIf(!wasmExists)('Smoke: Output parameter return-by-value', () => {
       const face = oc.TopoDS.Face(explorer.Current());
 
       const result = oc.BRepTools.UVBounds(face, 0, 0, 0, 0);
-      expect(result).toHaveProperty('UMin');
-      expect(result).toHaveProperty('UMax');
-      expect(result).toHaveProperty('VMin');
-      expect(result).toHaveProperty('VMax');
-      expect(typeof result.UMin).toBe('number');
-      expect(typeof result.UMax).toBe('number');
+      expect(result).toEqual(expect.objectContaining({
+        UMin: expect.any(Number),
+        UMax: expect.any(Number),
+        VMin: expect.any(Number),
+        VMax: expect.any(Number),
+      }));
       expect(result.UMax).toBeGreaterThanOrEqual(result.UMin);
     });
   });

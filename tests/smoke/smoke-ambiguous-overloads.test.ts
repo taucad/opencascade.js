@@ -76,13 +76,5 @@ describe.skipIf(!wasmExists)('Smoke: int/double dispatch (formerly ambiguous)', 
       expect(fromReal.Length()).toBeGreaterThan(0);
     });
 
-    it.skip('TCollection_HAsciiString — not constructable in current build', () => {
-      const oc = getOC();
-      using fromInt = new oc.TCollection_HAsciiString(42);
-      expect(fromInt.Length()).toBeGreaterThan(0);
-
-      using fromReal = new oc.TCollection_HAsciiString(3.14);
-      expect(fromReal.Length()).toBeGreaterThan(0);
-    });
   });
 });

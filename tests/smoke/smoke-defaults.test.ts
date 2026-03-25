@@ -12,7 +12,9 @@ describe.skipIf(!wasmExists)('Smoke: default parameter support', () => {
       const shape = box.Shape();
 
       using mesh = new oc.BRepMesh_IncrementalMesh(shape, 0.1);
-      expect(mesh).toBeDefined();
+      using progressRange = new oc.Message_ProgressRange();
+      mesh.Perform(progressRange);
+      expect(mesh.IsDone()).toBe(true);
     });
 
     it('should accept 3 args (shape, linearDeflection, isRelative) omitting angDeflection, isInParallel', () => {
@@ -21,7 +23,9 @@ describe.skipIf(!wasmExists)('Smoke: default parameter support', () => {
       const shape = box.Shape();
 
       using mesh = new oc.BRepMesh_IncrementalMesh(shape, 0.1, false);
-      expect(mesh).toBeDefined();
+      using progressRange = new oc.Message_ProgressRange();
+      mesh.Perform(progressRange);
+      expect(mesh.IsDone()).toBe(true);
     });
 
     it('should accept 4 args (shape, linearDeflection, isRelative, angDeflection) omitting isInParallel', () => {
@@ -30,7 +34,9 @@ describe.skipIf(!wasmExists)('Smoke: default parameter support', () => {
       const shape = box.Shape();
 
       using mesh = new oc.BRepMesh_IncrementalMesh(shape, 0.1, false, 0.5);
-      expect(mesh).toBeDefined();
+      using progressRange = new oc.Message_ProgressRange();
+      mesh.Perform(progressRange);
+      expect(mesh.IsDone()).toBe(true);
     });
 
     it('should still accept full 5 args', () => {
@@ -39,7 +45,9 @@ describe.skipIf(!wasmExists)('Smoke: default parameter support', () => {
       const shape = box.Shape();
 
       using mesh = new oc.BRepMesh_IncrementalMesh(shape, 0.1, false, 0.5, false);
-      expect(mesh).toBeDefined();
+      using progressRange = new oc.Message_ProgressRange();
+      mesh.Perform(progressRange);
+      expect(mesh.IsDone()).toBe(true);
     });
   });
 
