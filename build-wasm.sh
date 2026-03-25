@@ -23,6 +23,7 @@ set -euo pipefail
 #   RAPIDJSON_ROOT     Path to rapidjson (default: deps/rapidjson/)
 #   FREETYPE_ROOT      Path to freetype (default: ./freetype)
 #   OCJS_OPT           Compile optimization level (default: -O2)
+#   OCJS_EXTRA_CFLAGS  Extra compile flags appended to C/CXX flags (e.g. "-mllvm -inline-threshold=128")
 #   OCJS_LTO           Enable LTO at compile time: 0|1 (default: 1)
 #   OCJS_EXCEPTIONS    Enable native WASM exceptions: 0|1 (default: 0)
 #   THREADING          Threading mode: single-threaded|multi-threaded (default: single-threaded)
@@ -73,6 +74,7 @@ Environment Variables:
   FREETYPE_ROOT         Path to freetype (default: deps/freetype/)
   OCJS_CONFIG           Named configuration (alternative to --config flag)
   OCJS_OPT              Optimization level: -O0, -O2, -O3, -Os, -Oz (default: -O2)
+  OCJS_EXTRA_CFLAGS     Extra compile flags (e.g. "-mllvm -inline-threshold=128")
   OCJS_LTO              Enable LTO: 0|1 (default: 0)
   OCJS_EXCEPTIONS       Native WASM exceptions: 0|1 (default: 0)
   THREADING             Threading mode: single-threaded|multi-threaded (default: single-threaded)
@@ -311,6 +313,7 @@ fi
 # ── Build flags ──────────────────────────────────────────────────────
 
 export OCJS_OPT="${OCJS_OPT:--O3}"
+export OCJS_EXTRA_CFLAGS="${OCJS_EXTRA_CFLAGS:-}"
 export OCJS_LTO="${OCJS_LTO:-0}"
 export OCJS_EXCEPTIONS="${OCJS_EXCEPTIONS:-0}"
 export OCJS_WASM_OPT_LEVEL="${OCJS_WASM_OPT_LEVEL:--O4}"
@@ -341,6 +344,9 @@ printf "║  %-14s %s\n" "EMSDK:" "$EMSDK ║"
 printf "║  %-14s %s\n" "Emscripten:" "$(emcc --version 2>/dev/null | head -1) ║"
 printf "║  %-14s %s\n" "OCCT_ROOT:" "$OCCT_ROOT ║"
 printf "║  %-14s %s\n" "OCJS_OPT:" "$OCJS_OPT ║"
+if [ -n "$OCJS_EXTRA_CFLAGS" ]; then
+printf "║  %-14s %s\n" "EXTRA_CFLAGS:" "$OCJS_EXTRA_CFLAGS ║"
+fi
 printf "║  %-14s %s\n" "OCJS_LTO:" "$OCJS_LTO ║"
 printf "║  %-14s %s\n" "OCJS_EXCEPTIONS:" "$OCJS_EXCEPTIONS ║"
 printf "║  %-14s %s\n" "THREADING:" "$THREADING ║"
@@ -535,6 +541,11 @@ step_sources_cmake() {
       u="$(echo "$u" | xargs)"
       [ -n "$u" ] && cflags="$cflags -U$u" && cxxflags="$cxxflags -U$u"
     done
+  fi
+
+  if [ -n "$OCJS_EXTRA_CFLAGS" ]; then
+    cflags="$cflags $OCJS_EXTRA_CFLAGS"
+    cxxflags="$cxxflags $OCJS_EXTRA_CFLAGS"
   fi
 
   cmake_flags+=(

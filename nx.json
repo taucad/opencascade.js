@@ -6,6 +6,7 @@
       "{projectRoot}/build-configs/configurations.json",
       { "env": "OCJS_CONFIG" },
       { "env": "OCJS_OPT" },
+      { "env": "OCJS_EXTRA_CFLAGS" },
       { "env": "OCJS_LTO" },
       { "env": "OCJS_EXCEPTIONS" },
       { "env": "OCJS_EH_MODE" },
