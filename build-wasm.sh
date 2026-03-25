@@ -632,7 +632,40 @@ step_apply_patches() {
   else
     echo "  OCJS_PATCH_DUMP=false — no patches to apply (clean OCCT tree)."
   fi
+
+  step_patch_embind
+
+  echo "$(date +%s)" > "$BUILD_DIR/patches-applied"
   echo ""
+}
+
+step_patch_embind() {
+  echo "═══ Patching emsdk libembind.js (type-based overload dispatch) ═══"
+
+  local embind_dir="$EMSDK/upstream/emscripten"
+  local embind_file="$embind_dir/src/lib/libembind.js"
+  local patch_file="$OCJS_ROOT/src/patches/libembind-overloading.patch"
+
+  if [ ! -f "$embind_file" ]; then
+    echo "ERROR: libembind.js not found at $embind_file" >&2
+    exit 1
+  fi
+
+  local emsdk_version
+  emsdk_version="$(cat "$embind_dir/emscripten-version.txt" 2>/dev/null | tr -d '"' | tr -d '[:space:]')"
+  if [ "$emsdk_version" != "5.0.1" ]; then
+    echo "WARNING: libembind patch was created for emsdk 5.0.1 but found $emsdk_version" >&2
+    echo "         The patch may fail or produce incorrect results." >&2
+  fi
+
+  if grep -q 'ensureOverloadSignatureTable' "$embind_file" 2>/dev/null; then
+    echo "  libembind.js already patched — skipping."
+    return 0
+  fi
+
+  echo "  Applying libembind-overloading.patch..."
+  cd "$embind_dir" && patch -p0 --no-backup-if-mismatch < "$patch_file"
+  echo "  libembind.js patched successfully."
 }
 
 # (step_compile_all removed -- Nx manages task orchestration and caching)
@@ -674,7 +707,7 @@ while [ $# -gt 0 ]; do
       export OCJS_CONFIG="$1"
       shift
       ;;
-    pch|docs|generate|bindings|sources|sources-legacy|apply-patches)
+    pch|docs|generate|bindings|sources|sources-legacy|apply-patches|patch-embind)
       COMMANDS+=("$1")
       shift
       ;;
@@ -716,6 +749,7 @@ START_TIME=$(date +%s)
 for cmd in "${COMMANDS[@]}"; do
   case "$cmd" in
     apply-patches) step_apply_patches ;;
+    patch-embind) step_patch_embind ;;
     pch)       step_pch ;;
     docs)      step_docs ;;
     generate)  step_generate ;;

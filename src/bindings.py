@@ -420,6 +420,66 @@ class Bindings:
 
     return JsType('number_float', 'number')
 
+  def _classify_js_dispatch_type(self, clang_type, templateDecl=None, templateArgs=None):
+    """Coarse JS type classification matching what the bugra9 embind runtime can distinguish.
+
+    Unlike _classify_js_type which has fine-grained categories (number_int, number_float,
+    string_enum), this maps to what typeof/instanceof can actually distinguish at runtime:
+    - object(ClassName) — instanceof check
+    - number — typeof === 'number' (int and float are indistinguishable)
+    - boolean — typeof === 'boolean'
+    - string — typeof === 'string' (string_enum and string are indistinguishable)
+    """
+    fine = self._classify_js_type(clang_type, templateDecl, templateArgs)
+    if fine.category == 'object':
+      return fine
+    if fine.category == 'boolean':
+      return JsType('boolean', 'boolean')
+    if fine.category in ('number_int', 'number_float'):
+      return JsType('number', 'number')
+    if fine.category in ('string', 'string_enum'):
+      return JsType('string', 'string')
+    return JsType('number', 'number')
+
+  def _build_js_dispatch_tree(self, group, available_positions=None, templateDecl=None, templateArgs=None):
+    """Build dispatch tree using coarse JS-dispatch types (what bugra9 runtime can distinguish)."""
+    if len(group) == 1:
+      return DispatchLeaf(group[0])
+
+    if available_positions is None:
+      available_positions = list(range(len(list(group[0].get_arguments()))))
+
+    if not available_positions:
+      return DispatchAmbiguous(group)
+
+    best_pos = None
+    best_count = 0
+    for p in available_positions:
+      types = set()
+      for ov in group:
+        args = list(ov.get_arguments())
+        if p < len(args):
+          types.add(self._classify_js_dispatch_type(args[p].type, templateDecl, templateArgs))
+      if len(types) > best_count:
+        best_count = len(types)
+        best_pos = p
+
+    if best_pos is None or best_count <= 1:
+      return DispatchAmbiguous(group)
+
+    type_groups = defaultdict(list)
+    for ov in group:
+      args = list(ov.get_arguments())
+      js_type = self._classify_js_dispatch_type(args[best_pos].type, templateDecl, templateArgs)
+      type_groups[js_type].append(ov)
+
+    remaining = [p for p in available_positions if p != best_pos]
+    branches = {}
+    for js_type, sub_group in type_groups.items():
+      branches[js_type] = self._build_js_dispatch_tree(sub_group, remaining, templateDecl, templateArgs)
+
+    return DispatchBranch(best_pos, branches)
+
   def _dispatch_primitive_sort_key(self, js_type_subtree_pair):
     """Order primitive JS branches: string_enum (membership) before generic string/number."""
     jt = js_type_subtree_pair[0]
@@ -677,6 +737,10 @@ class Bindings:
     return output
 
 class EmbindBindings(Bindings):
+  _global_emitted_structs = {}
+  _global_struct_defs = []
+  _global_struct_registrations = []
+
   def __init__(
     self,
     tuInfo
@@ -684,7 +748,7 @@ class EmbindBindings(Bindings):
     super().__init__(tuInfo)
     self._result_struct_defs = []
     self._result_struct_registrations = []
-    self._emitted_structs = {}
+    self._emitted_structs = EmbindBindings._global_emitted_structs
 
   def processClass(self, theClass, templateDecl = None, templateArgs = None):
     output = ""
@@ -705,7 +769,6 @@ class EmbindBindings(Bindings):
 
     self._result_struct_defs = []
     self._result_struct_registrations = []
-    self._emitted_structs = {}
 
     method_output = super().processClass(theClass, templateDecl, templateArgs)
 
@@ -752,13 +815,16 @@ class EmbindBindings(Bindings):
     return "  ;\n"
 
   def _emitConstructor(self, className, args, templateDecl, templateArgs, useHandleOverride):
-    """Emit a single constructor binding, using optional_override for Transient-derived classes."""
-    argTypesBindings = ", ".join([
-      self.getSingleArgumentBinding(False, True, templateDecl, templateArgs)(arg)[0]
-      for arg in args
-    ])
-    if not useHandleOverride:
+    """Emit a single constructor binding, using optional_override for Handle wrapping or CString conversion."""
+    hasCString = any(isCString(a.type) for a in args)
+
+    if not useHandleOverride and not hasCString:
+      argTypesBindings = ", ".join([
+        self.getSingleArgumentBinding(False, True, templateDecl, templateArgs)(arg)[0]
+        for arg in args
+      ])
       return "    .constructor<" + argTypesBindings + ">()\n"
+
     namedArgs = []
     for i, arg in enumerate(args):
       name = arg.spelling if arg.spelling else f"a{i}"
@@ -769,10 +835,18 @@ class EmbindBindings(Bindings):
         namedArgs.append((typeStr + " " + name, name))
     typedArgs = ", ".join([a[0] for a in namedArgs])
     argNames = ", ".join([a[1] for a in namedArgs])
+
+    if useHandleOverride:
+      return (
+        "    .constructor(optional_override([](" + typedArgs + ") {\n"
+        "      return opencascade::handle<" + className + ">(new " + className + "(" + argNames + "));\n"
+        "    }))\n"
+      )
+
     return (
       "    .constructor(optional_override([](" + typedArgs + ") {\n"
-      "      return opencascade::handle<" + className + ">(new " + className + "(" + argNames + "));\n"
-      "    }))\n"
+      "      return new " + className + "(" + argNames + ");\n"
+      "    }), allow_raw_pointers())\n"
     )
 
   def _codegen_dispatch_tree(self, tree, className, useHandleOverride, templateDecl, templateArgs, ind=6, arity=None):
@@ -955,16 +1029,31 @@ class EmbindBindings(Bindings):
       if len(group) == 1:
         c = group[0]
         actual_args = list(c.get_arguments())
-        # If this arity comes from default expansion, emit truncated constructor
         emit_args = actual_args[:arity]
-        if not any(isCString(a.type) for a in emit_args):
-          output += self._emitConstructor(className, emit_args, templateDecl, templateArgs, useHandleOverride)
-        else:
-          tree = DispatchLeaf(c)
-          output += self._emitValDispatchConstructor(className, arity, tree, useHandleOverride, templateDecl, templateArgs)
+        output += self._emitConstructor(className, emit_args, templateDecl, templateArgs, useHandleOverride)
       else:
-        tree = self._build_dispatch_tree(group, available_positions=list(range(arity)), templateDecl=templateDecl, templateArgs=templateArgs)
-        output += self._emitValDispatchConstructor(className, arity, tree, useHandleOverride, templateDecl, templateArgs)
+        js_tree = self._build_js_dispatch_tree(group, available_positions=list(range(arity)), templateDecl=templateDecl, templateArgs=templateArgs)
+        js_ambiguous = self._collect_ambiguous_overloads(js_tree)
+        js_distinguishable = [c for c in group if c not in js_ambiguous]
+
+        for c in js_distinguishable:
+          actual_args = list(c.get_arguments())[:arity]
+          output += self._emitConstructor(className, actual_args, templateDecl, templateArgs, useHandleOverride)
+
+        if js_ambiguous:
+          val_tree = self._build_dispatch_tree(js_ambiguous, available_positions=list(range(arity)), templateDecl=templateDecl, templateArgs=templateArgs)
+          val_ambiguous_remaining = self._collect_ambiguous_overloads(val_tree)
+
+          if val_ambiguous_remaining:
+            val_dispatchable = [c for c in js_ambiguous if c not in val_ambiguous_remaining]
+          else:
+            val_dispatchable = []
+
+          if val_dispatchable or (js_ambiguous and not val_ambiguous_remaining):
+            output += self._emitValDispatchConstructor(className, arity, val_tree, useHandleOverride, templateDecl, templateArgs)
+
+          # Truly ambiguous overloads (indistinguishable even by val dispatch) are handled
+          # by processOverloadedConstructors which emits _N subclasses
 
     return output
 
@@ -1113,21 +1202,36 @@ class EmbindBindings(Bindings):
       struct_fields.insert(0, (ret_field_name, retType))
 
     field_key = tuple((fname, ftype) for fname, ftype in struct_fields)
-    existing = self._emitted_structs.get(structName)
-    if existing is not None and existing != field_key:
-      counter = 2
-      while f"{structName}_{counter}" in self._emitted_structs:
-        counter += 1
-      structName = f"{structName}_{counter}"
 
-    if structName not in self._emitted_structs:
+    # Global dedup: find canonical name for identical layouts
+    reused_name = None
+    for existing_name, existing_key in self._emitted_structs.items():
+      if existing_key == field_key:
+        reused_name = existing_name
+        break
+
+    if reused_name is not None:
+      structName = reused_name
+    else:
+      existing = self._emitted_structs.get(structName)
+      if existing is not None and existing != field_key:
+        counter = 2
+        while f"{structName}_{counter}" in self._emitted_structs:
+          counter += 1
+        structName = f"{structName}_{counter}"
       self._emitted_structs[structName] = field_key
+
+    # Emit struct definition only once per TU to avoid redefinition errors
+    already_defined = any(f"struct {structName} {{" in d for d in self._result_struct_defs)
+    if not already_defined:
       struct_def = f"struct {structName} {{\n"
       for fname, ftype in struct_fields:
         struct_def += f"  {ftype} {fname};\n"
       struct_def += f"}};\n\n"
       self._result_struct_defs.append(struct_def)
 
+    # Only emit value_object registration once globally
+    if reused_name is None:
       reg = f"  value_object<{structName}>(\"{structName}\")\n"
       for fname, ftype in struct_fields:
         reg += f"    .field(\"{fname}\", &{structName}::{fname})\n"
@@ -1137,201 +1241,30 @@ class EmbindBindings(Bindings):
     return (structName, struct_fields, output_params, stripped_indices)
 
   def _emitRbvCollisionDispatch(self, theClass, colliding_methods, js_arity, className, templateDecl, templateArgs):
-    """Emit val-based dispatch for methods that collide at the same JS arity due to RBV stripping."""
-    classTypeName = getClassTypeName(theClass, templateDecl)
-    isStatic = all(m.is_static_method() for m in colliding_methods)
+    """Emit separate typed bindings for methods that collide at same JS arity due to RBV stripping.
+
+    Each method gets its own binding with the same name. The patched embind runtime
+    handles JS-side type dispatch. RBV optional_override wrappers remain for
+    value_object packing but without type discrimination logic.
+    """
+    output = ""
     methodName = colliding_methods[0].spelling
 
-    method_info = []
     for m in colliding_methods:
       args = list(m.get_arguments())
       has_output = any(isOutputParam(a.type) for a in args)
-      js_visible = self._getJsVisibleArgs(m)
 
-      rbv_data = None
       if has_output:
-        [overloadPostfix, _] = getMethodOverloadPostfix(theClass, m)
-        rbv_data = self._ensureResultStruct(m, args, className, overloadPostfix, templateDecl, templateArgs)
-
-      method_info.append({
-        'method': m,
-        'args': args,
-        'has_output': has_output,
-        'js_visible': js_visible,
-        'rbv_data': rbv_data,
-      })
-
-    dispatch_pos = None
-    for pos in range(js_arity):
-      types_at_pos = set()
-      for info in method_info:
-        if pos < len(info['js_visible']):
-          _, arg = info['js_visible'][pos]
-          js_type = self._classify_js_type(arg.type, templateDecl, templateArgs)
-          types_at_pos.add((js_type.category, js_type.name))
-      if len(types_at_pos) > 1:
-        dispatch_pos = pos
-        break
-
-    if dispatch_pos is None:
-      print(f"WARNING: Cannot distinguish JS-arity collision for {className}::{methodName} at arity {js_arity}")
-      for info in method_info[1:]:
-        print(f"  Skipping overload (C++ arity {len(info['args'])})")
-      info = method_info[0]
-      try:
-        return self.processMethodOrProperty(theClass, info['method'], templateDecl, templateArgs, overload_index=0, override_postfix="")
-      except SkipException as e:
-        print(str(e))
-        return ""
-
-    val_args = ", ".join([f"emscripten::val arg{i}" for i in range(js_arity)])
-    if isStatic:
-      sig_args = val_args
-      functionCommand = "class_function"
-    else:
-      sig_args = f"{classTypeName}& self" + (", " + val_args if val_args else "")
-      functionCommand = "function"
-
-    output = f'{indent(2)}.{functionCommand}("{methodName}", optional_override([]({sig_args}) -> emscripten::val {{\n'
-
-    first = True
-    for info in method_info:
-      m = info['method']
-      _, dispatch_arg = info['js_visible'][dispatch_pos]
-      js_type = self._classify_js_type(dispatch_arg.type, templateDecl, templateArgs)
-
-      if first:
-        keyword = "if"
-        first = False
-      elif info is method_info[-1]:
-        keyword = "else"
+        try:
+          output += self.processMethodOrProperty(theClass, m, templateDecl, templateArgs, overload_index=0, override_postfix="")
+        except SkipException as e:
+          print(str(e))
       else:
-        keyword = "else if"
+        try:
+          output += self.processMethodOrProperty(theClass, m, templateDecl, templateArgs, overload_index=0, override_postfix="")
+        except SkipException as e:
+          print(str(e))
 
-      if info is method_info[-1]:
-        output += f'      {keyword} {{\n'
-      elif js_type.category == 'object':
-        check = (
-          f'arg{dispatch_pos}.typeOf().as<std::string>() == "object"'
-          f' && !emscripten::val::module_property("{js_type.name}").isUndefined()'
-          f' && arg{dispatch_pos}.instanceof(emscripten::val::module_property("{js_type.name}"))'
-        )
-        output += f'      {keyword} ({check}) {{\n'
-      elif js_type.category in ('number_int', 'number_float'):
-        check = f'arg{dispatch_pos}.typeOf().as<std::string>() == "number"'
-        output += f'      {keyword} ({check}) {{\n'
-      elif js_type.category == 'string':
-        check = f'arg{dispatch_pos}.typeOf().as<std::string>() == "string"'
-        output += f'      {keyword} ({check}) {{\n'
-      elif js_type.category == 'boolean':
-        check = f'arg{dispatch_pos}.typeOf().as<std::string>() == "boolean"'
-        output += f'      {keyword} ({check}) {{\n'
-      else:
-        check = f'arg{dispatch_pos}.typeOf().as<std::string>() == "object"'
-        output += f'      {keyword} ({check}) {{\n'
-
-      if info['has_output'] and info['rbv_data'] is not None:
-        structName, struct_fields, output_params, stripped_indices = info['rbv_data']
-        has_nonvoid_return = m.result_type.spelling != "void"
-        output_param_indices = set(i for i, _ in output_params)
-
-        non_stripped_output_js_idx = {}
-        js_idx_scan = 0
-        for i, arg in enumerate(info['args']):
-          if i in stripped_indices:
-            continue
-          if isRawPointerParam(arg.type):
-            continue
-          if isOutputParam(arg.type) and i not in stripped_indices:
-            non_stripped_output_js_idx[i] = js_idx_scan
-          js_idx_scan += 1
-
-        for i, arg in output_params:
-          name = self._getArgName(arg, i)
-          pointee = arg.type.get_pointee()
-          if i in stripped_indices:
-            if _isHandleType(pointee):
-              cppType = pointee.spelling
-              output += f"        {cppType} {name};\n"
-            elif pointee.get_canonical().spelling in builtInTypes:
-              cppType = pointee.get_canonical().spelling
-              output += f"        {cppType} {name} = 0;\n"
-            elif pointee.kind == clang.cindex.TypeKind.ENUM or pointee.get_canonical().kind == clang.cindex.TypeKind.ENUM:
-              cppType = pointee.spelling
-              output += f"        {cppType} {name}{{}};\n"
-          else:
-            if pointee.get_canonical().spelling in builtInTypes:
-              cppType = pointee.get_canonical().spelling
-              js_idx = non_stripped_output_js_idx[i]
-              output += f"        {cppType} {name} = arg{js_idx}.as<{cppType}>();\n"
-            elif pointee.kind == clang.cindex.TypeKind.ENUM or pointee.get_canonical().kind == clang.cindex.TypeKind.ENUM:
-              cppType = pointee.spelling
-              js_idx = non_stripped_output_js_idx[i]
-              output += f"        {cppType} {name} = arg{js_idx}.as<{cppType}>();\n"
-
-        call_args = []
-        js_arg_idx = 0
-        for i, arg in enumerate(info['args']):
-          name = self._getArgName(arg, i)
-          if isOutputParam(arg.type) and i in output_param_indices:
-            call_args.append(name)
-            if i not in stripped_indices:
-              js_arg_idx += 1
-          elif isRawPointerParam(arg.type):
-            call_args.append('nullptr')
-          else:
-            argType = self.getOriginalArgumentType(arg, templateDecl, templateArgs)
-            js_type_local = self._classify_js_type(arg.type, templateDecl, templateArgs)
-            if js_type_local.category == 'object':
-              call_args.append(f'arg{js_arg_idx}.as<{argType}>(emscripten::allow_raw_pointers())')
-            else:
-              canon = arg.type.get_canonical().spelling
-              if "type-parameter-" in canon:
-                canon = self.resolveWithCanonicalFallback(arg.type.spelling, arg.type, templateDecl, templateArgs)
-              call_args.append(f'arg{js_arg_idx}.as<{canon}>()')
-            js_arg_idx += 1
-
-        caller = f"{className}::" if m.is_static_method() else "self."
-        call_str = f"{caller}{m.spelling}({', '.join(call_args)})"
-
-        if has_nonvoid_return:
-          output += f"        auto ret = {call_str};\n"
-        else:
-          output += f"        {call_str};\n"
-
-        return_fields = []
-        if has_nonvoid_return:
-          return_fields.append("ret")
-        for i, arg in output_params:
-          name = self._getArgName(arg, i)
-          return_fields.append(name)
-        output += f"        return emscripten::val({structName}{{{', '.join(return_fields)}}});\n"
-      else:
-        conversions = []
-        for js_pos, (cpp_idx, arg) in enumerate(info['js_visible']):
-          cpp_type = self.getOriginalArgumentType(arg, templateDecl, templateArgs)
-          js_type_local = self._classify_js_type(arg.type, templateDecl, templateArgs)
-          if js_type_local.category == 'object':
-            conversions.append(f'arg{js_pos}.as<{cpp_type}>(emscripten::allow_raw_pointers())')
-          elif js_type_local.category == 'string' and isCString(arg.type):
-            conversions.append(f'arg{js_pos}.as<std::string>().c_str()')
-          else:
-            canon = arg.type.get_canonical().spelling
-            if "type-parameter-" in canon:
-              canon = self.resolveWithCanonicalFallback(arg.type.spelling, arg.type, templateDecl, templateArgs)
-            conversions.append(f'arg{js_pos}.as<{canon}>()')
-        args_str = ", ".join(conversions)
-        caller = f"{className}::" if m.is_static_method() else "self."
-        has_return = m.result_type.spelling != "void"
-        if has_return:
-          output += f'        return emscripten::val({caller}{m.spelling}({args_str}));\n'
-        else:
-          output += f'        {caller}{m.spelling}({args_str});\n'
-          output += f'        return emscripten::val::undefined();\n'
-
-      output += f'      }}\n'
-
-    output += "    }), allow_raw_pointers())\n"
     return output
 
   def _emitOutputParamBinding(self, theClass, method, args, className, classTypeName, overloadPostfix, templateDecl, templateArgs):
@@ -1353,7 +1286,7 @@ class EmbindBindings(Bindings):
         continue
       name = self._getArgName(arg, i)
       if self._needsCStringWrapper(arg.type):
-        lambda_params.append(f"emscripten::val {name}")
+        lambda_params.append(f"std::string {name}")
       else:
         argType = self.getOriginalArgumentType(arg, templateDecl, templateArgs)
         if isOutputParam(arg.type):
@@ -1386,9 +1319,9 @@ class EmbindBindings(Bindings):
       name = self._getArgName(arg, i)
       if self._needsCStringWrapper(arg.type):
         if not arg.type.get_canonical().get_pointee().is_const_qualified() or arg.type.is_const_qualified():
-          call_args.append(f"{name}.isNull() ? nullptr : strdup({name}.as<std::string>().c_str())")
+          call_args.append(f"strdup({name}.c_str())")
         else:
-          call_args.append(f"{name}.isNull() ? nullptr : {name}.as<std::string>().c_str()")
+          call_args.append(f"{name}.c_str()")
       elif isOutputParam(arg.type):
         call_args.append(name)
       else:
@@ -1474,7 +1407,7 @@ class EmbindBindings(Bindings):
         wrappedParamTypes = merge(", ", *map(lambda x:
           pick(
             x[1],
-            "emscripten::val",
+            "std::string" if isCString(args[x[0]].type) else "emscripten::val",
             replaceTemplateArgs(x)
           ),
           enumerate(argsNeedingWrapper)
@@ -1482,22 +1415,26 @@ class EmbindBindings(Bindings):
         wrappedParamTypesAndNames = merge(", ", *map(lambda x:
           pick(
             x[1],
-            f"emscripten::val {getArgName(x)}",
+            f"std::string {getArgName(x)}" if isCString(args[x[0]].type) else f"emscripten::val {getArgName(x)}",
             f"{replaceTemplateArgs(x)} {getArgName(x)}",
           ), enumerate(argsNeedingWrapper)))
         def generateInvocationArgs(x):
           if x[1]:
             if isCString(args[x[0]].type):
               if not args[x[0]].type.get_canonical().get_pointee().is_const_qualified() or args[x[0]].type.is_const_qualified():
-                return f"{getArgName(x)}.isNull() ? nullptr : strdup({getArgName(x)}.as<std::string>().c_str())"
+                return f"strdup({getArgName(x)}.c_str())"
               else:
-                return f"{getArgName(x)}.isNull() ? nullptr : {getArgName(x)}.as<std::string>().c_str()"
+                return f"{getArgName(x)}.c_str()"
             else:
               return getArgName(x)
           else:
             return getArgName(x)
+        returnNeedsCStringWrapper = isCString(method.result_type)
+        returnNeedsValWrapper = returnNeedsWrapper and not returnNeedsCStringWrapper
         resultTypeSpelling = \
-          pick(returnNeedsWrapper, "emscripten::val", self.resolveWithCanonicalFallback(method.result_type.spelling, method.result_type, templateDecl, templateArgs))
+          pick(returnNeedsValWrapper, "emscripten::val",
+            pick(returnNeedsCStringWrapper, "std::string",
+              self.resolveWithCanonicalFallback(method.result_type.spelling, method.result_type, templateDecl, templateArgs)))
         functionBindingHead = \
           merge("",
             "\n",
@@ -1542,18 +1479,25 @@ class EmbindBindings(Bindings):
               method.result_type.spelling == "void",
               "",
               pick(
-                returnNeedsWrapper,
+                returnNeedsValWrapper,
                 pick(
                   method.result_type.kind == clang.cindex.TypeKind.POINTER,
                   merge("",
                     indent(4),
                     "return ret == nullptr ? emscripten::val::null() : emscripten::val(static_cast<",
-                      pick(isCString(method.result_type), "std::string", self.getTypedefedTemplateTypeAsString(method.result_type.spelling, templateDecl, templateArgs)),
+                      self.getTypedefedTemplateTypeAsString(method.result_type.spelling, templateDecl, templateArgs),
                     ">(ret), allow_raw_pointers());\n",
                   ),
                   f"{indent(4)}return emscripten::val(ret, allow_raw_pointers());\n",
                 ),
-                f"{indent(4)}return ret;\n",
+                pick(
+                  returnNeedsCStringWrapper,
+                  merge("",
+                    indent(4),
+                    "return ret == nullptr ? std::string() : std::string(ret);\n",
+                  ),
+                  f"{indent(4)}return ret;\n",
+                ),
               ),
             ),
           )
@@ -1808,7 +1752,6 @@ class EmbindBindings(Bindings):
                m_arg.type.get_pointee().get_canonical().spelling in builtInTypes or
                m_arg.type.get_pointee().get_canonical().kind == clang.cindex.TypeKind.ENUM
              ))
-            or isCString(m_arg.type)
             or m_arg.type.get_canonical().spelling in unbindablePointerTypes
             for m_arg in m.get_arguments()
           )
@@ -1833,18 +1776,30 @@ class EmbindBindings(Bindings):
             except SkipException as e:
               print(str(e))
           else:
-            return_types = set(m.result_type.get_canonical().spelling for m in dispatchable)
-            mixed_returns = len(return_types) > 1
+            js_tree = self._build_js_dispatch_tree(dispatchable, templateDecl=templateDecl, templateArgs=templateArgs)
+            js_ambiguous = self._collect_ambiguous_overloads(js_tree)
+            js_distinguishable = [m for m in dispatchable if m not in js_ambiguous]
 
-            tree = self._build_dispatch_tree(dispatchable, templateDecl=templateDecl, templateArgs=templateArgs)
-            ambiguous = self._collect_ambiguous_overloads(tree)
+            for m in js_distinguishable:
+              try:
+                output += self.processMethodOrProperty(theClass, m, templateDecl, templateArgs, overload_index=0, override_postfix="")
+              except SkipException as e:
+                print(str(e))
 
-            isStatic = all(m.is_static_method() for m in dispatchable)
-            output += self._emitValDispatchMethod(theClass, dispatchable[0].spelling, arity, tree, className, isStatic, templateDecl, templateArgs, mixed_returns=mixed_returns)
-            for m in ambiguous:
-              idx = all_methods_of_name.index(m) if m in all_methods_of_name else 0
-              suffix = "_" + str(idx + 1)
-              output += self._emitSuffixedMethod(theClass, m, suffix, className, templateDecl, templateArgs)
+            if js_ambiguous:
+              val_tree = self._build_dispatch_tree(js_ambiguous, templateDecl=templateDecl, templateArgs=templateArgs)
+              val_ambiguous = self._collect_ambiguous_overloads(val_tree)
+
+              if len(js_ambiguous) > len(val_ambiguous):
+                return_types = set(m.result_type.get_canonical().spelling for m in js_ambiguous)
+                mixed_returns = len(return_types) > 1
+                isStatic = all(m.is_static_method() for m in js_ambiguous)
+                output += self._emitValDispatchMethod(theClass, js_ambiguous[0].spelling, arity, val_tree, className, isStatic, templateDecl, templateArgs, mixed_returns=mixed_returns)
+
+              for m in val_ambiguous:
+                idx = all_methods_of_name.index(m) if m in all_methods_of_name else 0
+                suffix = "_" + str(idx + 1)
+                output += self._emitSuffixedMethod(theClass, m, suffix, className, templateDecl, templateArgs)
 
           for m in wrapper_methods:
             idx = all_methods_of_name.index(m) if m in all_methods_of_name else 0
