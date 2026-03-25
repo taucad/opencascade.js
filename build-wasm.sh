@@ -51,7 +51,8 @@ show_help() {
 Usage: ./build-wasm.sh <command> [options] [<yaml-config>]
 
 Commands:
-  full <yaml>           Full pipeline: pch + generate + bindings + sources + link
+  full <yaml>           Full pipeline: apply-patches + pch + generate + bindings + sources + link
+  apply-patches         Apply OCCT source patches (idempotent, based on OCJS_PATCH_DUMP)
   link <yaml>           Link only (reuses compiled .o files, fastest)
   pch                   Rebuild flat includes + precompiled header
   generate              Generate binding .cpp files from OCCT headers
@@ -599,6 +600,30 @@ step_link() {
   echo ""
 }
 
+step_apply_patches() {
+  echo "═══ Applying OCCT source patches ═══"
+
+  if [ -d "$OCCT_ROOT/.git" ]; then
+    echo "  Reverting OCCT source tree to clean state..."
+    git -C "$OCCT_ROOT" checkout -- . 2>/dev/null || true
+  fi
+
+  if [ "$OCJS_PATCH_DUMP" = "true" ]; then
+    echo "  Applying Standard_Dump stub patch..."
+    python3 src/patches/patch_standard_dump.py
+    if [ "${OCJS_PATCH_STEPCAF:-true}" = "true" ]; then
+      echo "  Applying noexcept destructors patch (7 classes)..."
+      OCCT_ROOT="$OCJS_ROOT/deps/OCCT" python3 src/patches/patch_noexcept_destructors.py
+      echo "  Applying STEPCAFControl_Controller DynamicType patch..."
+      OCCT_ROOT="$OCJS_ROOT/deps/OCCT" python3 src/patches/patch_stepcaf_dyntype.py
+    fi
+    echo "  All patches applied."
+  else
+    echo "  OCJS_PATCH_DUMP=false — no patches to apply (clean OCCT tree)."
+  fi
+  echo ""
+}
+
 # (step_compile_all removed -- Nx manages task orchestration and caching)
 
 # ── Parse commands ───────────────────────────────────────────────────
@@ -607,6 +632,7 @@ if [ $# -eq 0 ]; then
   echo "Usage: $0 <command> [<command>...] [<yaml-config>]"
   echo ""
   echo "Commands:"
+  echo "  apply-patches    Apply OCCT source patches (idempotent)"
   echo "  pch              Rebuild flat includes + PCH"
   echo "  docs             Generate OCCT documentation JSON (for JSDoc)"
   echo "  generate         Generate binding .cpp files from OCCT headers"
@@ -614,7 +640,7 @@ if [ $# -eq 0 ]; then
   echo "  sources          Compile OCCT sources only"
   echo "  dts <yaml>       Regenerate .d.ts only from existing fragments (no compile/link)"
   echo "  link <yaml>      Link WASM binary from YAML config"
-  echo "  full <yaml>      Full pipeline (pch + generate + bindings + sources + link)"
+  echo "  full <yaml>      Full pipeline (apply-patches + pch + generate + bindings + sources + link)"
   echo "  clean-generated  Remove generated .d.ts.json and .cpp (handles symlinks)"
   echo "  clean-objects    Remove compiled .o files from bindings (handles symlinks)"
   exit 1
@@ -637,7 +663,7 @@ while [ $# -gt 0 ]; do
       export OCJS_CONFIG="$1"
       shift
       ;;
-    pch|docs|generate|bindings|sources|sources-legacy)
+    pch|docs|generate|bindings|sources|sources-legacy|apply-patches)
       COMMANDS+=("$1")
       shift
       ;;
@@ -678,6 +704,7 @@ START_TIME=$(date +%s)
 
 for cmd in "${COMMANDS[@]}"; do
   case "$cmd" in
+    apply-patches) step_apply_patches ;;
     pch)       step_pch ;;
     docs)      step_docs ;;
     generate)  step_generate ;;
@@ -716,10 +743,7 @@ else:
       echo ""
       ;;
     full)
-      if [ "$OCJS_PATCH_DUMP" = "true" ]; then
-        echo "=== Patching OCCT Standard_Dump.hxx ==="
-        python3 src/patches/patch_standard_dump.py
-      fi
+      step_apply_patches
       step_pch
       step_generate
       step_bindings

@@ -11,10 +11,19 @@
         "cwd": "{projectRoot}"
       }
     },
+    "apply-patches": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "dependsOn": ["setup"],
+      "options": {
+        "command": "./build-wasm.sh apply-patches",
+        "cwd": "{projectRoot}"
+      }
+    },
     "pch": {
       "executor": "nx:run-commands",
       "cache": true,
-      "dependsOn": ["setup"],
+      "dependsOn": ["apply-patches"],
       "inputs": [
         "compileConfig",
         "toolchain",
@@ -71,7 +80,7 @@
     "compile-sources": {
       "executor": "nx:run-commands",
       "cache": true,
-      "dependsOn": ["pch"],
+      "dependsOn": ["pch", "apply-patches"],
       "inputs": [
         "compileConfig",
         "toolchain",
