@@ -116,19 +116,20 @@ _resolve_symlink_target() {
 }
 
 _ensure_doxygen() {
-  local version
-  version=$(python3 -c "import json; print(json.load(open('$SCRIPT_DIR/DEPS.json'))['dependencies']['doxygen']['version'])" 2>/dev/null || echo "1.16.1")
-  local tag
-  tag=$(python3 -c "import json; print(json.load(open('$SCRIPT_DIR/DEPS.json'))['dependencies']['doxygen']['release_tag'])" 2>/dev/null || echo "Release_1_16_1")
+  local version commit tag
+  version=$(python3 -c "import json; d=json.load(open('$SCRIPT_DIR/DEPS.json'))['dependencies']['doxygen']; print(d['version'])" 2>/dev/null || echo "")
+  commit=$(python3 -c "import json; d=json.load(open('$SCRIPT_DIR/DEPS.json'))['dependencies']['doxygen']; print(d['commit'])" 2>/dev/null || echo "")
+  tag=$(python3 -c "import json; d=json.load(open('$SCRIPT_DIR/DEPS.json'))['dependencies']['doxygen']; print(d['release_tag'])" 2>/dev/null || echo "")
   local doxygen_bin="$SCRIPT_DIR/tools/doxygen/bin/doxygen"
+  local stamp_file="$SCRIPT_DIR/tools/doxygen/.commit"
 
-  if [ -x "$doxygen_bin" ]; then
-    local installed
-    installed=$("$doxygen_bin" --version 2>/dev/null || echo "")
-    if [ "$installed" = "$version" ]; then
+  if [ -x "$doxygen_bin" ] && [ -f "$stamp_file" ]; then
+    local installed_commit
+    installed_commit=$(cat "$stamp_file" 2>/dev/null || echo "")
+    if [ "$installed_commit" = "$commit" ]; then
       return 0
     fi
-    echo "  Doxygen version mismatch ($installed != $version), re-downloading..."
+    echo "  Doxygen commit mismatch ($installed_commit != $commit), re-downloading..."
   fi
 
   echo "  Downloading Doxygen $version..."
@@ -185,7 +186,8 @@ _ensure_doxygen() {
   rm -rf "$tmp_dir"
 
   if [ -x "$doxygen_bin" ]; then
-    echo "  Doxygen $("$doxygen_bin" --version) installed at $doxygen_bin"
+    echo "$commit" > "$stamp_file"
+    echo "  Doxygen $version ($commit) installed at $doxygen_bin"
   else
     echo "  WARNING: Doxygen binary not found after extraction" >&2
     return 1
@@ -658,13 +660,23 @@ step_patch_embind() {
     echo "         The patch may fail or produce incorrect results." >&2
   fi
 
-  if grep -q 'ensureOverloadSignatureTable' "$embind_file" 2>/dev/null; then
-    echo "  libembind.js already patched — skipping."
+  local patch_hash_file="$BUILD_DIR/embind-patch-hash"
+  local current_hash
+  current_hash="$(md5sum "$patch_file" 2>/dev/null | cut -d' ' -f1 || md5 -q "$patch_file" 2>/dev/null)"
+
+  if [ -f "$patch_hash_file" ] && [ "$(cat "$patch_hash_file")" = "$current_hash" ]; then
+    echo "  libembind.js already patched (hash match) — skipping."
     return 0
+  fi
+
+  if [ -f "$patch_hash_file" ]; then
+    echo "  Patch content changed — reverting and re-applying..."
+    cd "$embind_dir" && patch -R -p0 --no-backup-if-mismatch < "$patch_file" 2>/dev/null || true
   fi
 
   echo "  Applying libembind-overloading.patch..."
   cd "$embind_dir" && patch -p0 --no-backup-if-mismatch < "$patch_file"
+  echo "$current_hash" > "$patch_hash_file"
   echo "  libembind.js patched successfully."
 }
 

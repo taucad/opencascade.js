@@ -30,6 +30,7 @@
     "doxygen": {
       "version": "1.16.1",
       "release_tag": "Release_1_16_1",
+      "commit": "669aeeefca743c148e2d935b3d3c69535c7491e6",
       "description": "Documentation generator for C++ API doc extraction (XML output)"
     }
   }
