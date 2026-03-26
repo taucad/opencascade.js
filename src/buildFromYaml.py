@@ -32,9 +32,6 @@ BUILTIN_ADDITIONAL_BIND_CODE = r"""
 #include <TopoDS_Compound.hxx>
 #include <TColStd_IndexedDataMapOfStringString.hxx>
 #include <Standard_Failure.hxx>
-#include <FairCurve_Batten.hxx>
-#include <FairCurve_MinimalVariation.hxx>
-#include <FairCurve_AnalysisCode.hxx>
 struct TopoDS_Bind_ {};
 class OCJS {
 public:
@@ -58,18 +55,6 @@ EMSCRIPTEN_BINDINGS(ocjs_builtins) {
   class_<NCollection_IndexedDataMap<TCollection_AsciiString, TCollection_AsciiString>>("TColStd_IndexedDataMapOfStringString")
     .constructor<>()
     ;
-  function("FairCurve_Batten_Compute", optional_override([](FairCurve_Batten& self, emscripten::val codeRef, int nbIter, double tol) -> bool {
-    FairCurve_AnalysisCode code = static_cast<FairCurve_AnalysisCode>(codeRef["current"].as<int>());
-    bool result = self.Compute(code, nbIter, tol);
-    codeRef.set("current", static_cast<int>(code));
-    return result;
-  }));
-  function("FairCurve_MinimalVariation_Compute", optional_override([](FairCurve_MinimalVariation& self, emscripten::val codeRef, int nbIter, double tol) -> bool {
-    FairCurve_AnalysisCode code = static_cast<FairCurve_AnalysisCode>(codeRef["current"].as<int>());
-    bool result = self.Compute(code, nbIter, tol);
-    codeRef.set("current", static_cast<int>(code));
-    return result;
-  }));
   class_<TopoDS_Bind_>("TopoDS")
     .class_function("Edge", optional_override([](const TopoDS_Shape& s) -> TopoDS_Edge { return TopoDS::Edge(s); }))
     .class_function("Wire", optional_override([](const TopoDS_Shape& s) -> TopoDS_Wire { return TopoDS::Wire(s); }))
@@ -414,8 +399,6 @@ def main():
       {"export": "TColStd_IndexedDataMapOfStringString", "kind": "class"},
       {"export": "TopoDS", "kind": "class"},
       {"export": "OCJS", "kind": "class"},
-      {"export": "FairCurve_Batten_Compute", "kind": "function"},
-      {"export": "FairCurve_MinimalVariation_Compute", "kind": "function"},
     ])
 
     with open(os.path.join(declarations_dir, 'emscripten-fs.d.ts'), 'r') as f:

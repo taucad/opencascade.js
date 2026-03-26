@@ -175,7 +175,7 @@ it('namespace types should be identical to flat types', () => {
   expectTypeOf<TopAbs.ShapeEnum>().toEqualTypeOf<TopAbs_ShapeEnum>();
 });
 
-it('namespace should expose Compute free functions for FairCurve', () => {
-  expectTypeOf<FairCurve.Batten_Compute>().toBeFunction();
-  expectTypeOf<FairCurve.MinimalVariation_Compute>().toBeFunction();
+it('should expose FairCurve instance method Compute via class type', () => {
+  expectTypeOf<FairCurve.Batten>().toHaveProperty('Compute');
+  expectTypeOf<FairCurve.MinimalVariation>().toHaveProperty('Compute');
 });

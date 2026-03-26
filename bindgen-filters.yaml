@@ -251,8 +251,8 @@ exclude:
     - STEPCAFControl_GDTProperty
 
   methods:
-    FairCurve_Batten: [Compute, Dump]
-    FairCurve_MinimalVariation: [Compute, Dump]
+    FairCurve_Batten: [Dump]
+    FairCurve_MinimalVariation: [Dump]
     HelixGeom_BuilderApproxCurve: [ApproxParameters]
     AppDef_MultiLine: [SetParameter]
     BSplCLib: [DN]

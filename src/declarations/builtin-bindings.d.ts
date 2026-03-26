@@ -95,46 +95,6 @@ export declare class OCJS {
   [Symbol.dispose](): void;
 }
 
-/**
- * Compute a fair curve through a {@link FairCurve_Batten} constraint.
- *
- * Wraps `FairCurve_Batten::Compute` which takes an output-parameter
- * (`FairCurve_AnalysisCode&`). The wrapper accepts a JS `{current: number}`
- * ref object instead, writing the result code back after computation.
- *
- * @param self - The batten constraint to compute.
- * @param codeRef - Ref object `{current: number}` receiving the `FairCurve_AnalysisCode` result.
- * @param nbIter - Maximum number of iterations.
- * @param tol - Convergence tolerance.
- * @returns `true` if the computation succeeded.
- */
-export declare function FairCurve_Batten_Compute(
-  self: FairCurve_Batten,
-  codeRef: { current: number },
-  nbIter: number,
-  tol: number,
-): boolean;
-
-/**
- * Compute a fair curve through a {@link FairCurve_MinimalVariation} constraint.
- *
- * Wraps `FairCurve_MinimalVariation::Compute` which takes an output-parameter
- * (`FairCurve_AnalysisCode&`). The wrapper accepts a JS `{current: number}`
- * ref object instead, writing the result code back after computation.
- *
- * @param self - The minimal-variation constraint to compute.
- * @param codeRef - Ref object `{current: number}` receiving the `FairCurve_AnalysisCode` result.
- * @param nbIter - Maximum number of iterations.
- * @param tol - Convergence tolerance.
- * @returns `true` if the computation succeeded.
- */
-export declare function FairCurve_MinimalVariation_Compute(
-  self: FairCurve_MinimalVariation,
-  codeRef: { current: number },
-  nbIter: number,
-  tol: number,
-): boolean;
-
 /** OCCT boolean primitive, mapped to JS `boolean`. */
 type Standard_Boolean = boolean;
 /** OCCT unsigned byte primitive (0–255), mapped to JS `number`. */
