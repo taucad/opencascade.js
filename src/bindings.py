@@ -12,6 +12,10 @@ from typing import Tuple, List, Any, Optional, Dict
 
 JsType = namedtuple('JsType', ['category', 'name'])
 
+def _normalize_handle_ns(s: str) -> str:
+  """Normalize handle namespace to canonical occ::handle spelling."""
+  return s.replace("opencascade::handle", "occ::handle")
+
 @dataclass
 class DispatchLeaf:
   overload: Any
@@ -161,10 +165,10 @@ def isRawPointerParam(arg_type):
 
 def shouldStripParam(arg_type, method):
   """Whether to remove the param from the JS-visible signature.
-  Handles are always stripped. Primitives are stripped only for const methods."""
+  Handles are always stripped. Primitives are always stripped (output-only)."""
   if isHandleOutputParam(arg_type):
     return True
-  if isPrimitiveOutputParam(arg_type) and method.is_const_method():
+  if isPrimitiveOutputParam(arg_type):
     return True
   return False
 
@@ -175,7 +179,7 @@ class Bindings:
   def __init__(self, tuInfo):
     self.tuInfo = tuInfo
 
-  _MEMBER_TYPEDEFS = {"value_type", "const_reference", "reference", "Array1Type", "Array2Type", "SequenceType"}
+  _MEMBER_TYPEDEFS = {"value_type", "const_reference", "reference", "Array1Type", "Array2Type", "SequenceType", "Point", "Target"}
   _DEPRECATED_TYPEDEFS = {
     "Standard_Real", "Standard_Integer", "Standard_Boolean",
     "Standard_ShortReal", "Standard_Character", "Standard_Byte",
@@ -326,11 +330,16 @@ class Bindings:
 
   _JS_NUMERIC_KINDS = _JS_INTEGER_KINDS | _JS_FLOAT_KINDS
 
-  _JS_STRING_KINDS = frozenset({
+  _JS_CHAR_KINDS = frozenset({
     clang.cindex.TypeKind.CHAR_U, clang.cindex.TypeKind.UCHAR,
-    clang.cindex.TypeKind.CHAR16, clang.cindex.TypeKind.CHAR32,
     clang.cindex.TypeKind.CHAR_S, clang.cindex.TypeKind.SCHAR,
   })
+
+  _JS_WIDECHAR_KINDS = frozenset({
+    clang.cindex.TypeKind.CHAR16, clang.cindex.TypeKind.CHAR32,
+  })
+
+  _JS_STRING_KINDS = _JS_CHAR_KINDS | _JS_WIDECHAR_KINDS
 
   def _strip_type_qualifiers(self, clang_type):
     """Strip const, reference, and pointer qualifiers for dispatch classification."""
@@ -348,9 +357,9 @@ class Bindings:
     if Bindings._reverse_typedef_cache is None:
       Bindings._reverse_typedef_cache = {}
       for underlying_spelling, typedef_cursor in self.tuInfo.typedefUnderlyingDict.items():
-        clean = underlying_spelling.replace("const ", "").replace("&", "").replace("*", "").strip()
+        clean = _normalize_handle_ns(underlying_spelling.replace("const ", "").replace("&", "").replace("*", "").strip())
         Bindings._reverse_typedef_cache[clean] = typedef_cursor.spelling
-    clean_spelling = type_spelling.replace("const ", "").replace("&", "").replace("*", "").strip()
+    clean_spelling = _normalize_handle_ns(type_spelling.replace("const ", "").replace("&", "").replace("*", "").strip())
     return Bindings._reverse_typedef_cache.get(clean_spelling)
 
   def _classify_js_type(self, clang_type, templateDecl=None, templateArgs=None):
@@ -492,7 +501,7 @@ class Bindings:
       return (2, '')
     if cat == 'number_float':
       return (3, '')
-    if cat == 'string':
+    if cat in ('string', 'string_char'):
       return (4, '')
     return (5, cat)
 
@@ -737,10 +746,6 @@ class Bindings:
     return output
 
 class EmbindBindings(Bindings):
-  _global_emitted_structs = {}
-  _global_struct_defs = []
-  _global_struct_registrations = []
-
   def __init__(
     self,
     tuInfo
@@ -748,7 +753,7 @@ class EmbindBindings(Bindings):
     super().__init__(tuInfo)
     self._result_struct_defs = []
     self._result_struct_registrations = []
-    self._emitted_structs = EmbindBindings._global_emitted_structs
+    self._emitted_structs = {}
 
   def processClass(self, theClass, templateDecl = None, templateArgs = None):
     output = ""
@@ -769,6 +774,7 @@ class EmbindBindings(Bindings):
 
     self._result_struct_defs = []
     self._result_struct_registrations = []
+    self._emitted_structs = {}
 
     method_output = super().processClass(theClass, templateDecl, templateArgs)
 
@@ -801,6 +807,22 @@ class EmbindBindings(Bindings):
           if enumChild.kind == clang.cindex.CursorKind.ENUM_CONSTANT_DECL:
             output += "    .value(\"" + enumChild.spelling + "\", " + valuePrefix + enumChild.spelling + ")\n"
         output += "  ;\n"
+
+      if child.kind == clang.cindex.CursorKind.STRUCT_DECL and child.access_specifier == clang.cindex.AccessSpecifier.PUBLIC and child.spelling != "" and child.spelling.isidentifier():
+        fields = [f for f in child.get_children() if f.kind == clang.cindex.CursorKind.FIELD_DECL]
+        non_field_members = [f for f in child.get_children() if f.kind not in (
+          clang.cindex.CursorKind.FIELD_DECL,
+          clang.cindex.CursorKind.CXX_ACCESS_SPEC_DECL,
+          clang.cindex.CursorKind.CONSTRUCTOR,
+          clang.cindex.CursorKind.DESTRUCTOR,
+        )]
+        if fields and not non_field_members:
+          structName = className + "_" + child.spelling
+          cppType = className + "::" + child.spelling
+          output += f'  value_object<{cppType}>("{structName}")\n'
+          for field in fields:
+            output += f'    .field("{field.spelling}", &{cppType}::{field.spelling})\n'
+          output += "  ;\n"
 
     output += "}\n\n"
 
@@ -1203,25 +1225,14 @@ class EmbindBindings(Bindings):
 
     field_key = tuple((fname, ftype) for fname, ftype in struct_fields)
 
-    # Global dedup: find canonical name for identical layouts
-    reused_name = None
-    for existing_name, existing_key in self._emitted_structs.items():
-      if existing_key == field_key:
-        reused_name = existing_name
-        break
+    existing = self._emitted_structs.get(structName)
+    if existing is not None and existing != field_key:
+      counter = 2
+      while f"{structName}_{counter}" in self._emitted_structs:
+        counter += 1
+      structName = f"{structName}_{counter}"
+    self._emitted_structs[structName] = field_key
 
-    if reused_name is not None:
-      structName = reused_name
-    else:
-      existing = self._emitted_structs.get(structName)
-      if existing is not None and existing != field_key:
-        counter = 2
-        while f"{structName}_{counter}" in self._emitted_structs:
-          counter += 1
-        structName = f"{structName}_{counter}"
-      self._emitted_structs[structName] = field_key
-
-    # Emit struct definition only once per TU to avoid redefinition errors
     already_defined = any(f"struct {structName} {{" in d for d in self._result_struct_defs)
     if not already_defined:
       struct_def = f"struct {structName} {{\n"
@@ -1230,8 +1241,8 @@ class EmbindBindings(Bindings):
       struct_def += f"}};\n\n"
       self._result_struct_defs.append(struct_def)
 
-    # Only emit value_object registration once globally
-    if reused_name is None:
+    already_registered = any(f'"{structName}"' in r for r in self._result_struct_registrations)
+    if not already_registered:
       reg = f"  value_object<{structName}>(\"{structName}\")\n"
       for fname, ftype in struct_fields:
         reg += f"    .field(\"{fname}\", &{structName}::{fname})\n"
@@ -1692,6 +1703,31 @@ class EmbindBindings(Bindings):
     if not bindable:
       return output
 
+    # Filter rvalue-reference overloads — JS has no move semantics.
+    # These create JS-ambiguous duplicates of const-ref overloads,
+    # forcing unnecessary _N suffixes on the entire arity group.
+    bindable = [m for m in bindable if not any(
+      a.type.kind == clang.cindex.TypeKind.RVALUEREFERENCE
+      for a in m.get_arguments()
+    )]
+    if not bindable:
+      return output
+
+    # Deduplicate const/non-const overloads with identical argument types.
+    # JS has no const `this` — these are JS-indistinguishable and force
+    # unnecessary _N suffixes. Prefer the const version.
+    deduped = {}
+    for m in bindable:
+      arg_key = tuple(a.type.get_canonical().spelling for a in m.get_arguments())
+      is_const = m.is_const_method()
+      if arg_key not in deduped:
+        deduped[arg_key] = m
+      elif is_const and not deduped[arg_key].is_const_method():
+        deduped[arg_key] = m
+    bindable = list(deduped.values())
+    if not bindable:
+      return output
+
     by_arity = defaultdict(list)
     for m in bindable:
       by_arity[len(list(m.get_arguments()))].append(m)
@@ -1751,7 +1787,7 @@ class EmbindBindings(Bindings):
              not m_arg.type.get_pointee().is_const_qualified() and (
                m_arg.type.get_pointee().get_canonical().spelling in builtInTypes or
                m_arg.type.get_pointee().get_canonical().kind == clang.cindex.TypeKind.ENUM
-             ))
+             ) and not shouldStripParam(m_arg.type, m))
             or m_arg.type.get_canonical().spelling in unbindablePointerTypes
             for m_arg in m.get_arguments()
           )
@@ -1895,8 +1931,24 @@ class TypescriptBindings(Bindings):
     super().__init__(tuInfo)
     self.imports = {}
 
-    self.exports = []
+    self.exports = set()
     self._docs = self._load_docs()
+
+  def _classify_js_type(self, clang_type, templateDecl=None, templateArgs=None):
+    """Override to distinguish bare char from const char* for TypeScript overload resolution.
+
+    At the C++ runtime level both are JS strings, but for TypeScript's type system we
+    classify bare char as 'string_char' so the dispatch tree treats it as a distinct
+    category. This lets const char* constructors appear on the base class while char
+    constructors become _N subclasses.
+    """
+    result = super()._classify_js_type(clang_type, templateDecl, templateArgs)
+    if result.category == 'string' and not isCString(clang_type):
+      t = self._strip_type_qualifiers(clang_type)
+      kind = t.get_canonical().kind
+      if kind in self._JS_CHAR_KINDS:
+        return JsType('string_char', 'string')
+    return result
 
   @staticmethod
   def _load_docs():
@@ -1912,7 +1964,7 @@ class TypescriptBindings(Bindings):
       TypescriptBindings._docs_cache = {}
     return TypescriptBindings._docs_cache
 
-  def _jsdoc(self, class_name, member_name=None, indent_str="", param_count=None, overload_index=0, template_name=None):
+  def _jsdoc(self, class_name, member_name=None, indent_str="", param_count=None, overload_index=0, template_name=None, param_names=None):
     used_template = False
     entry = self._docs.get(class_name)
     if not entry and template_name:
@@ -1937,7 +1989,7 @@ class TypescriptBindings(Bindings):
       member = members.get(template_name)
     if not member:
       return ""
-    member = self._resolve_overload(member, param_count, overload_index)
+    member = self._resolve_overload(member, param_count, overload_index, param_names=param_names)
     brief = member.get("brief", "")
     if not brief:
       return ""
@@ -1945,6 +1997,8 @@ class TypescriptBindings(Bindings):
     for line in brief.splitlines():
       lines.append(f"{indent_str} * {line}")
     for param in member.get("params", []):
+      if param_names is not None and param["name"] not in param_names:
+        continue
       desc = param.get("description", "")
       lines.append(f"{indent_str} * @param {param['name']} {desc}".rstrip())
     ret_desc = member.get("returns_description", "")
@@ -1972,12 +2026,13 @@ class TypescriptBindings(Bindings):
     return "\n".join(lines) + "\n"
 
   @staticmethod
-  def _resolve_overload(member, param_count, overload_index=0):
+  def _resolve_overload(member, param_count, overload_index=0, param_names=None):
     """Select the correct overload entry when a member has multiple definitions.
 
     When multiple overloads share the same param_count, overload_index
     disambiguates by selecting the Nth match (0-based) among those
-    with the matching arity.
+    with the matching arity. When param_names is provided, scores
+    candidates by parameter name overlap to pick the best match.
     """
     overloads = member.get("overloads")
     if not overloads:
@@ -1986,9 +2041,21 @@ class TypescriptBindings(Bindings):
       return overloads[0]
     matches = [o for o in overloads if o.get("param_count") == param_count]
     if not matches:
+      if param_names:
+        scored = [(o, len(set(p["name"] for p in o.get("params", [])) & set(param_names))) for o in overloads]
+        scored.sort(key=lambda x: -x[1])
+        if scored[0][1] > 0:
+          return scored[0][0]
       return overloads[0]
-    idx = min(overload_index, len(matches) - 1)
-    return matches[idx]
+    if len(matches) == 1 or not param_names:
+      idx = min(overload_index, len(matches) - 1)
+      return matches[idx]
+    scored = [(o, len(set(p["name"] for p in o.get("params", [])) & set(param_names))) for o in matches]
+    scored.sort(key=lambda x: -x[1])
+    top_score = scored[0][1]
+    best = [o for o, s in scored if s == top_score]
+    idx = min(overload_index, len(best) - 1)
+    return best[idx]
 
   def _findBoundAncestor(self, theClass):
     """Walk the inheritance chain to find the nearest ancestor that is in the build.
@@ -2060,7 +2127,7 @@ class TypescriptBindings(Bindings):
     tplName = theClass.spelling if templateDecl is not None else None
     output += self._jsdoc(name, template_name=tplName)
     output += "export declare class " + name + baseClassDefinition + " {\n"
-    self.exports.append(name)
+    self.exports.add(name)
 
     if name == "Standard_Transient":
       output += "  /** Returns true if the underlying handle is null. */\n"
@@ -2081,7 +2148,24 @@ class TypescriptBindings(Bindings):
             output += self._enum_member_jsdoc(enumName, enumChild.spelling)
             output += "  readonly " + enumChild.spelling + ": '" + enumChild.spelling + "';\n"
         output += "};\n\n"
-        self.exports.append(enumName)
+        self.exports.add(enumName)
+
+      if child.kind == clang.cindex.CursorKind.STRUCT_DECL and child.access_specifier == clang.cindex.AccessSpecifier.PUBLIC and child.spelling != "" and child.spelling.isidentifier():
+        fields = [f for f in child.get_children() if f.kind == clang.cindex.CursorKind.FIELD_DECL]
+        non_field_members = [f for f in child.get_children() if f.kind not in (
+          clang.cindex.CursorKind.FIELD_DECL,
+          clang.cindex.CursorKind.CXX_ACCESS_SPEC_DECL,
+          clang.cindex.CursorKind.CONSTRUCTOR,
+          clang.cindex.CursorKind.DESTRUCTOR,
+        )]
+        if fields and not non_field_members:
+          structName = name + "_" + child.spelling
+          output += "export interface " + structName + " {\n"
+          for field in fields:
+            fieldType = self.resolve_type(field.type, templateDecl, templateArgs)
+            output += "  " + field.spelling + ": " + fieldType + ";\n"
+          output += "}\n\n"
+          self.exports.add(structName)
 
     return output
 
@@ -2091,21 +2175,30 @@ class TypescriptBindings(Bindings):
     output += "  delete(): void;\n"
     output += "  [Symbol.dispose](): void;\n"
     output += "}\n\n"
+
+    for iface_name in sorted(TypescriptBindings._namespace_scoped_interfaces):
+      if iface_name not in self.exports:
+        output += "export interface " + iface_name + " {}\n\n"
+        self.exports.add(iface_name)
+    TypescriptBindings._namespace_scoped_interfaces = set()
+
     return output
 
-  def _emitTsConstructor(self, className, args, templateDecl, templateArgs, tplName, numOptional=0):
+  def _emitTsConstructor(self, className, args, templateDecl, templateArgs, tplName, numOptional=0, overload_index=0):
     """Emit a single TypeScript constructor signature, marking trailing args as optional."""
     parts = []
+    names = []
     nArgs = len(args)
     for i, arg in enumerate(args):
       name = self._argname(arg, i)
+      names.append(name)
       typeName = self.resolve_type(arg.type, templateDecl, templateArgs)
       if i >= nArgs - numOptional:
         parts.append(f"{name}?: {typeName}")
       else:
         parts.append(f"{name}: {typeName}")
     argsStr = ", ".join(parts)
-    output = self._jsdoc(className, className, "  ", param_count=nArgs, template_name=tplName)
+    output = self._jsdoc(className, className, "  ", param_count=nArgs, overload_index=overload_index, template_name=tplName, param_names=names)
     output += f"  constructor({argsStr});\n"
     return output
 
@@ -2117,7 +2210,7 @@ class TypescriptBindings(Bindings):
     tplName = theClass.spelling if templateDecl is not None else None
 
     if len(constructors) == 0:
-      output += self._jsdoc(className, className, "  ", param_count=0, template_name=tplName)
+      output += self._jsdoc(className, className, "  ", param_count=0, template_name=tplName, param_names=[])
       output += "  constructor();\n"
       return output
     publicConstructors = list(filter(lambda x: x.kind == clang.cindex.CursorKind.CONSTRUCTOR and x.access_specifier == clang.cindex.AccessSpecifier.PUBLIC, children))
@@ -2157,6 +2250,7 @@ class TypescriptBindings(Bindings):
         trunc_arity = nArgs - d
         by_arity[trunc_arity].append(c)
 
+    arity_idx_map = {}
     for arity, group in sorted(by_arity.items()):
       seen_ids = set()
       deduped = []
@@ -2172,14 +2266,18 @@ class TypescriptBindings(Bindings):
         nDefaults = self._countTrailingDefaults(c)
         actual_arity = len(actual_args)
         trailing_optional = actual_arity - arity if actual_arity > arity else nDefaults
-        output += self._emitTsConstructor(className, actual_args[:arity] if actual_arity > arity else actual_args, templateDecl, templateArgs, tplName, numOptional=trailing_optional if actual_arity == arity else 0)
+        idx = arity_idx_map.get(arity, 0)
+        arity_idx_map[arity] = idx + 1
+        output += self._emitTsConstructor(className, actual_args[:arity] if actual_arity > arity else actual_args, templateDecl, templateArgs, tplName, numOptional=trailing_optional if actual_arity == arity else 0, overload_index=idx)
       else:
         tree = self._build_dispatch_tree(group, available_positions=list(range(arity)), templateDecl=templateDecl, templateArgs=templateArgs)
         ambiguous = self._collect_ambiguous_overloads(tree)
         distinguishable = [ov for ov in group if ov not in ambiguous]
         for ov in distinguishable:
           actual_args = list(ov.get_arguments())
-          output += self._emitTsConstructor(className, actual_args[:arity], templateDecl, templateArgs, tplName)
+          idx = arity_idx_map.get(arity, 0)
+          arity_idx_map[arity] = idx + 1
+          output += self._emitTsConstructor(className, actual_args[:arity], templateDecl, templateArgs, tplName, overload_index=idx)
 
     return output
 
@@ -2223,16 +2321,80 @@ class TypescriptBindings(Bindings):
 
     return typeName
 
+  _namespace_scoped_interfaces = set()
+
   def _resolve_nested_type(self, decl):
-    """Resolve nested C++ types (enum/class/struct inside a class) to Parent_Child format."""
+    """Resolve nested C++ types (enum/class/struct inside a class or namespace) to Parent_Child format."""
     if not decl or decl.spelling == "":
       return None
     if decl.kind not in (clang.cindex.CursorKind.ENUM_DECL, clang.cindex.CursorKind.CLASS_DECL, clang.cindex.CursorKind.STRUCT_DECL):
       return None
     parent = decl.semantic_parent
-    if not parent or parent.kind not in (clang.cindex.CursorKind.CLASS_DECL, clang.cindex.CursorKind.STRUCT_DECL):
+    if not parent:
       return None
-    return parent.spelling + "_" + decl.spelling
+    if parent.kind in (clang.cindex.CursorKind.CLASS_DECL, clang.cindex.CursorKind.STRUCT_DECL):
+      return parent.spelling + "_" + decl.spelling
+    if parent.kind == clang.cindex.CursorKind.NAMESPACE:
+      resolved = parent.spelling + "_" + decl.spelling
+      TypescriptBindings._namespace_scoped_interfaces.add(resolved)
+      return resolved
+    return None
+
+  def _resolve_qualified_member_type(self, resolved, templateDecl=None, templateArgs=None):
+    """Resolve a qualified type like 'typename ConcreteClass::Point' after template substitution.
+
+    Walks the class hierarchy to find member typedefs inherited from base classes.
+    """
+    clean = resolved.replace("typename ", "").strip()
+    clean = re.sub(r'\bconst\b', '', clean).replace("&", "").replace("*", "").strip()
+    if "::" not in clean:
+      return None
+    parts = clean.rsplit("::", 1)
+    if len(parts) != 2:
+      return None
+    parent_name, member_name = parts[0].strip(), parts[1].strip()
+    if not parent_name or not member_name:
+      return None
+
+    combined = parent_name + "_" + member_name
+    if combined in self.exports or combined in TypescriptBindings._known_export_names:
+      return combined
+
+    class_cursor = self.tuInfo.classDict.get(parent_name)
+    if not class_cursor:
+      return None
+
+    visited = set()
+    queue = [class_cursor]
+    while queue:
+      cls = queue.pop(0)
+      cls_id = cls.spelling
+      if cls_id in visited:
+        continue
+      visited.add(cls_id)
+
+      for child in cls.get_children():
+        if child.kind in (clang.cindex.CursorKind.TYPEDEF_DECL, clang.cindex.CursorKind.TYPE_ALIAS_DECL):
+          if child.spelling == member_name:
+            underlying = child.underlying_typedef_type
+            return self.resolve_type(underlying, templateDecl, templateArgs)
+        if child.kind == clang.cindex.CursorKind.CXX_BASE_SPECIFIER:
+          base_decl = child.get_definition()
+          if base_decl and base_decl.spelling:
+            queue.append(base_decl)
+            base_from_dict = self.tuInfo.classDict.get(base_decl.spelling)
+            if base_from_dict:
+              queue.append(base_from_dict)
+
+    return None
+
+  _CONST_RE = re.compile(r'\bconst\b')
+
+  @staticmethod
+  def _strip_type_qualifiers_str(spelling):
+    """Strip const, &, and * from a type spelling using word boundaries for const."""
+    s = TypescriptBindings._CONST_RE.sub('', spelling)
+    return s.replace("&", "").replace("*", "").strip()
 
   def _strip_qualifiers(self, clang_type):
     """Strip const, reference, and pointer qualifiers via AST traversal."""
@@ -2245,25 +2407,101 @@ class TypescriptBindings(Bindings):
       t = t.get_pointee()
     return t
 
+  _any_reasons = {}
+  _known_export_names = set()
+  _CONTAINER_ALIASES = {
+    "NCollection_DynamicArray": "NCollection_Vector",
+  }
+
+  @classmethod
+  def prepare_known_exports(cls, tuInfo, filter_classes_fn, filter_templates_fn):
+    """Pre-compute the global set of known export names for O(1) fallback lookups."""
+    cls._known_export_names = set()
+    for child in tuInfo.allChildren:
+      if filter_classes_fn(child, False) and child.spelling:
+        cls._known_export_names.add(child.spelling)
+    for td in tuInfo.templateTypedefs:
+      if td.spelling:
+        cls._known_export_names.add(td.spelling)
+
+  def _collect_any(self, reason, type_spelling):
+    """Collect any-type resolution failures for reporting."""
+    if reason not in TypescriptBindings._any_reasons:
+      TypescriptBindings._any_reasons[reason] = {}
+    bucket = TypescriptBindings._any_reasons[reason]
+    bucket[type_spelling] = bucket.get(type_spelling, 0) + 1
+
   _reverse_typedef_cache = None
 
   def _find_typedef_for_container(self, container, clang_type):
-    """Check if a container type (e.g., NCollection_Array1<gp_Pnt>) has a
-    known typedef (e.g., TColgp_Array1OfPnt) that is a bound class."""
+    """Look up whether a C++ type has a typedef or using-alias in the AST.
+
+    Builds a reverse cache from both typedefUnderlyingDict and
+    templateTypedefUnderlyingDict, mapping underlying type spellings
+    to their alias names. Returns the alias name if found, else None.
+    """
     if TypescriptBindings._reverse_typedef_cache is None:
       TypescriptBindings._reverse_typedef_cache = {}
-      for underlying_spelling, typedef_cursor in self.tuInfo.typedefUnderlyingDict.items():
-        clean = underlying_spelling.replace("const ", "").replace("&", "").strip()
-        TypescriptBindings._reverse_typedef_cache[clean] = typedef_cursor.spelling
+      for src in (self.tuInfo.typedefUnderlyingDict, self.tuInfo.templateTypedefUnderlyingDict):
+        for underlying_spelling, typedef_cursor in src.items():
+          clean = _normalize_handle_ns(underlying_spelling.replace("const ", "").replace("&", "").strip())
+          if clean not in TypescriptBindings._reverse_typedef_cache:
+            TypescriptBindings._reverse_typedef_cache[clean] = typedef_cursor.spelling
 
-    type_spelling = clang_type.spelling.replace("const ", "").replace("&", "").replace("*", "").strip()
-    return TypescriptBindings._reverse_typedef_cache.get(type_spelling)
+    type_spelling = _normalize_handle_ns(clang_type.spelling.replace("const ", "").replace("&", "").replace("*", "").strip())
+    result = TypescriptBindings._reverse_typedef_cache.get(type_spelling)
+    if result:
+      return result
+
+    numArgs = clang_type.get_num_template_arguments()
+    if numArgs > 0 and "<>" in type_spelling:
+      arg_spellings = []
+      for i in range(numArgs):
+        arg_type = clang_type.get_template_argument_type(i)
+        arg_spelling = arg_type.spelling if arg_type.spelling else arg_type.get_canonical().spelling
+        arg_spellings.append(_normalize_handle_ns(arg_spelling))
+      reconstructed = container + "<" + ", ".join(arg_spellings) + ">"
+      result = TypescriptBindings._reverse_typedef_cache.get(reconstructed)
+      if result:
+        return result
+
+    return None
+
+  _VEC_TUPLES = {
+    "NCollection_Vec2": "[number, number]",
+    "NCollection_Vec3": "[number, number, number]",
+    "NCollection_Vec4": "[number, number, number, number]",
+  }
+
+  _known_typedef_names = None
 
   def _resolve_template_type(self, clang_type, templateDecl=None, templateArgs=None):
-    """Resolve template types via AST, returning inner type for known containers."""
+    """Resolve template types via AST using generic C++ type resolution.
+
+    Resolution order:
+    1. Check original declaration spelling against known typedefs (catches using-aliases)
+    2. Canonicalize if needed, then resolve via:
+       a. handle<T> unwrapping (smart pointer)
+       b. Vec tuple mapping (fixed-arity numeric vectors)
+       c. Template class itself is exported or a known typedef name
+       d. STL type mappings
+       e. General typedef/using-alias lookup (resolves ALL container types)
+    3. Generic guardrail: collect unrecognized template types
+    """
+    if TypescriptBindings._known_typedef_names is None:
+      TypescriptBindings._known_typedef_names = set()
+      for td in self.tuInfo.typedefs:
+        TypescriptBindings._known_typedef_names.add(td.spelling)
+      for td in self.tuInfo.templateTypedefs:
+        TypescriptBindings._known_typedef_names.add(td.spelling)
+
     t = clang_type
     numArgs = t.get_num_template_arguments()
     if numArgs <= 0:
+      orig_decl = clang_type.get_declaration()
+      if orig_decl and orig_decl.spelling:
+        if orig_decl.spelling in self.exports or orig_decl.spelling in TypescriptBindings._known_typedef_names:
+          return orig_decl.spelling
       t = clang_type.get_canonical()
       numArgs = t.get_num_template_arguments()
       if numArgs <= 0:
@@ -2272,7 +2510,15 @@ class TypescriptBindings(Bindings):
     decl = t.get_declaration()
     if not decl:
       return None
-    container = decl.spelling
+    container = self._CONTAINER_ALIASES.get(decl.spelling, decl.spelling)
+
+    if container not in self.exports and container not in self._VEC_TUPLES and container != "handle":
+      if decl.kind in (clang.cindex.CursorKind.TYPEDEF_DECL, clang.cindex.CursorKind.TYPE_ALIAS_DECL):
+        canonical_t = t.get_canonical()
+        canonical_decl = canonical_t.get_declaration()
+        if canonical_decl and canonical_decl.spelling and canonical_decl.spelling != container:
+          container = self._CONTAINER_ALIASES.get(canonical_decl.spelling, canonical_decl.spelling)
+          t = canonical_t
 
     parent = decl.semantic_parent
     if container == "handle" and parent and parent.spelling in ("opencascade", "occ"):
@@ -2285,36 +2531,143 @@ class TypescriptBindings(Bindings):
       decl_inner = inner.get_declaration()
       if decl_inner and decl_inner.spelling and decl_inner.spelling in self.exports:
         return decl_inner.spelling
+      self._collect_any("handle_inner_unresolvable", t.spelling)
       return "any"
 
-    SINGLE_ARG_CONTAINERS = {
-      "NCollection_Array1", "NCollection_Sequence", "NCollection_List",
-      "NCollection_HArray1", "NCollection_HSequence",
-      "NCollection_IndexedMap", "NCollection_Map",
-    }
+    if container in self._VEC_TUPLES:
+      return self._VEC_TUPLES[container]
 
-    if container in SINGLE_ARG_CONTAINERS:
-      typedef_name = self._find_typedef_for_container(container, t)
-      if typedef_name:
-        return typedef_name
-      inner = t.get_template_argument_type(0)
-      return self.resolve_type(inner, templateDecl, templateArgs)
-
-    if container in ("NCollection_DataMap", "NCollection_IndexedDataMap"):
-      return "any"
-
-    VEC_TUPLES = {
-      "NCollection_Vec2": "[number, number]",
-      "NCollection_Vec3": "[number, number, number]",
-      "NCollection_Vec4": "[number, number, number, number]",
-    }
-    if container in VEC_TUPLES:
-      return VEC_TUPLES[container]
-
-    if container in self.exports:
+    if container in self.exports or container in TypescriptBindings._known_typedef_names:
       return container
 
+    stl_result = self._resolve_stl_type(container, t, templateDecl, templateArgs)
+    if stl_result is not None:
+      return stl_result
+
+    typedef_name = self._find_typedef_for_container(container, t)
+    if typedef_name:
+      return typedef_name
+
+    numArgs_resolve = t.get_num_template_arguments()
+    if numArgs_resolve > 0:
+      resolved_args = []
+      all_resolved = True
+      for i in range(numArgs_resolve):
+        arg_type = t.get_template_argument_type(i)
+        arg_spelling = arg_type.spelling if arg_type else ""
+        arg_canonical = arg_type.get_canonical().spelling if arg_type else ""
+        if not arg_type or (not arg_spelling and not arg_canonical):
+          all_resolved = False
+          break
+        resolved_arg = self._resolve_template_arg(arg_type, templateDecl, templateArgs)
+        if not resolved_arg or resolved_arg == "any" or "type-parameter-" in resolved_arg:
+          all_resolved = False
+          break
+        resolved_args.append(resolved_arg)
+      if all_resolved and resolved_args:
+        mangled = container + "_" + "_".join(resolved_args)
+        if mangled in self.exports or mangled in TypescriptBindings._known_export_names:
+          return mangled
+
+    self._collect_any("unrecognized_template", t.spelling)
     return "any"
+
+  @staticmethod
+  def _is_std_decl(decl):
+    """Check if a declaration is within the std namespace (handles std::__1, std::__cxx11, etc.)."""
+    parent = decl.semantic_parent
+    while parent:
+      if parent.spelling == "std":
+        return True
+      if parent.kind != clang.cindex.CursorKind.NAMESPACE:
+        break
+      parent = parent.semantic_parent
+    return False
+
+  def _resolve_template_arg(self, arg_type, templateDecl=None, templateArgs=None):
+    """Resolve a single template argument type, handling type-parameter-N-M substitution."""
+    canonical = arg_type.get_canonical()
+    spelling = canonical.spelling if canonical.spelling else arg_type.spelling
+    if not spelling:
+      spelling = arg_type.spelling
+    if templateArgs and spelling and "type-parameter-" in spelling:
+      if Bindings._TYPE_PARAM_RE is None:
+        Bindings._TYPE_PARAM_RE = re.compile(r'type-parameter-(\d+)-(\d+)')
+      m = Bindings._TYPE_PARAM_RE.search(spelling)
+      if m:
+        depth, index = int(m.group(1)), int(m.group(2))
+        if depth == 0:
+          argValues = list(templateArgs.values())
+          if index < len(argValues):
+            concrete = argValues[index]
+            resolved = self.resolve_type(concrete, templateDecl, templateArgs)
+            if resolved and resolved != "any":
+              return resolved
+    result = self.resolve_type(arg_type, templateDecl, templateArgs)
+    if result and result != "any" and "type-parameter-" not in result:
+      return result
+    return None
+
+  def _resolve_stl_type(self, container, clang_type, templateDecl=None, templateArgs=None):
+    """Resolve standard library template types to TypeScript equivalents."""
+    t = clang_type
+    numArgs = t.get_num_template_arguments()
+
+    if container == "shared_ptr":
+      if self._is_std_decl(t.get_declaration()) and numArgs >= 1:
+        inner = t.get_template_argument_type(0)
+        return self.resolve_type(inner, templateDecl, templateArgs)
+
+    if container == "vector":
+      if self._is_std_decl(t.get_declaration()) and numArgs >= 1:
+        inner = self.resolve_type(t.get_template_argument_type(0), templateDecl, templateArgs)
+        return f"{inner}[]"
+
+    if container == "initializer_list":
+      if numArgs >= 1:
+        inner = self.resolve_type(t.get_template_argument_type(0), templateDecl, templateArgs)
+        return f"{inner}[]"
+      return "any[]"
+
+    if container == "pair":
+      if numArgs >= 2:
+        t0 = self.resolve_type(t.get_template_argument_type(0), templateDecl, templateArgs)
+        t1 = self.resolve_type(t.get_template_argument_type(1), templateDecl, templateArgs)
+        return f"[{t0}, {t1}]"
+
+    if container == "optional":
+      if numArgs >= 1:
+        inner = self.resolve_type(t.get_template_argument_type(0), templateDecl, templateArgs)
+        return f"{inner} | undefined"
+
+    if container == "array":
+      decl = t.get_declaration()
+      if self._is_std_decl(decl) and numArgs >= 1:
+        inner = self.resolve_type(t.get_template_argument_type(0), templateDecl, templateArgs)
+        if decl.get_num_template_arguments() >= 2:
+          arg_kind = decl.get_template_argument_kind(1)
+          if arg_kind == clang.cindex.TemplateArgumentKind.INTEGRAL:
+            n = decl.get_template_argument_value(1)
+            if 1 <= n <= 16:
+              return "[" + ", ".join([inner] * n) + "]"
+        import re
+        m = re.search(r',\s*(\d+)\s*>$', t.spelling)
+        if m:
+          n = int(m.group(1))
+          if 1 <= n <= 16:
+            return "[" + ", ".join([inner] * n) + "]"
+        return f"{inner}[]"
+
+    if container in ("basic_string_view", "string_view", "u16string_view"):
+      return "string"
+
+    if container in ("basic_string",):
+      return "string"
+
+    if container in ("NCollection_UtfString",):
+      return "string"
+
+    return None
 
   _BUILTIN_NUMERIC_KINDS = frozenset({
     clang.cindex.TypeKind.INT, clang.cindex.TypeKind.UINT,
@@ -2378,7 +2731,7 @@ class TypescriptBindings(Bindings):
     decl = t.get_declaration()
     nested = self._resolve_nested_type(decl)
     if nested:
-      return nested if nested in self.exports else "any"
+      return nested
 
     canonical = t.get_canonical()
     kind = canonical.kind
@@ -2391,9 +2744,9 @@ class TypescriptBindings(Bindings):
     if kind == clang.cindex.TypeKind.VOID:
       return "void"
 
-    spelling = t.spelling.replace("&", "").replace("const", "").replace("*", "").strip()
+    spelling = self._strip_type_qualifiers_str(t.spelling)
     resolved = self.resolveWithCanonicalFallback(spelling, t, templateDecl, templateArgs)
-    resolved = resolved.replace("&", "").replace("const", "").replace("*", "").strip()
+    resolved = self._strip_type_qualifiers_str(resolved)
     resolved = self.convertBuiltinTypes(resolved)
 
     if resolved in ("number", "string", "boolean", "void"):
@@ -2401,18 +2754,23 @@ class TypescriptBindings(Bindings):
     if resolved and resolved != "" and "(" not in resolved and ":" not in resolved and "<" not in resolved:
       return resolved
 
-    canonical_spelling = canonical.spelling.replace("&", "").replace("const", "").replace("*", "").strip()
+    if resolved and "::" in resolved and "(" not in resolved:
+      member_result = self._resolve_qualified_member_type(resolved, templateDecl, templateArgs)
+      if member_result:
+        return member_result
+
+    canonical_spelling = self._strip_type_qualifiers_str(canonical.spelling)
     canonical_spelling = self.convertBuiltinTypes(canonical_spelling)
     if canonical_spelling in ("number", "string", "boolean", "void"):
       return canonical_spelling
     if canonical_spelling and "(" not in canonical_spelling and ":" not in canonical_spelling and "<" not in canonical_spelling:
-      if canonical_spelling in self.exports:
+      if canonical_spelling in self.exports or canonical_spelling in TypescriptBindings._known_export_names:
         return canonical_spelling
 
-    if decl and decl.spelling and decl.spelling in self.exports:
+    if decl and decl.spelling and (decl.spelling in self.exports or decl.spelling in TypescriptBindings._known_export_names):
       return decl.spelling
 
-    print(f"could not generate proper types for type '{t.spelling}' (canonical: '{canonical.spelling}'), using 'any' instead.")
+    self._collect_any("final_fallback", f"{t.spelling} (canonical: {canonical.spelling})")
     return "any"
 
   def getTypescriptDefFromResultType(self, res, templateDecl = None, templateArgs = None):
@@ -2482,7 +2840,9 @@ class TypescriptBindings(Bindings):
 
       className = getClassTypeName(theClass, templateDecl)
       tplName = theClass.spelling if templateDecl is not None else None
-      output += self._jsdoc(className, method.spelling, "  ", param_count=len(allArgs), overload_index=overload_index, template_name=tplName)
+      kept_names = [self._argname(arg, i) for i, arg in enumerate(allArgs)
+                    if not shouldStripParam(arg.type, method)]
+      output += self._jsdoc(className, method.spelling, "  ", param_count=len(allArgs), overload_index=overload_index, template_name=tplName, param_names=kept_names)
       output += "  " + ("static " if method.is_static_method() else "") + method.spelling + overloadPostfix + "(" + args + "): " + returnType + ";\n"
     return output
 
@@ -2500,6 +2860,31 @@ class TypescriptBindings(Bindings):
       except SkipException as e:
         print(str(e))
 
+    if not bindable:
+      return output
+
+    # Filter rvalue-reference overloads — JS has no move semantics.
+    # These create JS-ambiguous duplicates of const-ref overloads,
+    # forcing unnecessary _N suffixes on the entire arity group.
+    bindable = [m for m in bindable if not any(
+      a.type.kind == clang.cindex.TypeKind.RVALUEREFERENCE
+      for a in m.get_arguments()
+    )]
+    if not bindable:
+      return output
+
+    # Deduplicate const/non-const overloads with identical argument types.
+    # JS has no const `this` — these are JS-indistinguishable and force
+    # unnecessary _N suffixes. Prefer the const version.
+    deduped = {}
+    for m in bindable:
+      arg_key = tuple(a.type.get_canonical().spelling for a in m.get_arguments())
+      is_const = m.is_const_method()
+      if arg_key not in deduped:
+        deduped[arg_key] = m
+      elif is_const and not deduped[arg_key].is_const_method():
+        deduped[arg_key] = m
+    bindable = list(deduped.values())
     if not bindable:
       return output
 
@@ -2538,6 +2923,12 @@ class TypescriptBindings(Bindings):
         returnType = self.getTypescriptDefFromResultType(m.result_type, templateDecl, templateArgs)
       return args, returnType
 
+    def _kept_names(m):
+      """Compute TS param names for a method, excluding stripped output params."""
+      allArgs = list(m.get_arguments())
+      return [self._argname(arg, i) for i, arg in enumerate(allArgs)
+              if not shouldStripParam(arg.type, m)]
+
     arity_idx_map = {}
     for arity, group in sorted(by_arity.items()):
       if len(group) == 1:
@@ -2545,13 +2936,13 @@ class TypescriptBindings(Bindings):
         arity_idx_map[arity] = idx + 1
         args, returnType = _ts_args_and_return(group[0])
         methodArgs = list(group[0].get_arguments())
-        output += self._jsdoc(className, group[0].spelling, "  ", param_count=len(methodArgs), overload_index=idx, template_name=tplName)
+        names = _kept_names(group[0])
+        output += self._jsdoc(className, group[0].spelling, "  ", param_count=len(methodArgs), overload_index=idx, template_name=tplName, param_names=names)
         output += "  " + ("static " if group[0].is_static_method() else "") + group[0].spelling + "(" + args + "): " + returnType + ";\n"
       else:
         def _ts_method_has_wrapper_args(m):
           return any(
-            isCString(m_arg.type)
-            or m_arg.type.get_canonical().spelling in unbindablePointerTypes
+            m_arg.type.get_canonical().spelling in unbindablePointerTypes
             for m_arg in m.get_arguments()
           )
 
@@ -2563,6 +2954,7 @@ class TypescriptBindings(Bindings):
           ambiguous = self._collect_ambiguous_overloads(tree) if tree else []
           distinguishable = [ov for ov in dispatchable if ov not in ambiguous]
 
+
           ambiguous_primaries = set()
           if tree:
             self._collect_ambiguous_primaries(tree, ambiguous_primaries)
@@ -2572,7 +2964,8 @@ class TypescriptBindings(Bindings):
             arity_idx_map[arity] = idx + 1
             args, returnType = _ts_args_and_return(ov)
             methodArgs = list(ov.get_arguments())
-            output += self._jsdoc(className, ov.spelling, "  ", param_count=len(methodArgs), overload_index=idx, template_name=tplName)
+            names = _kept_names(ov)
+            output += self._jsdoc(className, ov.spelling, "  ", param_count=len(methodArgs), overload_index=idx, template_name=tplName, param_names=names)
             output += "  " + ("static " if ov.is_static_method() else "") + ov.spelling + "(" + args + "): " + returnType + ";\n"
 
           for ov in ambiguous:
@@ -2582,11 +2975,12 @@ class TypescriptBindings(Bindings):
             arity_idx_map[arity] = idx + 1
             args, returnType = _ts_args_and_return(ov)
             methodArgs = list(ov.get_arguments())
+            names = _kept_names(ov)
             is_primary = id(ov) in ambiguous_primaries
             if is_primary:
-              output += self._jsdoc(className, ov.spelling, "  ", param_count=len(methodArgs), overload_index=idx, template_name=tplName)
+              output += self._jsdoc(className, ov.spelling, "  ", param_count=len(methodArgs), overload_index=idx, template_name=tplName, param_names=names)
               output += "  " + ("static " if ov.is_static_method() else "") + ov.spelling + "(" + args + "): " + returnType + ";\n"
-            output += self._jsdoc(className, ov.spelling, "  ", param_count=len(methodArgs), overload_index=idx, template_name=tplName)
+            output += self._jsdoc(className, ov.spelling, "  ", param_count=len(methodArgs), overload_index=idx, template_name=tplName, param_names=names)
             output += "  " + ("static " if ov.is_static_method() else "") + ov.spelling + suffix + "(" + args + "): " + returnType + ";\n"
 
         for ov in wrapper_methods:
@@ -2596,7 +2990,8 @@ class TypescriptBindings(Bindings):
           arity_idx_map[arity] = idx + 1
           args, returnType = _ts_args_and_return(ov)
           methodArgs = list(ov.get_arguments())
-          output += self._jsdoc(className, ov.spelling, "  ", param_count=len(methodArgs), overload_index=idx, template_name=tplName)
+          names = _kept_names(ov)
+          output += self._jsdoc(className, ov.spelling, "  ", param_count=len(methodArgs), overload_index=idx, template_name=tplName, param_names=names)
           output += "  " + ("static " if ov.is_static_method() else "") + ov.spelling + suffix + "(" + args + "): " + returnType + ";\n"
 
     return output
@@ -2647,13 +3042,14 @@ class TypescriptBindings(Bindings):
       arity_idx = arity_seen.get(nargs, 0)
       arity_seen[nargs] = arity_idx + 1
       argsTypescriptDef = ", ".join(list(map(lambda x: self.getTypescriptDefFromArg(x, "", templateDecl, templateArgs), ctorArgs)))
-      output += self._jsdoc(name, name, "  ", param_count=nargs, overload_index=arity_idx, template_name=tplName)
+      ctor_names = [self._argname(arg, i) for i, arg in enumerate(ctorArgs)]
+      output += self._jsdoc(name, name, "  ", param_count=nargs, overload_index=arity_idx, template_name=tplName, param_names=ctor_names)
       output += "  export declare class " + name + overloadPostfix + " extends " + name + " {\n"
-      output += self._jsdoc(name, name, "    ", param_count=nargs, overload_index=arity_idx, template_name=tplName)
+      output += self._jsdoc(name, name, "    ", param_count=nargs, overload_index=arity_idx, template_name=tplName, param_names=ctor_names)
       output += "    constructor(" + argsTypescriptDef + ");\n"
       output += "  }\n\n"
       allOverloadedConstructors.append(name + overloadPostfix)
-    self.exports.extend(allOverloadedConstructors)
+    self.exports.update(allOverloadedConstructors)
     return output
 
   def processEnum(self, theEnum):
@@ -2666,5 +3062,5 @@ class TypescriptBindings(Bindings):
       output += self._enum_member_jsdoc(enumName, enumChild.spelling)
       output += "  readonly " + enumChild.spelling + ": '" + enumChild.spelling + "';\n"
     output += "};\n\n"
-    self.exports.append(enumName)
+    self.exports.add(enumName)
     return output

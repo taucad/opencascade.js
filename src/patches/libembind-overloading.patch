@@ -1,6 +1,6 @@
---- src/lib/libembind.js	2026-01-14 15:15:41
-+++ src/lib/libembind.js	2026-03-25 19:11:04
-@@ -55,6 +55,70 @@
+--- src/lib/libembind.js	2026-03-26 10:52:09
++++ src/lib/libembind.js	2026-03-26 10:51:42
+@@ -55,6 +55,76 @@
      throw new UnboundTypeError(`${message}: ` + unboundTypes.map(getTypeName).join([', ']));
    },
  
@@ -36,9 +36,12 @@
 +  $cppTypeToJsType__deps: ['$registeredTypes'],
 +  $cppTypeToJsType: (typeId) => {
 +    var type = registeredTypes[typeId];
++    if (type.name === 'emscripten::val') return 'emscripten::val';
 +    if (type.name === 'std::string' || type.name === 'std::wstring') return 'string';
 +    else if (type.name === 'bool') return 'boolean';
 +    else if (['char', 'signed char', 'unsigned char', 'short', 'unsigned short', 'int', 'unsigned int', 'long', 'unsigned long', 'float', 'double', 'int64_t', 'uint64_t'].includes(type.name)) return 'number';
++    else if (type.valueType === 'string') return 'string';
++    else if (type.valueType === 'number') return 'number';
 +    return typeId;
 +  },
 +
@@ -64,15 +67,17 @@
 +      // Move the previous function into the overload signature table.
 +      proto[methodName].overloadTable[numArguments].signatures = {};
 +      proto[methodName].overloadTable[numArguments].signatures[prevFunc.signature] = prevFunc;
-+      // prevFunc.signature is raw signature, so it doesn't need to be added to the array.
 +      proto[methodName].overloadTable[numArguments].signaturesArray = [];
++      if (prevFunc.signatureArray) {
++        proto[methodName].overloadTable[numArguments].signaturesArray.push(prevFunc.signatureArray);
++      }
 +    }
 +  },
 +
    // Creates a function overload resolution table to the given method 'methodName' in the given prototype,
    // if the overload table doesn't yet exist.
    $ensureOverloadTable__deps: ['$throwBindingError'],
-@@ -81,44 +145,79 @@
+@@ -81,44 +151,80 @@
     name: The name of the symbol that's being exposed.
     value: The object itself to expose (function, class, ...)
     numArguments: For functions, specifies the number of arguments the function takes in. For other types, unused and undefined.
@@ -165,10 +170,11 @@
        Module[name] = value;
        Module[name].argCount = numArguments;
 +      Module[name].signature = signatureString;
++      Module[name].signatureArray = signatureArray;
      }
    },
  
-@@ -860,21 +959,25 @@
+@@ -860,21 +966,25 @@
    _embind_register_function__deps: [
      '$craftInvokerFunction', '$exposePublicSymbol', '$heap32VectorToArray',
      '$AsciiToString', '$replacePublicSymbol', '$embind__requireFunction',
@@ -197,7 +203,7 @@
        return [];
      });
    },
-@@ -1654,7 +1757,7 @@
+@@ -1654,7 +1764,7 @@
      '$makeLegalFunctionName', '$AsciiToString',
      '$RegisteredClass', '$RegisteredPointer', '$replacePublicSymbol',
      '$embind__requireFunction', '$throwUnboundTypeError',
@@ -206,7 +212,7 @@
    _embind_register_class: (rawType,
                             rawPointerType,
                             rawConstPointerType,
-@@ -1702,9 +1805,27 @@
+@@ -1702,9 +1812,27 @@
            if (undefined === registeredClass.constructor_body) {
              throw new BindingError(`${name} has no accessible constructor`);
            }
@@ -236,7 +242,7 @@
            }
            return body.apply(this, args);
          });
-@@ -1777,7 +1898,7 @@
+@@ -1777,7 +1905,7 @@
    _embind_register_class_constructor__deps: [
      '$heap32VectorToArray', '$embind__requireFunction',
      '$whenDependentTypesAreResolved',
@@ -245,7 +251,7 @@
    _embind_register_class_constructor: (
      rawClassType,
      argCount,
-@@ -1801,17 +1922,43 @@
+@@ -1801,17 +1929,43 @@
        if (undefined === classType.registeredClass.constructor_body) {
          classType.registeredClass.constructor_body = [];
        }
@@ -294,7 +300,7 @@
          return [];
        });
        return [];
-@@ -1866,7 +2013,8 @@
+@@ -1866,7 +2020,8 @@
    _embind_register_class_function__deps: [
      '$craftInvokerFunction', '$heap32VectorToArray', '$AsciiToString',
      '$embind__requireFunction', '$throwUnboundTypeError',
@@ -304,7 +310,7 @@
    _embind_register_class_function: (rawClassType,
                                      methodName,
                                      argCount,
-@@ -1900,21 +2048,34 @@
+@@ -1900,21 +2055,34 @@
  
        var proto = classType.registeredClass.instancePrototype;
        var method = proto[methodName];
@@ -341,11 +347,12 @@
  
          // Replace the initial unbound-handler-stub function with the
          // appropriate member function, now that all types are resolved. If
-@@ -1923,9 +2084,15 @@
+@@ -1923,9 +2091,16 @@
          if (undefined === proto[methodName].overloadTable) {
            // Set argCount in case an overload is registered later
            memberFunction.argCount = argCount - 2;
 +          memberFunction.signature = signatureString;
++          memberFunction.signatureArray = signatureArray;
            proto[methodName] = memberFunction;
 -        } else {
 +        } else if (undefined === proto[methodName].overloadTable[argCount - 2].signatures) {
@@ -358,7 +365,7 @@
          }
  
          return [];
-@@ -2004,7 +2171,8 @@
+@@ -2004,7 +2179,8 @@
    _embind_register_class_class_function__deps: [
      '$craftInvokerFunction', '$ensureOverloadTable', '$heap32VectorToArray',
      '$AsciiToString', '$embind__requireFunction', '$throwUnboundTypeError',
@@ -368,7 +375,7 @@
    _embind_register_class_class_function: (rawClassType,
                                            methodName,
                                            argCount,
-@@ -2031,15 +2199,24 @@
+@@ -2031,15 +2207,24 @@
        }
  
        var proto = classType.registeredClass.constructor;
@@ -394,7 +401,7 @@
        }
  
        whenDependentTypesAreResolved([], rawArgTypes, (argTypes) => {
-@@ -2048,11 +2225,19 @@
+@@ -2048,11 +2233,20 @@
          // go into an overload table.
          var invokerArgsArray = [argTypes[0] /* return value */, null /* no class 'this'*/].concat(argTypes.slice(1) /* actual params */);
          var func = craftInvokerFunction(humanName, invokerArgsArray, null /* no class 'this'*/, rawInvoker, fn, isAsync);
@@ -403,6 +410,7 @@
          if (undefined === proto[methodName].overloadTable) {
            func.argCount = argCount-1;
 +          func.signature = signatureString;
++          func.signatureArray = signatureArray;
            proto[methodName] = func;
 -        } else {
 +        } else if (undefined === proto[methodName].overloadTable[argCount-1].signatures) {
