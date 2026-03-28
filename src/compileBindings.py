@@ -12,6 +12,7 @@ from filter.filterPackages import filterPackages
 from argparse import ArgumentParser
 
 libraryBasePath = BUILD_DIR + "/bindings"
+COMPILED_BINDINGS_DIR = BUILD_DIR + "/compiled-bindings"
 
 OPT_LEVEL = os.environ.get("OCJS_OPT", "-O0")
 USE_LTO = os.environ.get("OCJS_LTO", "0") == "1"
@@ -41,8 +42,15 @@ def _classify_error(stderr_text):
   return "unknown"
 
 
+def _cpp_to_object_path(cpp_path):
+  """Map a .cpp source path under build/bindings/ to its .cpp.o path under build/compiled-bindings/."""
+  rel = os.path.relpath(cpp_path, libraryBasePath)
+  return os.path.join(COMPILED_BINDINGS_DIR, rel + ".o")
+
+
 def buildOneFile(args, item):
-  o_path = item + ".o"
+  o_path = _cpp_to_object_path(item)
+  os.makedirs(os.path.dirname(o_path), exist_ok=True)
   needs_build = not os.path.exists(o_path)
   if not needs_build and os.path.getmtime(o_path) < os.path.getmtime(item):
     needs_build = True
@@ -175,7 +183,7 @@ if __name__ == "__main__":
       for r in failure_details
     ],
   }
-  report_path = os.path.join(BUILD_DIR, "binding-report.json")
+  report_path = os.path.join(COMPILED_BINDINGS_DIR, "binding-report.json")
   os.makedirs(os.path.dirname(report_path), exist_ok=True)
   with open(report_path, "w") as rf:
     json.dump(report, rf, indent=2)

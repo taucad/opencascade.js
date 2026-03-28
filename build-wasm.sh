@@ -61,7 +61,7 @@ Commands:
   sources               Compile OCCT sources only
   validate <yaml>       Validate YAML config without building
   clean-generated       Remove all generated .d.ts.json and .cpp files (handles symlinks)
-  clean-objects         Remove all compiled .o files from bindings (handles symlinks)
+  clean-objects         Remove all compiled .o files from compiled-bindings/ (handles symlinks)
 
 Options:
   --help                Show this help message
@@ -211,14 +211,23 @@ if [ "${1:-}" = "clean-generated" ]; then
 fi
 
 if [ "${1:-}" = "clean-objects" ]; then
-  echo "Cleaning compiled .o files from bindings..."
-  target="$(_resolve_symlink_target "$SCRIPT_DIR/build/bindings")"
+  echo "Cleaning compiled .o files..."
+  target="$SCRIPT_DIR/build/compiled-bindings"
   if [ -d "$target" ]; then
     count=$(find "$target" -name "*.cpp.o" | wc -l | tr -d ' ')
-    find "$target" -name "*.cpp.o" -delete 2>/dev/null || true
-    echo "  Removed $count object files."
+    rm -rf "$target"
+    echo "  Removed $count object files from compiled-bindings/."
   else
-    echo "  No build/bindings directory found."
+    echo "  No build/compiled-bindings directory found."
+  fi
+  # Also clean legacy .cpp.o from build/bindings/ if present
+  legacy="$(_resolve_symlink_target "$SCRIPT_DIR/build/bindings")"
+  if [ -d "$legacy" ]; then
+    legacy_count=$(find "$legacy" -name "*.cpp.o" 2>/dev/null | wc -l | tr -d ' ')
+    if [ "$legacy_count" -gt 0 ]; then
+      find "$legacy" -name "*.cpp.o" -delete 2>/dev/null || true
+      echo "  Removed $legacy_count legacy object files from bindings/."
+    fi
   fi
   echo "Done. Run 'bindings' to recompile."
   exit 0
@@ -698,7 +707,7 @@ if [ $# -eq 0 ]; then
   echo "  link <yaml>      Link WASM binary from YAML config"
   echo "  full <yaml>      Full pipeline (apply-patches + pch + generate + bindings + sources + link)"
   echo "  clean-generated  Remove generated .d.ts.json and .cpp (handles symlinks)"
-  echo "  clean-objects    Remove compiled .o files from bindings (handles symlinks)"
+  echo "  clean-objects    Remove compiled .o files from compiled-bindings/ (handles symlinks)"
   exit 1
 fi
 

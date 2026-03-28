@@ -64,7 +64,7 @@
         "depsVersion",
         { "runtime": "git -C deps/OCCT rev-parse HEAD 2>/dev/null || echo missing" }
       ],
-      "outputs": ["{projectRoot}/build/bindings/"],
+      "outputs": ["{projectRoot}/build/bindings/", "{projectRoot}/build/ncollection-manifest.json"],
       "options": {
         "command": "./build-wasm.sh generate",
         "cwd": "{projectRoot}"
@@ -81,7 +81,7 @@
         "compileBindingsScript",
         { "dependentTasksOutputFiles": "**/*.cpp", "transitive": false }
       ],
-      "outputs": ["{projectRoot}/build/bindings/**/*.cpp.o", "{projectRoot}/build/binding-report.json"],
+      "outputs": ["{projectRoot}/build/compiled-bindings/"],
       "options": {
         "command": "./build-wasm.sh bindings",
         "cwd": "{projectRoot}"
@@ -109,7 +109,7 @@
     "link": {
       "executor": "nx:run-commands",
       "cache": true,
-      "dependsOn": ["compile-bindings", "compile-sources"],
+      "dependsOn": ["compile-bindings", "compile-sources", "generate"],
       "inputs": [
         "compileConfig",
         "linkConfig",

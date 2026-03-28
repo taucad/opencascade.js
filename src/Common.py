@@ -48,7 +48,7 @@ _BUILD_FLAG_KEYS = [
 ]
 
 _BUILD_FLAG_DEFAULTS = {
-  "OCJS_OPT": "-O2",
+  "OCJS_OPT": "-O3",
   "OCJS_EXTRA_CFLAGS": "",
   "OCJS_LTO": "1",
   "OCJS_EXCEPTIONS": "0",
@@ -240,14 +240,7 @@ includePathArgs = list(dict.fromkeys(
 ))
 
 ocIncludeStatements = os.linesep.join(map(lambda x: "#include \"" + os.path.basename(x) + "\"", list(sorted(ocIncludeFiles))))
-_SAFE_DEPRECATED_PREFIXES = [
-  "TColgp_", "TColStd_Array", "TColStd_HArray",
-  "TColStd_List", "TColStd_Sequence",
-  "TopTools_", "Poly_Array", "Poly_HArray",
-  "NCollection_BaseList",
-]
-_safeDeprecatedIncludes = [h for h in sorted(ocDeprecatedIncludeFiles) if any(os.path.basename(h).startswith(p) for p in _SAFE_DEPRECATED_PREFIXES)]
-ocAllIncludeStatements = os.linesep.join(map(lambda x: "#include \"" + os.path.basename(x) + "\"", list(sorted(ocIncludeFiles + _safeDeprecatedIncludes))))
+ocAllIncludeStatements = ocIncludeStatements
 
 def buildFlatIncludes():
   """Create a flat directory with symlinks to ALL OCCT headers.
@@ -292,24 +285,6 @@ def getFlatIncludePaths():
     paths.insert(0, cmake_inc)
   return paths
 
-def _get_safe_deprecated_headers():
-  """Return deprecated headers that compile cleanly with the PCH.
-
-  Not all deprecated headers can compile (some reference removed types).
-  Only include ones that are simple NCollection typedefs used by consumers.
-  """
-  safe = []
-  for h in sorted(ocDeprecatedIncludeFiles):
-    base = os.path.basename(h)
-    if any(base.startswith(p) for p in [
-      "TColgp_", "TColStd_Array", "TColStd_HArray",
-      "TColStd_List", "TColStd_Sequence",
-      "TopTools_", "Poly_Array", "Poly_HArray",
-      "NCollection_BaseList",
-    ]):
-      safe.append(h)
-  return safe
-
 def buildPch(threading="single-threaded"):
   """Generate and precompile the unified header (PCH).
 
@@ -317,12 +292,9 @@ def buildPch(threading="single-threaded"):
   loads the binary PCH instead of reparsing them.
   Combined with flat includes, this gives ~25x compilation speedup.
   """
-  safe_deprecated = _get_safe_deprecated_headers()
   with open(PCH_HEADER, "w") as f:
     f.write("#ifndef OCJS_PCH_H\n#define OCJS_PCH_H\n")
     f.write(ocIncludeStatements)
-    for h in safe_deprecated:
-      f.write(f'\n#include "{os.path.basename(h)}"')
     _occt_leaked_macros = ["CONSTRUCTOR", "DESTRUCTOR", "OPTIONAL", "DEFINE"]
     f.write("\n")
     for m in _occt_leaked_macros:
