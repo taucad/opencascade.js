@@ -98,25 +98,29 @@ def filterTemplates(child, customBuild):
     return False
   if child.spelling.startswith("Handle_"):
     return False
-  if customBuild:
-    return (
-      child.location.file is not None and child.location.file.name == "myMain.h" and
-      child.kind == clang.cindex.CursorKind.TYPEDEF_DECL and
-      (
-        child.underlying_typedef_type.kind == clang.cindex.TypeKind.ELABORATED or
-        child.underlying_typedef_type.kind == clang.cindex.TypeKind.UNEXPOSED
-      )
-    )
-  return ((
-      child.extent.start.file is not None and child.extent.start.file.name.startswith(occtBasePath) and
-      filterPackages(os.path.basename(os.path.dirname(child.location.file.name)))
-    ) and
-    child.kind == clang.cindex.CursorKind.TYPEDEF_DECL and
-    (
-      child.underlying_typedef_type.kind == clang.cindex.TypeKind.ELABORATED or
-      child.underlying_typedef_type.kind == clang.cindex.TypeKind.UNEXPOSED
-    )
+
+  is_valid_kind = child.kind in (
+    clang.cindex.CursorKind.TYPEDEF_DECL,
+    clang.cindex.CursorKind.TYPE_ALIAS_DECL,
   )
+  is_valid_underlying = child.underlying_typedef_type.kind in (
+    clang.cindex.TypeKind.ELABORATED,
+    clang.cindex.TypeKind.UNEXPOSED,
+  )
+  is_custom_source = (
+    child.location.file is not None
+    and child.location.file.name == "myMain.h"
+  )
+
+  if customBuild:
+    return is_custom_source and is_valid_kind and is_valid_underlying
+
+  is_occt_source = (
+    child.extent.start.file is not None
+    and child.extent.start.file.name.startswith(occtBasePath)
+    and filterPackages(os.path.basename(os.path.dirname(child.location.file.name)))
+  )
+  return (is_occt_source or is_custom_source) and is_valid_kind and is_valid_underlying
 
 def filterEnums(child, customBuild):
   if customBuild:
@@ -202,7 +206,7 @@ def typescriptGenerationFuncClasses(tuInfo: TuInfo, preamble, child) -> str:
   return json.dumps({
     ".d.ts": preamble + output,
     "kind": "class",
-    "exports": typescript.exports,
+    "exports": sorted(typescript.exports),
   })
 
 def typescriptGenerationFuncTemplates(tuInfo: TuInfo, preamble, child) -> str:
@@ -213,7 +217,7 @@ def typescriptGenerationFuncTemplates(tuInfo: TuInfo, preamble, child) -> str:
   return json.dumps({
     ".d.ts": preamble + output,
     "kind": "class",
-    "exports": typescript.exports,
+    "exports": sorted(typescript.exports),
   })
 
 def typescriptGenerationFuncEnums(tuInfo: TuInfo, preamble, child) -> str:
@@ -223,7 +227,7 @@ def typescriptGenerationFuncEnums(tuInfo: TuInfo, preamble, child) -> str:
   return json.dumps({
     ".d.ts": preamble + output,
     "kind": "enum",
-    "exports": typescript.exports,
+    "exports": sorted(typescript.exports),
   })
 
 referenceTypeTemplateDefs = \
@@ -263,6 +267,9 @@ if __name__ == "__main__":
     if config.excluded_template_typedefs:
       _FILTERED_TEMPLATE_TYPEDEFS = _FILTERED_TEMPLATE_TYPEDEFS | config.excluded_template_typedefs
 
+  from Common import BUILD_DIR
+  from ocjs_bindgen.discover import discover_ncollection_types, generate_using_declarations, write_manifest
+
   try:
     os.makedirs(libraryBasePath)
   except Exception:
@@ -270,9 +277,21 @@ if __name__ == "__main__":
 
   _check_generator_hash_and_clean()
 
-  tuInfo = TuInfo("")
+  # Phase 1: Discovery scan
+  scan_tuInfo = TuInfo("")
+  discovered = discover_ncollection_types(scan_tuInfo, filterClasses)
+  using_decls = generate_using_declarations(discovered)
+  if discovered:
+    write_manifest(discovered, BUILD_DIR)
+
+  # Phase 2: Re-parse with using declarations
+  tuInfo = TuInfo(using_decls)
+
+  TypescriptBindings.prepare_known_exports(tuInfo, filterClasses, filterTemplates)
 
   embindPreamble = ocIncludeStatements + "\n" + referenceTypeTemplateDefs
+  if using_decls:
+    embindPreamble += "\n" + using_decls
   process(tuInfo, ".cpp", embindGenerationFuncClasses, embindGenerationFuncTemplates, embindGenerationFuncEnums, embindPreamble, False)
 
   process(tuInfo, ".d.ts.json", typescriptGenerationFuncClasses, typescriptGenerationFuncTemplates, typescriptGenerationFuncEnums, "", False)

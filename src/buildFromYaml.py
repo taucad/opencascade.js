@@ -70,7 +70,10 @@ EMSCRIPTEN_BINDINGS(ocjs_builtins) {
 
 def _collect_compiled_symbols(libraryBasePath) -> set:
   compiled = set()
-  for dirpath, dirnames, filenames in os.walk(libraryBasePath + "/bindings"):
+  compiled_dir = libraryBasePath + "/compiled-bindings"
+  if not os.path.isdir(compiled_dir):
+    compiled_dir = libraryBasePath + "/bindings"
+  for dirpath, dirnames, filenames in os.walk(compiled_dir):
     for item in filenames:
       if item.endswith(".cpp.o"):
         compiled.add(item[:-6])
@@ -90,8 +93,20 @@ def verifyBindings(bindings, libraryBasePath) -> bool:
     if strict:
       raise Exception(f"{len(missing)} requested bindings missing. Set OCJS_STRICT_VERIFY=0 to proceed with available bindings.")
 
+def _load_auto_discovered_symbols(build_dir):
+  """Load auto-discovered NCollection symbols from the manifest written by the generate step."""
+  manifest_path = os.path.join(build_dir, "ncollection-manifest.json")
+  if os.path.isfile(manifest_path):
+    with open(manifest_path) as f:
+      return set(json.load(f).get("symbols", []))
+  return set()
+
+_auto_symbols = _load_auto_discovered_symbols(BUILD_DIR)
+
 def shouldProcessSymbol(symbol: str, bindings) -> bool:
   if len(bindings) == 0:
+    return True
+  if symbol in _auto_symbols:
     return True
   entry = next((b for b in bindings if b["symbol"] == symbol), None)
   if not entry is None:
@@ -178,9 +193,13 @@ def runBuild(build, libraryBasePath):
   additionalBindCodeO = getAdditionalBindCodeO()
   print("Running build: " + build["name"], flush=True)
   bindingsO = []
-  for dirpath, dirnames, filenames in os.walk(libraryBasePath + "/bindings"):
-    rel_parts = dirpath.replace(libraryBasePath + "/bindings/", "").split("/")
-    skip = any(not filterPackages(p) for p in rel_parts if p)
+  _AUTO_BINDING_DIRS = {"myMain.h"}
+  compiled_bindings = libraryBasePath + "/compiled-bindings"
+  if not os.path.isdir(compiled_bindings):
+    compiled_bindings = libraryBasePath + "/bindings"
+  for dirpath, dirnames, filenames in os.walk(compiled_bindings):
+    rel_parts = dirpath.replace(compiled_bindings + "/", "").split("/")
+    skip = any(not filterPackages(p) and p not in _AUTO_BINDING_DIRS for p in rel_parts if p)
     if skip:
       dirnames.clear()
       continue
@@ -225,7 +244,7 @@ def runBuild(build, libraryBasePath):
 
   fill_flags = []
   if not has_opt:
-    fill_flags.append(os.environ.get("OCJS_LINK_OPT", os.environ.get("OCJS_OPT", "-O2")))
+    fill_flags.append(os.environ.get("OCJS_LINK_OPT", os.environ.get("OCJS_OPT", "-O3")))
   if not has_lto and os.environ.get("OCJS_LTO", "0") == "1":
     fill_flags.append("-flto")
 
@@ -310,9 +329,10 @@ def _collect_dts_fragments(buildConfig, libraryBasePath):
   """Walk bindings dir and collect all .d.ts.json fragments matching the YAML bindings."""
   typescriptDefinitions = []
   allBindings = list(chain(buildConfig["mainBuild"]["bindings"], *list(map(lambda x: x["bindings"], buildConfig["extraBuilds"]))))
+  _AUTO_BINDING_DIRS = {"myMain.h"}
   for dirpath, dirnames, filenames in os.walk(libraryBasePath + "/bindings"):
     rel_parts = dirpath.replace(libraryBasePath + "/bindings/", "").split("/")
-    skip = any(not filterPackages(p) for p in rel_parts if p)
+    skip = any(not filterPackages(p) and p not in _AUTO_BINDING_DIRS for p in rel_parts if p)
     if skip:
       dirnames.clear()
       continue
@@ -345,10 +365,12 @@ def main():
   buildConfig = v.normalized(buildConfig)
 
   if not args.dts_only:
-    try:
-      shutil.rmtree(libraryBasePath + "/bindings/myMain.h")
-    except Exception:
-      pass
+    custom_dir = libraryBasePath + "/bindings/myMain.h"
+    if os.path.isdir(custom_dir):
+      for f in os.listdir(custom_dir):
+        stem = f.split(".")[0]
+        if stem not in _auto_symbols:
+          os.remove(os.path.join(custom_dir, f))
 
     additionalCppCode = buildConfig["additionalCppCode"]
 
@@ -481,6 +503,17 @@ def main():
       " * @returns The initialized instance with all OCCT bindings and the `FS` namespace.\n" + \
       " */\n" + \
       "export default function init(options?: Record<string, unknown>): Promise<OpenCascadeInstance>;\n"
+
+    from bindings import TypescriptBindings as _TSB
+    unrecognized = _TSB._any_reasons.get("unrecognized_template", {})
+    if unrecognized:
+      print(f"\n=== UNRECOGNIZED TEMPLATE TYPES ({len(unrecognized)} unique) ===", flush=True)
+      for type_info, count in sorted(unrecognized.items(), key=lambda x: -x[1])[:15]:
+        print(f"  {type_info} ({count}x)", flush=True)
+      if len(unrecognized) > 15:
+        print(f"  ... and {len(unrecognized) - 15} more", flush=True)
+      print("These template types have no known typedef/using-alias.", flush=True)
+      print("Auto-discovery should capture NCollection types; check discover.py for missing patterns.\n", flush=True)
 
     typescriptDefinitionsFile = open(os.getcwd() + "/" + os.path.splitext(buildConfig["mainBuild"]["name"])[0] + ".d.ts", "w")
     typescriptDefinitionsFile.write(typescriptDefinitionOutput)

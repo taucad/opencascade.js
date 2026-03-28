@@ -74,19 +74,38 @@ def main():
     else:
         _run_full_pipeline(generateBindings)
 
+    _report_any_resolutions()
     print("Binding generation complete.", flush=True)
 
 
 def _run_full_pipeline(gen):
-    """Run the full binding generation pipeline."""
-    from Common import ocIncludeStatements
+    """Run the full binding generation pipeline with two-phase NCollection discovery."""
+    from Common import ocIncludeStatements, BUILD_DIR
     from TuInfo import TuInfo
+    from ocjs_bindgen.discover import discover_ncollection_types, generate_using_declarations, write_manifest
+    from bindings import TypescriptBindings
 
     os.makedirs(gen.libraryBasePath, exist_ok=True)
     gen._check_generator_hash_and_clean()
 
-    tuInfo = TuInfo("")
+    # Phase 1: Discovery scan — parse TU without using declarations to find
+    # NCollection template instantiations in bound class method signatures
+    scan_tuInfo = TuInfo("")
+    discovered = discover_ncollection_types(scan_tuInfo, gen.filterClasses)
+    using_decls = generate_using_declarations(discovered)
+    if discovered:
+        write_manifest(discovered, BUILD_DIR)
+
+    # Phase 2: Re-parse TU with auto-generated using declarations so the AST
+    # sees the new type aliases
+    tuInfo = TuInfo(using_decls)
+
+    # Pre-compute global export names (R3b) before processing
+    TypescriptBindings.prepare_known_exports(tuInfo, gen.filterClasses, gen.filterTemplates)
+
     embindPreamble = ocIncludeStatements + "\n" + gen.referenceTypeTemplateDefs
+    if using_decls:
+        embindPreamble += "\n" + using_decls
 
     gen.process(
         tuInfo, ".cpp",
@@ -102,6 +121,33 @@ def _run_full_pipeline(gen):
         gen.typescriptGenerationFuncEnums,
         "", False,
     )
+
+
+def _report_any_resolutions():
+    """Report all type resolution failures collected during generation."""
+    from bindings import TypescriptBindings
+    if not TypescriptBindings._any_reasons:
+        return
+    import json
+    total_any = 0
+    report = {}
+    for reason, types in sorted(TypescriptBindings._any_reasons.items()):
+        subtotal = sum(types.values())
+        total_any += subtotal
+        report[reason] = {"count": subtotal, "types": dict(sorted(types.items(), key=lambda x: -x[1]))}
+        print(f"\n  [{reason}] ({subtotal} occurrences):", flush=True)
+        for t, count in sorted(types.items(), key=lambda x: -x[1])[:15]:
+            print(f"    {t}: {count}", flush=True)
+        remaining = len(types) - 15
+        if remaining > 0:
+            print(f"    ... and {remaining} more unique types", flush=True)
+    print(f"\n  Total any resolutions: {total_any}", flush=True)
+
+    report_path = os.path.join(os.environ.get("OCJS_ROOT", "."), "build", "any-type-report.json")
+    os.makedirs(os.path.dirname(report_path), exist_ok=True)
+    with open(report_path, "w") as f:
+        json.dump(report, f, indent=2)
+    print(f"  Report written to {report_path}", flush=True)
 
 
 if __name__ == "__main__":

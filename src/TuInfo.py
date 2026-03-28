@@ -23,18 +23,32 @@ def parse(additionalCppCode = ""):
 
   return translationUnit
 
+def _collect_from_cursor(cursor, predicate):
+  """Recursively collect declarations matching predicate, descending into namespaces."""
+  result = []
+  for child in cursor.get_children():
+    if child.kind == clang.cindex.CursorKind.NAMESPACE:
+      result.extend(_collect_from_cursor(child, predicate))
+    elif predicate(child):
+      result.append(child)
+  return result
+
 def templateTypedefGenerator(tu):
-  return list(filter(
+  return _collect_from_cursor(
+    tu.cursor,
     lambda x:
-      x.kind == clang.cindex.CursorKind.TYPEDEF_DECL and
+      x.kind in (clang.cindex.CursorKind.TYPEDEF_DECL, clang.cindex.CursorKind.TYPE_ALIAS_DECL) and
       not (x.get_definition() is None or not x == x.get_definition()) and
       filterTypedef(x) and
       x.type.get_num_template_arguments() != -1 and
       not ignoreDuplicateTypedef(x),
-    tu.cursor.get_children()))
+  )
 
 def typedefGenerator(tu):
-  return list(filter(lambda x: x.kind == clang.cindex.CursorKind.TYPEDEF_DECL, tu.cursor.get_children()))
+  return _collect_from_cursor(
+    tu.cursor,
+    lambda x: x.kind in (clang.cindex.CursorKind.TYPEDEF_DECL, clang.cindex.CursorKind.TYPE_ALIAS_DECL),
+  )
 
 def allChildrenGenerator(tu):
   return list(tu.cursor.get_children())
