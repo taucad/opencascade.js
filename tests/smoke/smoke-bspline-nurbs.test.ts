@@ -17,7 +17,7 @@ describe.skipIf(!wasmExists)('Smoke: BSpline and NURBS', () => {
 
   it('should approximate a curve through control points with GeomAPI_PointsToBSpline', () => {
     const oc = getOC();
-    using points = new oc.TColgp_Array1OfPnt(1, 5);
+    using points = new oc.NCollection_Array1_gp_Pnt(1, 5);
     points.SetValue(1, new oc.gp_Pnt(0, 0, 0));
     points.SetValue(2, new oc.gp_Pnt(5, 5, 0));
     points.SetValue(3, new oc.gp_Pnt(10, 0, 0));
@@ -50,7 +50,7 @@ describe.skipIf(!wasmExists)('Smoke: BSpline and NURBS', () => {
   it('should create curve passing exactly through given points with GeomAPI_Interpolate', () => {
 
     const oc = getOC();
-    using points = new oc.TColgp_Array1OfPnt(1, 4);
+    using points = new oc.NCollection_Array1_gp_Pnt(1, 4);
     points.SetValue(1, new oc.gp_Pnt(0, 0, 0));
     points.SetValue(2, new oc.gp_Pnt(10, 10, 0));
     points.SetValue(3, new oc.gp_Pnt(20, 0, 0));
@@ -78,7 +78,7 @@ describe.skipIf(!wasmExists)('Smoke: BSpline and NURBS', () => {
 
   it('should build BSpline curve into an edge and wire', () => {
     const oc = getOC();
-    using points = new oc.TColgp_Array1OfPnt(1, 4);
+    using points = new oc.NCollection_Array1_gp_Pnt(1, 4);
     points.SetValue(1, new oc.gp_Pnt(0, 0, 0));
     points.SetValue(2, new oc.gp_Pnt(10, 15, 0));
     points.SetValue(3, new oc.gp_Pnt(20, -5, 0));
@@ -106,7 +106,7 @@ describe.skipIf(!wasmExists)('Smoke: BSpline and NURBS', () => {
 
   it('should create a cubic Bezier from 4 poles with Geom_BezierCurve', () => {
     const oc = getOC();
-    using poles = new oc.TColgp_Array1OfPnt(1, 4);
+    using poles = new oc.NCollection_Array1_gp_Pnt(1, 4);
     poles.SetValue(1, new oc.gp_Pnt(0, 0, 0));
     poles.SetValue(2, new oc.gp_Pnt(5, 15, 0));
     poles.SetValue(3, new oc.gp_Pnt(15, 15, 0));
@@ -133,7 +133,7 @@ describe.skipIf(!wasmExists)('Smoke: BSpline and NURBS', () => {
 
   it('should produce valid geometry when extruding BSpline curve into a surface', async () => {
     const oc = getOC();
-    using points = new oc.TColgp_Array1OfPnt(1, 4);
+    using points = new oc.NCollection_Array1_gp_Pnt(1, 4);
     points.SetValue(1, new oc.gp_Pnt(0, 0, 0));
     points.SetValue(2, new oc.gp_Pnt(10, 5, 0));
     points.SetValue(3, new oc.gp_Pnt(20, -5, 0));

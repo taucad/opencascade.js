@@ -9,7 +9,9 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import { initOC, getOC, wasmExists } from './helpers.js';
 
 describe.skipIf(!wasmExists)('Smoke: STEPCAFControl_Writer', () => {
-  beforeAll(async () => { await initOC(); });
+  beforeAll(async () => {
+    await initOC();
+  });
 
   it('should export colored shapes to STEP and produce a file with correct root count', () => {
     const oc = getOC();
@@ -33,12 +35,7 @@ describe.skipIf(!wasmExists)('Smoke: STEPCAFControl_Writer', () => {
 
     using writer = new oc.STEPCAFControl_Writer();
     using progress = new oc.Message_ProgressRange();
-    const transferOk = writer.Transfer_1(
-      doc,
-      oc.STEPControl_StepModelType.STEPControl_AsIs,
-      '',
-      progress,
-    );
+    const transferOk = writer.Transfer(doc, oc.STEPControl_StepModelType.STEPControl_AsIs, '', progress);
     expect(transferOk).toBe(true);
 
     const stepPath = '/tmp/_smoke_stepcaf_test.stp';
@@ -53,7 +50,11 @@ describe.skipIf(!wasmExists)('Smoke: STEPCAFControl_Writer', () => {
     expect(readStatus).toBe(oc.IFSelect_ReturnStatus.IFSelect_RetDone);
     expect(reader.NbRootsForTransfer()).toBeGreaterThanOrEqual(2);
 
-    try { oc.FS.unlink(stepPath); } catch { /* best-effort cleanup */ }
+    try {
+      oc.FS.unlink(stepPath);
+    } catch {
+      /* best-effort cleanup */
+    }
   });
 
   it('should round-trip shape geometry through STEP write and read back', () => {
@@ -68,12 +69,7 @@ describe.skipIf(!wasmExists)('Smoke: STEPCAFControl_Writer', () => {
 
     using writer = new oc.STEPCAFControl_Writer();
     using progress = new oc.Message_ProgressRange();
-    writer.Transfer_1(
-      doc,
-      oc.STEPControl_StepModelType.STEPControl_AsIs,
-      '',
-      progress,
-    );
+    writer.Transfer(doc, oc.STEPControl_StepModelType.STEPControl_AsIs, '', progress);
 
     const stepPath = '/tmp/_smoke_stepcaf_roundtrip.stp';
     const writeStatus = writer.Write(stepPath);
@@ -86,6 +82,10 @@ describe.skipIf(!wasmExists)('Smoke: STEPCAFControl_Writer', () => {
     const nRoots = reader.NbRootsForTransfer();
     expect(nRoots).toBeGreaterThanOrEqual(1);
 
-    try { oc.FS.unlink(stepPath); } catch { /* best-effort cleanup */ }
+    try {
+      oc.FS.unlink(stepPath);
+    } catch {
+      /* best-effort cleanup */
+    }
   });
 });

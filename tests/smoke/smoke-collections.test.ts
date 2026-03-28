@@ -2,9 +2,9 @@
  * Smoke tests: OCCT collection types.
  *
  * Demonstrates:
- * - TopTools_ListOfShape: building, iterating, sizing
- * - TopTools_IndexedMapOfShape: deduplicating and indexing shapes
- * - TColgp_Array1OfPnt: fixed-size point arrays
+ * - NCollection_List_TopoDS_Shape: building, iterating, sizing
+ * - NCollection_IndexedMap_TopoDS_Shape_TopTools_ShapeMapHasher: deduplicating and indexing shapes
+ * - NCollection_Array1_gp_Pnt: fixed-size point arrays
  * - TopExp_Explorer as an iterator for topology traversal
  */
 import { describe, it, expect, beforeAll } from 'vitest';
@@ -13,13 +13,13 @@ import { initOC, getOC, wasmExists } from './helpers.js';
 describe.skipIf(!wasmExists)('Smoke: Collections', () => {
   beforeAll(async () => { await initOC(); });
 
-  it('should support append, size, and access on TopTools_ListOfShape', () => {
+  it('should support append, size, and access on NCollection_List_TopoDS_Shape', () => {
     const oc = getOC();
     using box1 = new oc.BRepPrimAPI_MakeBox(10, 10, 10);
     using box2 = new oc.BRepPrimAPI_MakeBox(20, 20, 20);
     using box3 = new oc.BRepPrimAPI_MakeBox(30, 30, 30);
 
-    using list = new oc.TopTools_ListOfShape();
+    using list = new oc.NCollection_List_TopoDS_Shape();
     expect(list.Size()).toBe(0);
 
     list.Append(box1.Shape());
@@ -35,12 +35,12 @@ describe.skipIf(!wasmExists)('Smoke: Collections', () => {
     expect(last.IsNull()).toBe(false);
   });
 
-  it('should support prepend and reverse on TopTools_ListOfShape', () => {
+  it('should support prepend and reverse on NCollection_List_TopoDS_Shape', () => {
     const oc = getOC();
     using box1 = new oc.BRepPrimAPI_MakeBox(5, 5, 5);
     using box2 = new oc.BRepPrimAPI_MakeBox(10, 10, 10);
 
-    using list = new oc.TopTools_ListOfShape();
+    using list = new oc.NCollection_List_TopoDS_Shape();
     list.Append(box1.Shape());
     list.Prepend(box2.Shape());
 
@@ -53,12 +53,12 @@ describe.skipIf(!wasmExists)('Smoke: Collections', () => {
     expect(list.Size()).toBe(1);
   });
 
-  it('should collect unique faces from a box with TopTools_IndexedMapOfShape', () => {
+  it('should collect unique faces from a box with NCollection_IndexedMap_TopoDS_Shape_TopTools_ShapeMapHasher', () => {
     const oc = getOC();
     using box = new oc.BRepPrimAPI_MakeBox(10, 10, 10);
     const shape = box.Shape();
 
-    using map = new oc.TopTools_IndexedMapOfShape();
+    using map = new oc.NCollection_IndexedMap_TopoDS_Shape_TopTools_ShapeMapHasher();
 
     using explorer = new oc.TopExp_Explorer(
       shape,
@@ -82,12 +82,12 @@ describe.skipIf(!wasmExists)('Smoke: Collections', () => {
     expect(faceIndex).toBe(1);
   });
 
-  it('should collect unique edges from a box with TopTools_IndexedMapOfShape', () => {
+  it('should collect unique edges from a box with NCollection_IndexedMap_TopoDS_Shape_TopTools_ShapeMapHasher', () => {
     const oc = getOC();
     using box = new oc.BRepPrimAPI_MakeBox(10, 10, 10);
     const shape = box.Shape();
 
-    using edgeMap = new oc.TopTools_IndexedMapOfShape();
+    using edgeMap = new oc.NCollection_IndexedMap_TopoDS_Shape_TopTools_ShapeMapHasher();
 
     using explorer = new oc.TopExp_Explorer(
       shape,
@@ -103,9 +103,9 @@ describe.skipIf(!wasmExists)('Smoke: Collections', () => {
     expect(edgeMap.Size()).toBe(12);
   });
 
-  it('should store and retrieve points in TColgp_Array1OfPnt', () => {
+  it('should store and retrieve points in NCollection_Array1_gp_Pnt', () => {
     const oc = getOC();
-    using arr = new oc.TColgp_Array1OfPnt(1, 5);
+    using arr = new oc.NCollection_Array1_gp_Pnt(1, 5);
     expect(arr.Length()).toBe(5);
     expect(arr.Lower()).toBe(1);
     expect(arr.Upper()).toBe(5);
@@ -133,14 +133,14 @@ describe.skipIf(!wasmExists)('Smoke: Collections', () => {
     expect(last.X()).toBe(10);
   });
 
-  it('should count unique topology elements of a cylinder with IndexedMapOfShape', () => {
+  it('should count unique topology elements of a cylinder with NCollection indexed map of shape', () => {
     const oc = getOC();
     using cyl = new oc.BRepPrimAPI_MakeCylinder(5, 10);
     const shape = cyl.Shape();
 
-    using faceMap = new oc.TopTools_IndexedMapOfShape();
-    using edgeMap = new oc.TopTools_IndexedMapOfShape();
-    using vertexMap = new oc.TopTools_IndexedMapOfShape();
+    using faceMap = new oc.NCollection_IndexedMap_TopoDS_Shape_TopTools_ShapeMapHasher();
+    using edgeMap = new oc.NCollection_IndexedMap_TopoDS_Shape_TopTools_ShapeMapHasher();
+    using vertexMap = new oc.NCollection_IndexedMap_TopoDS_Shape_TopTools_ShapeMapHasher();
 
     using faceExp = new oc.TopExp_Explorer(shape, oc.TopAbs_ShapeEnum.TopAbs_FACE, oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
     while (faceExp.More()) {
@@ -165,13 +165,13 @@ describe.skipIf(!wasmExists)('Smoke: Collections', () => {
     expect(vertexMap.Size()).toBe(2);
   });
 
-  it('should report correct size after appending items to TopTools_ListOfShape', () => {
+  it('should report correct size after appending items to NCollection_List_TopoDS_Shape', () => {
     const oc = getOC();
     using box1 = new oc.BRepPrimAPI_MakeBox(1, 1, 1);
     using box2 = new oc.BRepPrimAPI_MakeBox(2, 2, 2);
     using box3 = new oc.BRepPrimAPI_MakeBox(3, 3, 3);
 
-    using list = new oc.TopTools_ListOfShape();
+    using list = new oc.NCollection_List_TopoDS_Shape();
 
     list.Append(box1.Shape());
     list.Append(box2.Shape());

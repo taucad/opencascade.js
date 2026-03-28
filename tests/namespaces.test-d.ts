@@ -10,12 +10,11 @@ import type {
   TopAbs,
   TopAbs_ShapeEnum,
   TopExp,
-  TopTools,
   TopoDS as TopoDS_NS,
   Geom,
   GeomAbs,
   BRepOffsetAPI,
-  TColgp,
+  NCollection,
   TColStd,
   BRepFilletAPI,
   GProp,
@@ -102,8 +101,8 @@ it('should expose BRepOffsetAPI namespace', () => {
 });
 
 it('should expose collection namespaces', () => {
-  expectTypeOf<TColgp.Array1OfPnt>().toHaveProperty('Value');
-  expectTypeOf<TopTools.ListOfShape>().toHaveProperty('Size');
+  expectTypeOf<NCollection.Array1_gp_Pnt>().toHaveProperty('Value');
+  expectTypeOf<NCollection.List_TopoDS_Shape>().toHaveProperty('Size');
 });
 
 it('should expose data exchange namespaces', () => {

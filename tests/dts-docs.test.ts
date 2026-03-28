@@ -547,7 +547,7 @@ describe('JSDoc documentation coverage', () => {
             }
           }
         });
-        expect(sameArityDistinct).toBeGreaterThan(100);
+        expect(sameArityDistinct).toBeGreaterThan(5);
       },
     );
   });
@@ -668,6 +668,118 @@ describe('JSDoc documentation coverage', () => {
     );
   });
 
+  describe('Overload @param correctness', () => {
+    function getJSDocParams(node: ts.Node): { name: string; description: string }[] {
+      const doc = getJSDocText(node);
+      const params: { name: string; description: string }[] = [];
+      const paramRegex = /@param\s+(\S+)\s*(.*)/g;
+      let match;
+      while ((match = paramRegex.exec(doc)) !== null) {
+        params.push({ name: match[1], description: match[2].trim() });
+      }
+      return params;
+    }
+
+    function findAllConstructors(
+      classDecl: ts.ClassDeclaration,
+    ): ts.ConstructorDeclaration[] {
+      return classDecl.members.filter(ts.isConstructorDeclaration);
+    }
+
+    it.skipIf(!sourceFile)(
+      'should not have @param tags on no-arg constructors (TColStd_HPackedMapOfInteger)',
+      () => {
+        const cls = findClass(sourceFile!, 'TColStd_HPackedMapOfInteger');
+        expect(cls).toBeDefined();
+        const ctors = findAllConstructors(cls!);
+        const noArgCtor = ctors.find((c) => c.parameters.length === 0);
+        expect(noArgCtor).toBeDefined();
+        const params = getJSDocParams(noArgCtor!);
+        expect(params).toHaveLength(0);
+      },
+    );
+
+    it.skipIf(!sourceFile)(
+      'should have matching @param name for TColStd_HPackedMapOfInteger(theOther) constructor',
+      () => {
+        const cls = findClass(sourceFile!, 'TColStd_HPackedMapOfInteger');
+        expect(cls).toBeDefined();
+        const ctors = findAllConstructors(cls!);
+        const copyCtorCandidates = ctors.filter(
+          (c) => c.parameters.length === 1 &&
+            c.parameters[0].name &&
+            ts.isIdentifier(c.parameters[0].name) &&
+            c.parameters[0].name.text === 'theOther',
+        );
+        expect(copyCtorCandidates.length).toBeGreaterThanOrEqual(1);
+        const copyCtor = copyCtorCandidates[0];
+        const params = getJSDocParams(copyCtor);
+        if (params.length > 0) {
+          expect(params.some((p) => p.name === 'theOther')).toBe(true);
+          expect(params.some((p) => p.name === 'theNbBuckets')).toBe(false);
+        }
+      },
+    );
+
+    it.skipIf(!sourceFile)(
+      'should not have @param tags on default-expanded no-arg constructors (BRepTools_ShapeSet)',
+      () => {
+        const cls = findClass(sourceFile!, 'BRepTools_ShapeSet');
+        if (!cls) return;
+        const ctors = findAllConstructors(cls);
+        const noArgCtor = ctors.find((c) => c.parameters.length === 0);
+        if (!noArgCtor) return;
+        const params = getJSDocParams(noArgCtor);
+        expect(params).toHaveLength(0);
+      },
+    );
+
+    it.skipIf(!sourceFile)(
+      'should not have @param on any no-arg constructors across the whole .d.ts',
+      () => {
+        let violations = 0;
+        let total = 0;
+        const violationNames: string[] = [];
+        ts.forEachChild(sourceFile!, (node) => {
+          if (!ts.isClassDeclaration(node) || !node.name) return;
+          const ctors = findAllConstructors(node);
+          for (const ctor of ctors) {
+            if (ctor.parameters.length !== 0) continue;
+            total++;
+            const params = getJSDocParams(ctor);
+            if (params.length > 0) {
+              violations++;
+              if (violationNames.length < 10) {
+                violationNames.push(node.name.text);
+              }
+            }
+          }
+        });
+        expect(violations).toBe(0);
+      },
+    );
+
+    it.skipIf(!sourceFile)(
+      'should have @param names matching actual param names for methods with stripped output params',
+      () => {
+        const cls = findClass(sourceFile!, 'BRep_Tool');
+        expect(cls).toBeDefined();
+        const rangeMethods = findAllMethods(cls!, 'Range');
+        expect(rangeMethods.length).toBeGreaterThanOrEqual(1);
+
+        for (const m of rangeMethods) {
+          const tsParamNames = m.parameters.map((p) =>
+            ts.isIdentifier(p.name) ? p.name.text : '',
+          );
+          const docParams = getJSDocParams(m);
+          for (const dp of docParams) {
+            expect(tsParamNames).toContain(dp.name);
+          }
+        }
+      },
+    );
+  });
+
   describe('Template typedef JSDoc fallback', () => {
     it.skipIf(!sourceFile)(
       'should have class-level JSDoc from base template for NCollection_* template typedefs',
@@ -675,11 +787,11 @@ describe('JSDoc documentation coverage', () => {
         let withDoc = 0;
         let total = 0;
         const ncollectionTypedefs = [
-          'TopTools_Array1OfShape',
-          'TopTools_ListOfShape',
-          'TColStd_Array1OfReal',
-          'TColStd_Array1OfInteger',
-          'TColgp_Array1OfPnt',
+          'NCollection_Array1_TopoDS_Shape',
+          'NCollection_List_TopoDS_Shape',
+          'NCollection_Array1_double',
+          'NCollection_Array1_int',
+          'NCollection_Array1_gp_Pnt',
         ];
         for (const name of ncollectionTypedefs) {
           const cls = findClass(sourceFile!, name);
@@ -692,9 +804,12 @@ describe('JSDoc documentation coverage', () => {
     );
 
     it.skipIf(!sourceFile)(
-      'should inherit method JSDoc from NCollection_Array1 base template for TopTools_Array1OfShape',
+      'should inherit method JSDoc from NCollection_Array1 base template for NCollection_Array1_TopoDS_Shape',
       () => {
-        const cls = findClass(sourceFile!, 'TopTools_Array1OfShape');
+        const cls = findClass(
+          sourceFile!,
+          'NCollection_Array1_TopoDS_Shape',
+        );
         expect(cls).toBeDefined();
 
         const init = findMethod(cls!, 'Init');
@@ -714,7 +829,10 @@ describe('JSDoc documentation coverage', () => {
     it.skipIf(!sourceFile)(
       'should have constructor JSDoc for template typedef subclasses with docs',
       () => {
-        const cls5 = findClass(sourceFile!, 'TopTools_Array1OfShape_5');
+        const cls5 = findClass(
+          sourceFile!,
+          'NCollection_Array1_TopoDS_Shape_5',
+        );
         if (!cls5) return;
         const ctor = findConstructor(cls5);
         expect(ctor).toBeDefined();

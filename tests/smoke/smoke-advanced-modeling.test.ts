@@ -18,7 +18,7 @@ describe.skipIf(!wasmExists)('Smoke: Advanced modeling', () => {
     faceExplorer.Next();
     const faceToRemove = faceExplorer.Current();
 
-    using facesToRemove = new oc.TopTools_ListOfShape();
+    using facesToRemove = new oc.NCollection_List_TopoDS_Shape();
     facesToRemove.Append(faceToRemove);
 
     using thickSolid = new oc.BRepOffsetAPI_MakeThickSolid();

@@ -8,7 +8,7 @@
  * Covers:
  * - Handle<T>& output params on const methods (stripped from signature)
  * - Primitive T& output params on const methods (stripped from signature)
- * - Static methods with primitive T& (kept in signature, also returned)
+ * - Static methods with primitive T& (stripped from signature, returned in struct)
  * - Methods with non-void return + output params
  */
 import { describe, it, expect, beforeAll } from 'vitest';
@@ -113,7 +113,7 @@ describe.skipIf(!wasmExists)('Smoke: Output parameter return-by-value', () => {
     });
   });
 
-  describe('Static methods with primitive T& output (kept + returned)', () => {
+  describe('Static methods with primitive T& output (stripped + returned)', () => {
     it('should return UMin, UMax, VMin, VMax from BRepTools.UVBounds', () => {
       const oc = getOC();
 
@@ -125,7 +125,7 @@ describe.skipIf(!wasmExists)('Smoke: Output parameter return-by-value', () => {
 
       const face = oc.TopoDS.Face(explorer.Current());
 
-      const result = oc.BRepTools.UVBounds(face, 0, 0, 0, 0);
+      const result = oc.BRepTools.UVBounds(face);
       expect(result).toEqual(expect.objectContaining({
         UMin: expect.any(Number),
         UMax: expect.any(Number),

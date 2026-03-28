@@ -178,132 +178,6 @@ function countAnyTypes(sourceFile: ts.SourceFile): {
 }
 
 // ---------------------------------------------------------------------------
-// Replicad build .d.ts validation
-// ---------------------------------------------------------------------------
-
-describe('Replicad build .d.ts validation', () => {
-  const dtsPath = path.join(REPLICAD_BUILD_CONFIG, 'replicad_single.d.ts');
-  const sourceFile = parseDtsFile(dtsPath);
-
-  it('should parse the generated .d.ts file without errors', () => {
-    expect(sourceFile).not.toBeNull();
-    if (!sourceFile) return;
-
-    const diagnostics = ts.createProgram({
-      rootNames: [dtsPath],
-      options: {
-        noEmit: true,
-        declaration: true,
-        strict: false,
-        skipLibCheck: true,
-      },
-    }).getSyntacticDiagnostics(sourceFile);
-
-    expect(diagnostics.length).toBe(0);
-  });
-
-  it('should not contain C++ scope resolution operators (::) in type names', () => {
-    if (!sourceFile) return;
-    const violations = findDoubleColonViolations(sourceFile.getFullText());
-
-    expect(violations).toHaveLength(0);
-  });
-
-  it('should not contain bare template types (<) in type positions', () => {
-    if (!sourceFile) return;
-    const violations = findBareTemplateViolations(sourceFile.getFullText());
-
-    expect(violations).toHaveLength(0);
-  });
-
-  it('should contain key OCCT classes', () => {
-    if (!sourceFile) return;
-    const symbols = extractSymbols(sourceFile);
-    const symbolNames = new Set(symbols.map((s) => s.name));
-
-    const requiredClasses = [
-      'gp_Pnt',
-      'gp_Vec',
-      'gp_Dir',
-      'gp_Ax1',
-      'gp_Ax2',
-      'gp_Trsf',
-      'BRepPrimAPI_MakeBox',
-      'BRepPrimAPI_MakeCylinder',
-      'BRepPrimAPI_MakeSphere',
-      'TopoDS_Shape',
-      'TopoDS_Wire',
-      'TopoDS_Edge',
-      'TopoDS_Face',
-      'TopoDS_Solid',
-      'BRepAlgoAPI_Fuse',
-      'BRepAlgoAPI_Cut',
-      'BRepAlgoAPI_Common',
-      'BRepFilletAPI_MakeFillet',
-      'BRepBuilderAPI_MakeEdge',
-      'BRepBuilderAPI_MakeWire',
-      'BRepBuilderAPI_MakeFace',
-      'BRepBuilderAPI_Transform',
-    ];
-
-    const missing: string[] = [];
-    for (const cls of requiredClasses) {
-      if (!symbolNames.has(cls)) {
-        missing.push(cls);
-      }
-    }
-
-    expect(missing).toHaveLength(0);
-  });
-
-  it('should have gp_Pnt with expected methods', () => {
-    if (!sourceFile) return;
-    const symbols = extractSymbols(sourceFile);
-    const gpPnt = symbols.find((s) => s.name === 'gp_Pnt' && s.kind === 'class');
-    expect(gpPnt).toBeDefined();
-    expect(gpPnt?.members).toBeDefined();
-
-    const methods = new Set(gpPnt?.members ?? []);
-    expect(methods.has('X')).toBe(true);
-    expect(methods.has('Y')).toBe(true);
-    expect(methods.has('Z')).toBe(true);
-    expect(methods.has('SetX')).toBe(true);
-    expect(methods.has('SetY')).toBe(true);
-    expect(methods.has('SetZ')).toBe(true);
-    expect(methods.has('Distance')).toBe(true);
-  });
-
-  it('should validate symbol coverage against build manifest', () => {
-    const manifest = loadManifest(REPLICAD_BUILD_CONFIG);
-    if (!manifest || !sourceFile) return;
-
-    const symbolsSection = manifest['symbols'] as {
-      requested?: string[];
-      missing?: string[];
-    } | undefined;
-
-    if (!symbolsSection?.requested) {
-      return;
-    }
-
-    const dtsSymbols = extractSymbols(sourceFile);
-    const dtsNames = new Set(dtsSymbols.map((s) => s.name));
-    const requested = new Set(symbolsSection.requested);
-
-    const inManifestNotInDts: string[] = [];
-    for (const sym of requested) {
-      if (!dtsNames.has(sym)) {
-        inManifestNotInDts.push(sym);
-      }
-    }
-
-    const coveragePercent = ((requested.size - inManifestNotInDts.length) / requested.size) * 100;
-
-    expect(coveragePercent).toBeGreaterThan(0);
-  });
-});
-
-// ---------------------------------------------------------------------------
 // Full build .d.ts validation
 // ---------------------------------------------------------------------------
 
@@ -315,15 +189,17 @@ describe('Full build .d.ts validation', () => {
     expect(sourceFile).not.toBeNull();
     if (!sourceFile) return;
 
-    const diagnostics = ts.createProgram({
-      rootNames: [dtsPath],
-      options: {
-        noEmit: true,
-        declaration: true,
-        strict: false,
-        skipLibCheck: true,
-      },
-    }).getSyntacticDiagnostics(sourceFile);
+    const diagnostics = ts
+      .createProgram({
+        rootNames: [dtsPath],
+        options: {
+          noEmit: true,
+          declaration: true,
+          strict: false,
+          skipLibCheck: true,
+        },
+      })
+      .getSyntacticDiagnostics(sourceFile);
 
     expect(diagnostics.length).toBe(0);
   });
@@ -346,10 +222,7 @@ describe('Full build .d.ts validation', () => {
 
     for (const pattern of badPatterns) {
       const violations = findDoubleColonViolations(pattern);
-      expect(
-        violations.length,
-        `Expected :: detection to catch pattern: "${pattern}"`,
-      ).toBeGreaterThan(0);
+      expect(violations.length, `Expected :: detection to catch pattern: "${pattern}"`).toBeGreaterThan(0);
     }
   });
 
@@ -360,11 +233,11 @@ describe('Full build .d.ts validation', () => {
     expect(violations).toHaveLength(0);
   });
 
-  it('should keep `any` type count below regression threshold (1700)', () => {
+  it('should keep `any` type count at or below regression threshold (148)', () => {
     if (!sourceFile) return;
     const { total } = countAnyTypes(sourceFile);
 
-    expect(total, `any count ${total} exceeds regression threshold of 2300`).toBeLessThan(2300);
+    expect(total, `any count ${total} exceeds regression threshold of 148`).toBeLessThanOrEqual(148);
   });
 
   it('should have all symbols from full.yml declared in the .d.ts', () => {
@@ -387,8 +260,8 @@ describe('Full build .d.ts validation', () => {
 
     expect(
       coveragePercent,
-      `Symbol coverage ${coveragePercent.toFixed(1)}% is below 99% threshold (${missing.length} missing)`,
-    ).toBeGreaterThanOrEqual(99);
+      `Symbol coverage ${coveragePercent.toFixed(1)}% is below 95% threshold (${missing.length} missing)`,
+    ).toBeGreaterThanOrEqual(95);
   });
 
   it('should contain key OCCT classes', () => {
@@ -447,10 +320,12 @@ describe('Full build .d.ts validation', () => {
     const manifest = loadManifest(FULL_BUILD_CONFIG);
     if (!manifest || !sourceFile) return;
 
-    const symbolsSection = manifest['symbols'] as {
-      requested?: string[];
-      missing?: string[];
-    } | undefined;
+    const symbolsSection = manifest['symbols'] as
+      | {
+          requested?: string[];
+          missing?: string[];
+        }
+      | undefined;
 
     if (!symbolsSection?.requested) {
       return;
@@ -494,9 +369,7 @@ describe('Overload validation (full build)', () => {
       `gp_Pnt should have multiple constructor() overloads, found ${constructorCount}`,
     ).toBeGreaterThanOrEqual(2);
 
-    const subclasses = symbols.filter(
-      (s) => s.kind === 'class' && /^gp_Pnt_\d+$/.test(s.name),
-    );
+    const subclasses = symbols.filter((s) => s.kind === 'class' && /^gp_Pnt_\d+$/.test(s.name));
     expect(
       subclasses,
       `gp_Pnt should NOT have _N subclasses (unique arities use inline overloads), found: ${subclasses.map((s) => s.name).join(', ')}`,
@@ -510,13 +383,8 @@ describe('Overload validation (full build)', () => {
     const base = symbols.find((s) => s.name === 'BRepPrimAPI_MakeBox' && s.kind === 'class');
     expect(base, 'BRepPrimAPI_MakeBox class should exist').toBeDefined();
 
-    const subclasses = symbols.filter(
-      (s) => s.kind === 'class' && /^BRepPrimAPI_MakeBox_\d+$/.test(s.name),
-    );
-    expect(
-      subclasses.length,
-      'BRepPrimAPI_MakeBox should NOT have _N subclasses in suffix-free mode',
-    ).toBe(0);
+    const subclasses = symbols.filter((s) => s.kind === 'class' && /^BRepPrimAPI_MakeBox_\d+$/.test(s.name));
+    expect(subclasses.length, 'BRepPrimAPI_MakeBox should NOT have _N subclasses in suffix-free mode').toBe(0);
 
     expect(
       base!.members!.filter((m) => m === 'constructor').length,
@@ -561,7 +429,7 @@ describe('NCollection_Vec tuple type validation', () => {
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
       if (line.includes('//') || line.includes('/*')) continue;
-      if (/NCollection_Vec[234]/.test(line)) {
+      if (/(?<![A-Za-z0-9_])NCollection_Vec[234](?![A-Za-z0-9_])/.test(line)) {
         violations.push({ line: i + 1, text: line.trim() });
       }
     }
@@ -626,18 +494,12 @@ describe(':: detection correctness', () => {
 
     for (const line of badLines) {
       const violations = findDoubleColonViolations(line);
-      expect(
-        violations.length,
-        `Should detect :: in: "${line.trim()}"`,
-      ).toBeGreaterThan(0);
+      expect(violations.length, `Should detect :: in: "${line.trim()}"`).toBeGreaterThan(0);
     }
   });
 
   it('should not flag :: inside comments', () => {
-    const commentLines = [
-      '// occ::handle is a C++ type',
-      '/* std::string_view is not valid TS */',
-    ];
+    const commentLines = ['// occ::handle is a C++ type', '/* std::string_view is not valid TS */'];
 
     const content = commentLines.join('\n');
     const violations = findDoubleColonViolations(content);

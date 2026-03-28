@@ -64,7 +64,7 @@ describe.skipIf(!wasmExists)('Smoke: cross-class RBV value_object returns', () =
       expect(explorer.More()).toBe(true);
       const face = oc.TopoDS.Face(explorer.Current());
 
-      const result = oc.BRepTools.UVBounds(face, 0, 0, 0, 0);
+      const result = oc.BRepTools.UVBounds(face);
       expect(result).toEqual(expect.objectContaining({
         UMin: expect.any(Number),
         UMax: expect.any(Number),
