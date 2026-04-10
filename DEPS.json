@@ -4,8 +4,8 @@
   "dependencies": {
     "occt": {
       "repository": "https://github.com/Open-Cascade-SAS/OCCT.git",
-      "commit": "48ebca0f70a5e4b936548b695bc3583363898da4",
-      "version": "V8_0_0_rc4 (master tip)",
+      "commit": "0ebbbedb239d6fffb7e1c8c2d36970a3ab1d9300",
+      "version": "V8_0_0_rc5",
       "description": "Open CASCADE Technology — the C++ CAD kernel"
     },
     "rapidjson": {

@@ -186,6 +186,23 @@ def apply_occt_v8_bugfixes():
         "  std::optional<math_Vector> EigenValues;  //!< Computed eigenvalues"
       ),
     },
+    {
+      "file": "BRepGraph_VersionStamp.cxx",
+      "old": (
+        "  Standard_UUID aResultUUID;\n"
+        "  static_assert(sizeof(size_t) >= 8, \"Expected 64-bit size_t\");\n"
+        "  std::memcpy(&aResultUUID, &aHash1, 8);\n"
+        "  std::memcpy(reinterpret_cast<uint8_t*>(&aResultUUID) + 8, &aHash2, 8);"
+      ),
+      "new": (
+        "  Standard_UUID aResultUUID;\n"
+        "  // Widen to 64-bit for WASM32 where size_t is 4 bytes\n"
+        "  const uint64_t aWide1 = static_cast<uint64_t>(aHash1);\n"
+        "  const uint64_t aWide2 = static_cast<uint64_t>(aHash2);\n"
+        "  std::memcpy(&aResultUUID, &aWide1, 8);\n"
+        "  std::memcpy(reinterpret_cast<uint8_t*>(&aResultUUID) + 8, &aWide2, 8);"
+      ),
+    },
   ]
 
   print("Applying OCCT V8 bugfix patches...")
