@@ -2479,12 +2479,44 @@ class TypescriptBindings(Bindings):
     to their alias names. Returns the alias name if found, else None.
     """
     if TypescriptBindings._reverse_typedef_cache is None:
-      TypescriptBindings._reverse_typedef_cache = {}
-      for src in (self.tuInfo.typedefUnderlyingDict, self.tuInfo.templateTypedefUnderlyingDict):
-        for underlying_spelling, typedef_cursor in src.items():
+      candidates = {}
+      # Collect *all* aliases for each underlying type so the priority
+      # function below can pick the OCCT-public name (TColStd_*, TColgp_*, …)
+      # over the generic NCollection_<TemplateInst>_<T> spelling.
+      for src in (
+        self.tuInfo.typedefUnderlyingMultimap,
+        self.tuInfo.templateTypedefUnderlyingMultimap,
+      ):
+        for underlying_spelling, typedef_cursors in src.items():
           clean = _normalize_handle_ns(underlying_spelling.replace("const ", "").replace("&", "").strip())
-          if clean not in TypescriptBindings._reverse_typedef_cache:
-            TypescriptBindings._reverse_typedef_cache[clean] = typedef_cursor.spelling
+          for typedef_cursor in typedef_cursors:
+            if typedef_cursor.spelling not in candidates.get(clean, []):
+              candidates.setdefault(clean, []).append(typedef_cursor.spelling)
+
+      def _alias_priority(name):
+        # Deterministic typedef selection.
+        # 1. Exported names win (consumer-facing surface area).
+        # 2. OCCT-domain aliases (TColStd_/TColgp_/TopTools_/MeshVS_/XCAFDoc_/...)
+        #    win over generic NCollection_<TemplateInst>_<T> spellings — domain
+        #    aliases are the documented public API surface.
+        # 3. NCollection_ aliases win over everything else (still public).
+        # 4. Alphabetical tiebreaker for reproducible builds across libclang versions.
+        in_exports = 0 if name in self.exports or name in TypescriptBindings._known_export_names else 1
+        if re.match(
+          r"^(TColStd_|TColgp_|TopTools_|MeshVS_|XCAFDoc_|TDataStd_|TDF_|TopoDS_|Geom_|GeomAdaptor_|gp_)",
+          name,
+        ):
+          alias_tier = 0
+        elif re.match(r"^NCollection_", name):
+          alias_tier = 1
+        else:
+          alias_tier = 2
+        return (in_exports, alias_tier, name)
+
+      TypescriptBindings._reverse_typedef_cache = {
+        clean: sorted(names, key=_alias_priority)[0]
+        for clean, names in candidates.items()
+      }
 
     type_spelling = _normalize_handle_ns(clang_type.spelling.replace("const ", "").replace("&", "").replace("*", "").strip())
     result = TypescriptBindings._reverse_typedef_cache.get(type_spelling)
