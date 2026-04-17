@@ -179,6 +179,147 @@ class Bindings:
   def __init__(self, tuInfo):
     self.tuInfo = tuInfo
 
+  def _effectiveArgName(self, arg, index):
+    """Return the structural name used for an argument across both the C++
+    value_object field generator (EmbindBindings) and the TS signature
+    generator (TypescriptBindings). Both must agree so the runtime payload
+    keys match the declared TS keys for output-param RBV results.
+    """
+    return arg.spelling if arg.spelling else f"argNo{index}"
+
+  def _find_base_override_target(self, theClass, method):
+    """Walk the inheritance chain to find the most precisely matching
+    same-name method on a base class.
+
+    Matching strategy: prefer base methods with the same kept-arity AND same
+    canonical kept-arg type tuple. If no exact-types match, fall back to any
+    method with the same raw arity. Returns the deepest (closest-to-root)
+    match so derived overrides mirror the canonical virtual contract.
+
+    Python libclang doesn't expose `clang_getOverriddenCursors`, so we
+    traverse base specifiers manually.
+    """
+    if theClass is None or method is None:
+      return None
+    name = method.spelling
+    target_raw_arity = len(list(method.get_arguments()))
+    target_kept = tuple(
+      a.type.get_canonical().spelling
+      for a in method.get_arguments()
+      if not shouldStripParam(a.type, method)
+    )
+    target_kept_arity = len(target_kept)
+    target_output_count = sum(1 for a in method.get_arguments() if isOutputParam(a.type))
+    target_is_static = method.is_static_method()
+
+    # AST overload index of the derived method within its declaring class —
+    # used as a final tiebreaker when no kept-arg / output-count match exists.
+    # `getMethodOverloadPostfix` uses the same indexing for the `_N` suffix,
+    # so aligning here keeps the structural-compat check honest.
+    same_name_in_derived = [
+      c for c in theClass.get_children()
+      if c.kind == clang.cindex.CursorKind.CXX_METHOD and c.spelling == name
+    ]
+    derived_overload_index = (
+      same_name_in_derived.index(method) if method in same_name_in_derived else None
+    )
+
+    visited = set()
+
+    def _walk(cls):
+      if cls is None:
+        return None
+      key = cls.spelling
+      if key in visited:
+        return None
+      visited.add(key)
+      best_exact = None
+      best_output_match = None
+      best_arity = None
+      best_index_match = None
+      for child in cls.get_children():
+        if child.kind != clang.cindex.CursorKind.CXX_BASE_SPECIFIER:
+          continue
+        if child.access_specifier != clang.cindex.AccessSpecifier.PUBLIC:
+          continue
+        base_decl = child.type.get_declaration()
+        if base_decl is None or base_decl.kind == clang.cindex.CursorKind.NO_DECL_FOUND:
+          continue
+        deeper = _walk(base_decl)
+        if deeper is not None:
+          return deeper
+
+        # Capture base's same-name methods in AST order so we can fall back to
+        # positional matching when shape-based matching fails.
+        base_same_name = []
+        for sibling in base_decl.get_children():
+          if sibling.kind != clang.cindex.CursorKind.CXX_METHOD:
+            continue
+          if sibling.spelling != name:
+            continue
+          if sibling.access_specifier != clang.cindex.AccessSpecifier.PUBLIC:
+            continue
+          if sibling.is_static_method() != target_is_static:
+            continue
+          base_same_name.append(sibling)
+          sib_kept = tuple(
+            a.type.get_canonical().spelling
+            for a in sibling.get_arguments()
+            if not shouldStripParam(a.type, sibling)
+          )
+          sib_output_count = sum(1 for a in sibling.get_arguments() if isOutputParam(a.type))
+          if sib_kept == target_kept and sib_output_count == target_output_count:
+            best_exact = sibling
+            break
+          if (
+            best_output_match is None
+            and len(sib_kept) == target_kept_arity
+            and sib_output_count == target_output_count
+            and target_output_count > 0
+          ):
+            best_output_match = sibling
+          if best_arity is None and len(sib_kept) == target_kept_arity and len(list(sibling.get_arguments())) == target_raw_arity:
+            best_arity = sibling
+
+        if (
+          best_index_match is None
+          and derived_overload_index is not None
+          and derived_overload_index < len(base_same_name)
+        ):
+          best_index_match = base_same_name[derived_overload_index]
+
+      return best_exact or best_output_match or best_arity or best_index_match
+
+    return _walk(theClass)
+
+  def _effectiveOutputNames(self, theClass, method, allArgs):
+    """Compute the effective output-parameter field names for a method.
+
+    Returns a list of (arg_index, effective_name) tuples for every output
+    parameter. When the method overrides a base's same-name method with the
+    same output-param count, the names are taken verbatim from the base so
+    the derived signature stays structurally assignable to the base both at
+    the TS layer (`_buildOutputParamReturnType`) and at the C++ value_object
+    field layer (`_ensureResultStruct`). Without this, the runtime payload's
+    field names (e.g. `ACode`) would diverge from the type signature
+    (e.g. `Code`), producing TS-valid code that returns `undefined` at
+    runtime.
+    """
+    output_args = [(i, a) for i, a in enumerate(allArgs) if isOutputParam(a.type)]
+    if not output_args:
+      return []
+    base_override = self._find_base_override_target(theClass, method) if theClass is not None else None
+    if base_override is None:
+      return [(i, self._effectiveArgName(a, i)) for i, a in output_args]
+    base_args = list(base_override.get_arguments())
+    base_output = [(i, a) for i, a in enumerate(base_args) if isOutputParam(a.type)]
+    if len(base_output) != len(output_args):
+      return [(i, self._effectiveArgName(a, i)) for i, a in output_args]
+    pairs = []
+    for (di, _derived_a), (bi, base_a) in zip(output_args, base_output):
+      pairs.append((di, self._effectiveArgName(base_a, bi)))
+    return pairs
+
   _MEMBER_TYPEDEFS = {"value_type", "const_reference", "reference", "Array1Type", "Array2Type", "SequenceType", "Point", "Target"}
   _DEPRECATED_TYPEDEFS = {
     "Standard_Real", "Standard_Integer", "Standard_Boolean",
@@ -1175,7 +1316,7 @@ class EmbindBindings(Bindings):
       return [(i, a) for i, a in enumerate(args)]
     return [(i, a) for i, a in enumerate(args) if not shouldStripParam(a.type, method) and not isRawPointerParam(a.type)]
 
-  def _ensureResultStruct(self, method, args, className, overloadPostfix, templateDecl, templateArgs):
+  def _ensureResultStruct(self, method, args, className, overloadPostfix, templateDecl, templateArgs, theClass=None):
     """Register the value_object result struct for an RBV method.
     Returns (structName, struct_fields, output_params, stripped_indices) or None."""
     ret_type = method.result_type
@@ -1193,9 +1334,15 @@ class EmbindBindings(Bindings):
     if overloadPostfix:
       structName += overloadPostfix
 
+    # Align the value_object field names with the base class's output-param
+    # names when this method overrides one. This keeps the JS payload keys in
+    # lock-step with `_buildOutputParamReturnType`'s TS signature, preventing
+    # `result.ACode` (runtime) vs `result.Code` (TS) divergence.
+    effective_output_names = dict(self._effectiveOutputNames(theClass, method, args))
+
     struct_fields = []
     for i, arg in output_params:
-      name = self._getArgName(arg, i)
+      name = effective_output_names.get(i, self._getArgName(arg, i))
       pointee = arg.type.get_pointee()
       cppType = self._resolveArgType(arg, templateDecl, templateArgs)
       if _isHandleType(pointee):
@@ -1281,7 +1428,7 @@ class EmbindBindings(Bindings):
   def _emitOutputParamBinding(self, theClass, method, args, className, classTypeName, overloadPostfix, templateDecl, templateArgs):
     """Generate value_object return binding for methods with output params.
     Returns None if the method can't use value_object (e.g. raw pointer return type)."""
-    result = self._ensureResultStruct(method, args, className, overloadPostfix, templateDecl, templateArgs)
+    result = self._ensureResultStruct(method, args, className, overloadPostfix, templateDecl, templateArgs, theClass=theClass)
     if result is None:
       return None
     structName, struct_fields, output_params, stripped_indices = result
@@ -1932,6 +2079,7 @@ class TypescriptBindings(Bindings):
     self.imports = {}
 
     self.exports = set()
+    self.ancestorChains = {}
     self._docs = self._load_docs()
 
   def _classify_js_type(self, clang_type, templateDecl=None, templateArgs=None):
@@ -2087,6 +2235,39 @@ class TypescriptBindings(Bindings):
       current = baseDef
     return None
 
+  def _computeAncestorChain(self, theClass):
+    """Walk the full public inheritance chain via clang AST and return the list of
+    ancestor type spellings (nearest base first).
+
+    Captured in fragment metadata so the cross-file assembler can re-link
+    `extends` clauses when an intermediate ancestor is not part of the merged
+    declaration set. Stops at templated/qualified base names (as the current
+    `extends` codegen does) so the chain only contains identifiers safe to emit
+    verbatim.
+    """
+    chain = []
+    visited = set()
+    current = theClass
+    while current is not None:
+      if current.spelling in visited:
+        break
+      visited.add(current.spelling)
+      baseSpecs = list(filter(
+        lambda x: x.kind == clang.cindex.CursorKind.CXX_BASE_SPECIFIER and x.access_specifier == clang.cindex.AccessSpecifier.PUBLIC,
+        current.get_children()
+      ))
+      if not baseSpecs:
+        break
+      baseType = baseSpecs[0].type.spelling
+      if any(x in baseType for x in [":", "<"]):
+        break
+      chain.append(baseType)
+      baseDef = baseSpecs[0].type.get_declaration()
+      if baseDef is None or baseDef.kind == clang.cindex.CursorKind.NO_DECL_FOUND:
+        break
+      current = baseDef
+    return chain
+
   def resolve_handle_type(self, clang_type):
     """Extract inner type from opencascade::handle<T> via AST inspection.
     Returns the inner type's spelling (e.g. 'Geom_Curve') or None."""
@@ -2128,6 +2309,9 @@ class TypescriptBindings(Bindings):
     output += self._jsdoc(name, template_name=tplName)
     output += "export declare class " + name + baseClassDefinition + " {\n"
     self.exports.add(name)
+    ancestorChain = self._computeAncestorChain(theClass)
+    if ancestorChain:
+      self.ancestorChains[name] = ancestorChain
 
     if name == "Standard_Transient":
       output += "  /** Returns true if the underlying handle is null. */\n"
@@ -2943,8 +3127,116 @@ class TypescriptBindings(Bindings):
     typeName = self.resolve_type(arg.type, templateDecl, templateArgs)
     return self._argname(arg, suffix) + ": " + typeName
 
-  def _buildOutputParamReturnType(self, method, allArgs, templateDecl, templateArgs):
-    """Build a TS inline object return type from output params, or None if no output params."""
+  def _render_synthesized_base_signature(self, method, className, tplName):
+    """Render a TS overload signature for a base-class method synthesized into
+    a derived class to satisfy the structural override contract.
+
+    Emitted independently of the normal overload pipeline because the cursor
+    does not belong to `theClass.get_children()` — `getMethodOverloadPostfix`
+    would crash on it.
+    """
+    try:
+      allArgs = list(method.get_arguments())
+      args = ", ".join(
+        self.getTypescriptDefFromArg(arg, i, None, None)
+        for i, arg in enumerate(allArgs)
+      )
+      returnType = self.getTypescriptDefFromResultType(method.result_type, None, None)
+    except Exception:
+      return ""
+    kept_names = [self._argname(arg, i) for i, arg in enumerate(allArgs)
+                  if not shouldStripParam(arg.type, method)]
+    out = self._jsdoc(className, method.spelling, "  ", param_count=len(allArgs), overload_index=0, template_name=tplName, param_names=kept_names)
+    out += "  " + ("static " if method.is_static_method() else "") + method.spelling + "(" + args + "): " + returnType + ";\n"
+    return out
+
+  def _missing_base_overloads(self, theClass, methods):
+    """Append base-class overloads of the same name that the derived class
+    does not redeclare.
+
+    TypeScript class methods must be structurally assignable to the base. When
+    the base has overloads `SetID(g)` and `SetID()` and the derived only
+    redeclares `SetID(g)`, TS reports the no-arg overload as unsatisfied. We
+    walk overridden cursors → base classes → find every `SetID` declaration on
+    the base and pull in the ones whose arity (and stripped-output param shape)
+    is not represented in the derived.
+    """
+    if not methods:
+      return methods
+
+    name = methods[0].spelling
+
+    def _arity_signature(m):
+      try:
+        args = list(m.get_arguments())
+      except Exception:
+        return None
+      kept = [a for a in args if not shouldStripParam(a.type, m)]
+      return (len(kept), tuple(a.type.get_canonical().spelling for a in kept))
+
+    derived_signatures = set()
+    for m in methods:
+      sig = _arity_signature(m)
+      if sig is not None:
+        derived_signatures.add((m.is_static_method(),) + sig)
+
+    # Walk the inheritance chain — Python libclang doesn't expose
+    # clang_getOverriddenCursors, so we traverse base specifiers manually.
+    base_overloads = []
+    seen_base_ids = set()
+    visited_classes = set()
+
+    def _walk_bases(cls):
+      if cls is None:
+        return
+      key = cls.spelling
+      if key in visited_classes:
+        return
+      visited_classes.add(key)
+      for child in cls.get_children():
+        if child.kind != clang.cindex.CursorKind.CXX_BASE_SPECIFIER:
+          continue
+        if child.access_specifier != clang.cindex.AccessSpecifier.PUBLIC:
+          continue
+        base_decl = child.type.get_declaration()
+        if base_decl is None or base_decl.kind == clang.cindex.CursorKind.NO_DECL_FOUND:
+          continue
+        for sibling in base_decl.get_children():
+          if sibling.kind != clang.cindex.CursorKind.CXX_METHOD:
+            continue
+          if sibling.spelling != name:
+            continue
+          if sibling.access_specifier != clang.cindex.AccessSpecifier.PUBLIC:
+            continue
+          if any(
+            a.type.kind == clang.cindex.TypeKind.RVALUEREFERENCE
+            for a in sibling.get_arguments()
+          ):
+            continue
+          sig = _arity_signature(sibling)
+          # Differentiate static vs. instance overloads — TS static and
+          # instance sides are checked independently (TS2417 vs. TS2416).
+          sig = (sibling.is_static_method(),) + sig
+          if sig is None or sig in derived_signatures:
+            continue
+          loc_file = sibling.location.file.name if sibling.location.file else ""
+          loc_key = (loc_file, sibling.location.line, sibling.location.column)
+          if loc_key in seen_base_ids:
+            continue
+          seen_base_ids.add(loc_key)
+          derived_signatures.add(sig)
+          base_overloads.append(sibling)
+        _walk_bases(base_decl)
+
+    _walk_bases(theClass)
+    return base_overloads
+
+  def _buildOutputParamReturnType(self, method, allArgs, templateDecl, templateArgs, theClass=None):
+    """Build a TS inline object return type from output params, or None if no output params.
+
+    For overrides, mirrors the base class's output-param field names so the
+    derived signature stays structurally assignable to the base (TS2416).
+    """
     outputArgs = [(i, a) for i, a in enumerate(allArgs) if isOutputParam(a.type)]
     if not outputArgs:
       return None
@@ -2952,18 +3244,65 @@ class TypescriptBindings(Bindings):
     if ret_type.spelling != "void" and ret_type.get_canonical().kind == clang.cindex.TypeKind.POINTER:
       return None
 
+    # Virtual overrides must keep the base class signature shape, otherwise
+    # TS2416 fires. If the same-name same-arity method exists on a base, mirror
+    # its output-param naming. If the base has no output params at all, drop the
+    # inline-object transform entirely.
+    base_override = self._find_base_override_target(theClass, method) if theClass is not None else None
+    if base_override is not None:
+      base_args = list(base_override.get_arguments())
+      base_output = [(i, a) for i, a in enumerate(base_args) if isOutputParam(a.type)]
+      if not base_output:
+        return None
+      if len(base_output) == len(outputArgs):
+        # Mirror the base's argument names for the output fields, but use the
+        # derived's (more specific) types to preserve covariance.
+        outputArgs = [(i, derived_a) for (i, derived_a), (_bi, base_a) in zip(outputArgs, base_output)]
+        derived_output_names = [self._argname(base_a, bi) for (bi, base_a) in base_output]
+      else:
+        # The derived override carries a different number of output params
+        # than the base. To stay structurally assignable to the base, we must
+        # at minimum expose ALL of base's output keys. We emit the *union* of
+        # base's and derived's keys (base's verbatim, derived's appended only
+        # when names don't collide). Lossy at runtime — derived's actual
+        # binding doesn't populate base's keys — but type-safe for callers.
+        fields = []
+        emitted = set()
+        if method.result_type.spelling != "void":
+          ret = self.getTypescriptDefFromResultType(method.result_type, templateDecl, templateArgs)
+          base_names = {self._argname(a, i) for i, a in base_output}
+          ret_field_name = "return_value" if "result" in base_names else "result"
+          fields.append(f"{ret_field_name}: {ret}")
+          emitted.add(ret_field_name)
+        for bi, base_a in base_output:
+          base_name = self._argname(base_a, bi)
+          if base_name in emitted:
+            continue
+          tsType = self.resolve_type(base_a.type, templateDecl, templateArgs)
+          fields.append(f"{base_name}: {tsType}")
+          emitted.add(base_name)
+        for di, derived_a in outputArgs:
+          derived_name = self._argname(derived_a, di)
+          if derived_name in emitted:
+            continue
+          tsType = self.resolve_type(derived_a.type, templateDecl, templateArgs)
+          fields.append(f"{derived_name}: {tsType}")
+          emitted.add(derived_name)
+        return "{ " + "; ".join(fields) + " }"
+    else:
+      derived_output_names = [self._argname(a, i) for i, a in outputArgs]
+
     fields = []
     hasNonVoidReturn = method.result_type.spelling != "void"
-    output_names = {self._argname(a, i) for i, a in outputArgs}
+    output_names = set(derived_output_names)
     if hasNonVoidReturn:
       origReturn = self.getTypescriptDefFromResultType(method.result_type, templateDecl, templateArgs)
       ret_field_name = "return_value" if "result" in output_names else "result"
       fields.append(f"{ret_field_name}: {origReturn}")
 
-    for i, arg in outputArgs:
-      name = self._argname(arg, i)
+    for (i, arg), out_name in zip(outputArgs, derived_output_names):
       tsType = self.resolve_type(arg.type, templateDecl, templateArgs)
-      fields.append(f"{name}: {tsType}")
+      fields.append(f"{out_name}: {tsType}")
 
     return "{ " + "; ".join(fields) + " }"
 
@@ -2984,7 +3323,7 @@ class TypescriptBindings(Bindings):
         overloadPostfix = override_postfix
 
       allArgs = list(method.get_arguments())
-      outputReturnType = self._buildOutputParamReturnType(method, allArgs, templateDecl, templateArgs)
+      outputReturnType = self._buildOutputParamReturnType(method, allArgs, templateDecl, templateArgs, theClass=theClass)
 
       if outputReturnType is not None:
         args = self._buildKeptArgs(method, allArgs, templateDecl, templateArgs)
@@ -2999,6 +3338,14 @@ class TypescriptBindings(Bindings):
                     if not shouldStripParam(arg.type, method)]
       output += self._jsdoc(className, method.spelling, "  ", param_count=len(allArgs), overload_index=overload_index, template_name=tplName, param_names=kept_names)
       output += "  " + ("static " if method.is_static_method() else "") + method.spelling + overloadPostfix + "(" + args + "): " + returnType + ";\n"
+    if method.access_specifier == clang.cindex.AccessSpecifier.PUBLIC and method.kind == clang.cindex.CursorKind.FIELD_DECL:
+      if method.type.kind == clang.cindex.TypeKind.CONSTANTARRAY:
+        pass
+      elif not method.type.get_pointee().kind == clang.cindex.TypeKind.INVALID:
+        pass
+      else:
+        fieldType = self.resolve_type(method.type, templateDecl, templateArgs)
+        output += "  " + method.spelling + ": " + fieldType + ";\n"
     return output
 
   def processMethodGroup(self, theClass, methods, templateDecl=None, templateArgs=None):
@@ -3017,6 +3364,15 @@ class TypescriptBindings(Bindings):
 
     if not bindable:
       return output
+
+    # Discover missing base-class overloads. When a derived class declares
+    # an override of a base virtual but does NOT redeclare every base overload
+    # of the same name, the missing overloads are hidden in C++ but TypeScript
+    # still requires the derived to satisfy the full base contract — otherwise
+    # TS2416 fires (`(guid: unknown) => void` not assignable to base's
+    # `{ (a0): void; (): void }`). We render these synthesized base signatures
+    # at the end of the group so the derived satisfies structural compatibility.
+    base_overloads_to_synthesize = self._missing_base_overloads(theClass, bindable)
 
     # Filter rvalue-reference overloads — JS has no move semantics.
     # These create JS-ambiguous duplicates of const-ref overloads,
@@ -3043,22 +3399,32 @@ class TypescriptBindings(Bindings):
     if not bindable:
       return output
 
+    # Group by *kept* arity (post output-param stripping) so that methods
+    # which collapse to the same TS signature shape (e.g. three C++ Show()
+    # overloads that all become `Show()` in TS) are routed to the _N suffix
+    # branch and don't produce structurally identical, conflicting overloads
+    # that fail the base-class assignability check (TS2416).
+    def _kept_arity(m):
+      return sum(1 for a in m.get_arguments() if not shouldStripParam(a.type, m))
+
     by_arity = defaultdict(list)
     for m in bindable:
-      by_arity[len(list(m.get_arguments()))].append(m)
+      by_arity[_kept_arity(m)].append(m)
 
     all_unique_arities = all(len(group) == 1 for group in by_arity.values())
 
     if all_unique_arities:
       arity_idx = {}
       for m in bindable:
-        nargs = len(list(m.get_arguments()))
+        nargs = _kept_arity(m)
         idx = arity_idx.get(nargs, 0)
         arity_idx[nargs] = idx + 1
         try:
           output += self.processMethodOrProperty(theClass, m, templateDecl, templateArgs, overload_index=idx, override_postfix="")
         except SkipException as e:
           print(str(e))
+      for base_method in base_overloads_to_synthesize:
+        output += self._render_synthesized_base_signature(base_method, className, tplName)
       return output
 
     # Same-arity groups exist — determine which need _N suffix
@@ -3069,7 +3435,7 @@ class TypescriptBindings(Bindings):
     def _ts_args_and_return(m):
       """Get TS args string and return type, accounting for output params."""
       allArgs = list(m.get_arguments())
-      outputReturnType = self._buildOutputParamReturnType(m, allArgs, templateDecl, templateArgs)
+      outputReturnType = self._buildOutputParamReturnType(m, allArgs, templateDecl, templateArgs, theClass=theClass)
       if outputReturnType is not None:
         args = self._buildKeptArgs(m, allArgs, templateDecl, templateArgs)
         returnType = outputReturnType
@@ -3149,6 +3515,8 @@ class TypescriptBindings(Bindings):
           output += self._jsdoc(className, ov.spelling, "  ", param_count=len(methodArgs), overload_index=idx, template_name=tplName, param_names=names)
           output += "  " + ("static " if ov.is_static_method() else "") + ov.spelling + suffix + "(" + args + "): " + returnType + ";\n"
 
+    for base_method in base_overloads_to_synthesize:
+      output += self._render_synthesized_base_signature(base_method, className, tplName)
     return output
 
   def processOverloadedConstructors(self, theClass, children = None, templateDecl = None, templateArgs = None):

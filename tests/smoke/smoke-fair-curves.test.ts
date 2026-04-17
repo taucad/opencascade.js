@@ -101,7 +101,7 @@ describe.skipIf(!wasmExists)('Smoke: Fair curves', () => {
       const result = mv.Compute(100, 1e-6);
 
       expect(result.result).toBe(true);
-      expect(result.ACode).toBe(oc.FairCurve_AnalysisCode.FairCurve_OK);
+      expect(result.Code).toBe(oc.FairCurve_AnalysisCode.FairCurve_OK);
     });
 
     it('should produce a curve whose endpoints match the constraint points', () => {

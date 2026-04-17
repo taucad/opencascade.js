@@ -208,6 +208,7 @@ def typescriptGenerationFuncClasses(tuInfo: TuInfo, preamble, child) -> str:
     ".d.ts": preamble + output,
     "kind": "class",
     "exports": sorted(typescript.exports),
+    "ancestors": typescript.ancestorChains,
   })
 
 def typescriptGenerationFuncTemplates(tuInfo: TuInfo, preamble, child) -> str:
@@ -219,6 +220,7 @@ def typescriptGenerationFuncTemplates(tuInfo: TuInfo, preamble, child) -> str:
     ".d.ts": preamble + output,
     "kind": "class",
     "exports": sorted(typescript.exports),
+    "ancestors": typescript.ancestorChains,
   })
 
 def typescriptGenerationFuncEnums(tuInfo: TuInfo, preamble, child) -> str:
