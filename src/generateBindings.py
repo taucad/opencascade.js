@@ -96,8 +96,9 @@ _FILTERED_TEMPLATE_TYPEDEFS = frozenset({
 def filterTemplates(child, customBuild):
   if child.spelling in _FILTERED_TEMPLATE_TYPEDEFS:
     return False
-  if child.spelling.startswith("Handle_"):
-    return False
+  # Do NOT exclude `Handle_*` typedefs. They alias `opencascade::handle<T>`
+  # and are part of OCCT's public surface; downstream resolution handles them
+  # symmetrically with the template form (see _resolve_handle_recursive).
 
   is_valid_kind = child.kind in (
     clang.cindex.CursorKind.TYPEDEF_DECL,

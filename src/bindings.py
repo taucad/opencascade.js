@@ -2745,15 +2745,36 @@ class TypescriptBindings(Bindings):
   })
 
   def _resolve_handle_recursive(self, clang_type, templateDecl=None, templateArgs=None):
-    """Unwrap handle<T> and recursively resolve the inner type via AST."""
+    """Unwrap handle<T> and recursively resolve the inner type via AST.
+
+    Also accepts `Handle_*` typedefs that alias `opencascade::handle<T>`.
+    OCCT defines DEFINE_STANDARD_HANDLE which generates `typedef Handle_Foo`
+    aliases that callers use interchangeably with `Handle(Foo)` /
+    `opencascade::handle<Foo>`. Without this branch the typedef form falls into
+    the unbound-reference fallback and emits `unknown`.
+    """
     t = clang_type
     if t.kind == clang.cindex.TypeKind.LVALUEREFERENCE:
       t = t.get_pointee()
     if t.kind == clang.cindex.TypeKind.POINTER:
       t = t.get_pointee()
+
+    decl = t.get_declaration()
+    if decl and decl.spelling and re.match(r"^Handle_[A-Z]", decl.spelling):
+      canonical = t.get_canonical()
+      if canonical.get_num_template_arguments() == 1:
+        canonical_decl = canonical.get_declaration()
+        if (
+          canonical_decl
+          and canonical_decl.spelling == "handle"
+          and canonical_decl.semantic_parent
+          and canonical_decl.semantic_parent.spelling in ("opencascade", "occ")
+        ):
+          inner_type = canonical.get_template_argument_type(0)
+          return self.resolve_type(inner_type, templateDecl, templateArgs)
+
     if t.get_num_template_arguments() != 1:
       return None
-    decl = t.get_declaration()
     if decl.spelling != "handle":
       return None
     parent = decl.semantic_parent
