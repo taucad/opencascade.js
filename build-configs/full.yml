@@ -903,21 +903,22 @@ mainBuild:
   - symbol: FilletSurf_InternalBuilder
   - symbol: FilletSurf_StatusDone
   - symbol: FilletSurf_StatusType
-  - symbol: GCE2d_MakeArcOfCircle
-  - symbol: GCE2d_MakeArcOfEllipse
-  - symbol: GCE2d_MakeArcOfHyperbola
-  - symbol: GCE2d_MakeArcOfParabola
-  - symbol: GCE2d_MakeCircle
-  - symbol: GCE2d_MakeEllipse
-  - symbol: GCE2d_MakeHyperbola
-  - symbol: GCE2d_MakeLine
-  - symbol: GCE2d_MakeMirror
-  - symbol: GCE2d_MakeParabola
-  - symbol: GCE2d_MakeRotation
-  - symbol: GCE2d_MakeScale
-  - symbol: GCE2d_MakeSegment
-  - symbol: GCE2d_MakeTranslation
-  - symbol: GCE2d_Root
+  # GCE2d_* classes are deprecated `using` aliases in OCCT 8.0+.
+  # Bind their canonical replacements (GC_*2d) instead.
+  - symbol: GC_MakeArcOfCircle2d
+  - symbol: GC_MakeArcOfEllipse2d
+  - symbol: GC_MakeArcOfHyperbola2d
+  - symbol: GC_MakeArcOfParabola2d
+  - symbol: GC_MakeCircle2d
+  - symbol: GC_MakeEllipse2d
+  - symbol: GC_MakeHyperbola2d
+  - symbol: GC_MakeLine2d
+  - symbol: GC_MakeMirror2d
+  - symbol: GC_MakeParabola2d
+  - symbol: GC_MakeRotation2d
+  - symbol: GC_MakeScale2d
+  - symbol: GC_MakeSegment2d
+  - symbol: GC_MakeTranslation2d
   - symbol: GCPnts_AbscissaPoint
   - symbol: GCPnts_AbscissaType
   - symbol: GCPnts_DeflectionType
@@ -1069,6 +1070,7 @@ mainBuild:
   - symbol: GeomAdaptor_Surface
   - symbol: GeomAdaptor_SurfaceOfLinearExtrusion
   - symbol: GeomAdaptor_SurfaceOfRevolution
+  - symbol: GeomAdaptor_TransformedCurve
   - symbol: GeomAdaptor_TransformedSurface
   - symbol: GeomConvert
   - symbol: GeomConvert_ApproxCurve
