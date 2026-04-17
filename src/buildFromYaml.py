@@ -2,6 +2,7 @@
 
 import hashlib
 import os
+import re
 import subprocess
 import json
 import time
@@ -142,6 +143,32 @@ def _warn_consistency(build):
       f"wasm-opt will enable SIMD, but link may miss relaxed-simd optimizations.",
       file=sys.stderr, flush=True,
     )
+
+
+_KNOWN_HEAP_METHODS = frozenset({
+  'HEAP8', 'HEAPU8', 'HEAP16', 'HEAPU16',
+  'HEAP32', 'HEAPU32', 'HEAPF32', 'HEAPF64',
+})
+
+_HEAP_JSDOC = {
+  'HEAP8':   'Signed 8-bit integer view of the WASM linear memory. Index by byte offset.',
+  'HEAPU8':  'Unsigned 8-bit integer view of the WASM linear memory. Index by byte offset.',
+  'HEAP16':  'Signed 16-bit integer view of the WASM linear memory. Index by byte offset / 2.',
+  'HEAPU16': 'Unsigned 16-bit integer view of the WASM linear memory. Index by byte offset / 2.',
+  'HEAP32':  'Signed 32-bit integer view of the WASM linear memory. Index by byte offset / 4.',
+  'HEAPU32': 'Unsigned 32-bit integer view of the WASM linear memory. Index by byte offset / 4.',
+  'HEAPF32': '32-bit floating-point view of the WASM linear memory. Index by byte offset / 4.',
+  'HEAPF64': '64-bit floating-point view of the WASM linear memory. Index by byte offset / 8.',
+}
+
+def _parse_exported_runtime_methods(emcc_flags):
+  """Extract runtime method names from -sEXPORTED_RUNTIME_METHODS in emccFlags."""
+  for flag in emcc_flags:
+    if 'EXPORTED_RUNTIME_METHODS' in flag:
+      match = re.search(r'\[(.+)\]', flag)
+      if match:
+        return [m.strip().strip("'\"") for m in match.group(1).split(',')]
+  return ['FS']
 
 
 def runBuild(build, libraryBasePath):
@@ -426,6 +453,14 @@ def main():
     with open(os.path.join(declarations_dir, 'emscripten-fs.d.ts'), 'r') as f:
       typescriptDefinitionOutput += f.read() + "\n\n"
 
+    runtime_methods = _parse_exported_runtime_methods(
+      buildConfig["mainBuild"].get("emccFlags", [])
+    )
+    heap_methods_requested = [m for m in runtime_methods if m in _KNOWN_HEAP_METHODS]
+    if heap_methods_requested:
+      with open(os.path.join(declarations_dir, 'emscripten-runtime.d.ts'), 'r') as f:
+        typescriptDefinitionOutput += f.read() + "\n\n"
+
     # --- Generate namespace blocks for OCCT package organization (Finding 6, Path A) ---
     from collections import defaultdict
     namespaces = defaultdict(list)
@@ -453,6 +488,23 @@ def main():
     main_flags = buildConfig["mainBuild"].get("emccFlags", [])
     uses_native_wasm_eh = any('-fwasm-exceptions' in f for f in main_flags)
     if uses_native_wasm_eh:
+      # Ambient declarations for the native-WASM-exception types. lib.dom.d.ts
+      # only ships these in modern releases; declaring them locally keeps the
+      # .d.ts portable across TS/lib versions and resolves TS2694 for
+      # WebAssembly.Exception / WebAssembly.Tag references below.
+      typescriptDefinitionOutput += \
+        "declare global {\n" + \
+        "  namespace WebAssembly {\n" + \
+        "    interface Exception {\n" + \
+        "      is(tag: Tag): boolean;\n" + \
+        "      getArg(tag: Tag, index: number): unknown;\n" + \
+        "      readonly stack?: string;\n" + \
+        "    }\n" + \
+        "    class Tag {\n" + \
+        "      constructor(type: { parameters: ReadonlyArray<string> });\n" + \
+        "    }\n" + \
+        "  }\n" + \
+        "}\n\n"
       typescriptDefinitionOutput += \
         "/**\n" + \
         " * Extract the exception type and message from a caught `WebAssembly.Exception`.\n" + \
@@ -482,15 +534,44 @@ def main():
       typescriptExports.append({"export": "incrementExceptionRefcount", "kind": "function"})
       typescriptExports.append({"export": "decrementExceptionRefcount", "kind": "function"})
 
+    runtime_lines = []
+    if 'FS' in runtime_methods:
+      runtime_lines.append('  /** Emscripten virtual filesystem for reading/writing files in the WASM heap. */')
+      runtime_lines.append('  FS: typeof FS;')
+    for m in heap_methods_requested:
+      doc = _HEAP_JSDOC.get(m, f'{m} view of the WASM linear memory.')
+      runtime_lines.append(f'  /** {doc} */')
+      runtime_lines.append(f'  {m}: typeof {m};')
+    if 'wasmMemory' in runtime_methods:
+      runtime_lines.append('  /**')
+      runtime_lines.append('   * The live `WebAssembly.Memory` instance backing the WASM linear memory.')
+      runtime_lines.append('   *')
+      runtime_lines.append('   * Use `wasmMemory.buffer` to obtain the current `ArrayBuffer` after any')
+      runtime_lines.append('   * call that may have grown memory (e.g. allocations during `extract()`).')
+      runtime_lines.append('   * Cached `HEAP*` views may be detached after growth — taking fresh views')
+      runtime_lines.append('   * off `wasmMemory.buffer` is the safe pattern.')
+      runtime_lines.append('   */')
+      runtime_lines.append('  wasmMemory: WebAssembly.Memory;')
+    runtime_type = '{\n' + '\n'.join(runtime_lines) + '\n}' if runtime_lines else '{}'
+
+    runtime_desc_parts = []
+    if 'FS' in runtime_methods:
+      runtime_desc_parts.append('the Emscripten virtual filesystem (`oc.FS`)')
+    if heap_methods_requested:
+      runtime_desc_parts.append('WASM heap views (' + ', '.join(f'`oc.{m}`' for m in heap_methods_requested) + ')')
+    if 'wasmMemory' in runtime_methods:
+      runtime_desc_parts.append('the live `WebAssembly.Memory` (`oc.wasmMemory`)')
+    runtime_desc = ' and '.join(runtime_desc_parts) if runtime_desc_parts else 'Emscripten runtime methods'
+
     typescriptDefinitionOutput += \
       "\n/**\n" + \
-      " * Union of the Emscripten `FS` namespace and all bound OCCT classes, enums, and functions.\n" + \
+      " * Union of the Emscripten runtime exports and all bound OCCT classes, enums, and functions.\n" + \
       " *\n" + \
       " * Returned by {@link init} after the WASM module is fully loaded. Access any\n" + \
-      " * OCCT binding as a property (e.g. `oc.BRepPrimAPI_MakeBox`) and use `oc.FS`\n" + \
-      " * for virtual filesystem operations.\n" + \
+      " * OCCT binding as a property (e.g. `oc.BRepPrimAPI_MakeBox`) and use\n" + \
+      " * " + runtime_desc + ".\n" + \
       " */\n" + \
-      "export type OpenCascadeInstance = {FS: typeof FS} & {\n  " + ";\n  ".join(map(lambda x: x["export"] + ": typeof " + x["export"], typescriptExports)) + ";\n" + \
+      "export type OpenCascadeInstance = " + runtime_type + " & {\n  " + ";\n  ".join(map(lambda x: x["export"] + ": typeof " + x["export"], typescriptExports)) + ";\n" + \
       "};\n\n" + \
       "/**\n" + \
       " * Initialize the OpenCASCADE WASM module and return the fully populated instance.\n" + \
