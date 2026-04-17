@@ -44,15 +44,23 @@ def load_yaml_config(yaml_path):
 
 
 def find_compiled_bindings(build_dir):
-    """Scan the bindings directory for compiled .o files, returning a set of symbol names."""
-    bindings_dir = os.path.join(build_dir, "bindings")
+    """Scan the compiled-bindings directory for compiled .o files, returning a set of symbol names.
+
+    Source `.cpp` files live under build/bindings/, but `compileBindings.py` writes
+    object files to build/compiled-bindings/ (see _cpp_to_object_path).
+    """
+    candidates = [
+        os.path.join(build_dir, "compiled-bindings"),
+        os.path.join(build_dir, "bindings"),
+    ]
     compiled = set()
-    if not os.path.isdir(bindings_dir):
-        return compiled
-    for dirpath, _, filenames in os.walk(bindings_dir):
-        for f in filenames:
-            if f.endswith(".cpp.o"):
-                compiled.add(f[:-6])  # strip ".cpp.o" → symbol name
+    for root in candidates:
+        if not os.path.isdir(root):
+            continue
+        for dirpath, _, filenames in os.walk(root):
+            for f in filenames:
+                if f.endswith(".cpp.o"):
+                    compiled.add(f[:-6])  # strip ".cpp.o" → symbol name
     return compiled
 
 
