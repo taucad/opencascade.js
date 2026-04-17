@@ -75,6 +75,12 @@ _SKIP_UNDERLYING_TYPES = frozenset({
 })
 
 def underlyingDict(l, checkOcctBasePath: bool):
+  """Return a dict mapping underlying type spelling → typedef cursor.
+
+  Only the first cursor seen wins (legacy single-cursor consumers depend on
+  this). Use ``underlyingMultimap`` when *all* aliases for an underlying type
+  are needed (e.g. deterministic alias selection in bindings.py).
+  """
   d = dict()
   for x in l:
     if checkOcctBasePath and not x.location.file.name.startswith(occtBasePath):
@@ -84,6 +90,24 @@ def underlyingDict(l, checkOcctBasePath: bool):
       continue
     if underlying not in d:
       d[underlying] = x
+  return d
+
+
+def underlyingMultimap(l, checkOcctBasePath: bool):
+  """Return a dict mapping underlying type spelling → list of typedef cursors.
+
+  Unlike ``underlyingDict``, every alias is retained so callers can pick the
+  best one based on naming heuristics. Iteration order matches the source
+  list.
+  """
+  d = dict()
+  for x in l:
+    if checkOcctBasePath and not x.location.file.name.startswith(occtBasePath):
+      continue
+    underlying = x.underlying_typedef_type.spelling
+    if underlying in _SKIP_UNDERLYING_TYPES:
+      continue
+    d.setdefault(underlying, []).append(x)
   return d
 
 
@@ -97,3 +121,5 @@ class TuInfo:
     self.classDict = classDict(self.tu)
     self.typedefUnderlyingDict = underlyingDict(self.typedefs, True)
     self.templateTypedefUnderlyingDict = underlyingDict(self.templateTypedefs, False)
+    self.typedefUnderlyingMultimap = underlyingMultimap(self.typedefs, True)
+    self.templateTypedefUnderlyingMultimap = underlyingMultimap(self.templateTypedefs, False)
