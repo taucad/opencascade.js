@@ -2282,14 +2282,15 @@ class TypescriptBindings(Bindings):
     return output
 
   _NUMERIC_TYPES = frozenset({
-    "int", "int16_t", "int32_t", "int64_t",
-    "unsigned", "uint32_t", "uint64_t",
+    "int", "int8_t", "int16_t", "int32_t", "int64_t",
+    "unsigned", "uint8_t", "uint16_t", "uint32_t", "uint64_t",
     "unsigned int", "unsigned long",
     "long", "long int", "long long",
     "unsigned long long", "unsigned short",
     "short", "short int",
     "float", "double", "long double",
     "size_t", "ptrdiff_t", "ssize_t",
+    "intptr_t", "uintptr_t", "__SIZE_TYPE__",
     "Standard_Integer", "Standard_Real",
     "Standard_ShortReal", "Standard_Size",
     "Standard_Byte",
@@ -2297,9 +2298,11 @@ class TypescriptBindings(Bindings):
 
   _STRING_TYPES = frozenset({
     "char", "unsigned char",
+    "wchar_t", "char8_t", "char16_t", "char32_t",
     "std::string", "std::string_view",
     "Standard_Character", "Standard_ExtCharacter",
     "Standard_CString", "Standard_WideChar",
+    "Standard_PCharacter",
   })
 
   _BOOLEAN_TYPES = frozenset({
@@ -2807,6 +2810,13 @@ class TypescriptBindings(Bindings):
 
     canonical = t.get_canonical()
     kind = canonical.kind
+
+    pre_canonical_spelling = self._strip_type_qualifiers_str(t.spelling)
+    if pre_canonical_spelling in self._NUMERIC_TYPES:
+      return "number"
+    if pre_canonical_spelling in self._BOOLEAN_TYPES:
+      return "boolean"
+
     if kind in self._BUILTIN_NUMERIC_KINDS:
       return "number"
     if kind in self._BUILTIN_STRING_KINDS:
