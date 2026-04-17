@@ -461,29 +461,10 @@ def main():
       with open(os.path.join(declarations_dir, 'emscripten-runtime.d.ts'), 'r') as f:
         typescriptDefinitionOutput += f.read() + "\n\n"
 
-    # --- Generate namespace blocks for OCCT package organization (Finding 6, Path A) ---
-    from collections import defaultdict
-    namespaces = defaultdict(list)
-    for ex in typescriptExports:
-      name = ex["export"]
-      idx = name.find("_")
-      if idx > 0:
-        prefix = name[:idx]
-        short_name = name[idx+1:]
-        if short_name and not short_name[0].isdigit():
-          namespaces[prefix].append((short_name, ex))
-
-    for ns_name in sorted(namespaces.keys()):
-      entries = namespaces[ns_name]
-      typescriptDefinitionOutput += f"export namespace {ns_name} {{\n"
-      for short_name, ex in sorted(entries, key=lambda e: e[0]):
-        full_name = ex["export"]
-        if ex["kind"] == "function":
-          typescriptDefinitionOutput += f"  export type {short_name} = typeof {full_name};\n"
-        else:
-          typescriptDefinitionOutput += f"  export type {short_name} = {full_name};\n"
-      typescriptDefinitionOutput += "}\n\n"
-    # --- End namespace blocks ---
+    # Auto-generated `export namespace <prefix> { ... }` blocks were removed in
+    # v3.0 (see CHANGELOG). Consumers must now use the flat `gp_Pnt`,
+    # `TopoDS_Edge`, ... names directly. The hand-written `TopoDS` runtime API
+    # in builtin-bindings.d.ts is unaffected.
 
     main_flags = buildConfig["mainBuild"].get("emccFlags", [])
     uses_native_wasm_eh = any('-fwasm-exceptions' in f for f in main_flags)
@@ -534,6 +515,15 @@ def main():
       typescriptExports.append({"export": "incrementExceptionRefcount", "kind": "function"})
       typescriptExports.append({"export": "decrementExceptionRefcount", "kind": "function"})
 
+    seen_export_names = set()
+    deduped_exports = []
+    for export_entry in typescriptExports:
+      name = export_entry["export"]
+      if name in seen_export_names:
+        continue
+      seen_export_names.add(name)
+      deduped_exports.append(export_entry)
+
     runtime_lines = []
     if 'FS' in runtime_methods:
       runtime_lines.append('  /** Emscripten virtual filesystem for reading/writing files in the WASM heap. */')
@@ -571,7 +561,7 @@ def main():
       " * OCCT binding as a property (e.g. `oc.BRepPrimAPI_MakeBox`) and use\n" + \
       " * " + runtime_desc + ".\n" + \
       " */\n" + \
-      "export type OpenCascadeInstance = " + runtime_type + " & {\n  " + ";\n  ".join(map(lambda x: x["export"] + ": typeof " + x["export"], typescriptExports)) + ";\n" + \
+      "export type OpenCascadeInstance = " + runtime_type + " & {\n  " + ";\n  ".join(map(lambda x: x["export"] + ": typeof " + x["export"], deduped_exports)) + ";\n" + \
       "};\n\n" + \
       "/**\n" + \
       " * Initialize the OpenCASCADE WASM module and return the fully populated instance.\n" + \

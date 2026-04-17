@@ -1,5 +1,9 @@
 import { expectTypeOf, it } from 'vitest';
-import type { IntSurf_TypeTrans, IntSurf_Situation, TopAbs as TopAbs_NS } from '../build-configs/opencascade_full';
+import type {
+  IntSurf_TypeTrans,
+  IntSurf_Situation,
+  TopAbs_ShapeEnum,
+} from '../build-configs/opencascade_full';
 
 it('should resolve IntSurf_TypeTrans to a string literal union', () => {
   expectTypeOf<IntSurf_TypeTrans>().toBeString();
@@ -16,8 +20,8 @@ it('should resolve IntSurf_Situation to a string literal union', () => {
   expectTypeOf<'IntSurf_Unknown'>().toExtend<IntSurf_Situation>();
 });
 
-it('should resolve TopAbs.ShapeEnum to a string type', () => {
-  expectTypeOf<TopAbs_NS.ShapeEnum>().toBeString();
+it('should resolve TopAbs_ShapeEnum to a string type', () => {
+  expectTypeOf<TopAbs_ShapeEnum>().toBeString();
 });
 
 it('should NOT allow cross-assignment between different enum types', () => {
