@@ -7,6 +7,7 @@
  * - Key OCCT classes exist with expected structure
  * - Overload patterns (inline overloads vs _N subclasses)
  * - `any` type regression tracking
+ * - Semantic diagnostics covering the codegen gap analysis
  */
 
 import { describe, it, expect } from 'vitest';
@@ -20,6 +21,10 @@ const REPLICAD_BUILD_CONFIG = path.resolve(
 );
 
 const FULL_BUILD_CONFIG = path.resolve(import.meta.dirname, '../build-configs');
+// `./build-wasm.sh dts <yaml>` writes the .d.ts next to the YAML it consumes;
+// for replicad-single this is the build-config directory in the replicad fork.
+// `dist/` only receives artifacts from a full WASM link (`./build-wasm.sh full`).
+const REPLICAD_SINGLE_DTS = path.join(REPLICAD_BUILD_CONFIG, 'replicad_single.d.ts');
 
 function parseDtsFile(dtsPath: string): ts.SourceFile | null {
   if (!fs.existsSync(dtsPath)) return null;
@@ -504,5 +509,489 @@ describe(':: detection correctness', () => {
     const content = commentLines.join('\n');
     const violations = findDoubleColonViolations(content);
     expect(violations, 'Comments containing :: should be ignored').toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Semantic diagnostics & codegen gap closure
+// ---------------------------------------------------------------------------
+//
+// One TS Program per .d.ts surface. Built once and reused across the
+// per-gap assertions so each suite pays the program cost once (~2-4s).
+//
+// Every assertion below corresponds 1:1 with a recommendation in
+// docs/research/ocjs-typescript-codegen-gap-analysis.md. Comments tag the
+// recommendation id (R#) and the underlying gap finding (G#).
+
+type DtsProgram = {
+  filePath: string;
+  content: string;
+  program: ts.Program;
+  sourceFile: ts.SourceFile;
+};
+
+function buildDtsProgram(dtsPath: string): DtsProgram | null {
+  if (!fs.existsSync(dtsPath)) return null;
+  const content = fs.readFileSync(dtsPath, 'utf8');
+  // Note: skipLibCheck MUST be false here because the rootName .d.ts is
+  // (from TS' perspective) a lib-style file. With skipLibCheck:true,
+  // TypeScript silently elides name-resolution checks on the .d.ts.
+  // skipDefaultLibCheck:true leaves stdlib alone so we don't drown in
+  // unrelated diagnostics from lib.dom.d.ts itself.
+  const program = ts.createProgram({
+    rootNames: [dtsPath],
+    options: {
+      noEmit: true,
+      strict: true,
+      noImplicitAny: true,
+      skipLibCheck: false,
+      skipDefaultLibCheck: true,
+      target: ts.ScriptTarget.ESNext,
+      lib: ['lib.esnext.d.ts', 'lib.dom.d.ts'],
+      moduleResolution: ts.ModuleResolutionKind.Bundler,
+      types: [],
+    },
+  });
+  const sourceFile = program.getSourceFile(dtsPath);
+  if (!sourceFile) return null;
+  return { filePath: dtsPath, content, program, sourceFile };
+}
+
+function getDiagnosticsByCode(
+  program: ts.Program,
+  sourceFile: ts.SourceFile,
+  codes: readonly number[],
+): ts.Diagnostic[] {
+  const codeSet = new Set(codes);
+  const diags = program.getSemanticDiagnostics(sourceFile);
+  return diags.filter((d) => codeSet.has(d.code));
+}
+
+function getAllDiagnostics(program: ts.Program, sourceFile: ts.SourceFile): readonly ts.Diagnostic[] {
+  return program.getSemanticDiagnostics(sourceFile);
+}
+
+function formatDiagnostic(d: ts.Diagnostic): string {
+  const flat = ts.flattenDiagnosticMessageText(d.messageText, '\n');
+  if (d.file && d.start !== undefined) {
+    const { line, character } = d.file.getLineAndCharacterOfPosition(d.start);
+    return `L${line + 1}:${character + 1} TS${d.code}: ${flat}`;
+  }
+  return `TS${d.code}: ${flat}`;
+}
+
+function summariseDiagnostics(diagnostics: readonly ts.Diagnostic[], limit = 10): string {
+  if (diagnostics.length === 0) return '<none>';
+  const sample = diagnostics.slice(0, limit).map(formatDiagnostic).join('\n  ');
+  const remainder = diagnostics.length > limit ? `\n  ...${diagnostics.length - limit} more` : '';
+  return `${diagnostics.length} total\n  ${sample}${remainder}`;
+}
+
+function walkParameterNames(sourceFile: ts.SourceFile): { name: string; line: number }[] {
+  const out: { name: string; line: number }[] = [];
+  function visit(node: ts.Node): void {
+    if (
+      ts.isParameter(node) &&
+      ts.isIdentifier(node.name) &&
+      node.name.text !== ''
+    ) {
+      const { line } = sourceFile.getLineAndCharacterOfPosition(node.name.getStart(sourceFile));
+      out.push({ name: node.name.text, line: line + 1 });
+    }
+    ts.forEachChild(node, visit);
+  }
+  visit(sourceFile);
+  return out;
+}
+
+function walkEnumMemberNames(sourceFile: ts.SourceFile): { name: string; line: number }[] {
+  const out: { name: string; line: number }[] = [];
+  function visit(node: ts.Node): void {
+    if (ts.isEnumDeclaration(node)) {
+      for (const member of node.members) {
+        const memberName = member.name;
+        const text = ts.isIdentifier(memberName)
+          ? memberName.text
+          : ts.isStringLiteral(memberName)
+            ? memberName.text
+            : '';
+        if (text) {
+          const { line } = sourceFile.getLineAndCharacterOfPosition(memberName.getStart(sourceFile));
+          out.push({ name: text, line: line + 1 });
+        }
+      }
+    }
+    ts.forEachChild(node, visit);
+  }
+  visit(sourceFile);
+  return out;
+}
+
+function findEmptyInterfaceStubs(sourceFile: ts.SourceFile): { name: string; line: number }[] {
+  const out: { name: string; line: number }[] = [];
+  function visit(node: ts.Node): void {
+    if (ts.isInterfaceDeclaration(node) && node.members.length === 0 && !node.heritageClauses?.length) {
+      const { line } = sourceFile.getLineAndCharacterOfPosition(node.name.getStart(sourceFile));
+      out.push({ name: node.name.text, line: line + 1 });
+    }
+    ts.forEachChild(node, visit);
+  }
+  visit(sourceFile);
+  return out;
+}
+
+function findUnclosedJsdocStarSlash(content: string): { line: number; text: string }[] {
+  const out: { line: number; text: string }[] = [];
+  const lines = content.split('\n');
+  let inBlock = false;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const opens = line.match(/\/\*\*/g)?.length ?? 0;
+    const closes = line.match(/\*\//g)?.length ?? 0;
+    if (inBlock) {
+      // Inside a JSDoc block: any */ that is not on the line that closes the block is suspicious.
+      // A correctly formed JSDoc block has exactly one */ on its closing line.
+      if (closes > 1) {
+        out.push({ line: i + 1, text: line.trim() });
+      }
+      if (closes >= 1) inBlock = false;
+    } else {
+      if (opens > closes) {
+        inBlock = true;
+      } else if (opens > 0 && closes > opens) {
+        out.push({ line: i + 1, text: line.trim() });
+      }
+    }
+  }
+  return out;
+}
+
+const TS_RESERVED_WORDS = new Set([
+  // ECMAScript reserved words
+  'break', 'case', 'catch', 'class', 'const', 'continue', 'debugger', 'default',
+  'delete', 'do', 'else', 'enum', 'export', 'extends', 'false', 'finally', 'for',
+  'function', 'if', 'import', 'in', 'instanceof', 'new', 'null', 'return', 'super',
+  'switch', 'this', 'throw', 'true', 'try', 'typeof', 'var', 'void', 'while', 'with',
+  'yield',
+  // Strict-mode reserved
+  'implements', 'interface', 'let', 'package', 'private', 'protected', 'public',
+  'static',
+]);
+
+const SEMANTIC_GAP_TARGETS: { label: string; dtsPath: string }[] = [
+  { label: 'opencascade_full', dtsPath: path.join(FULL_BUILD_CONFIG, 'opencascade_full.d.ts') },
+  { label: 'replicad_single', dtsPath: REPLICAD_SINGLE_DTS },
+];
+
+for (const target of SEMANTIC_GAP_TARGETS) {
+  describe(`Codegen gap closure — ${target.label}.d.ts`, () => {
+    const dts = buildDtsProgram(target.dtsPath);
+
+    if (!dts) {
+      it.skip(`should be present at ${target.dtsPath}`, () => {
+        // surface availability gap rather than silently passing
+      });
+      return;
+    }
+
+    const semanticAll = getAllDiagnostics(dts.program, dts.sourceFile);
+
+    // undeclared name leaks (TS2304/TS2552). The early-return in
+    // resolve_type previously emitted spellings without validating they were
+    // actually exported, surfacing as "Cannot find name 'X'" once consumed.
+    it('should emit zero TS2304 / TS2552 (undeclared / mistyped names)', () => {
+      const diagnostics = getDiagnosticsByCode(dts.program, dts.sourceFile, [2304, 2552]);
+      expect(
+        diagnostics,
+        `Undeclared name leaks: ${summariseDiagnostics(diagnostics)}`,
+      ).toHaveLength(0);
+    });
+
+    // C-array spellings like `gp_XYZ[3]` leaked as element-access
+    // expressions, which TS treats as TS2339 (Property 'X' does not exist on type).
+    it('should not emit C-array spellings like `gp_XYZ[N]`', () => {
+      const matches = [...dts.content.matchAll(/\b\w+_\w+\[\d+\]/g)]
+        .map((m) => m[0])
+        .filter((s) => !s.includes('readonly'));
+      expect(matches, `C-array leak survivors: ${matches.slice(0, 10).join(', ')}`).toHaveLength(0);
+    });
+
+    // Cross-check: explicit assertion against the canonical leak from the gap doc.
+    it('should never expose `gp_XYZ[3]` or `gp_XYZ[4]` parameter spellings', () => {
+      expect(/\bgp_XYZ\[\d+\]/.test(dts.content), 'gp_XYZ[N] survivor').toBe(false);
+    });
+
+    // unmapped C primitives must not survive into the .d.ts.
+    it('should not leak C primitive spellings (uint8_t/int8_t/size_t/wchar_t/...)', () => {
+      const banned = [
+        /\b: uint8_t\b/, /\b: int8_t\b/, /\b: uint16_t\b/, /\b: int16_t\b/,
+        /\b: intptr_t\b/, /\b: uintptr_t\b/, /\b: size_t\b/, /\b: __SIZE_TYPE__\b/,
+        /\b: wchar_t\b/, /\b: char8_t\b/, /\b: char16_t\b/, /\b: char32_t\b/,
+        /\b: Standard_PCharacter\b/,
+        /:\s*size_t\b/, /:\s*uint8_t\b/,
+      ];
+      const survivors: string[] = [];
+      const lines = dts.content.split('\n');
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        if (line.trimStart().startsWith('*') || line.trimStart().startsWith('//')) continue;
+        for (const pat of banned) {
+          if (pat.test(line)) {
+            survivors.push(`L${i + 1}: ${line.trim()}`);
+            break;
+          }
+        }
+      }
+      expect(
+        survivors,
+        `C primitive leaks (first 10): ${survivors.slice(0, 10).join('\n  ')}`,
+      ).toHaveLength(0);
+    });
+
+    // typedefs that resolve via UCHAR/CHAR_U canonical kind were
+    // misclassified as `string`. After the reorder, no `unsigned char` should
+    // appear in either .d.ts surface.
+    it('should not emit `unsigned char` / `char` parameter spellings', () => {
+      const banned = [/\b: unsigned char\b/, /\b: char\b(?!\w)/];
+      const survivors: string[] = [];
+      const lines = dts.content.split('\n');
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        if (line.trimStart().startsWith('*') || line.trimStart().startsWith('//')) continue;
+        for (const pat of banned) {
+          if (pat.test(line)) {
+            survivors.push(`L${i + 1}: ${line.trim()}`);
+            break;
+          }
+        }
+      }
+      expect(
+        survivors,
+        `unsigned-char misclassification leaks: ${survivors.slice(0, 5).join('\n  ')}`,
+      ).toHaveLength(0);
+    });
+
+    // ambient `WebAssembly.Exception` reference must resolve.
+    // TS2694 = "Namespace 'X' has no exported member 'Y'".
+    it('should resolve WebAssembly.Exception (zero TS2694)', () => {
+      const diagnostics = getDiagnosticsByCode(dts.program, dts.sourceFile, [2694]);
+      expect(
+        diagnostics,
+        `Unresolved namespace members: ${summariseDiagnostics(diagnostics)}`,
+      ).toHaveLength(0);
+    });
+
+    // override variance such as TDataStd_GenericExtString.SetID
+    // surfaces as TS2416 ("Property 'X' in type 'Y' is not assignable to
+    // the same property in base type 'Z'").
+    it('should not emit TS2416 override-variance errors', () => {
+      const diagnostics = getDiagnosticsByCode(dts.program, dts.sourceFile, [2416]);
+      expect(
+        diagnostics,
+        `Override variance failures: ${summariseDiagnostics(diagnostics)}`,
+      ).toHaveLength(0);
+    });
+
+    // full TS reserved-word coverage. Parameter identifiers must
+    // be safe (suffixed with `_`) so the file parses and so consumers can
+    // destructure params without keyword collisions.
+    it('should suffix all reserved-word parameter names with `_`', () => {
+      const params = walkParameterNames(dts.sourceFile);
+      const collisions = params.filter((p) => TS_RESERVED_WORDS.has(p.name));
+      expect(
+        collisions,
+        `Reserved-word parameter survivors: ${collisions
+          .slice(0, 10)
+          .map((c) => `L${c.line}:${c.name}`)
+          .join(', ')}`,
+      ).toHaveLength(0);
+    });
+
+    // all auto-generated namespace blocks are removed. The
+    // hand-written `TopoDS` runtime API is *not* a namespace, so this
+    // assertion does not catch it.
+    it('should contain zero auto-generated `export namespace X { ... }` blocks', () => {
+      const matches = [...dts.content.matchAll(/^export namespace \w+ \{/gm)].map((m) => m[0]);
+      expect(
+        matches,
+        `Surviving namespace blocks: ${matches.slice(0, 5).join('; ')}`,
+      ).toHaveLength(0);
+    });
+
+    // Cross-check: TS2300 (duplicate identifier) often follows from the
+    // namespace block re-declaring already-exported names.
+    it('should emit zero TS2300 (duplicate identifier)', () => {
+      const diagnostics = getDiagnosticsByCode(dts.program, dts.sourceFile, [2300]);
+      expect(
+        diagnostics,
+        `Duplicate identifiers: ${summariseDiagnostics(diagnostics)}`,
+      ).toHaveLength(0);
+    });
+
+    // Cross-check: TS2693 ("X only refers to a type, but is being used as
+    // a value here") appears when namespace value-import side conflicts with
+    // an existing class export.
+    it('should emit zero TS2693 (type-used-as-value)', () => {
+      const diagnostics = getDiagnosticsByCode(dts.program, dts.sourceFile, [2693]);
+      expect(
+        diagnostics,
+        `Type-used-as-value diagnostics: ${summariseDiagnostics(diagnostics)}`,
+      ).toHaveLength(0);
+    });
+
+    // OpenCascadeInstance aggregate must not list the same
+    // export twice. We parse the type-literal members and check uniqueness.
+    it('should declare each export at most once on OpenCascadeInstance', () => {
+      const aggregate = /export type OpenCascadeInstance =[\s\S]*?\n\};\n/.exec(dts.content);
+      expect(aggregate, 'OpenCascadeInstance aggregate not found').not.toBeNull();
+      if (!aggregate) return;
+      const memberNames = [...aggregate[0].matchAll(/\n\s+(\w+):\s*typeof \w+;/g)].map((m) => m[1]);
+      const seen = new Map<string, number>();
+      for (const n of memberNames) {
+        seen.set(n, (seen.get(n) ?? 0) + 1);
+      }
+      const dupes = [...seen.entries()].filter(([, c]) => c > 1).map(([n, c]) => `${n}×${c}`);
+      expect(
+        dupes,
+        `Duplicate aggregate members: ${dupes.slice(0, 10).join(', ')}`,
+      ).toHaveLength(0);
+    });
+
+    // JSDoc bodies must escape interior `*/` so a comment never
+    // closes prematurely (which would yank symbols out of the type surface).
+    it('should not contain unescaped `*/` inside JSDoc bodies', () => {
+      const violations = findUnclosedJsdocStarSlash(dts.content);
+      expect(
+        violations,
+        `JSDoc termination violations: ${violations
+          .slice(0, 5)
+          .map((v) => `L${v.line}: ${v.text}`)
+          .join('\n  ')}`,
+      ).toHaveLength(0);
+    });
+
+    // every emitted enum member must be a valid TS identifier.
+    it('should only emit valid-identifier enum members', () => {
+      const members = walkEnumMemberNames(dts.sourceFile);
+      const validIdent = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
+      const invalid = members.filter((m) => !validIdent.test(m.name));
+      expect(
+        invalid,
+        `Invalid enum identifiers: ${invalid
+          .slice(0, 10)
+          .map((m) => `L${m.line}:${m.name}`)
+          .join(', ')}`,
+      ).toHaveLength(0);
+    });
+
+    // `export interface X {}` empty stubs are gone (replaced with
+    // `export type X = unknown;`). They previously masked missing decls.
+    it('should not contain `export interface X {}` empty stubs', () => {
+      const stubs = findEmptyInterfaceStubs(dts.sourceFile);
+      expect(
+        stubs,
+        `Empty interface stubs survived: ${stubs
+          .slice(0, 10)
+          .map((s) => `L${s.line}:${s.name}`)
+          .join(', ')}`,
+      ).toHaveLength(0);
+    });
+
+    // Ratchet: total semantic-diagnostic count is a smoke alarm. Any
+    // future codegen regression will trip this even if the per-code
+    // assertions above don't change. Threshold is captured post-fix.
+    it('should keep total semantic diagnostics at zero', () => {
+      expect(
+        semanticAll,
+        `Semantic diagnostics regression: ${summariseDiagnostics(semanticAll)}`,
+      ).toHaveLength(0);
+    });
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Handle_<T> typedef parity (cross-cutting; AST-level)
+// ---------------------------------------------------------------------------
+
+describe('Handle_<T> typedef parity', () => {
+  const dts = buildDtsProgram(REPLICAD_SINGLE_DTS) ?? buildDtsProgram(path.join(FULL_BUILD_CONFIG, 'opencascade_full.d.ts'));
+
+  it('should not emit raw `Handle_X` parameter spellings', () => {
+    if (!dts) return;
+    const matches = [...dts.content.matchAll(/:\s*Handle_[A-Z]\w+/g)].map((m) => m[0]);
+    expect(
+      matches,
+      `Handle_X leaks: ${matches.slice(0, 10).join(', ')}`,
+    ).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// deterministic typedef alias selection (NCollection containers)
+// ---------------------------------------------------------------------------
+
+describe('Typedef alias determinism', () => {
+  const dts = buildDtsProgram(path.join(FULL_BUILD_CONFIG, 'opencascade_full.d.ts'));
+
+  it('should prefer OCCT-public aliases (NCollection_/TColStd_/TColgp_/TopTools_)', () => {
+    if (!dts) return;
+    // deterministic typedef selection. OCCT 8.0 deprecated the
+    // domain-prefixed aliases (TColStd_/TColgp_/TopTools_/...) in favor of
+    // direct `NCollection_<Container>_<T>` instantiations, so the surviving
+    // public surface is the NCollection family. We assert (a) NCollection
+    // public-form aliases survive and (b) each alias resolves to one canonical
+    // spelling per underlying type (no duplicate aliases for the same shape).
+    const ncollectionMatches = new Set(
+      [...dts.content.matchAll(/\bNCollection_(?:Array1|Array2|Sequence|List|Vector)_\w+/g)].map((m) => m[0]),
+    );
+    expect(
+      ncollectionMatches.size,
+      'Expected NCollection_<Container>_<T> aliases to survive',
+    ).toBeGreaterThan(0);
+
+    // Spot-check well-known instantiations the runtime APIs depend on.
+    const required = [
+      'NCollection_Array1_double',
+      'NCollection_Array1_gp_Pnt',
+    ];
+    for (const alias of required) {
+      expect(
+        new RegExp(`\\b${alias}\\b`).test(dts.content),
+        `Public typedef alias "${alias}" not found in .d.ts`,
+      ).toBe(true);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// `_collect_any` reason coverage
+// ---------------------------------------------------------------------------
+
+describe('Build manifest `any_reasons` instrumentation', () => {
+  it('should expose `any_reasons` keyed by reason label in build-manifest.json', () => {
+    const manifestPath = path.join(FULL_BUILD_CONFIG, 'build-manifest.json');
+    if (!fs.existsSync(manifestPath)) {
+      // Manifest is only generated by `nx run ocjs:build` after a full rebuild;
+      // skip rather than fail when running the dts-only loop.
+      return;
+    }
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8')) as Record<string, unknown>;
+    expect(manifest, 'build-manifest.json must contain any_reasons').toHaveProperty('any_reasons');
+    const reasons = manifest['any_reasons'] as Record<string, unknown> | undefined;
+    expect(reasons && typeof reasons === 'object', 'any_reasons must be an object').toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// orphan replicad_single.d.ts at repo root must not exist
+// ---------------------------------------------------------------------------
+
+describe('Repo cleanliness', () => {
+  it('should not retain the orphan replicad_single.d.ts at the OCJS repo root', () => {
+    const orphanPath = path.resolve(import.meta.dirname, '../replicad_single.d.ts');
+    expect(
+      fs.existsSync(orphanPath),
+      `Orphan file must be deleted: ${orphanPath}`,
+    ).toBe(false);
   });
 });
