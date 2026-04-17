@@ -2360,12 +2360,18 @@ class TypescriptBindings(Bindings):
         )]
         if fields and not non_field_members:
           structName = name + "_" + child.spelling
+          if structName in TypescriptBindings._emitted_stub_names:
+            continue
           output += "export interface " + structName + " {\n"
           for field in fields:
             fieldType = self.resolve_type(field.type, templateDecl, templateArgs)
             output += "  " + field.spelling + ": " + fieldType + ";\n"
           output += "}\n\n"
-          self.exports.add(structName)
+          # Nested-struct interfaces are TYPE-ONLY (no JS runtime value).
+          # Tracking them in `_emitted_stub_names` keeps them out of
+          # `self.exports`, preventing the OpenCascadeInstance aggregate from
+          # emitting `structName: typeof structName` (TS2693).
+          TypescriptBindings._emitted_stub_names.add(structName)
 
     return output
 
@@ -2377,9 +2383,18 @@ class TypescriptBindings(Bindings):
     output += "}\n\n"
 
     for iface_name in sorted(TypescriptBindings._namespace_scoped_interfaces):
-      if iface_name not in self.exports:
-        output += "export interface " + iface_name + " {}\n\n"
-        self.exports.add(iface_name)
+      if iface_name in self.exports or iface_name in TypescriptBindings._emitted_stub_names:
+        continue
+      # Emit `unknown` aliases for namespace-scoped forward declarations
+      # rather than empty `interface X {}` stubs. Empty interfaces structurally
+      # match every value, masking missing decls; `unknown` forces explicit
+      # narrowing at consumer sites.
+      #
+      # Stubs are TYPE-ONLY (no runtime value), so they must NOT be added to
+      # self.exports — that would surface them in the OpenCascadeInstance
+      # aggregate as `: typeof X`, triggering TS2693.
+      output += "export type " + iface_name + " = unknown;\n\n"
+      TypescriptBindings._emitted_stub_names.add(iface_name)
     TypescriptBindings._namespace_scoped_interfaces = set()
 
     return output
@@ -2525,6 +2540,10 @@ class TypescriptBindings(Bindings):
     return typeName
 
   _namespace_scoped_interfaces = set()
+  # Track stub aliases emitted across all class instances so each
+  # forward-declared name is declared exactly once in the final .d.ts. Without
+  # this, every class that references the type re-emits it, triggering TS2300.
+  _emitted_stub_names = set()
 
   def _resolve_nested_type(self, decl):
     """Resolve nested C++ types (enum/class/struct inside a class or namespace) to Parent_Child format."""

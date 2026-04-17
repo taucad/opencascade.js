@@ -15,11 +15,11 @@ export declare namespace FS {
   }
 
   /** Opaque handle to an open file stream. */
-  interface FSStream {}
+  type FSStream = unknown;
   /** Opaque handle to a filesystem node (file, directory, or device). */
-  interface FSNode {}
+  type FSNode = unknown;
   /** Error thrown by FS operations with an Emscripten errno code. */
-  interface ErrnoError {}
+  type ErrnoError = unknown;
 
   /** When `true`, permission checks are bypassed for all FS operations. */
   let ignorePermissions: boolean;
