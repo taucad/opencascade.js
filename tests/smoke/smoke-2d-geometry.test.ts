@@ -84,11 +84,11 @@ describe.skipIf(!wasmExists)('Smoke: 2D geometry', () => {
     expect(transformed.Y()).toBeCloseTo(10, 10);
   });
 
-  it('should construct a circle from center and radius with GCE2d_MakeCirc2d', () => {
+  it('should construct a circle from center and radius with GC_MakeCircle2d', () => {
     const oc = getOC();
     using center = new oc.gp_Pnt2d(5, 5);
     using ax = new oc.gp_Ax2d(center, new oc.gp_Dir2d(1, 0));
-    using maker = new oc.GCE2d_MakeCircle(ax, 8, true);
+    using maker = new oc.GC_MakeCircle2d(ax, 8, true);
 
     const circle = maker.Value();
     expect(circle.Radius()).toBe(8);
