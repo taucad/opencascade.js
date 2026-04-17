@@ -21,6 +21,153 @@ except ImportError:
 
 _yaml_config_hash = ""
 
+# Built-in TypeScript / DOM / WebAssembly identifiers that may legally appear
+# in type position. References that are NOT in this set AND NOT in the declared
+# exports are replaced with `unknown` by `_replace_undeclared_with_unknown`.
+_TS_BUILTIN_TYPES = frozenset({
+  # Primitives & special
+  "string", "number", "boolean", "void", "any", "unknown", "never",
+  "null", "undefined", "bigint", "symbol", "object", "this",
+  # Standard library generics & wrapper types
+  "Array", "ReadonlyArray", "Promise", "Record", "Partial", "Required",
+  "Readonly", "Pick", "Omit", "Exclude", "Extract", "NonNullable",
+  "ReturnType", "Parameters", "ConstructorParameters", "InstanceType",
+  "ThisParameterType", "OmitThisParameter", "ThisType",
+  "Map", "Set", "WeakMap", "WeakSet", "Iterable", "Iterator",
+  "IterableIterator", "AsyncIterable", "AsyncIterator", "Generator",
+  "AsyncGenerator", "Function", "Object", "Date", "Error", "RegExp",
+  "JSON", "Math", "console", "Symbol",
+  # Typed arrays / ArrayBuffer family
+  "ArrayBuffer", "ArrayBufferLike", "ArrayBufferView", "SharedArrayBuffer",
+  "Uint8Array", "Uint8ClampedArray", "Uint16Array", "Uint32Array",
+  "BigUint64Array", "Int8Array", "Int16Array", "Int32Array",
+  "BigInt64Array", "Float32Array", "Float64Array", "DataView",
+  # WebAssembly namespace (declared ambient elsewhere)
+  "WebAssembly",
+  # Common DOM lib types referenced from emscripten-runtime / FS bindings
+  "FS", "HEAP8", "HEAPU8", "HEAP16", "HEAPU16", "HEAP32", "HEAPU32",
+  "HEAPF32", "HEAPF64", "HEAP64", "HEAPU64",
+})
+
+# Identifiers that look like type references in source positions.
+# Each pattern's first capture group is the candidate identifier.
+_TYPE_REF_PATTERNS = (
+  re.compile(r":\s*([A-Za-z_][A-Za-z0-9_]*)(?=\s*[<\[|&;,)}\n])"),
+  re.compile(r"=>\s*([A-Za-z_][A-Za-z0-9_]*)(?=\s*[<\[|&;,)}\n])"),
+  re.compile(r"<\s*([A-Za-z_][A-Za-z0-9_]*)(?=\s*[,>])"),
+  re.compile(r",\s*([A-Za-z_][A-Za-z0-9_]*)(?=\s*[,>])"),
+  re.compile(r"\btypeof\s+([A-Za-z_][A-Za-z0-9_]*)"),
+)
+
+# `extends`/`implements` clauses must reference a real class declaration —
+# replacing with `unknown` produces TS2863. We instead re-link to the nearest
+# declared ancestor (using the per-fragment ancestor metadata emitted by
+# `bindings.py:_computeAncestorChain`), or drop the clause entirely when no
+# ancestor in the chain is declared in the merged build.
+_HERITAGE_RE = re.compile(
+  r"(\b(?:export\s+)?(?:declare\s+)?(?:abstract\s+)?class\s+([A-Za-z_][A-Za-z0-9_]*))\s+extends\s+([A-Za-z_][A-Za-z0-9_]*)"
+)
+
+
+def _replace_undeclared_with_unknown(source: str, declared_names: set, ancestor_chains: dict | None = None) -> str:
+  """Replace undeclared identifier references in TS type positions with `unknown`.
+
+  Fragments are pre-rendered against the FULL bindgen filter set, so a per-build
+  YAML subset (e.g. replicad_single) inherits references like `Standard_Type` that
+  are not actually declared in this build. The compiler reports those as TS2304/
+  TS2552 (`Cannot find name 'X'`).
+
+  This pass walks the merged source, finds identifiers that appear in type
+  position (after `:`, `extends`, `=>`, inside `<...>`, after `typeof`), and
+  rewrites the ones that are neither declared exports nor built-in TS/DOM types
+  to `unknown`. JSDoc/comment lines are skipped.
+
+  Conservative by design: only rewrites identifiers in patterns we are confident
+  are type positions. Property/method names on the left side of `:` are not
+  matched. False positives are bounded by the `_TS_BUILTIN_TYPES` whitelist.
+  """
+  declared = set(declared_names) | _TS_BUILTIN_TYPES
+
+  def _strip_comments(text: str) -> str:
+    """Replace block & line comments with whitespace, preserving line/column."""
+    out = []
+    i = 0
+    n = len(text)
+    while i < n:
+      if text[i] == '/' and i + 1 < n and text[i + 1] == '*':
+        end = text.find('*/', i + 2)
+        if end == -1:
+          out.append(' ' * (n - i))
+          break
+        block = text[i:end + 2]
+        out.append(re.sub(r"[^\n]", " ", block))
+        i = end + 2
+      elif text[i] == '/' and i + 1 < n and text[i + 1] == '/':
+        end = text.find('\n', i)
+        if end == -1:
+          out.append(' ' * (n - i))
+          break
+        out.append(' ' * (end - i))
+        i = end
+      else:
+        out.append(text[i])
+        i += 1
+    return ''.join(out)
+
+  scrubbed = _strip_comments(source)
+  ancestor_chains = ancestor_chains or {}
+
+  bad_spans = []
+  # `extends Undeclared`: re-link to nearest declared ancestor when the
+  # ancestor chain metadata covers the class. Otherwise drop the clause.
+  drop_spans = []
+  rewrite_spans = []
+  for m in _HERITAGE_RE.finditer(scrubbed):
+    childName = m.group(2)
+    parent = m.group(3)
+    if parent in declared:
+      continue
+    chain = ancestor_chains.get(childName, [])
+    relink = next((a for a in chain if a in declared), None)
+    if relink:
+      rewrite_spans.append((m.start(3), m.end(3), relink))
+    else:
+      drop_spans.append((m.end(1), m.end(3)))
+  for pat in _TYPE_REF_PATTERNS:
+    for m in pat.finditer(scrubbed):
+      name = m.group(1)
+      if name in declared:
+        continue
+      bad_spans.append((m.start(1), m.end(1)))
+
+  if not bad_spans and not drop_spans and not rewrite_spans:
+    return source
+
+  edits = (
+    [(s, e, "unknown") for (s, e) in bad_spans]
+    + [(s, e, "") for (s, e) in drop_spans]
+    + [(s, e, repl) for (s, e, repl) in rewrite_spans]
+  )
+  edits.sort()
+
+  merged = []
+  last = -1
+  for start, end, repl in edits:
+    if start < last:
+      continue
+    merged.append((start, end, repl))
+    last = end
+
+  out_parts = []
+  cursor = 0
+  for start, end, repl in merged:
+    out_parts.append(source[cursor:start])
+    out_parts.append(repl)
+    cursor = end
+  out_parts.append(source[cursor:])
+  return ''.join(out_parts)
+
+
 BUILTIN_ADDITIONAL_BIND_CODE = r"""
 #include <TopoDS.hxx>
 #include <TopoDS_Vertex.hxx>
@@ -431,6 +578,7 @@ def main():
   if buildConfig["generateTypescriptDefinitions"]:
     typescriptDefinitionOutput = ""
     typescriptExports = []
+    ancestorChains: dict = {}
     for dts in typescriptDefinitions:
       typescriptDefinitionOutput += dts[".d.ts"]
       for export in dts["exports"]:
@@ -438,6 +586,8 @@ def main():
           "export": export,
           "kind": dts["kind"],
         })
+      for cls, chain in (dts.get("ancestors") or {}).items():
+        ancestorChains.setdefault(cls, chain)
 
     # Declarations for built-in types provided via BUILTIN_ADDITIONAL_BIND_CODE
     declarations_dir = os.path.join(os.path.dirname(__file__), 'declarations')
@@ -515,15 +665,6 @@ def main():
       typescriptExports.append({"export": "incrementExceptionRefcount", "kind": "function"})
       typescriptExports.append({"export": "decrementExceptionRefcount", "kind": "function"})
 
-    seen_export_names = set()
-    deduped_exports = []
-    for export_entry in typescriptExports:
-      name = export_entry["export"]
-      if name in seen_export_names:
-        continue
-      seen_export_names.add(name)
-      deduped_exports.append(export_entry)
-
     runtime_lines = []
     if 'FS' in runtime_methods:
       runtime_lines.append('  /** Emscripten virtual filesystem for reading/writing files in the WASM heap. */')
@@ -552,6 +693,15 @@ def main():
     if 'wasmMemory' in runtime_methods:
       runtime_desc_parts.append('the live `WebAssembly.Memory` (`oc.wasmMemory`)')
     runtime_desc = ' and '.join(runtime_desc_parts) if runtime_desc_parts else 'Emscripten runtime methods'
+
+    seen_export_names = set()
+    deduped_exports = []
+    for export_entry in typescriptExports:
+      name = export_entry["export"]
+      if name in seen_export_names:
+        continue
+      seen_export_names.add(name)
+      deduped_exports.append(export_entry)
 
     typescriptDefinitionOutput += \
       "\n/**\n" + \
@@ -585,6 +735,25 @@ def main():
         print(f"  ... and {len(unrecognized) - 15} more", flush=True)
       print("These template types have no known typedef/using-alias.", flush=True)
       print("Auto-discovery should capture NCollection types; check discover.py for missing patterns.\n", flush=True)
+
+    # Post-process to neutralize references to types not actually emitted in
+    # this build. Fragments are pre-generated against the FULL bindgen filter,
+    # so a per-build subset YAML (e.g. replicad_single) inherits references like
+    # `Standard_Type` that the subset never declares. Replace each with `unknown`
+    # (no value at runtime, structural fallback at type level) to keep the
+    # generated `.d.ts` semantically valid (zero TS2304/TS2552 diagnostics).
+    declared_names = {x["export"] for x in deduped_exports}
+    declared_names.update(
+      re.findall(r"^export\s+(?:declare\s+)?type\s+([A-Za-z_][A-Za-z0-9_]*)", typescriptDefinitionOutput, re.MULTILINE)
+    )
+    declared_names.update(
+      re.findall(r"^export\s+(?:declare\s+)?interface\s+([A-Za-z_][A-Za-z0-9_]*)", typescriptDefinitionOutput, re.MULTILINE)
+    )
+    typescriptDefinitionOutput = _replace_undeclared_with_unknown(
+      typescriptDefinitionOutput,
+      declared_names=declared_names,
+      ancestor_chains=ancestorChains,
+    )
 
     typescriptDefinitionsFile = open(os.getcwd() + "/" + os.path.splitext(buildConfig["mainBuild"]["name"])[0] + ".d.ts", "w")
     typescriptDefinitionsFile.write(typescriptDefinitionOutput)
