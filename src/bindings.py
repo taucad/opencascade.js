@@ -2777,6 +2777,21 @@ class TypescriptBindings(Bindings):
 
     t = self._strip_qualifiers(clang_type)
 
+    # Detect C-arrays *before* the template/canonical resolution paths so
+    # `gp_XYZ (&)[3]` becomes a fixed-size tuple rather than `gp_XYZ[3]`
+    # (which would parse as element-access syntax in TypeScript).
+    if t.kind in (
+      clang.cindex.TypeKind.CONSTANTARRAY,
+      clang.cindex.TypeKind.INCOMPLETEARRAY,
+      clang.cindex.TypeKind.VARIABLEARRAY,
+    ):
+      element_type = t.get_array_element_type()
+      element_ts = self.resolve_type(element_type, templateDecl, templateArgs)
+      element_count = t.get_array_size() if t.kind == clang.cindex.TypeKind.CONSTANTARRAY else -1
+      if 1 <= element_count <= 16:
+        return "[" + ", ".join([element_ts] * element_count) + "]"
+      return f"{element_ts}[]"
+
     handleInner = self._resolve_handle_recursive(t, templateDecl, templateArgs)
     if handleInner:
       return handleInner
@@ -2800,6 +2815,18 @@ class TypescriptBindings(Bindings):
       return "boolean"
     if kind == clang.cindex.TypeKind.VOID:
       return "void"
+
+    if (
+      kind == clang.cindex.TypeKind.CONSTANTARRAY
+      or kind == clang.cindex.TypeKind.INCOMPLETEARRAY
+      or kind == clang.cindex.TypeKind.VARIABLEARRAY
+    ):
+      element_type = canonical.get_array_element_type()
+      element_ts = self.resolve_type(element_type, templateDecl, templateArgs)
+      element_count = canonical.get_array_size() if kind == clang.cindex.TypeKind.CONSTANTARRAY else -1
+      if 1 <= element_count <= 16:
+        return "[" + ", ".join([element_ts] * element_count) + "]"
+      return f"{element_ts}[]"
 
     spelling = self._strip_type_qualifiers_str(t.spelling)
     resolved = self.resolveWithCanonicalFallback(spelling, t, templateDecl, templateArgs)
