@@ -2415,7 +2415,11 @@ class TypescriptBindings(Bindings):
 
   @classmethod
   def prepare_known_exports(cls, tuInfo, filter_classes_fn, filter_templates_fn):
-    """Pre-compute the global set of known export names for O(1) fallback lookups."""
+    """Pre-compute the global set of known export names for O(1) fallback lookups.
+
+    Also eagerly seeds `_known_typedef_names` so the resolve_type early-return
+    guard has a complete validation set on first call.
+    """
     cls._known_export_names = set()
     for child in tuInfo.allChildren:
       if filter_classes_fn(child, False) and child.spelling:
@@ -2423,6 +2427,17 @@ class TypescriptBindings(Bindings):
     for td in tuInfo.templateTypedefs:
       if td.spelling:
         cls._known_export_names.add(td.spelling)
+    for enumDecl in getattr(tuInfo, "enums", []):
+      if enumDecl.spelling:
+        cls._known_export_names.add(enumDecl.spelling)
+
+    cls._known_typedef_names = set()
+    for td in tuInfo.typedefs:
+      if td.spelling:
+        cls._known_typedef_names.add(td.spelling)
+    for td in tuInfo.templateTypedefs:
+      if td.spelling:
+        cls._known_typedef_names.add(td.spelling)
 
   def _collect_any(self, reason, type_spelling):
     """Collect any-type resolution failures for reporting."""
@@ -2430,6 +2445,26 @@ class TypescriptBindings(Bindings):
       TypescriptBindings._any_reasons[reason] = {}
     bucket = TypescriptBindings._any_reasons[reason]
     bucket[type_spelling] = bucket.get(type_spelling, 0) + 1
+
+  def _is_known_export_name(self, name):
+    """O(1) lookup: is `name` an emitted TS export the consumer can actually resolve?
+
+    Used by `resolve_type` early-return guard to avoid emitting unbound symbols.
+    Falls through to canonical-fallback path when this returns False so the codegen
+    keeps trying further resolution strategies before resorting to `unknown`.
+
+    Note: typedef names are *deliberately* excluded — a typedef like `XCAFDoc_PartId`
+    aliases `TCollection_AsciiString` but is not itself emitted as an `export`. Returning
+    the typedef name produces TS2304 dangling references; we want callers to fall through
+    to the canonical class spelling instead.
+    """
+    if not name:
+      return False
+    if name in self.exports:
+      return True
+    if name in TypescriptBindings._known_export_names:
+      return True
+    return False
 
   _reverse_typedef_cache = None
 
@@ -2500,8 +2535,26 @@ class TypescriptBindings(Bindings):
     if numArgs <= 0:
       orig_decl = clang_type.get_declaration()
       if orig_decl and orig_decl.spelling:
-        if orig_decl.spelling in self.exports or orig_decl.spelling in TypescriptBindings._known_typedef_names:
-          return orig_decl.spelling
+        # Typedefs whose canonical type is a builtin primitive must NOT be
+        # returned verbatim — `size_t`, `uint8_t`, `Standard_Real`, etc. all
+        # resolve to numeric/string TS types via the downstream builtin path.
+        canonical_kind = clang_type.get_canonical().kind
+        is_primitive_typedef = (
+          canonical_kind in self._BUILTIN_NUMERIC_KINDS
+          or canonical_kind in self._BUILTIN_STRING_KINDS
+          or canonical_kind == clang.cindex.TypeKind.BOOL
+          or canonical_kind == clang.cindex.TypeKind.VOID
+          or orig_decl.spelling in self._NUMERIC_TYPES
+          or orig_decl.spelling in self._STRING_TYPES
+          or orig_decl.spelling in self._BOOLEAN_TYPES
+        )
+        if not is_primitive_typedef:
+          if orig_decl.spelling in self.exports:
+            return orig_decl.spelling
+          # Do NOT return a typedef name that isn't actually emitted as an
+          # export — that produces a dangling reference (TS2304). Fall through
+          # to the canonical type so unbound typedefs resolve to the underlying
+          # class (e.g. `XCAFDoc_PartId` → `TCollection_AsciiString`).
       t = clang_type.get_canonical()
       numArgs = t.get_num_template_arguments()
       if numArgs <= 0:
@@ -2537,7 +2590,11 @@ class TypescriptBindings(Bindings):
     if container in self._VEC_TUPLES:
       return self._VEC_TUPLES[container]
 
-    if container in self.exports or container in TypescriptBindings._known_typedef_names:
+    # Only return container if it actually appears as an emitted export.
+    # Typedef names like `XCAFDoc_PartId` (alias for TCollection_AsciiString)
+    # are NOT emitted, so returning them produces TS2304 dangling references.
+    # Fall through to the canonical-fallback resolution path instead.
+    if container in self.exports or container in TypescriptBindings._known_export_names:
       return container
 
     stl_result = self._resolve_stl_type(container, t, templateDecl, templateArgs)
@@ -2751,7 +2808,15 @@ class TypescriptBindings(Bindings):
 
     if resolved in ("number", "string", "boolean", "void"):
       return resolved
-    if resolved and resolved != "" and "(" not in resolved and ":" not in resolved and "<" not in resolved:
+    if (
+      resolved
+      and resolved != ""
+      and "(" not in resolved
+      and ":" not in resolved
+      and "<" not in resolved
+      and "[" not in resolved
+      and self._is_known_export_name(resolved)
+    ):
       return resolved
 
     if resolved and "::" in resolved and "(" not in resolved:
@@ -2770,8 +2835,8 @@ class TypescriptBindings(Bindings):
     if decl and decl.spelling and (decl.spelling in self.exports or decl.spelling in TypescriptBindings._known_export_names):
       return decl.spelling
 
-    self._collect_any("final_fallback", f"{t.spelling} (canonical: {canonical.spelling})")
-    return "any"
+    self._collect_any("unbound_reference", f"{t.spelling} (canonical: {canonical.spelling})")
+    return "unknown"
 
   def getTypescriptDefFromResultType(self, res, templateDecl = None, templateArgs = None):
     if res.spelling == "void":
