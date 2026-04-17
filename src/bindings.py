@@ -2112,6 +2112,18 @@ class TypescriptBindings(Bindings):
       TypescriptBindings._docs_cache = {}
     return TypescriptBindings._docs_cache
 
+  @staticmethod
+  def _escape_jsdoc(text):
+    """Escape any embedded `*/` so it can't terminate the surrounding /** ... */ block.
+
+    Doxygen briefs occasionally contain literal `*/` (especially in code samples or
+    pointer-style notation). Without escaping, the generated JSDoc closes early and
+    every subsequent declaration is parsed as a comment continuation.
+    """
+    if not text:
+      return text
+    return text.replace("*/", "*\\/")
+
   def _jsdoc(self, class_name, member_name=None, indent_str="", param_count=None, overload_index=0, template_name=None, param_names=None):
     used_template = False
     entry = self._docs.get(class_name)
@@ -2121,7 +2133,7 @@ class TypescriptBindings(Bindings):
     if not entry:
       return ""
     if member_name is None:
-      brief = entry.get("brief", "")
+      brief = self._escape_jsdoc(entry.get("brief", ""))
       if not brief:
         return ""
       lines = [f"{indent_str}/**"]
@@ -2138,7 +2150,7 @@ class TypescriptBindings(Bindings):
     if not member:
       return ""
     member = self._resolve_overload(member, param_count, overload_index, param_names=param_names)
-    brief = member.get("brief", "")
+    brief = self._escape_jsdoc(member.get("brief", ""))
     if not brief:
       return ""
     lines = [f"{indent_str}/**"]
@@ -2147,9 +2159,9 @@ class TypescriptBindings(Bindings):
     for param in member.get("params", []):
       if param_names is not None and param["name"] not in param_names:
         continue
-      desc = param.get("description", "")
+      desc = self._escape_jsdoc(param.get("description", ""))
       lines.append(f"{indent_str} * @param {param['name']} {desc}".rstrip())
-    ret_desc = member.get("returns_description", "")
+    ret_desc = self._escape_jsdoc(member.get("returns_description", ""))
     if ret_desc:
       lines.append(f"{indent_str} * @returns {ret_desc}")
     if member.get("deprecated"):
@@ -2164,7 +2176,7 @@ class TypescriptBindings(Bindings):
       return ""
     members = entry.get("members", {})
     member = members.get(member_name, {})
-    brief = member.get("brief", "")
+    brief = self._escape_jsdoc(member.get("brief", ""))
     if not brief:
       return ""
     lines = ["  /**"]
@@ -2329,6 +2341,10 @@ class TypescriptBindings(Bindings):
         output += "export declare const " + enumName + ": {\n"
         for enumChild in list(child.get_children()):
           if enumChild.kind == clang.cindex.CursorKind.ENUM_CONSTANT_DECL:
+            if not enumChild.spelling or not enumChild.spelling.isidentifier():
+              # Skip non-identifier enumerators (anon helpers, macro-mangled names)
+              # so the resulting enum body parses as valid TypeScript.
+              continue
             output += self._enum_member_jsdoc(enumName, enumChild.spelling)
             output += "  readonly " + enumChild.spelling + ": '" + enumChild.spelling + "';\n"
         output += "};\n\n"
@@ -3117,9 +3133,21 @@ class TypescriptBindings(Bindings):
       return "void"
     return self.resolve_type(res, templateDecl, templateArgs)
 
+  _TS_RESERVED_WORDS = frozenset({
+    "break", "case", "catch", "class", "const", "continue", "debugger",
+    "default", "delete", "do", "else", "enum", "export", "extends", "false",
+    "finally", "for", "function", "if", "import", "in", "instanceof", "new",
+    "null", "return", "super", "switch", "this", "throw", "true", "try",
+    "typeof", "var", "void", "while", "with",
+    "as", "implements", "interface", "let", "package", "private", "protected",
+    "public", "static", "yield", "any", "boolean", "constructor", "declare",
+    "get", "module", "require", "number", "set", "string", "symbol", "type",
+    "from", "of", "namespace", "async", "await",
+  })
+
   def _argname(self, arg, suffix = ""):
     argname = (arg.spelling if not arg.spelling == "" else ("a" + str(suffix)))
-    if argname in ["var", "with", "super"]:
+    if argname in TypescriptBindings._TS_RESERVED_WORDS:
       argname += "_"
     return argname
 
@@ -3582,6 +3610,9 @@ class TypescriptBindings(Bindings):
     output += self._jsdoc(enumName)
     output += "export declare const " + enumName + ": {\n"
     for enumChild in list(theEnum.get_children()):
+      if not enumChild.spelling or not enumChild.spelling.isidentifier():
+        # Skip non-identifier enumerators so the const literal stays parseable.
+        continue
       output += self._enum_member_jsdoc(enumName, enumChild.spelling)
       output += "  readonly " + enumChild.spelling + ": '" + enumChild.spelling + "';\n"
     output += "};\n\n"
