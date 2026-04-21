@@ -14,6 +14,7 @@ Pass --force to bypass the cache check.
 import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
 from xml.etree import ElementTree as ET
@@ -68,6 +69,46 @@ _SKIP_TAGS = frozenset({"simplesect", "parameterlist", "xrefsect"})
 _BLOCK_CHILDREN = frozenset({
     "itemizedlist", "orderedlist", "programlisting", "verbatim", "preformatted",
 })
+
+# R5 — sentence-splitting for long prose blocks.
+# Doxygen frequently produces multi-thousand-character paragraphs that render as
+# one unwieldy line in Monaco hovers. Splitting at ". (Capital)" boundaries
+# makes long prose scannable without altering its semantic content. Cross-references
+# R5 in docs/research/monaco-intellisense-jsdoc-rendering.md.
+_SENTENCE_SPLIT_RE = re.compile(r"(?<=\.)\s+(?=[A-Z])")
+_LONG_PROSE_THRESHOLD = 600
+_MIN_FRAGMENT_LEN = 200
+
+
+def _split_long_sentences(text: str) -> str:
+    """Split prose longer than _LONG_PROSE_THRESHOLD chars at ". (Capital)"
+    boundaries.
+
+    Returns text with newlines inserted at sentence boundaries; if no split
+    qualifies (input is short, no boundary matches, or every fragment is too
+    small), returns the input unchanged. Adjacent fragments shorter than
+    `_MIN_FRAGMENT_LEN` are re-merged into the preceding line so the output
+    doesn't fragment short technical sentences (statuses, equations, etc.) into
+    visual confetti.
+
+    Cross-references R5 in docs/research/monaco-intellisense-jsdoc-rendering.md.
+    """
+    if not text or len(text) <= _LONG_PROSE_THRESHOLD:
+        return text
+    parts = _SENTENCE_SPLIT_RE.split(text)
+    if len(parts) < 2:
+        return text
+    merged: list[str] = []
+    for part in parts:
+        if merged and len(part) < _MIN_FRAGMENT_LEN:
+            merged[-1] = merged[-1] + " " + part
+        elif merged and len(merged[-1]) < _MIN_FRAGMENT_LEN:
+            merged[-1] = merged[-1] + " " + part
+        else:
+            merged.append(part)
+    if len(merged) < 2:
+        return text
+    return "\n".join(merged)
 
 
 def _plain_text(node) -> str:
@@ -148,7 +189,13 @@ def _inline_md(node) -> str:
 
 
 def _render_listitem(li) -> str:
-    """Render a <listitem> as a single inline Markdown line (joined paras)."""
+    """Render a <listitem> as a single inline Markdown line (joined paras).
+
+    Long bullet items (>_LONG_PROSE_THRESHOLD chars) are softly broken at
+    sentence boundaries via `_split_long_sentences`. The lazy-continuation
+    rule of CommonMark keeps the resulting newlines part of the same bullet
+    when rendered in Monaco.
+    """
     chunks = []
     for child in li:
         if child.tag == "para":
@@ -161,7 +208,7 @@ def _render_listitem(li) -> str:
             chunk = _inline_md(child).strip()
             if chunk:
                 chunks.append(chunk)
-    return " ".join(chunks)
+    return _split_long_sentences(" ".join(chunks))
 
 
 def _render_para(para_node):
@@ -170,6 +217,10 @@ def _render_para(para_node):
     Doxygen often packs an `<itemizedlist>` or `<programlisting>` *inside*
     a `<para>` rather than as a sibling, so a single para can produce
     multiple Markdown blocks (intro line, list, trailing prose).
+
+    Flushed prose is routed through `_split_long_sentences` so the
+    monstrously long paragraphs in OCCT (often >2k chars) become scannable
+    in Monaco hovers without altering their semantic content.
     """
     inline_buf = []
 
@@ -177,7 +228,7 @@ def _render_para(para_node):
         text = "".join(inline_buf)
         normalised = " ".join(text.split())
         inline_buf.clear()
-        return normalised.strip()
+        return _split_long_sentences(normalised.strip())
 
     if para_node.text:
         inline_buf.append(para_node.text)
@@ -281,6 +332,19 @@ def _inline_text(desc_element) -> str:
     if desc_element is None:
         return ""
     return _inline_md(desc_element)
+
+
+def _brief_text(desc_element) -> str:
+    """Inline rendering of a `<briefdescription>` element with sentence splits.
+
+    Class/member/enum briefs are stored as a single string (the JSDoc emitter
+    in `bindings.py` splits on `\\n` to produce separate ` * ` lines). OCCT
+    sometimes packs ~2k characters into a brief paragraph, so we route the
+    rendered text through `_split_long_sentences` to keep Monaco hovers
+    scannable. Cross-references R5 in
+    docs/research/monaco-intellisense-jsdoc-rendering.md.
+    """
+    return _split_long_sentences(_inline_text(desc_element))
 
 
 def _extract_simplesects(detailed):
@@ -404,7 +468,7 @@ def _process_compound_xml(xml_path: str, docs: dict):
         compound_name = compounddef.findtext("compoundname", "").strip()
 
         if kind in ("class", "struct"):
-            brief = _inline_text(compounddef.find("briefdescription"))
+            brief = _brief_text(compounddef.find("briefdescription"))
             class_detailed_el = compounddef.find("detaileddescription")
             detailed = _render_description(class_detailed_el)
             class_notes, class_warnings, class_sees = _extract_simplesects(class_detailed_el)
@@ -420,7 +484,7 @@ def _process_compound_xml(xml_path: str, docs: dict):
                     mem_name = memberdef.findtext("name", "").strip()
                     if not mem_name:
                         continue
-                    mem_brief = _inline_text(memberdef.find("briefdescription"))
+                    mem_brief = _brief_text(memberdef.find("briefdescription"))
                     mem_detailed_el = memberdef.find("detaileddescription")
                     mem_detailed = _render_description(mem_detailed_el)
                     mem_notes, mem_warnings, mem_sees = _extract_simplesects(mem_detailed_el)
@@ -459,7 +523,7 @@ def _process_compound_xml(xml_path: str, docs: dict):
                             ev_name = ev.findtext("name", "").strip()
                             if not ev_name:
                                 continue
-                            ev_brief = _inline_text(ev.find("briefdescription"))
+                            ev_brief = _brief_text(ev.find("briefdescription"))
                             ev_detailed_el = ev.find("detaileddescription")
                             ev_detailed = _render_description(ev_detailed_el)
                             ev_notes, ev_warnings, ev_sees = _extract_simplesects(ev_detailed_el)
@@ -522,7 +586,7 @@ def _process_compound_xml(xml_path: str, docs: dict):
                         continue
 
                     if mem_kind == "enum":
-                        enum_brief = _inline_text(memberdef.find("briefdescription"))
+                        enum_brief = _brief_text(memberdef.find("briefdescription"))
                         enum_detailed = _render_description(memberdef.find("detaileddescription"))
                         enum_deprecated = _is_deprecated(memberdef)
 
@@ -531,7 +595,7 @@ def _process_compound_xml(xml_path: str, docs: dict):
                             ev_name = ev.findtext("name", "").strip()
                             if not ev_name:
                                 continue
-                            ev_brief = _inline_text(ev.find("briefdescription"))
+                            ev_brief = _brief_text(ev.find("briefdescription"))
                             ev_detailed_el = ev.find("detaileddescription")
                             ev_detailed = _render_description(ev_detailed_el)
                             ev_notes, ev_warnings, ev_sees = _extract_simplesects(ev_detailed_el)

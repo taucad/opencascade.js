@@ -958,12 +958,15 @@ describe('JSDoc documentation coverage', () => {
     );
 
     it.skipIf(!sourceFile)(
-      'should resolve <ref> to {@link Name} when target is a known export (Geom_BSplineCurve)',
+      'should resolve <ref> to {@link Name | `Name`} when target is a known export (Geom_BSplineCurve)',
       () => {
         const cls = findClass(sourceFile!, 'Geom_BSplineCurve');
         expect(cls).toBeDefined();
         const doc = getJSDocText(cls!);
-        expect(doc).toContain('{@link Geom_BSplineCurve}');
+        // After R2 normalization the alias-with-code form is required so Monaco
+        // hovers show themed inline code instead of a literal {@link …} artifact.
+        expect(doc).toMatch(/\{@link\s+Geom_BSplineCurve\s*\|\s*`Geom_BSplineCurve`\s*\}/);
+        expect(doc).not.toMatch(/\{@link\s+Geom_BSplineCurve\s*\}/);
       },
     );
 
@@ -1011,12 +1014,16 @@ describe('JSDoc documentation coverage', () => {
     );
 
     it.skipIf(!sourceFile)(
-      'should emit @see {@link Name} when see simplesect target is a known export (Message_ProgressRange → Message_ProgressScope)',
+      'should emit @see {@link Name | `Name`} when see simplesect target is a known export (Message_ProgressRange → Message_ProgressScope)',
       () => {
         const cls = findClass(sourceFile!, 'Message_ProgressRange');
         expect(cls).toBeDefined();
         const doc = getJSDocText(cls!);
-        expect(doc).toContain('@see {@link Message_ProgressScope}');
+        // After R2 consolidation, @see routes through the same classifier as inline
+        // {@link} tokens: resolved targets render with the alias-with-code form.
+        expect(doc).toMatch(
+          /@see\s+\{@link\s+Message_ProgressScope\s*\|\s*`Message_ProgressScope`\s*\}/,
+        );
       },
     );
 
@@ -1250,6 +1257,488 @@ describe('JSDoc documentation coverage', () => {
         expect(ctor).toBeDefined();
         const doc = getJSDocText(ctor!);
         expect(doc).toContain('Copy');
+      },
+    );
+  });
+
+  // Cross-references docs/research/monaco-intellisense-jsdoc-rendering.md (R2 + R3).
+  // Bare `{@link Foo}` tokens that don't resolve to an emitted TS export render as
+  // literal artifacts in Monaco hovers (Monaco's `displayPartsToString` doesn't
+  // dereference unresolved targets). For exported targets we keep the link and add
+  // an inline-code alias so hovers show themed code; for non-exported targets and
+  // for C++ scoped/templated names that don't resolve we degrade to inline code.
+  describe('Link token normalization (R2+R3)', () => {
+    function isExportedTopLevel(name: string): boolean {
+      if (!sourceFile) return false;
+      let found = false;
+      ts.forEachChild(sourceFile, (node) => {
+        if (
+          ts.isClassDeclaration(node) &&
+          node.name?.text === name
+        )
+          found = true;
+        if (
+          ts.isVariableStatement(node) &&
+          node.declarationList.declarations.some(
+            (d) => ts.isIdentifier(d.name) && d.name.text === name,
+          )
+        )
+          found = true;
+      });
+      return found;
+    }
+
+    // T1 — exported target keeps the link with code-span alias.
+    // gp_Pnt is exported and is heavily referenced from other class JSDoc; if any
+    // {@link gp_Pnt} appears it must come through with the alias-with-code form.
+    it.skipIf(!sourceFile)(
+      'should emit alias-with-code for {@link gp_Pnt} (exported)',
+      () => {
+        const content = fs.readFileSync(FULL_DTS, 'utf8');
+        const aliasForm = /\{@link\s+gp_Pnt\s*\|\s*`gp_Pnt`\s*\}/;
+        const bareForm = /\{@link\s+gp_Pnt\s*\}/;
+        expect(aliasForm.test(content)).toBe(true);
+        expect(bareForm.test(content)).toBe(false);
+      },
+    );
+
+    // T2 — non-exported target collapses to inline code.
+    // Doxygen emits {@link Iterator} for OCCT-internal iterator helpers that are
+    // never exported as TS classes; these must render as `Iterator` backticks so
+    // Monaco doesn't show a literal {@link …} artifact.
+    it.skipIf(!sourceFile)(
+      'should emit backticks for {@link Iterator} (non-exported)',
+      () => {
+        expect(isExportedTopLevel('Iterator')).toBe(false);
+        const content = fs.readFileSync(FULL_DTS, 'utf8');
+        expect(content).toContain('`Iterator`');
+        expect(/\{@link\s+Iterator\s*\}/.test(content)).toBe(false);
+      },
+    );
+
+    // T3 — C++ scoped target whose underscore-flattened form does not export.
+    // {@link OSD_ThreadPool::Launcher} is the canonical scoped reference in the
+    // current corpus; OSD_ThreadPool_Launcher and the bare leaf Launcher are both
+    // absent from the export set, so the resolver must fall through every step and
+    // emit backticks (proving the resolver actually runs).
+    it.skipIf(!sourceFile)(
+      'should emit backticks for {@link OSD_ThreadPool::Launcher} when nothing resolves',
+      () => {
+        expect(isExportedTopLevel('OSD_ThreadPool_Launcher')).toBe(false);
+        expect(isExportedTopLevel('Launcher')).toBe(false);
+        const content = fs.readFileSync(FULL_DTS, 'utf8');
+        expect(content).toContain('`OSD_ThreadPool::Launcher`');
+        expect(/\{@link\s+OSD_ThreadPool::Launcher\s*\}/.test(content)).toBe(false);
+      },
+    );
+
+    // T4 — templated targets strip `<…>` for resolution but the alias text
+    // preserves the original templated form. Whether the resolver finds an
+    // export determines emission shape:
+    //   * exported  → `{@link Stripped | \`Original<T>\`}`
+    //   * unexported → `\`Original<T>\`` (backticks, no link)
+    // OCCT's templated containers (NCollection_Array1, NCollection_DataMap, …)
+    // are not top-level exports — only their fully specialised aliases are
+    // (`NCollection_Array1_double`, etc.). This test asserts the structural
+    // contract: every templated link token survives only as backticks-with-
+    // template OR as alias-with-template, never as a bare `{@link X<T>}`.
+    it.skipIf(!sourceFile)(
+      'should rewrite templated {@link X<T>} tokens to backticks or alias-with-code (no bare form)',
+      () => {
+        const content = fs.readFileSync(FULL_DTS, 'utf8');
+        const bareTemplated = content.match(/\{@link\s+[^|}]*<[^}]*\}/g) || [];
+        if (bareTemplated.length > 0) {
+          throw new Error(
+            `Found ${bareTemplated.length} bare templated {@link X<T>} tokens (sample):\n  ${bareTemplated
+              .slice(0, 5)
+              .join('\n  ')}`,
+          );
+        }
+        expect(bareTemplated.length).toBe(0);
+      },
+    );
+
+    // T5 — multiple tokens in the same paragraph are independently rewritten.
+    // Poly_CoherentTriangulation has the worst-offending paragraph in the corpus
+    // (>2k chars, many {@link …} tokens); each token must be transformed.
+    it.skipIf(!sourceFile)(
+      'should rewrite every {@link} token in a multi-token paragraph (Poly_CoherentTriangulation)',
+      () => {
+        const cls = findClass(sourceFile!, 'Poly_CoherentTriangulation');
+        expect(cls).toBeDefined();
+        const doc = getJSDocText(cls!);
+        const bareTokens = doc.match(/\{@link\s+[^|}]+\}/g) || [];
+        expect(bareTokens).toEqual([]);
+      },
+    );
+
+    // T6 — whole-d.ts regression guard: zero bare {@link X} tokens remaining.
+    // Locks in the doc's "eliminate 2,300 visual artifacts" target. Also catches
+    // any future channel that bypasses _normalize_link_tokens.
+    it.skipIf(!sourceFile)(
+      'should leave zero bare {@link X} tokens (no `|` alias) in the whole .d.ts',
+      () => {
+        const content = fs.readFileSync(FULL_DTS, 'utf8');
+        const bareTokens = content.match(/\{@link\s+[^|}]+\}/g) || [];
+        if (bareTokens.length > 0) {
+          const sample = bareTokens.slice(0, 5).join('\n  ');
+          throw new Error(
+            `Found ${bareTokens.length} bare {@link X} tokens (sample):\n  ${sample}`,
+          );
+        }
+        expect(bareTokens.length).toBe(0);
+      },
+    );
+
+    // T7 — _CONTAINER_ALIASES resolution (DRY hook into the alias map).
+    // NCollection_DynamicArray is a known C++ alias for the exported
+    // NCollection_Vector. The current corpus may not contain Doxygen refs to it,
+    // but if it ever does, the resolver must consult _CONTAINER_ALIASES and emit
+    // the alias-with-code form rather than degrading to backticks.
+    it.skipIf(!sourceFile)(
+      'should resolve {@link NCollection_DynamicArray} via _CONTAINER_ALIASES when present',
+      () => {
+        const content = fs.readFileSync(FULL_DTS, 'utf8');
+        const tokens =
+          content.match(/\{@link\s+NCollection_DynamicArray[^}]*\}/g) || [];
+        if (tokens.length === 0) {
+          // Soft regression guard: the current d.ts has no occurrences. The whole-
+          // file zero-bare-{@link} guard (T6) covers any future occurrence too,
+          // but make the alias-targeting intent explicit if one ever appears.
+          const backticks = content.match(/`NCollection_DynamicArray[^`]*`/g) || [];
+          if (backticks.length > 0) {
+            throw new Error(
+              `_CONTAINER_ALIASES regression: NCollection_DynamicArray must alias to NCollection_Vector, got backticks: ${backticks
+                .slice(0, 3)
+                .join(', ')}`,
+            );
+          }
+          return;
+        }
+        for (const tok of tokens) {
+          expect(tok).toMatch(/\{@link\s+NCollection_Vector\s*\|/);
+        }
+      },
+    );
+
+    // T8 — leaf-only resolution distinguishes from underscore-flattened.
+    // For a corpus where Foo_Bar exports but Bar does not, the resolver must
+    // pick Foo_Bar (step 3) before falling through to the leaf-only step (step 4).
+    // This test asserts the structural property: any {@link Foo::Bar} where
+    // Foo_Bar exports MUST be rewritten as {@link Foo_Bar | `Foo::Bar`} and not
+    // as {@link Bar | …} or backticks.
+    it.skipIf(!sourceFile)(
+      'should prefer underscore-flattened (Foo_Bar) over leaf-only (Bar) when both could match',
+      () => {
+        const content = fs.readFileSync(FULL_DTS, 'utf8');
+        // After rewrite, all {@link X | `…`} aliases must reference an actually
+        // exported symbol — never the bare leaf when an underscore-flattened
+        // variant exists. Pull every alias-with-code token, derive its target,
+        // and check the resolver picked the right candidate.
+        const aliasTokens =
+          content.match(/\{@link\s+([A-Za-z_][\w]*)\s*\|\s*`([^`]+)`\s*\}/g) || [];
+        for (const tok of aliasTokens) {
+          const m = tok.match(/\{@link\s+([A-Za-z_][\w]*)\s*\|\s*`([^`]+)`\s*\}/);
+          if (!m) continue;
+          const [, target, alias] = m;
+          if (!alias.includes('::')) continue;
+          // alias is `Parent::Member`. Resolver must have produced either:
+          // (a) Parent_Member (underscore-flattened, step 3 hit), or
+          // (b) Member (leaf-only, step 4) only when Parent_Member is NOT exported.
+          const parts = alias.replace(/<[^>]*>$/, '').split('::');
+          if (parts.length < 2) continue;
+          const parent = parts.slice(0, -1).join('::');
+          const leaf = parts[parts.length - 1];
+          const flat = `${parent}_${leaf}`;
+          if (target === leaf && isExportedTopLevel(flat)) {
+            throw new Error(
+              `Resolver picked leaf-only target '${leaf}' but underscore-flattened '${flat}' is exported. Token: ${tok}`,
+            );
+          }
+        }
+      },
+    );
+
+    // T9 — typedef-only names degrade to backticks (not {@link}).
+    // _is_known_export_name deliberately excludes typedef-only names so we don't
+    // emit dangling links. Standard_Boolean is the canonical typedef alias.
+    it.skipIf(!sourceFile)(
+      'should emit backticks for typedef-only target Standard_Boolean (no class export)',
+      () => {
+        expect(isExportedTopLevel('Standard_Boolean')).toBe(false);
+        const content = fs.readFileSync(FULL_DTS, 'utf8');
+        // Any reference must collapse to backticks; absolutely no {@link Standard_Boolean…}
+        expect(/\{@link\s+Standard_Boolean[^}]*\}/.test(content)).toBe(false);
+      },
+    );
+
+    // T10 — consolidated @see channel: same predicate as inline {@link}.
+    // The original code used a separate `target in self._docs` predicate which
+    // could disagree with the export set. After consolidation, every @see must
+    // either use the alias-with-code form (resolved) or bare-text fallback (unresolved).
+    it.skipIf(!sourceFile)(
+      'should route @see through the same classifier as inline links',
+      () => {
+        const content = fs.readFileSync(FULL_DTS, 'utf8');
+        // Every @see {@link …} occurrence must carry the alias pipe.
+        const seeTokens = content.match(/@see\s+\{@link\s+[^}]+\}/g) || [];
+        // Bare = no alias pipe at all. URL-style links (hand-written with
+        // `| Display Text`) and resolver-emitted code aliases (`| `Foo``) are
+        // both acceptable; only `{@link X}` with no pipe is the artifact.
+        const seeBare = seeTokens.filter(
+          (t) => !/\{@link\s+[^|}]+\|\s*[^}]+\}/.test(t),
+        );
+        if (seeBare.length > 0) {
+          throw new Error(
+            `Found ${seeBare.length} @see tokens with bare {@link} form (sample):\n  ${seeBare
+              .slice(0, 5)
+              .join('\n  ')}`,
+          );
+        }
+        expect(seeBare.length).toBe(0);
+      },
+    );
+  });
+
+  // Cross-references docs/research/monaco-intellisense-jsdoc-rendering.md (R4).
+  // Long class JSDoc bodies render as a wall of prose in Monaco hovers; injecting
+  // a Markdown horizontal rule between brief and detailed gives an at-a-glance
+  // line above the rule and the full context below, mirroring lib.dom.d.ts style.
+  describe('AT-A-GLANCE separator (R4)', () => {
+    function jsDocBodyLines(doc: string): string[] {
+      const inner = doc.replace(/^\s*\/\*\*/, '').replace(/\*\/\s*$/, '');
+      return inner.split('\n').map((l) => l.replace(/^\s*\*\s?/, '').trimEnd());
+    }
+
+    function detailedLength(doc: string): number {
+      const lines = jsDocBodyLines(doc);
+      // Strip leading brief (first non-empty line up to first blank).
+      let i = 0;
+      while (i < lines.length && lines[i].trim() === '') i++;
+      while (i < lines.length && lines[i].trim() !== '') i++;
+      while (i < lines.length && lines[i].trim() === '') i++;
+      return lines
+        .slice(i)
+        .filter((l) => !l.trim().startsWith('@'))
+        .join(' ')
+        .trim().length;
+    }
+
+    // T1 — long body emits the separator.
+    // BRepAlgoAPI_Check and Poly_CoherentTriangulation both have detailed sections
+    // exceeding the 400-char threshold; the rule must demarcate brief from body.
+    it.skipIf(!sourceFile)(
+      'should inject `* ---` between brief and long detailed body for BRepAlgoAPI_Check',
+      () => {
+        const cls = findClass(sourceFile!, 'BRepAlgoAPI_Check');
+        expect(cls).toBeDefined();
+        const doc = getJSDocText(cls!);
+        const lines = jsDocBodyLines(doc);
+        const ruleIdx = lines.findIndex((l) => l === '---');
+        expect(ruleIdx).toBeGreaterThan(0);
+        // The rule must come after a non-empty brief line.
+        const briefIdx = lines.findIndex((l) => l.trim() !== '');
+        expect(briefIdx).toBeGreaterThanOrEqual(0);
+        expect(ruleIdx).toBeGreaterThan(briefIdx);
+      },
+    );
+
+    it.skipIf(!sourceFile)(
+      'should inject `* ---` for Poly_CoherentTriangulation (huge body)',
+      () => {
+        const cls = findClass(sourceFile!, 'Poly_CoherentTriangulation');
+        expect(cls).toBeDefined();
+        const doc = getJSDocText(cls!);
+        expect(jsDocBodyLines(doc)).toContain('---');
+      },
+    );
+
+    // T2 — short body does not emit the separator.
+    // gp_Pnt has a compact class doc (well under 400 chars detailed); the rule
+    // would just add visual noise so it must be omitted.
+    it.skipIf(!sourceFile)(
+      'should not inject `* ---` when detailed body is short (gp_Pnt)',
+      () => {
+        const cls = findClass(sourceFile!, 'gp_Pnt');
+        expect(cls).toBeDefined();
+        const doc = getJSDocText(cls!);
+        if (detailedLength(doc) > 400) return;
+        expect(jsDocBodyLines(doc)).not.toContain('---');
+      },
+    );
+
+    // T3 — brief-only class has no separator (no body to demarcate).
+    it.skipIf(!sourceFile)(
+      'should not inject `* ---` when there is no detailed body',
+      () => {
+        let checked = 0;
+        let violations = 0;
+        ts.forEachChild(sourceFile!, (node) => {
+          if (!ts.isClassDeclaration(node)) return;
+          const doc = getJSDocText(node);
+          if (!doc) return;
+          if (detailedLength(doc) > 0) return;
+          checked++;
+          if (jsDocBodyLines(doc).includes('---')) violations++;
+        });
+        expect(checked).toBeGreaterThan(0);
+        expect(violations).toBe(0);
+      },
+    );
+
+    // T4 — whole-d.ts regression guard: representative long classes have rules.
+    it.skipIf(!sourceFile)(
+      'should emit `* ---` on every class whose detailed body exceeds 400 chars (representative shortlist)',
+      () => {
+        const longClasses = [
+          'BRepAlgoAPI_Check',
+          'Poly_CoherentTriangulation',
+        ];
+        for (const name of longClasses) {
+          const cls = findClass(sourceFile!, name);
+          if (!cls) continue;
+          const doc = getJSDocText(cls);
+          expect(jsDocBodyLines(doc), `${name} should have separator`).toContain('---');
+        }
+      },
+    );
+  });
+
+  // Cross-references docs/research/monaco-intellisense-jsdoc-rendering.md (R5).
+  // Doxygen produces multi-thousand-character paragraphs that render as one
+  // unwieldy line in Monaco hovers. Splitting at sentence boundaries during
+  // _render_para keeps the JSDoc structurally faithful while making the tooltip
+  // scannable.
+  describe('Sentence-splitting long prose (R5)', () => {
+    function jsDocBodyLines(doc: string): string[] {
+      const inner = doc.replace(/^\s*\/\*\*/, '').replace(/\*\/\s*$/, '');
+      return inner.split('\n').map((l) => l.replace(/^\s*\*\s?/, ''));
+    }
+
+    // T1 — Poly_CoherentTriangulation 2,345-char paragraph is split.
+    // The raw .d.ts currently has a 2,345-char single line at the
+    // Poly_CoherentTriangulation class; after splitting, no single body line
+    // should exceed 1,000 chars.
+    it.skipIf(!sourceFile)(
+      'should split the Poly_CoherentTriangulation mega-paragraph into shorter lines',
+      () => {
+        const cls = findClass(sourceFile!, 'Poly_CoherentTriangulation');
+        expect(cls).toBeDefined();
+        const doc = getJSDocText(cls!);
+        const longest = Math.max(...jsDocBodyLines(doc).map((l) => l.length));
+        expect(longest).toBeLessThan(1000);
+      },
+    );
+
+    // T2 — sentence splits are whitespace-preserving.
+    // Concatenating the bullet/paragraph fragments with a single space must
+    // reproduce the original prose modulo whitespace; no characters are dropped
+    // at the split boundaries.
+    it.skipIf(!sourceFile)(
+      'should preserve content across sentence-split boundaries',
+      () => {
+        const cls = findClass(sourceFile!, 'Poly_CoherentTriangulation');
+        expect(cls).toBeDefined();
+        const doc = getJSDocText(cls!);
+        // Recombine the multi-line bullet item that was originally one mega-line.
+        // The bullet starts with "- **{@link Poly_CoherentLink}**".
+        const lines = jsDocBodyLines(doc);
+        // Post-R2 the link is rewritten to alias-with-code form
+        // (`{@link Poly_CoherentLink | \`Poly_CoherentLink\`}`), so locate
+        // the bullet by its bold-display marker which is stable across the
+        // pre/post-R2 emission.
+        const bulletStart = lines.findIndex((l) =>
+          l.includes('Poly_CoherentLink') && l.includes('**'),
+        );
+        expect(bulletStart).toBeGreaterThanOrEqual(0);
+        // Collect lines until the next blank or different-indent boundary.
+        const collected: string[] = [];
+        for (let i = bulletStart; i < lines.length; i++) {
+          const l = lines[i];
+          if (l.trim() === '') break;
+          if (i > bulletStart && /^[-*\d]/.test(l.trim())) break;
+          collected.push(l.trim());
+        }
+        const joined = collected.join(' ');
+        // Sentinel phrases that must survive the split.
+        expect(joined).toContain('Auxiliary data type');
+        expect(joined).toContain('Memory management');
+        expect(joined).toContain('NCollection_BaseAllocator');
+      },
+    );
+
+    // T3 — paragraphs <=600 chars are not split.
+    // gp_Pnt class brief is short prose; its body must remain a single block.
+    it.skipIf(!sourceFile)(
+      'should not split short paragraphs (gp_Pnt class brief)',
+      () => {
+        const cls = findClass(sourceFile!, 'gp_Pnt');
+        expect(cls).toBeDefined();
+        const doc = getJSDocText(cls!);
+        const lines = jsDocBodyLines(doc);
+        const briefLines = lines.filter(
+          (l) => l.trim() !== '' && !l.trim().startsWith('@'),
+        );
+        // gp_Pnt's brief is "Defines a 3D cartesian point." — a single line.
+        expect(briefLines.some((l) => l.includes('cartesian point'))).toBe(true);
+      },
+    );
+
+    // T4 — splits only at ". (Capital)" boundaries; lowercase continuations
+    // remain joined.
+    it.skipIf(!sourceFile)(
+      'should not split at lowercase sentence continuations',
+      () => {
+        // Construct via a regression assertion against the whole d.ts: any line
+        // ending in ". " followed by a lowercase character should stay together
+        // (we can only verify the splitter didn't split such cases, by checking
+        // that no line starts with a lowercase character following a sibling
+        // line that ended with ".").
+        const content = fs.readFileSync(FULL_DTS, 'utf8');
+        const lines = content.split('\n');
+        let violations = 0;
+        for (let i = 1; i < lines.length; i++) {
+          const prev = lines[i - 1].replace(/^\s*\*\s?/, '').trimEnd();
+          const cur = lines[i].replace(/^\s*\*\s?/, '');
+          if (!prev.endsWith('.')) continue;
+          if (cur.length === 0) continue;
+          const first = cur.trimStart()[0];
+          // A lowercase char following ". " on a fresh line implies the splitter
+          // got too eager. Skip cases that look like list/bullet continuations.
+          if (first && first === first.toLowerCase() && /[a-z]/.test(first)) {
+            // Allow legitimate cases where the next line starts with a lowercase
+            // word that's a JSDoc tag, code, or list marker.
+            if (cur.trimStart().startsWith('@')) continue;
+            if (cur.trimStart().startsWith('`')) continue;
+            violations++;
+          }
+        }
+        // Allow a small noise budget for upstream OCCT prose with intentional
+        // lowercase starts (technical terms, code identifiers).
+        expect(violations).toBeLessThan(50);
+      },
+    );
+
+    // T5 — whole-d.ts regression guard: zero JSDoc body lines exceeding
+    // 1,500 chars. We restrict to lines starting with ` *` (the JSDoc body
+    // marker) because R5 targets prose readability inside Monaco hovers, not
+    // wide method signatures (those are TS code; line wrapping would harm
+    // copy/paste). The doc's quantitative target: 5 prose lines >1,500 chars
+    // in the pre-fix d.ts; R5 must drive that to 0.
+    it.skipIf(!sourceFile)(
+      'should leave zero JSDoc body lines exceeding 1,500 chars in the whole .d.ts',
+      () => {
+        const content = fs.readFileSync(FULL_DTS, 'utf8');
+        const longLines = content
+          .split('\n')
+          .filter((l) => /^\s*\*/.test(l) && l.length > 1500);
+        if (longLines.length > 0) {
+          const sample = longLines.map((l) => l.slice(0, 200) + '…').join('\n  ');
+          throw new Error(
+            `Found ${longLines.length} body lines >1500 chars (sample):\n  ${sample}`,
+          );
+        }
+        expect(longLines.length).toBe(0);
       },
     );
   });

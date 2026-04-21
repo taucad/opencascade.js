@@ -2161,6 +2161,149 @@ class TypescriptBindings(Bindings):
       return text
     return text.replace("*/", "*\\/")
 
+  _LINK_TOKEN_RE = re.compile(r"\{@link\s+([^}|]+?)\s*\}")
+
+  def _classify_link_target(self, target):
+    """Resolve a Doxygen `<ref>`-derived target to an emitted TS export name.
+
+    Mirrors the priority cascade from `_resolve_qualified_member_type` (rsplit
+    on `::` then test `parent + "_" + member` before the bare leaf), and routes
+    every candidate through `_is_known_export_name` which already excludes
+    typedef-only names that would emit dangling links.
+
+    Strategy (returns the first hit, or None):
+      1. Strip template args (drop everything from `<` onward) and trailing
+         pointer/ref/const noise; trim whitespace. Call this `clean`.
+      2. As-is: if `_is_known_export_name(clean)`, return `clean`.
+      3. Underscore-flatten: if `"::" in clean`, test
+         `_is_known_export_name(parent + "_" + member)`.
+      4. Leaf-only: if step 3 missed, test `_is_known_export_name(member)`.
+      5. Container alias: consult `_CONTAINER_ALIASES` against `clean` and
+         the underscore-flattened candidate.
+
+    Cross-references R2 + R3 in docs/research/monaco-intellisense-jsdoc-rendering.md.
+    """
+    if not target:
+      return None
+    base = target.split("<", 1)[0]
+    clean = self._strip_type_qualifiers_str(base)
+    if not clean:
+      return None
+    if self._is_known_export_name(clean):
+      return clean
+    flat = None
+    leaf = None
+    if "::" in clean:
+      parent, leaf = clean.rsplit("::", 1)
+      parent = parent.strip()
+      leaf = leaf.strip()
+      if parent and leaf:
+        flat = parent + "_" + leaf
+        if self._is_known_export_name(flat):
+          return flat
+        if self._is_known_export_name(leaf):
+          return leaf
+    aliased = TypescriptBindings._CONTAINER_ALIASES.get(clean)
+    if aliased and self._is_known_export_name(aliased):
+      return aliased
+    if flat:
+      aliased = TypescriptBindings._CONTAINER_ALIASES.get(flat)
+      if aliased and self._is_known_export_name(aliased):
+        return aliased
+    return None
+
+  def _normalize_link_tokens(self, text):
+    """Rewrite `{@link X}` tokens in JSDoc body text for Monaco-friendly tooltips.
+
+    For each `{@link <target>}` token:
+      - resolved = self._classify_link_target(target)
+      - If resolved: emit `{@link <resolved> | `<target>`}` so VS Code/TypeDoc
+        keep the clickable link, the visible text becomes inline code, and
+        Monaco's naive `displayPartsToString` collapses to a clean code span.
+      - Else: emit `` `<target>` `` so Monaco shows themed inline code instead
+        of the literal `{@link …}` artifact.
+
+    Cross-references R2 + R3 in docs/research/monaco-intellisense-jsdoc-rendering.md.
+    """
+    if not text or "{@link" not in text:
+      return text
+
+    def replace(match):
+      target = match.group(1).strip()
+      if not target:
+        return match.group(0)
+      resolved = self._classify_link_target(target)
+      if resolved:
+        return "{@link " + resolved + " | `" + target + "`}"
+      return "`" + target + "`"
+
+    return TypescriptBindings._LINK_TOKEN_RE.sub(replace, text)
+
+  _SENTENCE_SPLIT_RE = re.compile(r"(?<=\.)\s+(?=[A-Z])")
+  _LONG_PROSE_THRESHOLD = 600
+  _MIN_FRAGMENT_LEN = 120
+  _SOFT_WRAP_TARGET = 1000
+
+  @staticmethod
+  def _soft_wrap_long_line(line):
+    """Wrap a single overlong line on the nearest space boundary near
+    `_SOFT_WRAP_TARGET`. Used as the R5 backstop when a paragraph has no
+    `". (Capital)"` boundaries (e.g. dense pseudocode prose) but still
+    overflows Monaco's hover width budget.
+    """
+    if len(line) <= TypescriptBindings._SOFT_WRAP_TARGET:
+      return [line]
+    pieces: list[str] = []
+    rest = line
+    while len(rest) > TypescriptBindings._SOFT_WRAP_TARGET:
+      cut = rest.rfind(" ", 0, TypescriptBindings._SOFT_WRAP_TARGET)
+      if cut <= 0:
+        cut = rest.find(" ", TypescriptBindings._SOFT_WRAP_TARGET)
+      if cut <= 0:
+        pieces.append(rest)
+        return pieces
+      pieces.append(rest[:cut])
+      rest = rest[cut + 1:]
+    if rest:
+      pieces.append(rest)
+    return pieces
+
+  def _split_long_lines(self, text):
+    """Per-line variant of `extract-docs.py::_split_long_sentences`, applied
+    after `_normalize_link_tokens` has expanded short `{@link X}` tokens into
+    longer `{@link Y | \\`X\\`}` aliases. Splitting at extract time runs against
+    the pre-expansion text, which can mask paragraphs that only become Monaco
+    hover offenders once the alias text is added (R2 inflates length, R5
+    re-checks). Splitting per-line keeps existing intentional paragraph breaks
+    intact while only intervening when a single line crosses the threshold.
+    Lines that still exceed `_SOFT_WRAP_TARGET` after sentence splitting (rare,
+    but happens for dense pseudocode prose with no `. ` boundaries) are
+    soft-wrapped on space boundaries as a backstop.
+
+    Cross-references R5 in docs/research/monaco-intellisense-jsdoc-rendering.md.
+    """
+    if not text:
+      return text
+    out: list[str] = []
+    for line in text.split("\n"):
+      if len(line) <= TypescriptBindings._LONG_PROSE_THRESHOLD:
+        out.append(line)
+        continue
+      parts = TypescriptBindings._SENTENCE_SPLIT_RE.split(line)
+      if len(parts) >= 2:
+        merged: list[str] = []
+        for part in parts:
+          if merged and len(part) < TypescriptBindings._MIN_FRAGMENT_LEN:
+            merged[-1] = merged[-1] + " " + part
+          else:
+            merged.append(part)
+        candidate_lines = merged
+      else:
+        candidate_lines = [line]
+      for cand in candidate_lines:
+        out.extend(TypescriptBindings._soft_wrap_long_line(cand))
+    return "\n".join(out)
+
   def _emit_jsdoc_text(self, lines, indent_str, body):
     """Append a Markdown body (single or multi-line) into a JSDoc lines buffer.
 
@@ -2177,33 +2320,63 @@ class TypescriptBindings(Bindings):
       else:
         lines.append(f"{indent_str} *")
 
+  _AT_A_GLANCE_THRESHOLD = 400
+
+  def _emit_jsdoc_separator(self, lines, indent_str, brief, detailed):
+    """Insert the AT-A-GLANCE Markdown horizontal rule between brief and detailed
+    when the detailed body is long enough to benefit from a visual break.
+
+    Mirrors the convention TypeScript itself uses in `lib.dom.d.ts`: a one-line
+    summary up top, a `---` rule, then the long-form prose. Below the threshold
+    the rule is just visual noise so we emit only the standard blank ` *`
+    paragraph break instead.
+
+    Cross-references R4 in docs/research/monaco-intellisense-jsdoc-rendering.md.
+    """
+    if detailed and len(detailed) > TypescriptBindings._AT_A_GLANCE_THRESHOLD:
+      lines.append(f"{indent_str} *")
+      lines.append(f"{indent_str} * ---")
+      lines.append(f"{indent_str} *")
+    else:
+      lines.append(f"{indent_str} *")
+
   def _emit_simplesect_tags(self, lines, indent_str, entry):
     """Emit `@remarks **Note:** ...`, `@remarks **Warning:** ...`, `@see ...`
     for the simplesects captured per entry by `extract-docs.py::_extract_simplesects`.
 
-    `@see` targets resolve to `{@link Name}` when the target is a known compound
-    (a class/struct present in the docs cache or referenced by Doxygen with
-    `kindref="compound"`), otherwise we emit the bare target text — `{@link}` to
-    a non-existent symbol would surface as a broken cross-reference in IDE
-    tooltips, which is worse than no link.
+    Note/warning bodies are routed through `_normalize_link_tokens` so any
+    `{@link X}` they contain is rewritten with the same classifier used for
+    inline body text. `@see` targets are routed through `_classify_link_target`
+    directly (rather than the historical `target in self._docs` predicate which
+    drifts from the actual export set): when the target resolves to an emitted
+    TS export, we emit ``@see {@link <resolved> | `<target>`}`` so the alias
+    text reads as themed inline code in Monaco; otherwise we degrade to
+    ``@see `<target>` `` to keep the cross-reference rendered as code instead
+    of a literal `{@link …}` artifact.
+
+    Cross-references R2 in docs/research/monaco-intellisense-jsdoc-rendering.md.
     """
     for note in entry.get("notes", []) or []:
-      escaped = self._escape_jsdoc(note)
+      normalized = self._normalize_link_tokens(note)
+      escaped = self._escape_jsdoc(normalized)
       lines.append(f"{indent_str} * @remarks **Note:** {escaped}")
     for warning in entry.get("warnings", []) or []:
-      escaped = self._escape_jsdoc(warning)
+      normalized = self._normalize_link_tokens(warning)
+      escaped = self._escape_jsdoc(normalized)
       lines.append(f"{indent_str} * @remarks **Warning:** {escaped}")
     for see in entry.get("sees", []) or []:
       target = see.get("target", "")
       if not target:
         continue
-      target = self._escape_jsdoc(target)
-      kindref = see.get("kindref", "")
-      resolved = kindref == "compound" or (kindref == "" and target in self._docs)
+      resolved = self._classify_link_target(target)
+      target_escaped = self._escape_jsdoc(target)
       if resolved:
-        lines.append(f"{indent_str} * @see {{@link {target}}}")
+        resolved_escaped = self._escape_jsdoc(resolved)
+        lines.append(
+          f"{indent_str} * @see {{@link {resolved_escaped} | `{target_escaped}`}}"
+        )
       else:
-        lines.append(f"{indent_str} * @see {target}")
+        lines.append(f"{indent_str} * @see `{target_escaped}`")
 
   def _jsdoc(self, class_name, member_name=None, indent_str="", param_count=None, overload_index=0, template_name=None, param_names=None):
     used_template = False
@@ -2214,8 +2387,8 @@ class TypescriptBindings(Bindings):
     if not entry:
       return ""
     if member_name is None:
-      brief = self._escape_jsdoc(entry.get("brief", ""))
-      detailed = self._escape_jsdoc(entry.get("detailed", ""))
+      brief = self._split_long_lines(self._escape_jsdoc(self._normalize_link_tokens(entry.get("brief", ""))))
+      detailed = self._split_long_lines(self._escape_jsdoc(self._normalize_link_tokens(entry.get("detailed", ""))))
       has_simplesects = bool(entry.get("notes") or entry.get("warnings") or entry.get("sees"))
       if not brief and not detailed and not has_simplesects and not entry.get("deprecated"):
         return ""
@@ -2224,7 +2397,7 @@ class TypescriptBindings(Bindings):
         self._emit_jsdoc_text(lines, indent_str, brief)
       if detailed:
         if brief:
-          lines.append(f"{indent_str} *")
+          self._emit_jsdoc_separator(lines, indent_str, brief, detailed)
         self._emit_jsdoc_text(lines, indent_str, detailed)
       self._emit_simplesect_tags(lines, indent_str, entry)
       if entry.get("deprecated"):
@@ -2238,8 +2411,8 @@ class TypescriptBindings(Bindings):
     if not member:
       return ""
     member = self._resolve_overload(member, param_count, overload_index, param_names=param_names)
-    brief = self._escape_jsdoc(member.get("brief", ""))
-    detailed = self._escape_jsdoc(member.get("detailed", ""))
+    brief = self._split_long_lines(self._escape_jsdoc(self._normalize_link_tokens(member.get("brief", ""))))
+    detailed = self._split_long_lines(self._escape_jsdoc(self._normalize_link_tokens(member.get("detailed", ""))))
     has_simplesects = bool(member.get("notes") or member.get("warnings") or member.get("sees"))
     has_param_or_return = bool(member.get("params") or member.get("returns_description"))
     if not brief and not detailed and not has_simplesects and not has_param_or_return and not member.get("deprecated"):
@@ -2249,14 +2422,14 @@ class TypescriptBindings(Bindings):
       self._emit_jsdoc_text(lines, indent_str, brief)
     if detailed:
       if brief:
-        lines.append(f"{indent_str} *")
+        self._emit_jsdoc_separator(lines, indent_str, brief, detailed)
       self._emit_jsdoc_text(lines, indent_str, detailed)
     for param in member.get("params", []):
       if param_names is not None and param["name"] not in param_names:
         continue
-      desc = self._escape_jsdoc(param.get("description", ""))
+      desc = self._escape_jsdoc(self._normalize_link_tokens(param.get("description", "")))
       lines.append(f"{indent_str} * @param {param['name']} {desc}".rstrip())
-    ret_desc = self._escape_jsdoc(member.get("returns_description", ""))
+    ret_desc = self._escape_jsdoc(self._normalize_link_tokens(member.get("returns_description", "")))
     if ret_desc:
       lines.append(f"{indent_str} * @returns {ret_desc}")
     self._emit_simplesect_tags(lines, indent_str, member)
@@ -2279,8 +2452,8 @@ class TypescriptBindings(Bindings):
       return ""
     members = entry.get("members", {})
     member = members.get(member_name, {})
-    brief = self._escape_jsdoc(member.get("brief", ""))
-    detailed = self._escape_jsdoc(member.get("detailed", ""))
+    brief = self._split_long_lines(self._escape_jsdoc(self._normalize_link_tokens(member.get("brief", ""))))
+    detailed = self._split_long_lines(self._escape_jsdoc(self._normalize_link_tokens(member.get("detailed", ""))))
     has_simplesects = bool(member.get("notes") or member.get("warnings") or member.get("sees"))
     if not brief and not detailed and not has_simplesects:
       return ""
@@ -2290,7 +2463,7 @@ class TypescriptBindings(Bindings):
       self._emit_jsdoc_text(lines, indent_str, brief)
     if detailed:
       if brief:
-        lines.append(f"{indent_str} *")
+        self._emit_jsdoc_separator(lines, indent_str, brief, detailed)
       self._emit_jsdoc_text(lines, indent_str, detailed)
     self._emit_simplesect_tags(lines, indent_str, member)
     lines.append(f"{indent_str} */")

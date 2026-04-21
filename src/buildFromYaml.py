@@ -714,7 +714,7 @@ def main():
       "\n/**\n" + \
       " * Union of the Emscripten runtime exports and all bound OCCT classes, enums, and functions.\n" + \
       " *\n" + \
-      " * Returned by {@link init} after the WASM module is fully loaded. Access any\n" + \
+      " * Returned by {@link init | `init`} after the WASM module is fully loaded. Access any\n" + \
       " * OCCT binding as a property (e.g. `oc.BRepPrimAPI_MakeBox`) and use\n" + \
       " * " + runtime_desc + ".\n" + \
       " */\n" + \
