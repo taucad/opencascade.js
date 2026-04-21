@@ -1500,106 +1500,18 @@ describe('JSDoc documentation coverage', () => {
     );
   });
 
-  // Cross-references docs/research/monaco-intellisense-jsdoc-rendering.md (R4).
-  // Long class JSDoc bodies render as a wall of prose in Monaco hovers; injecting
-  // a Markdown horizontal rule between brief and detailed gives an at-a-glance
-  // line above the rule and the full context below, mirroring lib.dom.d.ts style.
-  describe('AT-A-GLANCE separator (R4)', () => {
-    function jsDocBodyLines(doc: string): string[] {
-      const inner = doc.replace(/^\s*\/\*\*/, '').replace(/\*\/\s*$/, '');
-      return inner.split('\n').map((l) => l.replace(/^\s*\*\s?/, '').trimEnd());
-    }
-
-    function detailedLength(doc: string): number {
-      const lines = jsDocBodyLines(doc);
-      // Strip leading brief (first non-empty line up to first blank).
-      let i = 0;
-      while (i < lines.length && lines[i].trim() === '') i++;
-      while (i < lines.length && lines[i].trim() !== '') i++;
-      while (i < lines.length && lines[i].trim() === '') i++;
-      return lines
-        .slice(i)
-        .filter((l) => !l.trim().startsWith('@'))
-        .join(' ')
-        .trim().length;
-    }
-
-    // T1 — long body emits the separator.
-    // BRepAlgoAPI_Check and Poly_CoherentTriangulation both have detailed sections
-    // exceeding the 400-char threshold; the rule must demarcate brief from body.
+  // Cross-references docs/research/monaco-intellisense-jsdoc-rendering.md (R4 RESCINDED).
+  // R4 originally injected a Markdown horizontal rule (`* ---`) between brief and
+  // detailed bodies. Monaco's hover stylesheet gives `<hr>` a `margin-bottom: -4px`
+  // (editor.main.css:2940-2949), producing a 12px / 4px asymmetric gap that visibly
+  // hugs the next paragraph. R4 has been rolled back; this guard prevents regression.
+  describe('No `* ---` separator (R4 rollback)', () => {
     it.skipIf(!sourceFile)(
-      'should inject `* ---` between brief and long detailed body for BRepAlgoAPI_Check',
+      'should not emit `* ---` JSDoc separators anywhere in the generated d.ts',
       () => {
-        const cls = findClass(sourceFile!, 'BRepAlgoAPI_Check');
-        expect(cls).toBeDefined();
-        const doc = getJSDocText(cls!);
-        const lines = jsDocBodyLines(doc);
-        const ruleIdx = lines.findIndex((l) => l === '---');
-        expect(ruleIdx).toBeGreaterThan(0);
-        // The rule must come after a non-empty brief line.
-        const briefIdx = lines.findIndex((l) => l.trim() !== '');
-        expect(briefIdx).toBeGreaterThanOrEqual(0);
-        expect(ruleIdx).toBeGreaterThan(briefIdx);
-      },
-    );
-
-    it.skipIf(!sourceFile)(
-      'should inject `* ---` for Poly_CoherentTriangulation (huge body)',
-      () => {
-        const cls = findClass(sourceFile!, 'Poly_CoherentTriangulation');
-        expect(cls).toBeDefined();
-        const doc = getJSDocText(cls!);
-        expect(jsDocBodyLines(doc)).toContain('---');
-      },
-    );
-
-    // T2 — short body does not emit the separator.
-    // gp_Pnt has a compact class doc (well under 400 chars detailed); the rule
-    // would just add visual noise so it must be omitted.
-    it.skipIf(!sourceFile)(
-      'should not inject `* ---` when detailed body is short (gp_Pnt)',
-      () => {
-        const cls = findClass(sourceFile!, 'gp_Pnt');
-        expect(cls).toBeDefined();
-        const doc = getJSDocText(cls!);
-        if (detailedLength(doc) > 400) return;
-        expect(jsDocBodyLines(doc)).not.toContain('---');
-      },
-    );
-
-    // T3 — brief-only class has no separator (no body to demarcate).
-    it.skipIf(!sourceFile)(
-      'should not inject `* ---` when there is no detailed body',
-      () => {
-        let checked = 0;
-        let violations = 0;
-        ts.forEachChild(sourceFile!, (node) => {
-          if (!ts.isClassDeclaration(node)) return;
-          const doc = getJSDocText(node);
-          if (!doc) return;
-          if (detailedLength(doc) > 0) return;
-          checked++;
-          if (jsDocBodyLines(doc).includes('---')) violations++;
-        });
-        expect(checked).toBeGreaterThan(0);
-        expect(violations).toBe(0);
-      },
-    );
-
-    // T4 — whole-d.ts regression guard: representative long classes have rules.
-    it.skipIf(!sourceFile)(
-      'should emit `* ---` on every class whose detailed body exceeds 400 chars (representative shortlist)',
-      () => {
-        const longClasses = [
-          'BRepAlgoAPI_Check',
-          'Poly_CoherentTriangulation',
-        ];
-        for (const name of longClasses) {
-          const cls = findClass(sourceFile!, name);
-          if (!cls) continue;
-          const doc = getJSDocText(cls);
-          expect(jsDocBodyLines(doc), `${name} should have separator`).toContain('---');
-        }
+        const text = sourceFile!.getFullText();
+        const matches = text.match(/^\s*\*\s---\s*$/gm) ?? [];
+        expect(matches.length).toBe(0);
       },
     );
   });

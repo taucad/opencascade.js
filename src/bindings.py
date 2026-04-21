@@ -2320,26 +2320,6 @@ class TypescriptBindings(Bindings):
       else:
         lines.append(f"{indent_str} *")
 
-  _AT_A_GLANCE_THRESHOLD = 400
-
-  def _emit_jsdoc_separator(self, lines, indent_str, brief, detailed):
-    """Insert the AT-A-GLANCE Markdown horizontal rule between brief and detailed
-    when the detailed body is long enough to benefit from a visual break.
-
-    Mirrors the convention TypeScript itself uses in `lib.dom.d.ts`: a one-line
-    summary up top, a `---` rule, then the long-form prose. Below the threshold
-    the rule is just visual noise so we emit only the standard blank ` *`
-    paragraph break instead.
-
-    Cross-references R4 in docs/research/monaco-intellisense-jsdoc-rendering.md.
-    """
-    if detailed and len(detailed) > TypescriptBindings._AT_A_GLANCE_THRESHOLD:
-      lines.append(f"{indent_str} *")
-      lines.append(f"{indent_str} * ---")
-      lines.append(f"{indent_str} *")
-    else:
-      lines.append(f"{indent_str} *")
-
   def _emit_simplesect_tags(self, lines, indent_str, entry):
     """Emit `@remarks **Note:** ...`, `@remarks **Warning:** ...`, `@see ...`
     for the simplesects captured per entry by `extract-docs.py::_extract_simplesects`.
@@ -2397,7 +2377,7 @@ class TypescriptBindings(Bindings):
         self._emit_jsdoc_text(lines, indent_str, brief)
       if detailed:
         if brief:
-          self._emit_jsdoc_separator(lines, indent_str, brief, detailed)
+          lines.append(f"{indent_str} *")
         self._emit_jsdoc_text(lines, indent_str, detailed)
       self._emit_simplesect_tags(lines, indent_str, entry)
       if entry.get("deprecated"):
@@ -2422,7 +2402,7 @@ class TypescriptBindings(Bindings):
       self._emit_jsdoc_text(lines, indent_str, brief)
     if detailed:
       if brief:
-        self._emit_jsdoc_separator(lines, indent_str, brief, detailed)
+        lines.append(f"{indent_str} *")
       self._emit_jsdoc_text(lines, indent_str, detailed)
     for param in member.get("params", []):
       if param_names is not None and param["name"] not in param_names:
@@ -2463,7 +2443,7 @@ class TypescriptBindings(Bindings):
       self._emit_jsdoc_text(lines, indent_str, brief)
     if detailed:
       if brief:
-        self._emit_jsdoc_separator(lines, indent_str, brief, detailed)
+        lines.append(f"{indent_str} *")
       self._emit_jsdoc_text(lines, indent_str, detailed)
     self._emit_simplesect_tags(lines, indent_str, member)
     lines.append(f"{indent_str} */")
