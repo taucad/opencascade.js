@@ -2069,6 +2069,40 @@ class EmbindBindings(Bindings):
     return output
 
 class TypescriptBindings(Bindings):
+  """TypeScript declaration generator for OCCT/custom-code Embind bindings.
+
+  ============================================================================
+  PRECONDITION — `_known_export_names` MUST be seeded before first use
+  ============================================================================
+
+  `resolve_type` (and the helper paths it depends on: `_is_known_export_name`,
+  `_resolve_handle_recursive`, `_resolve_template_typedef`, etc.) consults
+  the class-level set `_known_export_names` to decide whether a referenced
+  C++ identifier corresponds to an exported TS symbol the consumer can
+  resolve. When the set is empty, EVERY cross-class reference falls through
+  to the `unknown` fallback in `resolve_type`. This produces silently broken
+  `.d.ts` output where method signatures lose their real return/parameter
+  types.
+
+  Two seed paths exist; both must complete before any
+  `processClass`/`processEnum`/`processTemplateTypedef` call:
+
+    1. **Main OCCT build path** (full and custom builds, OCCT-side classes):
+       `prepare_known_exports(tuInfo, filterClasses, filterTemplates)` walks
+       the post-using-decl `tuInfo` and seeds class, template-typedef, and
+       enum names. Called from `generateBindings.__main__` before `process()`.
+
+    2. **Custom-code path** (`additionalCppCode` block from YAML):
+       `generateCustomCodeBindings(customCode, known_exports=...)` accepts an
+       explicit seed set computed by `buildFromYaml.main` from
+       (a) YAML `bindings:` symbols ∪ (b) `_auto_symbols` ∪ (c) AST-discovered
+       custom classes. The seed is assigned directly to
+       `_known_export_names` before the per-fragment `process(...)` calls.
+
+  Adding a third invocation path? You MUST seed `_known_export_names` first,
+  or every cross-class reference in your fragments will collapse to `unknown`.
+  ============================================================================
+  """
   _docs_cache = None
 
   def __init__(
@@ -2118,11 +2152,58 @@ class TypescriptBindings(Bindings):
 
     Doxygen briefs occasionally contain literal `*/` (especially in code samples or
     pointer-style notation). Without escaping, the generated JSDoc closes early and
-    every subsequent declaration is parsed as a comment continuation.
+    every subsequent declaration is parsed as a comment continuation. The detailed
+    Markdown emitted by `extract-docs.py::_render_description` can also include
+    fenced code blocks containing `*/`, so the same escape applies to multi-line
+    block content.
     """
     if not text:
       return text
     return text.replace("*/", "*\\/")
+
+  def _emit_jsdoc_text(self, lines, indent_str, body):
+    """Append a Markdown body (single or multi-line) into a JSDoc lines buffer.
+
+    Empty lines become a bare ` * ` separator so paragraph breaks survive in the
+    rendered JSDoc tooltip. Trailing whitespace on each non-empty line is removed
+    so the output stays diff-clean.
+    """
+    if not body:
+      return
+    for line in body.splitlines():
+      stripped = line.rstrip()
+      if stripped:
+        lines.append(f"{indent_str} * {stripped}")
+      else:
+        lines.append(f"{indent_str} *")
+
+  def _emit_simplesect_tags(self, lines, indent_str, entry):
+    """Emit `@remarks **Note:** ...`, `@remarks **Warning:** ...`, `@see ...`
+    for the simplesects captured per entry by `extract-docs.py::_extract_simplesects`.
+
+    `@see` targets resolve to `{@link Name}` when the target is a known compound
+    (a class/struct present in the docs cache or referenced by Doxygen with
+    `kindref="compound"`), otherwise we emit the bare target text — `{@link}` to
+    a non-existent symbol would surface as a broken cross-reference in IDE
+    tooltips, which is worse than no link.
+    """
+    for note in entry.get("notes", []) or []:
+      escaped = self._escape_jsdoc(note)
+      lines.append(f"{indent_str} * @remarks **Note:** {escaped}")
+    for warning in entry.get("warnings", []) or []:
+      escaped = self._escape_jsdoc(warning)
+      lines.append(f"{indent_str} * @remarks **Warning:** {escaped}")
+    for see in entry.get("sees", []) or []:
+      target = see.get("target", "")
+      if not target:
+        continue
+      target = self._escape_jsdoc(target)
+      kindref = see.get("kindref", "")
+      resolved = kindref == "compound" or (kindref == "" and target in self._docs)
+      if resolved:
+        lines.append(f"{indent_str} * @see {{@link {target}}}")
+      else:
+        lines.append(f"{indent_str} * @see {target}")
 
   def _jsdoc(self, class_name, member_name=None, indent_str="", param_count=None, overload_index=0, template_name=None, param_names=None):
     used_template = False
@@ -2134,11 +2215,18 @@ class TypescriptBindings(Bindings):
       return ""
     if member_name is None:
       brief = self._escape_jsdoc(entry.get("brief", ""))
-      if not brief:
+      detailed = self._escape_jsdoc(entry.get("detailed", ""))
+      has_simplesects = bool(entry.get("notes") or entry.get("warnings") or entry.get("sees"))
+      if not brief and not detailed and not has_simplesects and not entry.get("deprecated"):
         return ""
       lines = [f"{indent_str}/**"]
-      for line in brief.splitlines():
-        lines.append(f"{indent_str} * {line}")
+      if brief:
+        self._emit_jsdoc_text(lines, indent_str, brief)
+      if detailed:
+        if brief:
+          lines.append(f"{indent_str} *")
+        self._emit_jsdoc_text(lines, indent_str, detailed)
+      self._emit_simplesect_tags(lines, indent_str, entry)
       if entry.get("deprecated"):
         lines.append(f"{indent_str} * @deprecated")
       lines.append(f"{indent_str} */")
@@ -2151,11 +2239,18 @@ class TypescriptBindings(Bindings):
       return ""
     member = self._resolve_overload(member, param_count, overload_index, param_names=param_names)
     brief = self._escape_jsdoc(member.get("brief", ""))
-    if not brief:
+    detailed = self._escape_jsdoc(member.get("detailed", ""))
+    has_simplesects = bool(member.get("notes") or member.get("warnings") or member.get("sees"))
+    has_param_or_return = bool(member.get("params") or member.get("returns_description"))
+    if not brief and not detailed and not has_simplesects and not has_param_or_return and not member.get("deprecated"):
       return ""
     lines = [f"{indent_str}/**"]
-    for line in brief.splitlines():
-      lines.append(f"{indent_str} * {line}")
+    if brief:
+      self._emit_jsdoc_text(lines, indent_str, brief)
+    if detailed:
+      if brief:
+        lines.append(f"{indent_str} *")
+      self._emit_jsdoc_text(lines, indent_str, detailed)
     for param in member.get("params", []):
       if param_names is not None and param["name"] not in param_names:
         continue
@@ -2164,25 +2259,41 @@ class TypescriptBindings(Bindings):
     ret_desc = self._escape_jsdoc(member.get("returns_description", ""))
     if ret_desc:
       lines.append(f"{indent_str} * @returns {ret_desc}")
+    self._emit_simplesect_tags(lines, indent_str, member)
     if member.get("deprecated"):
       lines.append(f"{indent_str} * @deprecated")
     lines.append(f"{indent_str} */")
     return "\n".join(lines) + "\n"
 
   def _enum_member_jsdoc(self, enum_name, member_name):
-    """Emit JSDoc for an individual enum member if Doxygen docs are available."""
+    """Emit JSDoc for an individual enum member if Doxygen docs are available.
+
+    Emits brief, then detailed body (separated by a blank `*` line), then any
+    `@remarks **Note:**`/`@remarks **Warning:**`/`@see` tags captured by
+    `extract-docs.py::_extract_simplesects`. This mirrors the class/member
+    JSDoc layout so enum-value tooltips are not orphaned when the original
+    Doxygen brief ends in `:` and the bullets live in `<detaileddescription>`.
+    """
     entry = self._docs.get(enum_name)
     if not entry or entry.get("kind") != "enum":
       return ""
     members = entry.get("members", {})
     member = members.get(member_name, {})
     brief = self._escape_jsdoc(member.get("brief", ""))
-    if not brief:
+    detailed = self._escape_jsdoc(member.get("detailed", ""))
+    has_simplesects = bool(member.get("notes") or member.get("warnings") or member.get("sees"))
+    if not brief and not detailed and not has_simplesects:
       return ""
-    lines = ["  /**"]
-    for line in brief.splitlines():
-      lines.append(f"   * {line}")
-    lines.append("   */")
+    indent_str = "  "
+    lines = [f"{indent_str}/**"]
+    if brief:
+      self._emit_jsdoc_text(lines, indent_str, brief)
+    if detailed:
+      if brief:
+        lines.append(f"{indent_str} *")
+      self._emit_jsdoc_text(lines, indent_str, detailed)
+    self._emit_simplesect_tags(lines, indent_str, member)
+    lines.append(f"{indent_str} */")
     return "\n".join(lines) + "\n"
 
   @staticmethod

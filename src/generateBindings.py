@@ -244,7 +244,28 @@ referenceTypeTemplateDefs = \
   "#include \"ocjs_handle_helpers.h\"\n" + \
   "\n"
 
-def generateCustomCodeBindings(customCode):
+def generateCustomCodeBindings(customCode, known_exports=None):
+  """Generate Embind C++ and TypeScript fragments for the YAML's `additionalCppCode` block.
+
+  Callers MUST pass `known_exports` so cross-class references inside the
+  custom C++ (for example, a wrapper method returning `TopoDS_Shape`, or one
+  custom class referencing a sibling custom class as its return type) resolve
+  to real exported TypeScript types instead of falling through to `unknown`
+  in `TypescriptBindings.resolve_type`.
+
+  The expected seed composition is:
+    - the `mainBuild.bindings[*].symbol` and `extraBuilds[*].bindings[*].symbol`
+      values from the YAML (these are the OCCT classes the consumer build
+      will export),
+    - the `_auto_symbols` set computed from
+      `build/ncollection-manifest.json` (auto-discovered NCollection types),
+    - the custom-code class names AST-discovered from `tuInfo` below
+      (sibling classes inside `myMain.h`).
+
+  When `known_exports` is None, only the local custom classes are seeded —
+  this preserves the contract for any standalone caller while still avoiding
+  the "every sibling reference is `unknown`" baseline failure mode.
+  """
   try:
     os.makedirs(libraryBasePath)
   except Exception:
@@ -253,6 +274,25 @@ def generateCustomCodeBindings(customCode):
   embindPreamble = ocIncludeStatements + "\n" + referenceTypeTemplateDefs + "\n" + customCode
 
   tuInfo = TuInfo(customCode)
+
+  local_custom_classes = {
+    c.spelling
+    for c in tuInfo.allChildren
+    if c.kind == clang.cindex.CursorKind.CLASS_DECL
+    and c.location.file is not None
+    and c.location.file.name == "myMain.h"
+    and c.spelling
+  }
+  TypescriptBindings._known_export_names = (
+    (set(known_exports) if known_exports else set()) | local_custom_classes
+  )
+
+  # `_known_export_names` is seeded above as a precondition for the
+  # `.d.ts.json` process(...) call below; without it, every cross-class
+  # reference inside the custom code (e.g. TopoDS_Shape, Geom2d_Curve,
+  # sibling custom classes) would collapse to `unknown` via the fallback in
+  # `TypescriptBindings.resolve_type`. See the `TypescriptBindings` class
+  # docstring for the full contract.
   process(tuInfo, ".cpp", embindGenerationFuncClasses, embindGenerationFuncTemplates, embindGenerationFuncEnums, embindPreamble, True)
   process(tuInfo, ".d.ts.json", typescriptGenerationFuncClasses, typescriptGenerationFuncTemplates, typescriptGenerationFuncEnums, "", True)
 

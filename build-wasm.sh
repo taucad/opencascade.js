@@ -639,6 +639,8 @@ step_apply_patches() {
       echo "  Applying STEPCAFControl_Controller DynamicType patch..."
       OCCT_ROOT="$OCJS_ROOT/deps/OCCT" python3 src/patches/patch_stepcaf_dyntype.py
     fi
+    echo "  Applying BRepGraph_VersionStamp wasm32 size_t guard..."
+    OCCT_ROOT="$OCJS_ROOT/deps/OCCT" python3 src/patches/patch_brepgraph_versionstamp.py
     echo "  All patches applied."
   else
     echo "  OCJS_PATCH_DUMP=false — no patches to apply (clean OCCT tree)."

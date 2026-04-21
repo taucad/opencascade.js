@@ -519,9 +519,13 @@ describe(':: detection correctness', () => {
 // One TS Program per .d.ts surface. Built once and reused across the
 // per-gap assertions so each suite pays the program cost once (~2-4s).
 //
-// Every assertion below corresponds 1:1 with a recommendation in
-// docs/research/ocjs-typescript-codegen-gap-analysis.md. Comments tag the
-// recommendation id (R#) and the underlying gap finding (G#).
+// Each suite below targets a specific class of codegen gap (unresolved
+// identifiers, unbound `::` qualifiers, bare template references,
+// overload-set integrity, NCollection_Vec tuple shape, custom-code
+// type-erasure, etc.) and asserts that the generated `.d.ts` is free of
+// that gap. The assertions are intentionally semantic — they consult the
+// TypeScript type checker rather than matching strings — so they fail
+// loudly when the underlying codegen invariant regresses.
 
 type DtsProgram = {
   filePath: string;

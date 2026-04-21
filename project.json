@@ -106,6 +106,15 @@
         "cwd": "{projectRoot}"
       }
     },
+    "dts": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "dependsOn": ["generate"],
+      "options": {
+        "command": "./build-wasm.sh dts \"${OCJS_YAML}\"",
+        "cwd": "{projectRoot}"
+      }
+    },
     "link": {
       "executor": "nx:run-commands",
       "cache": true,

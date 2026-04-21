@@ -100,7 +100,9 @@ def _run_full_pipeline(gen):
     # sees the new type aliases
     tuInfo = TuInfo(using_decls)
 
-    # Pre-compute global export names (R3b) before processing
+    # Pre-compute global export names before processing so that
+    # `TypescriptBindings.resolve_type` can recognize cross-class references
+    # as exported symbols instead of emitting `unknown` for them.
     TypescriptBindings.prepare_known_exports(tuInfo, gen.filterClasses, gen.filterTemplates)
 
     embindPreamble = ocIncludeStatements + "\n" + gen.referenceTypeTemplateDefs

@@ -557,7 +557,14 @@ def main():
         additionalCppCode += "\n" + f.read()
 
     print("Generating custom code bindings...", flush=True)
-    generateCustomCodeBindings(additionalCppCode)
+    known_exports = {
+      b["symbol"]
+      for b in chain(
+        buildConfig["mainBuild"]["bindings"],
+        *(x["bindings"] for x in buildConfig["extraBuilds"]),
+      )
+    } | _auto_symbols
+    generateCustomCodeBindings(additionalCppCode, known_exports=known_exports)
     print("Compiling custom code bindings...", flush=True)
     compileCustomCodeBindings({
       "threading": os.environ['THREADING'],
@@ -586,8 +593,8 @@ def main():
           "export": export,
           "kind": dts["kind"],
         })
-      for cls, chain in (dts.get("ancestors") or {}).items():
-        ancestorChains.setdefault(cls, chain)
+      for cls, ancestor_chain in (dts.get("ancestors") or {}).items():
+        ancestorChains.setdefault(cls, ancestor_chain)
 
     # Declarations for built-in types provided via BUILTIN_ADDITIONAL_BIND_CODE
     declarations_dir = os.path.join(os.path.dirname(__file__), 'declarations')

@@ -780,6 +780,418 @@ describe('JSDoc documentation coverage', () => {
     );
   });
 
+  describe('Detailed-section coverage — classes (R1)', () => {
+    it.skipIf(!sourceFile)(
+      'should append detailed bullet items after the brief for BRepPrimAPI_MakeBox',
+      () => {
+        const cls = findClass(sourceFile!, 'BRepPrimAPI_MakeBox');
+        expect(cls).toBeDefined();
+        const doc = getJSDocText(cls!);
+        expect(doc).toContain('defining the construction of a box');
+        expect(doc).toContain('implementing the construction algorithm');
+      },
+    );
+
+    it.skipIf(!sourceFile)(
+      'should preserve detailed prose about poles and weights for Geom_BSplineCurve',
+      () => {
+        const cls = findClass(sourceFile!, 'Geom_BSplineCurve');
+        expect(cls).toBeDefined();
+        const doc = getJSDocText(cls!);
+        expect(doc.toLowerCase()).toContain('control points');
+        expect(doc).toContain('MaxDegree');
+      },
+    );
+
+    it.skipIf(!sourceFile)(
+      'should preserve detailed prose about persistent data for Storage_Data',
+      () => {
+        const cls = findClass(sourceFile!, 'Storage_Data');
+        expect(cls).toBeDefined();
+        const doc = getJSDocText(cls!);
+        expect(doc).toContain('persistent data to be written');
+        expect(doc).toContain('persistent data which are read from a container');
+      },
+    );
+
+    it.skipIf(!sourceFile)(
+      'should preserve detailed bullet items for TDF_Attribute',
+      () => {
+        const cls = findClass(sourceFile!, 'TDF_Attribute');
+        expect(cls).toBeDefined();
+        const doc = getJSDocText(cls!);
+        expect(doc).toContain('a feature');
+        expect(doc).toContain('a constraint');
+      },
+    );
+
+    it.skipIf(!sourceFile)(
+      'should preserve bullet items in detailed for TopoDS_Shape',
+      () => {
+        const cls = findClass(sourceFile!, 'TopoDS_Shape');
+        expect(cls).toBeDefined();
+        const doc = getJSDocText(cls!);
+        expect(doc).toContain('references an underlying shape');
+        expect(doc).toContain('local coordinate system');
+      },
+    );
+  });
+
+  describe('Detailed-section coverage — members (R2)', () => {
+    it.skipIf(!sourceFile)(
+      'should emit member-level detailed prose for BRepPrim_GWedge constructor',
+      () => {
+        const cls = findClass(sourceFile!, 'BRepPrim_GWedge');
+        expect(cls).toBeDefined();
+        const ctors = cls!.members.filter(ts.isConstructorDeclaration);
+        const docs = ctors.map((c) => getJSDocText(c));
+        const docWithDetail = docs.find(
+          (d) => d.includes('XMin, YMin, ZMin') && d.includes('STEP right angular wedge'),
+        );
+        expect(docWithDetail).toBeDefined();
+      },
+    );
+
+    it.skipIf(!sourceFile)(
+      'should emit member-level detailed prose for BRepFeat_MakeRevol',
+      () => {
+        const cls = findClass(sourceFile!, 'BRepFeat_MakeRevol');
+        expect(cls).toBeDefined();
+        const ctors = cls!.members.filter(ts.isConstructorDeclaration);
+        const docs = ctors.map((c) => getJSDocText(c));
+        const docWithDetail = docs.find((d) => d.includes('Boolean cut'));
+        expect(docWithDetail).toBeDefined();
+        expect(docWithDetail!).toContain('Boolean fusion');
+      },
+    );
+
+    it.skipIf(!sourceFile)(
+      'should emit member-level detailed prose for GeomFill_BSplineCurves.Init',
+      () => {
+        const cls = findClass(sourceFile!, 'GeomFill_BSplineCurves');
+        expect(cls).toBeDefined();
+        const inits = findAllMethods(cls!, 'Init');
+        const docs = inits.map((m) => getJSDocText(m));
+        const docWithStyle = docs.find((d) => d.includes('flattest patch'));
+        expect(docWithStyle).toBeDefined();
+        expect(docWithStyle!).toContain('GeomFill_Stretch');
+        expect(docWithStyle!).toContain('GeomFill_Curved');
+      },
+    );
+
+    it.skipIf(!sourceFile)(
+      'should produce distinct detailed text for same-arity overloads of ShapeBuild_ReShape.Apply',
+      () => {
+        const cls = findClass(sourceFile!, 'ShapeBuild_ReShape');
+        expect(cls).toBeDefined();
+        const applies = findAllMethods(cls!, 'Apply');
+        expect(applies.length).toBeGreaterThanOrEqual(2);
+        const docs = applies.map((m) => getJSDocText(m));
+        const nonEmpty = docs.filter((d) => d.length > 0);
+        expect(nonEmpty.length).toBeGreaterThanOrEqual(2);
+        const unique = new Set(nonEmpty);
+        expect(unique.size).toBeGreaterThanOrEqual(2);
+        const hasNotImplemented = docs.some((d) => d.includes('NOT IMPLEMENTED'));
+        const hasReplacement = docs.some((d) => d.includes('replaced by shape'));
+        expect(hasNotImplemented).toBe(true);
+        expect(hasReplacement).toBe(true);
+      },
+    );
+  });
+
+  describe('Markdown structure preservation (R3)', () => {
+    function collectJSDocBodyLines(doc: string): string[] {
+      // Strip leading "/**", trailing "*/", and per-line " * " prefix.
+      const inner = doc
+        .replace(/^\s*\/\*\*/, '')
+        .replace(/\*\/\s*$/, '');
+      return inner
+        .split('\n')
+        .map((line) => line.replace(/^\s*\*\s?/, '').replace(/\s+$/, ''));
+    }
+
+    it.skipIf(!sourceFile)(
+      'should render itemizedlist children as Markdown bullets for BRepPrimAPI_MakeBox',
+      () => {
+        const cls = findClass(sourceFile!, 'BRepPrimAPI_MakeBox');
+        expect(cls).toBeDefined();
+        const doc = getJSDocText(cls!);
+        const bulletLines = collectJSDocBodyLines(doc).filter((l) => l.startsWith('- '));
+        expect(bulletLines.length).toBeGreaterThanOrEqual(2);
+        expect(bulletLines.some((l) => l.includes('defining the construction of a box'))).toBe(true);
+      },
+    );
+
+    it.skipIf(!sourceFile)(
+      'should preserve paragraph breaks as blank JSDoc lines for BRepAlgoAPI_Check',
+      () => {
+        const cls = findClass(sourceFile!, 'BRepAlgoAPI_Check');
+        expect(cls).toBeDefined();
+        const doc = getJSDocText(cls!);
+        const lines = collectJSDocBodyLines(doc);
+        const blanks = lines.filter((l) => l === '');
+        expect(blanks.length).toBeGreaterThanOrEqual(1);
+      },
+    );
+
+    it.skipIf(!sourceFile)(
+      'should render orderedlist children as numbered Markdown for BOPDS_DS',
+      () => {
+        const cls = findClass(sourceFile!, 'BOPDS_DS');
+        expect(cls).toBeDefined();
+        const doc = getJSDocText(cls!);
+        const lines = collectJSDocBodyLines(doc);
+        const numbered = lines.filter((l) => /^\d+\. /.test(l));
+        expect(numbered.length).toBeGreaterThanOrEqual(3);
+        expect(numbered.some((l) => l.includes('arguments of an operation'))).toBe(true);
+      },
+    );
+
+    it.skipIf(!sourceFile)(
+      'should wrap <computeroutput> content in backticks for GC_MakeSegment',
+      () => {
+        const cls = findClass(sourceFile!, 'GC_MakeSegment');
+        expect(cls).toBeDefined();
+        const doc = getJSDocText(cls!);
+        expect(doc).toContain('`Value()`');
+      },
+    );
+
+    it.skipIf(!sourceFile)(
+      'should resolve <ref> to {@link Name} when target is a known export (Geom_BSplineCurve)',
+      () => {
+        const cls = findClass(sourceFile!, 'Geom_BSplineCurve');
+        expect(cls).toBeDefined();
+        const doc = getJSDocText(cls!);
+        expect(doc).toContain('{@link Geom_BSplineCurve}');
+      },
+    );
+
+    it.skipIf(!sourceFile)(
+      'should fall back to backticks when <ref> target is not a known export',
+      () => {
+        // GC_MakeSegment.Value is a member ref (not a top-level export); should render as backticks
+        const cls = findClass(sourceFile!, 'GC_MakeSegment');
+        expect(cls).toBeDefined();
+        const doc = getJSDocText(cls!);
+        // The Value() member is referenced but not a class export
+        expect(doc).toContain('`Value()`');
+        expect(doc).not.toContain('{@link Value()}');
+      },
+    );
+  });
+
+  describe('Simplesect → JSDoc tag mapping (R4)', () => {
+    it.skipIf(!sourceFile)(
+      'should emit @remarks **Note:** for member-level note simplesect (GC_MakeLine constructor)',
+      () => {
+        const cls = findClass(sourceFile!, 'GC_MakeLine');
+        expect(cls).toBeDefined();
+        const ctors = cls!.members.filter(ts.isConstructorDeclaration);
+        const docs = ctors.map((c) => getJSDocText(c));
+        const docWithNote = docs.find(
+          (d) => d.includes('@remarks') && d.includes('**Note:**'),
+        );
+        expect(docWithNote).toBeDefined();
+        expect(docWithNote!).toMatch(/@remarks\s+\*\*Note:\*\*/);
+      },
+    );
+
+    it.skipIf(!sourceFile)(
+      'should emit @remarks **Warning:** for member-level warning simplesect (Geom_BSplineCurve.WeightsArray)',
+      () => {
+        const cls = findClass(sourceFile!, 'Geom_BSplineCurve');
+        expect(cls).toBeDefined();
+        const method = findMethod(cls!, 'WeightsArray');
+        expect(method).toBeDefined();
+        const doc = getJSDocText(method!);
+        expect(doc).toMatch(/@remarks\s+\*\*Warning:\*\*/);
+        expect(doc).toContain('Do NOT modify');
+      },
+    );
+
+    it.skipIf(!sourceFile)(
+      'should emit @see {@link Name} when see simplesect target is a known export (Message_ProgressRange → Message_ProgressScope)',
+      () => {
+        const cls = findClass(sourceFile!, 'Message_ProgressRange');
+        expect(cls).toBeDefined();
+        const doc = getJSDocText(cls!);
+        expect(doc).toContain('@see {@link Message_ProgressScope}');
+      },
+    );
+
+    it.skipIf(!sourceFile)(
+      'should keep @returns mappings working alongside new @remarks/@see tags (regression)',
+      () => {
+        let methodsWithReturns = 0;
+        ts.forEachChild(sourceFile!, (node) => {
+          if (!ts.isClassDeclaration(node)) return;
+          for (const member of node.members) {
+            if (!ts.isMethodDeclaration(member)) continue;
+            if (getJSDocText(member).includes('@returns')) methodsWithReturns++;
+          }
+        });
+        expect(methodsWithReturns).toBeGreaterThan(0);
+      },
+    );
+
+    it.skipIf(!sourceFile)(
+      'should keep @deprecated mappings working alongside new tags (regression)',
+      () => {
+        let withDeprecated = 0;
+        ts.forEachChild(sourceFile!, (node) => {
+          if (!ts.isClassDeclaration(node)) return;
+          if (getJSDocText(node).includes('@deprecated')) withDeprecated++;
+          for (const member of node.members) {
+            if (!ts.isMethodDeclaration(member)) continue;
+            if (getJSDocText(member).includes('@deprecated')) withDeprecated++;
+          }
+        });
+        expect(withDeprecated).toBeGreaterThan(0);
+      },
+    );
+  });
+
+  describe('JSDoc termination integrity (R5)', () => {
+    it.skipIf(!sourceFile)(
+      'should not leave any JSDoc body line dangling on a list opener phrase ("as follows:", "such as:", etc.)',
+      () => {
+        // Walk every JSDocComment AST node and inspect each body line.
+        // A "dangling opener" is a line that ends with one of the canonical
+        // list-opener phrases ("as follows:", "such as:", "including:",
+        // "for example:", "of the following types:", "as one of:") AND has
+        // NO body content (bullets, prose, code fence) following it in the
+        // same JSDoc. Bare `:`/`;`/`,` are NOT flagged on their own because
+        // OCCT briefs frequently end in such punctuation as a stylistic
+        // choice, not as a sign that the bullet/sublist was dropped during
+        // extraction.
+        const openerPhrases = [
+          /\bas follows:?$/i,
+          /\bsuch as:?$/i,
+          /\bincluding:?$/i,
+          /\bfor example:?$/i,
+          /\bof the following types:?$/i,
+          /\bas one of:?$/i,
+        ];
+        const offenders: string[] = [];
+
+        function walk(node: ts.Node): void {
+          const docs = (node as { jsDoc?: ts.JSDoc[] }).jsDoc;
+          if (Array.isArray(docs)) {
+            for (const doc of docs) {
+              const raw = doc.getFullText();
+              const inner = raw
+                .replace(/^\s*\/\*\*/, '')
+                .replace(/\*\/\s*$/, '');
+              const lines = inner
+                .split('\n')
+                .map((l) => l.replace(/^\s*\*\s?/, ''));
+              for (let i = 0; i < lines.length; i++) {
+                const trimmed = lines[i].trim();
+                if (trimmed === '') continue;
+                if (trimmed.startsWith('@')) continue;
+                if (trimmed.startsWith('- ')) continue;
+                if (/^\d+\.\s/.test(trimmed)) continue;
+                if (trimmed.startsWith('```')) continue;
+                if (!openerPhrases.some((re) => re.test(trimmed))) continue;
+                let hasFollowupBody = false;
+                for (let j = i + 1; j < lines.length; j++) {
+                  const t = lines[j].trim();
+                  if (t === '') continue;
+                  if (t.startsWith('@')) break;
+                  hasFollowupBody = true;
+                  break;
+                }
+                if (!hasFollowupBody && offenders.length < 10) {
+                  offenders.push(trimmed.slice(0, 200));
+                }
+              }
+            }
+          }
+          ts.forEachChild(node, walk);
+        }
+
+        walk(sourceFile!);
+
+        if (offenders.length > 0) {
+          const sample = offenders.map((l, i) => `  ${i + 1}. ${l}`).join('\n');
+          throw new Error(
+            `Found ${offenders.length} JSDoc lines that dangle on a list opener with no follow-up (sample shown):\n${sample}`,
+          );
+        }
+        expect(offenders.length).toBe(0);
+      },
+    );
+
+    it.skipIf(!sourceFile)(
+      'should preserve bullet content for the original BRepPrimAPI_MakeBox truncation case (regression)',
+      () => {
+        // Concrete regression target from docs/research/occt-jsdoc-doxygen-truncation.md.
+        // Before the fix, the BRepPrimAPI_MakeBox class doc ended at "for:" with
+        // no bullets. After the fix, the four bullets describing the framework
+        // must follow the brief in the same JSDoc block.
+        const cls = findClass(sourceFile!, 'BRepPrimAPI_MakeBox');
+        expect(cls).toBeDefined();
+        const doc = getJSDocText(cls!);
+        expect(doc).toMatch(/framework for:/);
+        const lines = doc.split('\n').map((l) => l.replace(/^\s*\*\s?/, '').trim());
+        const briefIdx = lines.findIndex((l) => /framework for:$/.test(l));
+        expect(briefIdx).toBeGreaterThanOrEqual(0);
+        const tail = lines.slice(briefIdx + 1);
+        const bullets = tail.filter((l) => l.startsWith('- '));
+        expect(bullets.length).toBeGreaterThanOrEqual(2);
+      },
+    );
+
+    it.skipIf(!sourceFile)(
+      'should drastically reduce the count of opener-phrase truncations vs the pre-fix baseline',
+      () => {
+        // The pre-fix .d.ts contained dozens of opener-phrase truncations
+        // (briefs ending in "as follows:" etc. with no follow-up). After the
+        // renderer + simplesect changes the count must collapse to ~0. Allow
+        // a small budget for upstream OCCT comments that genuinely have no
+        // body to render so the test stays robust against header churn.
+        const openerPhrases = [
+          /\bas follows:?$/i,
+          /\bsuch as:?$/i,
+          /\bincluding:?$/i,
+          /\bfor example:?$/i,
+          /\bof the following types:?$/i,
+          /\bas one of:?$/i,
+        ];
+        let danglingCount = 0;
+        function walk(node: ts.Node): void {
+          const docs = (node as { jsDoc?: ts.JSDoc[] }).jsDoc;
+          if (Array.isArray(docs)) {
+            for (const doc of docs) {
+              const inner = doc
+                .getFullText()
+                .replace(/^\s*\/\*\*/, '')
+                .replace(/\*\/\s*$/, '');
+              const lines = inner.split('\n').map((l) => l.replace(/^\s*\*\s?/, ''));
+              for (let i = 0; i < lines.length; i++) {
+                const trimmed = lines[i].trim();
+                if (!openerPhrases.some((re) => re.test(trimmed))) continue;
+                let hasFollowupBody = false;
+                for (let j = i + 1; j < lines.length; j++) {
+                  const t = lines[j].trim();
+                  if (t === '') continue;
+                  if (t.startsWith('@')) break;
+                  hasFollowupBody = true;
+                  break;
+                }
+                if (!hasFollowupBody) danglingCount++;
+              }
+            }
+          }
+          ts.forEachChild(node, walk);
+        }
+        walk(sourceFile!);
+        expect(danglingCount).toBeLessThanOrEqual(2);
+      },
+    );
+  });
+
   describe('Template typedef JSDoc fallback', () => {
     it.skipIf(!sourceFile)(
       'should have class-level JSDoc from base template for NCollection_* template typedefs',

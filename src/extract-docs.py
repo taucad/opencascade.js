@@ -11,11 +11,27 @@ The JSON is regenerated only when the OCCT commit changes (tracked via .docs-has
 Pass --force to bypass the cache check.
 """
 
+import hashlib
 import json
 import os
 import subprocess
 import sys
 from xml.etree import ElementTree as ET
+
+
+def _extractor_fingerprint() -> str:
+    """SHA-256 of this script so cache busts when extraction logic changes.
+
+    OCCT commit alone is not sufficient: when `_render_description`,
+    `_extract_simplesects`, or any other extraction shape changes, the cached
+    `occt-docs.json` no longer matches what the emitter expects. Mixing the
+    extractor's own SHA into the cache key keeps regeneration automatic.
+    """
+    try:
+        with open(__file__, "rb") as f:
+            return hashlib.sha256(f.read()).hexdigest()[:12]
+    except OSError:
+        return "unknown"
 
 
 def _occt_commit(occt_root: str) -> str:
@@ -28,14 +44,287 @@ def _occt_commit(occt_root: str) -> str:
         return "unknown"
 
 
-def _description_text(desc_element) -> str:
-    """Extract plain text from a Doxygen XML description element, handling mixed content."""
+# --- Inline / block Markdown renderer for Doxygen XML descriptions ----------
+#
+# Doxygen splits class/method documentation into <briefdescription> (the first
+# sentence) and <detaileddescription> (everything else). Earlier versions of
+# this extractor flattened both with `_description_text`, dropping all bullet
+# lists, paragraph breaks, computeroutput, and refs and producing JSDoc whose
+# IntelliSense tooltips trailed off on a dangling `:` or comma. The renderer
+# below preserves the structure that matters for IDE tooltips:
+#
+#   <para>            → paragraph (block-separated by blank lines)
+#   <itemizedlist>    → `- item` Markdown bullets
+#   <orderedlist>     → `N. item` numbered list
+#   <programlisting>  → fenced code block
+#   <computeroutput>  → backtick-wrapped inline code
+#   <ref kindref=...> → `{@link Name}` for compound refs, backticks otherwise
+#   <bold>/<emphasis> → `**bold**` / `*italic*`
+#   <simplesect/parameterlist/xrefsect> → dropped here; handled by dedicated
+#     extractors (`_extract_params`, `_extract_return`, `_extract_simplesects`,
+#     `_is_deprecated`) so they don't appear twice in the final JSDoc.
+
+_SKIP_TAGS = frozenset({"simplesect", "parameterlist", "xrefsect"})
+_BLOCK_CHILDREN = frozenset({
+    "itemizedlist", "orderedlist", "programlisting", "verbatim", "preformatted",
+})
+
+
+def _plain_text(node) -> str:
+    """Collapsed plain-text content of `node` (whitespace normalised).
+
+    `ElementTree.tostring(node, method="text")` includes `node.tail` in the
+    output, which would absorb the period that follows e.g.
+    `<computeroutput>Value()</computeroutput>.` into the rendered code span.
+    We walk subtree text manually to keep the tail outside the result.
+    """
+    if node is None:
+        return ""
+    parts = []
+    if node.text:
+        parts.append(node.text)
+    for child in node:
+        parts.append(_plain_text(child))
+        if child.tail:
+            parts.append(child.tail)
+    return " ".join("".join(parts).split())
+
+
+def _inline_child(child) -> str:
+    """Render a single XML child as inline Markdown (no block structure)."""
+    tag = child.tag
+    if tag in _SKIP_TAGS:
+        return ""
+    if tag == "computeroutput":
+        inner = _plain_text(child)
+        return f"`{inner}`" if inner else ""
+    if tag == "ref":
+        text = _plain_text(child)
+        if not text:
+            return ""
+        kindref = child.get("kindref", "")
+        return f"{{@link {text}}}" if kindref == "compound" else f"`{text}`"
+    if tag == "bold":
+        inner = _inline_md(child).strip()
+        return f"**{inner}**" if inner else ""
+    if tag == "emphasis":
+        inner = _inline_md(child).strip()
+        return f"*{inner}*" if inner else ""
+    if tag == "ndash":
+        return "-"
+    if tag == "mdash":
+        return "--"
+    if tag == "linebreak":
+        return " "
+    if tag in ("ulink", "anchor"):
+        inner = _inline_md(child).strip() or _plain_text(child)
+        url = child.get("url", "")
+        if url and inner:
+            return f"[{inner}]({url})"
+        return inner
+    # Unknown / structural child encountered in inline context — flatten its
+    # inline content and drop the surrounding tag.
+    return _inline_md(child)
+
+
+def _inline_md(node) -> str:
+    """Render a node's text + inline-tagged children as a single Markdown string.
+
+    Whitespace is collapsed so that the resulting string is a single logical
+    line (newlines from the XML pretty-printing don't survive). Block-level
+    children encountered here are flattened to inline; callers needing block
+    structure use `_render_blocks` instead.
+    """
+    if node is None:
+        return ""
+    parts = []
+    if node.text:
+        parts.append(node.text)
+    for child in node:
+        parts.append(_inline_child(child))
+        if child.tail:
+            parts.append(child.tail)
+    return " ".join("".join(parts).split())
+
+
+def _render_listitem(li) -> str:
+    """Render a <listitem> as a single inline Markdown line (joined paras)."""
+    chunks = []
+    for child in li:
+        if child.tag == "para":
+            chunk = _inline_md(child).strip()
+            if chunk:
+                chunks.append(chunk)
+        elif child.tag in _SKIP_TAGS:
+            continue
+        else:
+            chunk = _inline_md(child).strip()
+            if chunk:
+                chunks.append(chunk)
+    return " ".join(chunks)
+
+
+def _render_para(para_node):
+    """Yield block-level Markdown strings from a single <para>.
+
+    Doxygen often packs an `<itemizedlist>` or `<programlisting>` *inside*
+    a `<para>` rather than as a sibling, so a single para can produce
+    multiple Markdown blocks (intro line, list, trailing prose).
+    """
+    inline_buf = []
+
+    def flush():
+        text = "".join(inline_buf)
+        normalised = " ".join(text.split())
+        inline_buf.clear()
+        return normalised.strip()
+
+    if para_node.text:
+        inline_buf.append(para_node.text)
+    for child in para_node:
+        ctag = child.tag
+        if ctag in _SKIP_TAGS:
+            if child.tail:
+                inline_buf.append(child.tail)
+            continue
+        if ctag in _BLOCK_CHILDREN:
+            pre = flush()
+            if pre:
+                yield pre
+            yield from _render_block(child)
+        else:
+            inline_buf.append(_inline_child(child))
+        if child.tail:
+            inline_buf.append(child.tail)
+    pre = flush()
+    if pre:
+        yield pre
+
+
+def _render_block(node):
+    """Yield zero or more block-level Markdown strings from a single XML node."""
+    tag = node.tag
+    if tag in _SKIP_TAGS:
+        return
+    if tag == "para":
+        yield from _render_para(node)
+        return
+    if tag == "itemizedlist":
+        items = []
+        for li in node.findall("listitem"):
+            text = _render_listitem(li)
+            if text:
+                items.append(f"- {text}")
+        if items:
+            yield "\n".join(items)
+        return
+    if tag == "orderedlist":
+        items = []
+        for index, li in enumerate(node.findall("listitem"), 1):
+            text = _render_listitem(li)
+            if text:
+                items.append(f"{index}. {text}")
+        if items:
+            yield "\n".join(items)
+        return
+    if tag in ("programlisting", "verbatim", "preformatted"):
+        body = _plain_text(node)
+        if body:
+            yield f"```\n{body}\n```"
+        return
+    if tag in ("sect1", "sect2", "sect3", "sect4"):
+        yield from _render_blocks_in(node)
+        return
+    if tag == "title":
+        title = _inline_md(node).strip()
+        if title:
+            yield f"**{title}**"
+        return
+    inline = _inline_md(node).strip()
+    if inline:
+        yield inline
+
+
+def _render_blocks_in(container):
+    """Yield block-level Markdown strings from a container's children."""
+    if container is None:
+        return
+    if container.text and container.text.strip():
+        yield container.text.strip()
+    for child in container:
+        yield from _render_block(child)
+        if child.tail and child.tail.strip():
+            yield child.tail.strip()
+
+
+def _render_description(desc_element) -> str:
+    """Render a Doxygen description into Markdown with paragraph spacing.
+
+    Returns an empty string when the element produces no renderable content
+    (after dropping simplesect/parameterlist/xrefsect, which are emitted via
+    dedicated JSDoc tags by the consumer in `bindings.py`).
+    """
     if desc_element is None:
         return ""
-    raw = ET.tostring(desc_element, encoding="unicode", method="text")
-    lines = raw.strip().splitlines()
-    cleaned = " ".join(line.strip() for line in lines if line.strip())
-    return cleaned
+    blocks = list(_render_blocks_in(desc_element))
+    return "\n\n".join(b for b in blocks if b.strip()).strip()
+
+
+def _inline_text(desc_element) -> str:
+    """Single-line inline rendering of a description element.
+
+    Used for `@param` and `@returns` tag values where multi-line Markdown
+    can't be expressed safely. Equivalent to the old `_description_text`
+    behaviour but reuses the inline renderer so refs / computeroutput render
+    the same way as in block context.
+    """
+    if desc_element is None:
+        return ""
+    return _inline_md(desc_element)
+
+
+def _extract_simplesects(detailed):
+    """Pull notes / warnings / sees out of a description element.
+
+    Returns three lists:
+      notes:    list[str]               (rendered Markdown, one per @note)
+      warnings: list[str]               (rendered Markdown, one per @warning)
+      sees:     list[dict[str, str]]    {"target": str, "kindref": "compound" | "member" | ""}
+
+    `<simplesect kind="see">` may contain multiple `<ref>` siblings or just
+    bare text; each ref becomes a separate entry so the consumer can emit
+    a `@see {@link Foo}` per target. Bare-text sees fall back to
+    `target=text, kindref=""` so `bindings.py` can decide whether to wrap
+    in `{@link}`.
+    """
+    notes, warnings, sees = [], [], []
+    if detailed is None:
+        return notes, warnings, sees
+    for ss in detailed.iter("simplesect"):
+        kind = ss.get("kind", "")
+        if kind == "note":
+            md = _inline_md(ss).strip()
+            if md:
+                notes.append(md)
+        elif kind == "warning":
+            md = _inline_md(ss).strip()
+            if md:
+                warnings.append(md)
+        elif kind == "see":
+            refs = ss.findall(".//ref")
+            if refs:
+                for ref in refs:
+                    target = _plain_text(ref)
+                    if target:
+                        sees.append({"target": target, "kindref": ref.get("kindref", "")})
+            else:
+                txt = _inline_md(ss).strip()
+                if txt:
+                    sees.append({"target": txt, "kindref": ""})
+    return notes, warnings, sees
+
+
+# --- Doxygen tag extraction --------------------------------------------------
 
 
 def _extract_params(memberdef_element) -> list:
@@ -56,7 +345,7 @@ def _extract_params(memberdef_element) -> list:
                     if text:
                         names.append(text)
             desc_el = item.find("parameterdescription")
-            desc_text = _description_text(desc_el) if desc_el is not None else ""
+            desc_text = _inline_text(desc_el) if desc_el is not None else ""
             for name in names:
                 params.append({"name": name, "description": desc_text})
     return params
@@ -70,7 +359,7 @@ def _extract_return(memberdef_element) -> str:
     for simplesect in detailed.iter("simplesect"):
         kind = simplesect.get("kind", "")
         if kind == "return":
-            return _description_text(simplesect)
+            return _inline_text(simplesect)
     return ""
 
 
@@ -88,7 +377,7 @@ def _is_deprecated(element) -> bool:
             return True
     brief = element.find("briefdescription")
     if brief is not None:
-        brief_text = _description_text(brief).lower()
+        brief_text = _inline_text(brief).lower()
         if "@deprecated" in brief_text or "is deprecated" in brief_text:
             return True
     return False
@@ -115,8 +404,10 @@ def _process_compound_xml(xml_path: str, docs: dict):
         compound_name = compounddef.findtext("compoundname", "").strip()
 
         if kind in ("class", "struct"):
-            brief = _description_text(compounddef.find("briefdescription"))
-            detailed = _description_text(compounddef.find("detaileddescription"))
+            brief = _inline_text(compounddef.find("briefdescription"))
+            class_detailed_el = compounddef.find("detaileddescription")
+            detailed = _render_description(class_detailed_el)
+            class_notes, class_warnings, class_sees = _extract_simplesects(class_detailed_el)
             deprecated = _is_deprecated(compounddef)
 
             members = {}
@@ -129,7 +420,10 @@ def _process_compound_xml(xml_path: str, docs: dict):
                     mem_name = memberdef.findtext("name", "").strip()
                     if not mem_name:
                         continue
-                    mem_brief = _description_text(memberdef.find("briefdescription"))
+                    mem_brief = _inline_text(memberdef.find("briefdescription"))
+                    mem_detailed_el = memberdef.find("detaileddescription")
+                    mem_detailed = _render_description(mem_detailed_el)
+                    mem_notes, mem_warnings, mem_sees = _extract_simplesects(mem_detailed_el)
                     mem_params = _extract_params(memberdef)
                     mem_returns = _extract_return(memberdef)
                     mem_return_type = _extract_type_text(memberdef.find("type"))
@@ -139,6 +433,14 @@ def _process_compound_xml(xml_path: str, docs: dict):
                         "kind": mem_kind,
                         "brief": mem_brief,
                     }
+                    if mem_detailed:
+                        member_entry["detailed"] = mem_detailed
+                    if mem_notes:
+                        member_entry["notes"] = mem_notes
+                    if mem_warnings:
+                        member_entry["warnings"] = mem_warnings
+                    if mem_sees:
+                        member_entry["sees"] = mem_sees
                     if mem_params:
                         member_entry["params"] = mem_params
                     if mem_returns:
@@ -155,18 +457,28 @@ def _process_compound_xml(xml_path: str, docs: dict):
                         enum_members = {}
                         for ev in memberdef.findall("enumvalue"):
                             ev_name = ev.findtext("name", "").strip()
-                            ev_brief = _description_text(ev.find("briefdescription"))
-                            if ev_name:
-                                enum_members[ev_name] = {
-                                    "kind": "enumvalue",
-                                    "brief": ev_brief,
-                                }
+                            if not ev_name:
+                                continue
+                            ev_brief = _inline_text(ev.find("briefdescription"))
+                            ev_detailed_el = ev.find("detaileddescription")
+                            ev_detailed = _render_description(ev_detailed_el)
+                            ev_notes, ev_warnings, ev_sees = _extract_simplesects(ev_detailed_el)
+                            ev_entry = {"kind": "enumvalue", "brief": ev_brief}
+                            if ev_detailed:
+                                ev_entry["detailed"] = ev_detailed
+                            if ev_notes:
+                                ev_entry["notes"] = ev_notes
+                            if ev_warnings:
+                                ev_entry["warnings"] = ev_warnings
+                            if ev_sees:
+                                ev_entry["sees"] = ev_sees
+                            enum_members[ev_name] = ev_entry
                         if mem_brief or enum_members:
                             toplevel_key = compound_name + "_" + mem_name
                             docs[toplevel_key] = {
                                 "kind": "enum",
                                 "brief": mem_brief,
-                                "detailed": _description_text(memberdef.find("detaileddescription")),
+                                "detailed": _render_description(mem_detailed_el),
                                 "members": enum_members,
                                 "deprecated": mem_deprecated,
                             }
@@ -182,14 +494,21 @@ def _process_compound_xml(xml_path: str, docs: dict):
                     else:
                         members[mem_name] = member_entry
 
-            if brief or members:
-                docs[compound_name] = {
+            if brief or members or detailed:
+                class_record = {
                     "kind": kind,
                     "brief": brief,
                     "detailed": detailed,
                     "members": members,
                     "deprecated": deprecated,
                 }
+                if class_notes:
+                    class_record["notes"] = class_notes
+                if class_warnings:
+                    class_record["warnings"] = class_warnings
+                if class_sees:
+                    class_record["sees"] = class_sees
+                docs[compound_name] = class_record
 
         elif kind == "file":
             for sectiondef in compounddef.findall("sectiondef"):
@@ -203,19 +522,29 @@ def _process_compound_xml(xml_path: str, docs: dict):
                         continue
 
                     if mem_kind == "enum":
-                        enum_brief = _description_text(memberdef.find("briefdescription"))
-                        enum_detailed = _description_text(memberdef.find("detaileddescription"))
+                        enum_brief = _inline_text(memberdef.find("briefdescription"))
+                        enum_detailed = _render_description(memberdef.find("detaileddescription"))
                         enum_deprecated = _is_deprecated(memberdef)
 
                         enum_members = {}
                         for ev in memberdef.findall("enumvalue"):
                             ev_name = ev.findtext("name", "").strip()
-                            ev_brief = _description_text(ev.find("briefdescription"))
-                            if ev_name:
-                                enum_members[ev_name] = {
-                                    "kind": "enumvalue",
-                                    "brief": ev_brief,
-                                }
+                            if not ev_name:
+                                continue
+                            ev_brief = _inline_text(ev.find("briefdescription"))
+                            ev_detailed_el = ev.find("detaileddescription")
+                            ev_detailed = _render_description(ev_detailed_el)
+                            ev_notes, ev_warnings, ev_sees = _extract_simplesects(ev_detailed_el)
+                            ev_entry = {"kind": "enumvalue", "brief": ev_brief}
+                            if ev_detailed:
+                                ev_entry["detailed"] = ev_detailed
+                            if ev_notes:
+                                ev_entry["notes"] = ev_notes
+                            if ev_warnings:
+                                ev_entry["warnings"] = ev_warnings
+                            if ev_sees:
+                                ev_entry["sees"] = ev_sees
+                            enum_members[ev_name] = ev_entry
 
                         if enum_brief or enum_members:
                             docs[mem_name] = {
@@ -299,15 +628,17 @@ def main():
     hash_file = os.path.join(ocjs_root, "build", ".docs-hash")
 
     current_commit = _occt_commit(occt_root)
+    extractor_sha = _extractor_fingerprint()
+    cache_key = f"{current_commit}:{extractor_sha}"
 
     if not force and os.path.isfile(hash_file) and os.path.isfile(output_json):
         with open(hash_file, "r") as f:
-            cached_commit = f.read().strip()
-        if cached_commit == current_commit:
-            print(f"  Documentation cache hit (OCCT commit {current_commit[:12]})")
+            cached_key = f.read().strip()
+        if cached_key == cache_key:
+            print(f"  Documentation cache hit (OCCT {current_commit[:12]}, extractor {extractor_sha})")
             return
 
-    print(f"  OCCT commit: {current_commit[:12]}")
+    print(f"  OCCT commit: {current_commit[:12]} | extractor: {extractor_sha}")
 
     os.makedirs(os.path.join(ocjs_root, "build"), exist_ok=True)
 
@@ -330,7 +661,7 @@ def main():
         json.dump(docs, f, indent=None, separators=(",", ":"))
 
     with open(hash_file, "w") as f:
-        f.write(current_commit)
+        f.write(cache_key)
 
     size_mb = os.path.getsize(output_json) / (1024 * 1024)
     print(f"  Written: {output_json} ({size_mb:.1f} MB)")
