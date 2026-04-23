@@ -462,8 +462,11 @@ def runBuild(build, libraryBasePath):
     wasmOptCmd.append("--enable-exception-handling")
     wasm_opt_flag_list.append("--enable-exception-handling")
     if os.environ.get("OCJS_SIMD", "0") == "1":
-      wasmOptCmd.extend(["--enable-simd", "--enable-relaxed-simd"])
-      wasm_opt_flag_list.extend(["--enable-simd", "--enable-relaxed-simd"])
+      wasmOptCmd.append("--enable-simd")
+      wasm_opt_flag_list.append("--enable-simd")
+      if os.environ.get("OCJS_RELAXED_SIMD", "0") == "1":
+        wasmOptCmd.append("--enable-relaxed-simd")
+        wasm_opt_flag_list.append("--enable-relaxed-simd")
     if os.environ.get("THREADING") == "multi-threaded":
       wasmOptCmd.append("--enable-threads")
       wasm_opt_flag_list.append("--enable-threads")

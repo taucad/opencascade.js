@@ -335,6 +335,7 @@ export OCJS_DEFINES="${OCJS_DEFINES:-}"
 export OCJS_UNDEFINES="${OCJS_UNDEFINES:-}"
 export OCJS_PATCH_DUMP="${OCJS_PATCH_DUMP:-false}"
 export OCJS_SIMD="${OCJS_SIMD:-0}"
+export OCJS_RELAXED_SIMD="${OCJS_RELAXED_SIMD:-0}"
 export OCJS_BIGINT="${OCJS_BIGINT:-0}"
 export OCJS_FORCE_GENERATE="${OCJS_FORCE_GENERATE:-0}"
 export THREADING="${THREADING:-single-threaded}"
@@ -360,6 +361,8 @@ printf "║  %-14s %s\n" "EXTRA_CFLAGS:" "$OCJS_EXTRA_CFLAGS ║"
 fi
 printf "║  %-14s %s\n" "OCJS_LTO:" "$OCJS_LTO ║"
 printf "║  %-14s %s\n" "OCJS_EXCEPTIONS:" "$OCJS_EXCEPTIONS ║"
+printf "║  %-14s %s\n" "OCJS_SIMD:" "$OCJS_SIMD ║"
+printf "║  %-14s %s\n" "OCJS_RELAXED_SIMD:" "$OCJS_RELAXED_SIMD ║"
 printf "║  %-14s %s\n" "THREADING:" "$THREADING ║"
 printf "║  %-14s %s\n" "wasm-opt:" "$OCJS_WASM_OPT_LEVEL ║"
 printf "║  %-14s %s\n" "BUILD_DIR:" "$BUILD_DIR ║"
@@ -530,8 +533,12 @@ step_sources_cmake() {
   fi
 
   if [ "$OCJS_SIMD" = "1" ]; then
-    cflags="$cflags -msimd128 -mrelaxed-simd"
-    cxxflags="$cxxflags -msimd128 -mrelaxed-simd"
+    cflags="$cflags -msimd128"
+    cxxflags="$cxxflags -msimd128"
+    if [ "$OCJS_RELAXED_SIMD" = "1" ]; then
+      cflags="$cflags -mrelaxed-simd"
+      cxxflags="$cxxflags -mrelaxed-simd"
+    fi
   fi
 
   if [ "$THREADING" = "multi-threaded" ]; then

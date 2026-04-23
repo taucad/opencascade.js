@@ -40,7 +40,8 @@ All named compile-time configurations live in `build-configs/configurations.json
 | `OCJS_OPT`            | Compile optimization level (`-O0`, `-O2`, `-O3`, `-Os`) | `-O2`             |
 | `OCJS_LTO`            | Enable LTO at compile time (`0` or `1`)                 | `0`               |
 | `OCJS_EXCEPTIONS`     | Enable native WASM exceptions (`0` or `1`)              | `0`               |
-| `OCJS_SIMD`           | Enable SIMD instructions (`0` or `1`)                   | `0`               |
+| `OCJS_SIMD`           | Enable baseline SIMD (`-msimd128`, `0` or `1`)          | `0`               |
+| `OCJS_RELAXED_SIMD`   | Enable Relaxed SIMD opcodes (requires `OCJS_SIMD=1`; default off — Safari does not yet implement Relaxed SIMD) | `0`               |
 | `THREADING`           | Threading mode (`single-threaded` or `multi-threaded`)  | `single-threaded` |
 | `OCJS_DEFINES`        | Comma-separated C preprocessor defines                  | _(empty)_         |
 | `OCJS_UNDEFINES`      | Comma-separated C preprocessor undefines                | _(empty)_         |

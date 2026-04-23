@@ -19,7 +19,12 @@ else:
   WASM_EXCEPTION_FLAGS = ["-sSUPPORT_LONGJMP=0", "-sDISABLE_EXCEPTION_CATCHING=1"]
 
 USE_SIMD = os.environ.get("OCJS_SIMD", "0") == "1"
-SIMD_FLAGS = ["-msimd128", "-mrelaxed-simd"] if USE_SIMD else []
+USE_RELAXED_SIMD = USE_SIMD and os.environ.get("OCJS_RELAXED_SIMD", "0") == "1"
+SIMD_FLAGS = []
+if USE_SIMD:
+  SIMD_FLAGS.append("-msimd128")
+if USE_RELAXED_SIMD:
+  SIMD_FLAGS.append("-mrelaxed-simd")
 
 def _parse_extra_compile_flags():
   flags = []
@@ -44,7 +49,7 @@ BUILD_FLAGS_PATH = BUILD_DIR + "/build-flags.json"
 
 _BUILD_FLAG_KEYS = [
   "OCJS_OPT", "OCJS_EXTRA_CFLAGS", "OCJS_LTO", "OCJS_EXCEPTIONS", "OCJS_EH_MODE",
-  "OCJS_SIMD", "THREADING", "OCJS_DEFINES", "OCJS_UNDEFINES",
+  "OCJS_SIMD", "OCJS_RELAXED_SIMD", "THREADING", "OCJS_DEFINES", "OCJS_UNDEFINES",
 ]
 
 _BUILD_FLAG_DEFAULTS = {
@@ -54,6 +59,7 @@ _BUILD_FLAG_DEFAULTS = {
   "OCJS_EXCEPTIONS": "0",
   "OCJS_EH_MODE": "wasm",
   "OCJS_SIMD": "0",
+  "OCJS_RELAXED_SIMD": "0",
   "THREADING": "single-threaded",
   "OCJS_DEFINES": "",
   "OCJS_UNDEFINES": "",

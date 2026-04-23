@@ -33,7 +33,7 @@ OCCT C++ sources (.cxx)
 | Flag                                                 | Source               | Purpose                                          |
 | ---------------------------------------------------- | -------------------- | ------------------------------------------------ |
 | `-O3`                                                | `OCJS_OPT`           | LLVM aggressive optimization                     |
-| `-msimd128 -mrelaxed-simd`                           | `OCJS_SIMD=1`        | WASM SIMD instructions                           |
+| `-msimd128` (+ `-mrelaxed-simd` when `OCJS_RELAXED_SIMD=1`) | `OCJS_SIMD=1`        | WASM SIMD instructions (Relaxed SIMD is opt-in — Safari 26.x does not implement it) |
 | `-frtti`                                             | `build-wasm.sh`      | Required — OCCT uses `dynamic_cast`              |
 | `-DIGNORE_NO_ATOMICS=1`                              | `build-wasm.sh`      | Suppress atomics warnings                        |
 | `-DOCCT_NO_PLUGINS`                                  | `build-wasm.sh`      | Disable OCCT plugin system                       |
@@ -83,7 +83,7 @@ OCCT C++ sources (.cxx)
 | `--enable-sign-ext`                   | Enable sign extension                                                  |
 | `--enable-nontrapping-float-to-int`   | Enable nontrapping FP→int                                              |
 | `--enable-exception-handling`         | Enable EH (always, for both build paths)                               |
-| `--enable-simd --enable-relaxed-simd` | Enable SIMD features (when OCJS_SIMD=1)                                |
+| `--enable-simd` (+ `--enable-relaxed-simd` when `OCJS_RELAXED_SIMD=1`) | Enable SIMD features (when `OCJS_SIMD=1`); Relaxed SIMD opt-in for Chrome/Firefox-only consumers |
 
 
 **Dual wasm-opt pipeline**: The build runs wasm-opt twice — once via emcc's built-in pipeline at `-O3` (with `--low-memory-unused`, `--zero-filled-memory`, `--directize`, meta-DCE), then our standalone pass at `-O4` with `--traps-never-happen` and `--converge`. The second pass with `-O4` (which flattens IR) can find optimizations invisible to the structured-IR first pass.
@@ -154,7 +154,7 @@ When LLVM has visibility across all compilation units (via LTO bitcode), it aggr
 | Category            | Flags                                            | Status                                                    |
 | ------------------- | ------------------------------------------------ | --------------------------------------------------------- |
 | LLVM optimization   | `-O3`                                            | Maximum safe level for OCCT                               |
-| SIMD                | `-msimd128 -mrelaxed-simd`                       | Full WASM SIMD coverage                                   |
+| SIMD                | `-msimd128` (+ `-mrelaxed-simd` when `OCJS_RELAXED_SIMD=1`) | Baseline WASM SIMD; Relaxed SIMD opt-in (not in Safari)   |
 | BigInt              | `-sWASM_BIGINT`                                  | Eliminates i64 legalization overhead                      |
 | Constructor eval    | `-sEVAL_CTORS=2`                                 | Aggressive compile-time evaluation                        |
 | Closure Compiler    | `--closure 1`                                    | JS glue minimized                                         |
