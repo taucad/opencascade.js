@@ -4321,8 +4321,7 @@ mainBuild:
   - symbol: math_Uzawa
   - symbol: math_ValueAndWeight
   emccFlags:
-  - -sDISABLE_EXCEPTION_CATCHING=1
-  - -sSUPPORT_LONGJMP=0
+  - -fwasm-exceptions
   - -sEXPORT_ES6=1
   - -sMODULARIZE
   - -sALLOW_MEMORY_GROWTH=1
