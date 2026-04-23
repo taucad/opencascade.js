@@ -6,7 +6,7 @@ import subprocess
 import multiprocessing
 from functools import partial
 
-from Common import OCJS_ROOT, PCH_FILE, getFlatIncludePaths, FLAT_INCLUDE_DIR, WASM_EXCEPTION_FLAGS, SIMD_FLAGS, EXTRA_COMPILE_FLAGS, validate_build_flags, BuildFlagMismatch, BUILD_DIR
+from Common import OCJS_ROOT, PCH_FILE, getFlatIncludePaths, FLAT_INCLUDE_DIR, WASM_EXCEPTION_FLAGS, SIMD_FLAGS, EXTRA_COMPILE_FLAGS, validate_build_flags, BuildFlagMismatch, BUILD_DIR, BUILD_FLAGS_PATH
 from filter.filterPackages import filterPackages
 
 from argparse import ArgumentParser
@@ -19,6 +19,11 @@ USE_LTO = os.environ.get("OCJS_LTO", "0") == "1"
 
 _flat_include_paths = getFlatIncludePaths()
 _use_pch = os.path.exists(PCH_FILE)
+# Cache barrier: any .o file older than build-flags.json was compiled with
+# different flags (e.g. EXC=0 vs EXC=1) and must be rebuilt. Without this,
+# the per-file mtime check (.o newer than .cpp) silently keeps stale objects
+# when env-driven flags change but generated .cpp content stays identical.
+_build_flags_mtime = os.path.getmtime(BUILD_FLAGS_PATH) if os.path.exists(BUILD_FLAGS_PATH) else 0
 
 def _classify_error(stderr_text):
   """Classify a compilation error into a category from the stderr output."""
@@ -53,6 +58,8 @@ def buildOneFile(args, item):
   os.makedirs(os.path.dirname(o_path), exist_ok=True)
   needs_build = not os.path.exists(o_path)
   if not needs_build and os.path.getmtime(o_path) < os.path.getmtime(item):
+    needs_build = True
+  if not needs_build and _build_flags_mtime and os.path.getmtime(o_path) < _build_flags_mtime:
     needs_build = True
 
   if needs_build:
