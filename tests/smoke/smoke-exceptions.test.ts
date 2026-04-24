@@ -73,5 +73,43 @@ describe.skipIf(!wasmExists)('Smoke: Exception handling', () => {
     expect(caught).toBe(true);
     expect(exceptionType).toContain('Standard_');
   });
+
+  it('should expose getExceptionMessage at runtime when wasm exceptions are enabled', (ctx) => {
+    if (!isExceptionsEnabled()) ctx.skip();
+
+    const oc = getOC();
+    expect(typeof oc.getExceptionMessage).toBe('function');
+    expect(typeof oc.incrementExceptionRefcount).toBe('function');
+    expect(typeof oc.decrementExceptionRefcount).toBe('function');
+  });
+
+  it('should decode StdFail_NotDone via getExceptionMessage on oversized fillet', (ctx) => {
+    if (!isExceptionsEnabled()) ctx.skip();
+
+    const oc = getOC();
+    const box = new oc.BRepPrimAPI_MakeBox(10, 10, 10).Shape();
+    const fillet = new oc.BRepFilletAPI_MakeFillet(box, oc.ChFi3d_FilletShape.ChFi3d_Rational);
+    const explorer = new oc.TopExp_Explorer(
+      box,
+      oc.TopAbs_ShapeEnum.TopAbs_EDGE,
+      oc.TopAbs_ShapeEnum.TopAbs_SHAPE,
+    );
+
+    let info: { type: string; message: string } | undefined;
+    try {
+      if (explorer.More()) {
+        const edge = oc.TopoDS.Edge(explorer.Current());
+        fillet.Add(100, edge);
+      }
+      // Shape() forces the (failed) build to materialize and throws StdFail_NotDone.
+      void fillet.Shape();
+    } catch (e) {
+      info = extractExceptionInfo(oc, e);
+    }
+
+    expect(info).toBeDefined();
+    expect(info!.type).toContain('StdFail_NotDone');
+    expect(info!.message.length).toBeGreaterThan(0);
+  });
 });
 /* eslint-enable @typescript-eslint/naming-convention */

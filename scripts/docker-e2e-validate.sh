@@ -3,26 +3,25 @@ set -euo pipefail
 
 # Docker E2E Validation Script
 #
-# Builds the Docker image from scratch, runs both full.yml and
-# full-exceptions.yml builds, and validates the outputs.
+# Builds the Docker image from scratch, runs the full.yml build (native WASM
+# exceptions with EH helpers exported), and validates the outputs.
 #
 # Usage:
 #   ./scripts/docker-e2e-validate.sh [--output-dir /path/to/output]
 #
 # This validates:
 #   1. Docker image builds successfully
-#   2. WASM builds produce valid output for both configs
-#   3. Symbol counts match expectations (233 for full, 235 for full-exceptions)
-#   4. Provenance JSON is generated
-#   5. Cache behavior works (second build should hit cache)
-#   6. Environment variable passthrough works
+#   2. WASM build produces valid output
+#   3. Provenance JSON is generated
+#   4. Cache behavior works (second build should hit cache)
+#   5. Environment variable passthrough works
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 OCJS_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 OUTPUT_DIR="${1:-$OCJS_DIR/docker-e2e-output}"
 IMAGE_NAME="opencascade-js-v8-e2e"
 
-mkdir -p "$OUTPUT_DIR/full" "$OUTPUT_DIR/full-exceptions" "$OUTPUT_DIR/Os-test"
+mkdir -p "$OUTPUT_DIR/full" "$OUTPUT_DIR/Os-test"
 
 echo "═══════════════════════════════════════════════════"
 echo "  Docker E2E Validation"
@@ -30,41 +29,33 @@ echo "════════════════════════�
 echo ""
 
 # Step 1: Build Docker image
-echo "Step 1/7: Building Docker image..."
+echo "Step 1/6: Building Docker image..."
 docker build -t "$IMAGE_NAME" "$OCJS_DIR"
 echo "  PASS: Docker image built"
 echo ""
 
-# Step 2: Build with full.yml (no-exceptions)
-echo "Step 2/7: Building WASM with full.yml (no-exceptions)..."
-docker run --rm -v "$OUTPUT_DIR/full:/output" "$IMAGE_NAME" full build-configs/full.yml
+# Step 2: Build with full.yml (native WASM exceptions + EH helpers)
+echo "Step 2/6: Building WASM with full.yml..."
+docker run --rm -v "$OUTPUT_DIR/full:/output" \
+  -e OCJS_EXCEPTIONS=1 \
+  "$IMAGE_NAME" full build-configs/full.yml
 echo "  PASS: full.yml build completed"
 echo ""
 
-# Step 3: Build with full-exceptions.yml
-echo "Step 3/7: Building WASM with full-exceptions.yml..."
-docker run --rm -v "$OUTPUT_DIR/full-exceptions:/output" \
-  -e OCJS_EXCEPTIONS=1 \
-  "$IMAGE_NAME" full build-configs/full-exceptions.yml
-echo "  PASS: full-exceptions.yml build completed"
-echo ""
-
-# Step 4: Verify outputs
-echo "Step 4/7: Verifying outputs..."
+# Step 3: Verify outputs
+echo "Step 3/6: Verifying outputs..."
 PASS=true
 
-for variant in full full-exceptions; do
-  dir="$OUTPUT_DIR/$variant"
-  for ext in .wasm .js .d.ts; do
-    matches=$(find "$dir" -name "*$ext" 2>/dev/null | head -1)
-    if [ -z "$matches" ]; then
-      echo "  FAIL: No $ext file found in $dir"
-      PASS=false
-    else
-      size=$(stat -f%z "$matches" 2>/dev/null || stat -c%s "$matches" 2>/dev/null)
-      echo "  OK: $(basename "$matches") ($size bytes)"
-    fi
-  done
+dir="$OUTPUT_DIR/full"
+for ext in .wasm .js .d.ts; do
+  matches=$(find "$dir" -name "*$ext" 2>/dev/null | head -1)
+  if [ -z "$matches" ]; then
+    echo "  FAIL: No $ext file found in $dir"
+    PASS=false
+  else
+    size=$(stat -f%z "$matches" 2>/dev/null || stat -c%s "$matches" 2>/dev/null)
+    echo "  OK: $(basename "$matches") ($size bytes)"
+  fi
 done
 
 if [ "$PASS" = true ]; then
@@ -74,8 +65,8 @@ else
 fi
 echo ""
 
-# Step 5: Check provenance
-echo "Step 5/7: Checking provenance..."
+# Step 4: Check provenance
+echo "Step 4/6: Checking provenance..."
 PROV_FILE=$(find "$OUTPUT_DIR" -name "provenance.json" 2>/dev/null | head -1)
 if [ -n "$PROV_FILE" ]; then
   echo "  PASS: provenance.json found at $PROV_FILE"
@@ -92,8 +83,8 @@ else
 fi
 echo ""
 
-# Step 6: Test cache behavior (second build should be faster)
-echo "Step 6/7: Testing cache behavior..."
+# Step 5: Test cache behavior (second build should be faster)
+echo "Step 5/6: Testing cache behavior..."
 CACHE_START=$(date +%s)
 docker run --rm "$IMAGE_NAME" full build-configs/full.yml
 CACHE_END=$(date +%s)
@@ -101,8 +92,8 @@ CACHE_ELAPSED=$((CACHE_END - CACHE_START))
 echo "  Second build took ${CACHE_ELAPSED}s (should be significantly faster if cache works)"
 echo ""
 
-# Step 7: Test env var passthrough
-echo "Step 7/7: Testing env var passthrough..."
+# Step 6: Test env var passthrough
+echo "Step 6/6: Testing env var passthrough..."
 docker run --rm -v "$OUTPUT_DIR/Os-test:/output" \
   -e OCJS_OPT="-Os" \
   "$IMAGE_NAME" full build-configs/full.yml

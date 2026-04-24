@@ -8,8 +8,7 @@ Build configs live in `build-configs/`:
 
 ```
 build-configs/
-  full.yml                   # All ~233 symbols, no exceptions
-  full-exceptions.yml        # All ~235 symbols, native WASM exceptions
+  full.yml                   # All symbols, native WASM exceptions with getExceptionMessage helpers
   presets/                   # Optimization presets (env var configs)
     O2-balanced.yml
     O3-maxperf.yml

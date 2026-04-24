@@ -63,11 +63,8 @@ For reproducible builds without installing dependencies locally:
 docker build -t opencascade-js .
 
 # Build WASM (output mounted to ./output/)
-docker run --rm -v $(pwd)/output:/output opencascade-js full build-configs/full.yml
-
-# Build with exceptions
 docker run --rm -v $(pwd)/output:/output -e OCJS_EXCEPTIONS=1 \
-  opencascade-js full build-configs/full-exceptions.yml
+  opencascade-js full build-configs/full.yml
 
 # Build with a custom config
 docker run --rm \
@@ -82,8 +79,7 @@ docker run --rm \
 
 YAML configs define which OCCT classes are bound to JavaScript:
 
-- `build-configs/full.yml` — 233 symbols, single-threaded, no exceptions
-- `build-configs/full-exceptions.yml` — 235 symbols, native WASM exceptions
+- `build-configs/full.yml` — all symbols, single-threaded, native WASM exceptions with `getExceptionMessage` runtime helpers
 
 See [Build Configuration Reference](docs/build-config-reference.md) for the full YAML schema.
 

@@ -4322,6 +4322,7 @@ mainBuild:
   - symbol: math_ValueAndWeight
   emccFlags:
   - -fwasm-exceptions
+  - -sEXPORT_EXCEPTION_HANDLING_HELPERS
   - -sEXPORT_ES6=1
   - -sMODULARIZE
   - -sALLOW_MEMORY_GROWTH=1

@@ -628,7 +628,21 @@ def main():
 
     main_flags = buildConfig["mainBuild"].get("emccFlags", [])
     uses_native_wasm_eh = any('-fwasm-exceptions' in f for f in main_flags)
-    if uses_native_wasm_eh:
+    exports_eh_helpers = any('-sEXPORT_EXCEPTION_HANDLING_HELPERS' in f for f in main_flags)
+
+    if uses_native_wasm_eh and not exports_eh_helpers:
+      # Hard fail: native wasm EH without the runtime helpers is a footgun -- the
+      # JS module will catch WebAssembly.Exception but consumers cannot decode it
+      # (no getExceptionMessage). Force the YAML to make this explicit.
+      raise ValueError(
+        "mainBuild.emccFlags contains '-fwasm-exceptions' but not "
+        "'-sEXPORT_EXCEPTION_HANDLING_HELPERS'. Add the helpers flag so JS "
+        "consumers can decode caught WebAssembly.Exception via getExceptionMessage(), "
+        "or remove '-fwasm-exceptions' if exception handling is intentionally "
+        "compiled-out."
+      )
+
+    if uses_native_wasm_eh and exports_eh_helpers:
       # Ambient declarations for the native-WASM-exception types. lib.dom.d.ts
       # only ships these in modern releases; declaring them locally keeps the
       # .d.ts portable across TS/lib versions and resolves TS2694 for

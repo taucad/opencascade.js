@@ -130,6 +130,40 @@ def validate_binding_report(build_dir):
         return json.load(f)
 
 
+def validate_runtime_helpers(config, output_dir):
+    """If the YAML asks for -sEXPORT_EXCEPTION_HANDLING_HELPERS, assert the
+    linked JS glue actually defines getExceptionMessage / refcount helpers.
+
+    Catches the regression where -fwasm-exceptions is present but the helpers
+    flag is missing, leaving the .d.ts over-promising relative to runtime.
+    """
+    main_flags = config["mainBuild"].get("emccFlags", [])
+    if not any('-sEXPORT_EXCEPTION_HANDLING_HELPERS' in f for f in main_flags):
+        return {"required": False, "pass": True, "checked": [], "missing": []}
+
+    js_path = os.path.join(output_dir, config["mainBuild"]["name"])
+    if not os.path.exists(js_path):
+        return {
+            "required": True,
+            "pass": False,
+            "checked": [],
+            "missing": [],
+            "error": f"JS glue missing: {js_path}",
+        }
+
+    with open(js_path, "r", encoding="utf-8") as f:
+        glue = f.read()
+
+    required = ["getExceptionMessage", "incrementExceptionRefcount", "decrementExceptionRefcount"]
+    missing = [name for name in required if f".{name}=" not in glue and f'"{name}"' not in glue]
+    return {
+        "required": True,
+        "pass": not missing,
+        "checked": required,
+        "missing": missing,
+    }
+
+
 def compute_config_hash(yaml_path):
     with open(yaml_path, "rb") as f:
         return hashlib.sha256(f.read()).hexdigest()[:12]
@@ -184,7 +218,22 @@ def main():
             print(f"  [FAIL] Output: {wr.get('error', 'unknown error')}")
             all_pass = False
 
-    # 3. Binding report (informational)
+    # 3. Runtime helper validation (Emscripten EH helpers when requested)
+    helper_result = validate_runtime_helpers(config, args.output_dir)
+    if not helper_result["required"]:
+        print("  [INFO] Runtime helpers: not requested by YAML")
+    elif helper_result["pass"]:
+        print(f"  [PASS] Runtime helpers: {len(helper_result['checked'])} EH helpers present in linked JS glue")
+    else:
+        if "error" in helper_result:
+            print(f"  [FAIL] Runtime helpers: {helper_result['error']}")
+        else:
+            print(f"  [FAIL] Runtime helpers: missing {len(helper_result['missing'])} helper(s) in linked JS glue")
+            for name in helper_result["missing"]:
+                print(f"         - {name}")
+        all_pass = False
+
+    # 4. Binding report (informational)
     binding_report = validate_binding_report(build_dir)
     if binding_report:
         print(f"  [INFO] Binding report: {binding_report.get('succeeded', '?')} succeeded, "
@@ -199,6 +248,7 @@ def main():
         "validation_passed": all_pass,
         "symbols": sym_result,
         "outputs": wasm_results,
+        "runtime_helpers": helper_result,
         "binding_report": binding_report,
     }
 

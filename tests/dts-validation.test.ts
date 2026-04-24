@@ -245,6 +245,19 @@ describe('Full build .d.ts validation', () => {
     expect(total, `any count ${total} exceeds regression threshold of 148`).toBeLessThanOrEqual(148);
   });
 
+  it('should expose Emscripten exception-handling helpers in the linked JS glue', () => {
+    const jsPath = path.join(FULL_BUILD_CONFIG, 'opencascade_full.js');
+    if (!fs.existsSync(jsPath)) return;
+    const glue = fs.readFileSync(jsPath, 'utf8');
+    for (const name of [
+      'getExceptionMessage',
+      'incrementExceptionRefcount',
+      'decrementExceptionRefcount',
+    ]) {
+      expect(glue, `linked JS glue should define ${name}`).toMatch(new RegExp(`\\.${name}\\s*=`));
+    }
+  });
+
   it('should have all symbols from full.yml declared in the .d.ts', () => {
     if (!sourceFile) return;
     const yamlPath = path.join(FULL_BUILD_CONFIG, 'full.yml');
