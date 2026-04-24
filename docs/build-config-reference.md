@@ -4,16 +4,12 @@ YAML build configs define what gets included in your opencascade.js WASM binary:
 
 ## File Location
 
-Build configs live in `build-configs/`:
+Consumer YAML configs (which symbols to bind, which `emccFlags` to pass at link) live in `build-configs/`. Compile-time configurations (which optimization flags drive `emcc`/`wasm-opt`) live in [`configurations.json`](../build-configs/configurations.json) — see [BUILD_SYSTEM.md](../BUILD_SYSTEM.md) for the full key reference.
 
 ```
 build-configs/
-  full.yml                   # All symbols, native WASM exceptions with getExceptionMessage helpers
-  presets/                   # Optimization presets (env var configs)
-    O2-balanced.yml
-    O3-maxperf.yml
-    Os-minsize.yml
-    O0-debug.yml
+  full.yml             # All symbols, native WASM exceptions with getExceptionMessage helpers
+  configurations.json  # Named compile-time configurations (default, O0-debug, O3-wasm-exc-simd, ...)
 ```
 
 ## YAML Schema
@@ -167,7 +163,7 @@ To create a minimal config with only the symbols you need:
 
 1. Start from `full.yml` as a reference
 2. Remove symbols you don't use from `bindings`
-3. Remove corresponding handle typedefs from `additionalCppCode`
+3. (Most cases) handle typedefs for NCollection and `Handle<T>` types are auto-discovered in v3, so manual `additionalCppCode` edits are usually unnecessary. Edit only when you hit a missing-handle linker error.
 4. Keep base class symbols (check class hierarchy)
 5. Validate: `./build-wasm.sh validate build-configs/my-config.yml`
 6. Build: `./build-wasm.sh link build-configs/my-config.yml`
@@ -211,12 +207,12 @@ mainBuild:
 additionalCppCode: ""
 ```
 
-## Presets
+## Configurations
 
-Presets control compilation and optimization settings separately from the YAML config (which controls what to bind). Apply a preset with:
+Compile-time configurations control optimization, exception mode, SIMD, BigInt, and other compiler/linker behavior — independently of which symbols the YAML config binds. They live in [`configurations.json`](../build-configs/configurations.json) and are selected with `--config`:
 
 ```bash
-./build-wasm.sh --preset O2-balanced full build-configs/full.yml
+./build-wasm.sh --config default full build-configs/full.yml
 ```
 
-See `build-configs/presets/` for available presets, or create your own following the same YAML structure.
+The currently shipped configurations are `default`, `O0-debug`, `O3-wasm-exc-simd`, `O3-noLTO-simd`, and `Os-noLTO-simd`. Add a new entry to `configurations.json` to define your own. See [BUILD_SYSTEM.md](../BUILD_SYSTEM.md) for the full key reference.

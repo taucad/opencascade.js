@@ -188,15 +188,13 @@ The largest theoretical gains (`-fno-rtti`: 3–5%, `-fno-exceptions`: 5–10%) 
 The production configurations in `build-configs/configurations.json`:
 
 
-| Config             | Compile | wasm-opt | SIMD | Exceptions | Closure | EVAL_CTORS | Converge |
-| ------------------ | ------- | -------- | ---- | ---------- | ------- | ---------- | -------- |
-| `O3-simd`          | `-O3`   | `-O4`    | yes  | no         | yes     | yes        | yes      |
-| `O3-wasm-exc-simd` | `-O3`   | `-O4`    | yes  | WASM       | yes     | yes        | yes      |
-| `O3-maxperf`       | `-O3`   | `-O3`    | no   | no         | yes     | yes        | yes      |
-| `Os-minsize`       | `-Os`   | `-Oz`    | no   | no         | yes     | yes        | yes      |
-| `O2-balanced`      | `-O2`   | `-O3`    | no   | no         | no      | no         | no       |
-| `default`          | `-O2`   | `-O3`    | no   | no         | no      | no         | no       |
-| `O0-debug`         | `-O0`   | `-O0`    | no   | no         | no      | no         | no       |
+| Config             | Compile | wasm-opt | SIMD | Exceptions | BigInt | EVAL_CTORS | Closure | Converge |
+| ------------------ | ------- | -------- | ---- | ---------- | ------ | ---------- | ------- | -------- |
+| `default`          | `-O3`   | `-O4`    | yes  | no         | yes    | yes (=2)   | yes     | yes      |
+| `O3-wasm-exc-simd` | `-O3`   | `-O4`    | yes  | WASM       | yes    | yes (=2)   | yes     | yes      |
+| `O3-noLTO-simd`    | `-O3`   | `-O4`    | yes  | no         | yes    | no         | no      | no       |
+| `Os-noLTO-simd`    | `-Os`   | `-O3`    | yes  | no         | yes    | yes (=2)   | yes     | yes      |
+| `O0-debug`         | `-O0`   | `-O0`    | no   | no         | no     | no         | no      | no       |
 
 
 See `BUILD_SYSTEM.md` for full documentation of the build system, configuration keys, and workflows.

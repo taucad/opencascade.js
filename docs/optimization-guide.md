@@ -4,12 +4,15 @@ Practical reference for tuning opencascade.js WASM builds for size, speed, or bu
 
 ## Quick Reference
 
-| Goal                | Compile  | wasm-opt | LTO  | Defines               | Expected Size |
-|---------------------|----------|----------|------|-----------------------|---------------|
-| **Balanced** (rec.)  | `-O2`    | `-O3`    | No   | —                     | ~17.7 MB      |
-| **Max performance**  | `-O3`    | `-O3`    | No   | `OCCT_NO_DUMP`, `-UOCC_CONVERT_SIGNALS` | ~19.0 MB |
-| **Min size**          | `-Os`    | `-Oz`    | No   | `OCCT_NO_DUMP`, `-UOCC_CONVERT_SIGNALS` | ~16.1 MB |
-| **Debug**             | `-O0`    | `-O0`    | No   | —                     | ~35+ MB       |
+These are the configurations defined in [`build-configs/configurations.json`](../build-configs/configurations.json). Apply with `--config <name>`.
+
+| Config              | Compile  | wasm-opt | SIMD | Exceptions | Defines                                 | Expected Size |
+|---------------------|----------|----------|------|------------|-----------------------------------------|---------------|
+| `default` (rec.)    | `-O3`    | `-O4`    | yes  | no         | `OCCT_NO_DUMP`, `-UOCC_CONVERT_SIGNALS` | ~19.0 MB      |
+| `O3-wasm-exc-simd`  | `-O3`    | `-O4`    | yes  | WASM       | `OCCT_NO_DUMP`, `-UOCC_CONVERT_SIGNALS` | ~21.5 MB      |
+| `O3-noLTO-simd`     | `-O3`    | `-O4`    | yes  | no         | `OCCT_NO_DUMP`, `-UOCC_CONVERT_SIGNALS` | ~19.0 MB      |
+| `Os-noLTO-simd`     | `-Os`    | `-O3`    | yes  | no         | `OCCT_NO_DUMP`, `-UOCC_CONVERT_SIGNALS` | ~16.1 MB      |
+| `O0-debug`          | `-O0`    | `-O0`    | no   | no         | —                                       | ~35+ MB       |
 
 ## Compile Optimization (`OCJS_OPT`)
 

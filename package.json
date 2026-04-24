@@ -1,11 +1,14 @@
 {
   "name": "@taucad/opencascade.js",
-  "version": "3.0.0-beta.0",
+  "version": "3.0.0-beta.1",
   "description": "Port of the OpenCascade CAD library to JavaScript and WebAssembly via Emscripten.",
   "main": "dist/opencascade_full.js",
   "author": "Sebastian Alff <donalffons@gmail.com>",
   "license": "LGPL-2.1-only",
-  "repository": "github:taucad/opencascade.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/taucad/opencascade.js.git"
+  },
   "types": "dist/opencascade_full.d.ts",
   "files": [
     "dist/opencascade_full.js",
@@ -14,7 +17,8 @@
     "dist/opencascade_full.js.symbols",
     "dist/opencascade_full.build-manifest.json",
     "dist/opencascade_full.provenance.json",
-    "CHANGELOG.md"
+    "CHANGELOG.md",
+    "BREAKING_CHANGES.md"
   ],
   "peerDependencies": {
     "ws": "^8.5.0"

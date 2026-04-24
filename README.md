@@ -17,13 +17,58 @@
   </p>
 </p>
 
-## What's New in V8
+## What's New in v3
 
-- **OCCT 8.0.0-RC4** — 1,085 commits of improvements, 22-31% faster boolean operations
+- **OCCT 8.0.0 RC5** — 1,085 commits of improvements; 22-31% faster boolean operations
 - **Emscripten 5.0.1** — LLVM 17, modern WASM features
-- **Native WASM Exceptions** — replaces JS invoke trampolines, 39% smaller exception builds
-- **Build System** — `build-wasm.sh` with compilation cache, presets, and provenance tracking
-- **Pinned Dependencies** — `DEPS.json` locks all dependency versions for reproducible builds
+- **Native WASM Exceptions** — `-fwasm-exceptions` replaces JS invoke trampolines, decodable end-to-end via `getExceptionMessage`
+- **ESM-only single-file distribution** — `"type": "module"`; `dist/` ships exactly one variant (`opencascade_full.{js,wasm,d.ts}`) with a default-export `init` function and explicit `locateFile` (no facade module to choose between variants)
+- **Full TypeScript bindings** — Doxygen-derived JSDoc rendered correctly in Monaco IntelliSense
+- **Suffix-free overloads** — single symbol per class with val-based dispatcher, no more `_2`/`_3` subclasses
+- **Reproducible builds** — `DEPS.json` pins every dependency to an exact commit; per-build `provenance.json` sidecar
+- **Cached, incremental builds** — content-addressed compilation cache turns 10-30 minute clean builds into seconds on hit
+
+See [CHANGELOG.md](CHANGELOG.md) for the full v3.0.0 entry.
+
+## Install
+
+> **Upgrading?** See **[BREAKING_CHANGES.md](BREAKING_CHANGES.md)** for the full v3 migration guide (package rename, ESM-only loading, exception decode pattern, OCCT V8 API).
+
+```bash
+pnpm add @taucad/opencascade.js@beta
+# or: npm install @taucad/opencascade.js@beta
+```
+
+The package is ESM-only with a default-export `init` function. Pass `locateFile` so the Emscripten loader can resolve `opencascade_full.wasm` from your bundler's output (browser) or `node_modules` layout (Node).
+
+```ts
+// Node — mirrors tests/smoke/helpers.ts
+import * as path from 'node:path';
+import init from '@taucad/opencascade.js';
+
+const BUILD_DIR = path.dirname(
+  new URL(import.meta.resolve('@taucad/opencascade.js/dist/opencascade_full.wasm')).pathname,
+);
+
+const oc = await init({
+  locateFile: (filename: string) => path.join(BUILD_DIR, filename),
+});
+
+using box = new oc.BRepPrimAPI_MakeBox(10, 10, 10);
+const shape = box.Shape();
+```
+
+```ts
+// Vite / browser
+import init from '@taucad/opencascade.js';
+import wasmUrl from '@taucad/opencascade.js/dist/opencascade_full.wasm?url';
+
+const oc = await init({ locateFile: () => wasmUrl });
+```
+
+The published tarball ships pre-built WASM at `dist/opencascade_full.{wasm,js,d.ts}` along with a `provenance.json` sidecar describing the exact toolchain and source commits used.
+
+The rest of this README covers building from source — for customizing the binding set, optimization presets, or contributing to the fork.
 
 ## Quick Start (Native Build)
 
@@ -79,36 +124,49 @@ docker run --rm \
 
 YAML configs define which OCCT classes are bound to JavaScript:
 
-- `build-configs/full.yml` — all symbols, single-threaded, native WASM exceptions with `getExceptionMessage` runtime helpers
+- `build-configs/full.yml` — all symbols, single-threaded, native WASM exceptions on by default with `getExceptionMessage` runtime helpers
 
 See [Build Configuration Reference](docs/build-config-reference.md) for the full YAML schema.
 
-### Presets
+### Configurations
 
-Presets control optimization settings separately from what to bind:
+Named compile-time configurations live in [`build-configs/configurations.json`](build-configs/configurations.json). Apply one with `--config`:
 
 ```bash
-# Balanced (recommended)
-./build-wasm.sh --preset O2-balanced full build-configs/full.yml
+# Default — what the published tarball is built with: -O3, SIMD, BigInt, EVAL_CTORS, no exceptions
+./build-wasm.sh --config default full build-configs/full.yml
 
-# Maximum performance
-./build-wasm.sh --preset O3-maxperf full build-configs/full.yml
+# With native WASM exceptions (decodable C++ exceptions end-to-end)
+./build-wasm.sh --config O3-wasm-exc-simd full build-configs/full.yml
 
-# Minimum size
-./build-wasm.sh --preset Os-minsize full build-configs/full.yml
+# Size-optimized (-Os) variant
+./build-wasm.sh --config Os-noLTO-simd full build-configs/full.yml
 
-# Debug (fastest build)
-./build-wasm.sh --preset O0-debug full build-configs/full.yml
+# Debug (fastest build, -O0, no SIMD)
+./build-wasm.sh --config O0-debug full build-configs/full.yml
 ```
+
+Add your own entry to `configurations.json` to define a new configuration. See [BUILD_SYSTEM.md](BUILD_SYSTEM.md) for the full list of `OCJS_*` keys.
 
 ### Environment Variables
 
-| Variable          | Default             | Description |
-|-------------------|---------------------|-------------|
-| `OCJS_OPT`        | `-O2`               | Compile optimization level |
-| `OCJS_LTO`        | `1`                 | LTO at compile time (set `0` to disable) |
-| `OCJS_EXCEPTIONS` | `0`                 | Native WASM exceptions (`1` to enable) |
-| `THREADING`        | `single-threaded`   | Threading mode |
+Two layers of "default" matter here. The **bare default** is what `build-wasm.sh` falls back to if you set neither an env var nor a `--config`. The **shipped `full.yml` build** is what the published `@taucad/opencascade.js` tarball was actually linked with — the YAML config carries its own `emccFlags` (`-sWASM_BIGINT`, `-sEVAL_CTORS=2`, `-msimd128`) that win regardless of env var, and every named entry in [`build-configs/configurations.json`](build-configs/configurations.json) sets the corresponding `OCJS_*` envs to match.
+
+| Variable             | Bare default      | Shipped `full.yml` build | Description |
+|----------------------|-------------------|--------------------------|-------------|
+| `OCJS_OPT`           | `-O2`             | `-O3`                    | Compile optimization level |
+| `OCJS_LTO`           | `1`               | `0`                      | LTO at compile time. Empirically harmful for OCCT — see [optimization guide](docs/optimization-guide.md). |
+| `OCJS_EXCEPTIONS`    | `0`               | `1`                      | Native WASM exceptions. Shipped build forces this on for decodable C++ exceptions. |
+| `OCJS_SIMD`          | `0`               | `1`                      | Baseline WASM SIMD (`-msimd128`). Universally supported. |
+| `OCJS_RELAXED_SIMD`  | `0`               | `0`                      | Relaxed SIMD ops on top of `OCJS_SIMD`. Safari 26.x cannot parse these — leave off for cross-browser builds. |
+| `OCJS_BIGINT`        | `0`               | `1`                      | `-sWASM_BIGINT` for native i64↔BigInt; eliminates the i64 legalization pass. |
+| `OCJS_EVAL_CTORS`    | `false`           | `true`                   | `-sEVAL_CTORS=N` static-init evaluation at compile time. |
+| `OCJS_EXTRA_CFLAGS`  | _(empty)_         | _(empty)_                | Extra compile flags appended to C/CXX (e.g. `"-mllvm -inline-threshold=128"`). |
+| `OCJS_DEFINES`       | _(empty)_         | `OCCT_NO_DUMP`           | Comma-separated list of `-D` macros. |
+| `OCJS_UNDEFINES`     | _(empty)_         | `OCC_CONVERT_SIGNALS`    | Comma-separated list of `-U` undefines. |
+| `THREADING`          | `single-threaded` | `single-threaded`        | Threading mode (`single-threaded` or `multi-threaded`). |
+
+The bare-default column is only relevant if you invoke `build-wasm.sh` without `--config`. Any named configuration (including `default`) sets the rightmost column.
 
 ## Customizing Your Build
 
@@ -116,7 +174,7 @@ Create a custom YAML config with only the symbols your application needs:
 
 1. Copy `build-configs/full.yml` as a starting point
 2. Remove symbols you don't use from `bindings`
-3. Remove corresponding handle typedefs from `additionalCppCode`
+3. (Most cases) handle typedefs for NCollection and `Handle<T>` types are auto-discovered in v3, so manual `additionalCppCode` edits are usually unnecessary. Edit only when you hit a missing-handle linker error.
 4. Validate: `./build-wasm.sh validate build-configs/my-config.yml`
 5. Build: `./build-wasm.sh link build-configs/my-config.yml`
 
@@ -137,7 +195,9 @@ nohup env ./build-wasm.sh full <yaml> > build.log 2>&1 &
 
 ## Documentation
 
-- [OCCT V8 Migration Guide](docs/occt-v8-migration.md) — breaking changes for upgrading from V7.6.2
+- [BREAKING_CHANGES.md](BREAKING_CHANGES.md) — v3 consumer migration guide (package rename, ESM, exception handling, OCCT V8 API, removed symbols, build flags)
+- [CHANGELOG.md](CHANGELOG.md) — release notes
+- [BUILD_SYSTEM.md](BUILD_SYSTEM.md) — full `OCJS_*` env-var matrix and configuration authoring guide
 - [Optimization Guide](docs/optimization-guide.md) — tuning size, speed, and build time
 - [Build Configuration Reference](docs/build-config-reference.md) — YAML schema and customization
 

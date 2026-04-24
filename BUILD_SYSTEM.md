@@ -35,21 +35,26 @@ All named compile-time configurations live in `build-configs/configurations.json
 
 ### Supported keys
 
-| Key                   | Description                                             | Default           |
-| --------------------- | ------------------------------------------------------- | ----------------- |
-| `OCJS_OPT`            | Compile optimization level (`-O0`, `-O2`, `-O3`, `-Os`) | `-O2`             |
-| `OCJS_LTO`            | Enable LTO at compile time (`0` or `1`)                 | `0`               |
-| `OCJS_EXCEPTIONS`     | Enable native WASM exceptions (`0` or `1`)              | `0`               |
-| `OCJS_SIMD`           | Enable baseline SIMD (`-msimd128`, `0` or `1`)          | `0`               |
-| `OCJS_RELAXED_SIMD`   | Enable Relaxed SIMD opcodes (requires `OCJS_SIMD=1`; default off — Safari does not yet implement Relaxed SIMD) | `0`               |
-| `THREADING`           | Threading mode (`single-threaded` or `multi-threaded`)  | `single-threaded` |
-| `OCJS_DEFINES`        | Comma-separated C preprocessor defines                  | _(empty)_         |
-| `OCJS_UNDEFINES`      | Comma-separated C preprocessor undefines                | _(empty)_         |
-| `OCJS_WASM_OPT_LEVEL` | wasm-opt optimization level                             | `-O3`             |
-| `OCJS_CLOSURE`        | Run Closure Compiler (`true` or `false`)                | `false`           |
-| `OCJS_EVAL_CTORS`     | Enable Emscripten eval ctors (`true` or `false`)        | `false`           |
-| `OCJS_CONVERGE`       | Use `--converge` in wasm-opt (`true` or `false`)        | `false`           |
-| `OCJS_PATCH_DUMP`     | Patch OCCT Standard_Dump.hxx (`true` or `false`)        | `false`           |
+The **bare default** is what `build-wasm.sh` falls back to with no `--config` and no env var set. The **`default` config** column reflects what `configurations.json`'s `default` entry sets — and what every named config (`O3-wasm-exc-simd`, `O3-noLTO-simd`, `Os-noLTO-simd`) sets for these same flags.
+
+| Key                   | Description                                             | Bare default      | `default` config |
+| --------------------- | ------------------------------------------------------- | ----------------- | ---------------- |
+| `OCJS_OPT`            | Compile optimization level (`-O0`, `-O2`, `-O3`, `-Os`) | `-O2`             | `-O3`            |
+| `OCJS_LTO`            | Enable LTO at compile time (`0` or `1`)                 | `0`               | `0`              |
+| `OCJS_EXCEPTIONS`     | Enable native WASM exceptions (`0` or `1`)              | `0`               | `0` (`1` in `O3-wasm-exc-simd`) |
+| `OCJS_SIMD`           | Enable baseline SIMD (`-msimd128`, `0` or `1`)          | `0`               | `1`              |
+| `OCJS_RELAXED_SIMD`   | Enable Relaxed SIMD opcodes (requires `OCJS_SIMD=1`; Safari 26.x does not yet implement Relaxed SIMD) | `0`               | `0` |
+| `OCJS_BIGINT`         | Enable `-sWASM_BIGINT` for native i64↔BigInt           | `0`               | `1`              |
+| `THREADING`           | Threading mode (`single-threaded` or `multi-threaded`)  | `single-threaded` | `single-threaded` |
+| `OCJS_DEFINES`        | Comma-separated C preprocessor defines                  | _(empty)_         | `OCCT_NO_DUMP`   |
+| `OCJS_UNDEFINES`      | Comma-separated C preprocessor undefines                | _(empty)_         | `OCC_CONVERT_SIGNALS` |
+| `OCJS_WASM_OPT_LEVEL` | wasm-opt optimization level                             | `-O3`             | `-O4`            |
+| `OCJS_CLOSURE`        | Run Closure Compiler (`true` or `false`)                | `false`           | `true`           |
+| `OCJS_EVAL_CTORS`     | Enable Emscripten eval ctors (`true` or `false`)        | `false`           | `true`           |
+| `OCJS_EVAL_CTORS_LEVEL` | `-sEVAL_CTORS=N` level when `OCJS_EVAL_CTORS=true`    | `2`               | `2`              |
+| `OCJS_CONVERGE`       | Use `--converge` in wasm-opt (`true` or `false`)        | `false`           | `true`           |
+| `OCJS_PATCH_DUMP`     | Patch OCCT Standard_Dump.hxx (`true` or `false`)        | `false`           | `true`           |
+| `OCJS_EXTRA_CFLAGS`   | Extra compile flags appended to C/CXX                   | _(empty)_         | _(empty)_        |
 
 ### Adding a new configuration
 
@@ -61,15 +66,18 @@ Add an entry to `build-configs/configurations.json`:
     "OCJS_OPT": "-O3",
     "OCJS_LTO": "1",
     "OCJS_EXCEPTIONS": "0",
+    "OCJS_SIMD": "1",
+    "OCJS_BIGINT": "1",
     "THREADING": "single-threaded",
     "OCJS_WASM_OPT_LEVEL": "-O4",
     "OCJS_CLOSURE": "true",
+    "OCJS_EVAL_CTORS": "true",
     "OCJS_CONVERGE": "true"
   }
 }
 ```
 
-Unspecified keys fall back to the defaults in `build-wasm.sh`.
+Unspecified keys fall back to the bare defaults in `build-wasm.sh` (see the table above).
 
 ## Consumer YAML Format
 
@@ -148,25 +156,25 @@ NX_VERBOSE_LOGGING=true npx nx run ocjs:pch  # Verbose logging
 ### Full build with a named configuration
 
 ```bash
-./build-wasm.sh --config O3-maxperf full path/to/consumer.yml
+./build-wasm.sh --config default full path/to/consumer.yml
 ```
 
 ### Link only (reuses compile cache)
 
 ```bash
-./build-wasm.sh --config O3-maxperf link path/to/consumer.yml
+./build-wasm.sh --config default link path/to/consumer.yml
 ```
 
 ### Override a single flag from the config
 
 ```bash
-OCJS_WASM_OPT_LEVEL=-O4 ./build-wasm.sh --config O3-maxperf full consumer.yml
+OCJS_WASM_OPT_LEVEL=-O4 ./build-wasm.sh --config default full consumer.yml
 ```
 
 ### Using Nx directly
 
 ```bash
-OCJS_CONFIG=O3-maxperf OCJS_YAML=path/to/consumer.yml npx nx run ocjs:build
+OCJS_CONFIG=default OCJS_YAML=path/to/consumer.yml npx nx run ocjs:build
 ```
 
 ### Running individual targets
@@ -176,7 +184,7 @@ OCJS_CONFIG=default npx nx run ocjs:pch
 OCJS_CONFIG=default npx nx run ocjs:generate
 OCJS_CONFIG=default npx nx run ocjs:compile-bindings
 OCJS_CONFIG=default npx nx run ocjs:compile-sources
-OCJS_CONFIG=O3-maxperf OCJS_YAML=consumer.yml npx nx run ocjs:link
+OCJS_CONFIG=default OCJS_YAML=consumer.yml npx nx run ocjs:link
 ```
 
 ## Consumer Workflows
@@ -195,7 +203,7 @@ docker run -e OCJS_CONFIG=default \
 ```bash
 cd repos/opencascade.js
 ./scripts/setup-deps.sh
-./build-wasm.sh --config O3-maxperf full path/to/consumer.yml
+./build-wasm.sh --config default full path/to/consumer.yml
 ```
 
 ## Self-Contained Dependencies
@@ -213,7 +221,7 @@ The script is idempotent and validates pinned commits when `OCJS_STRICT_DEPS=1`.
 
 | Old                                  | New                                                       |
 | ------------------------------------ | --------------------------------------------------------- |
-| `--preset O3-maxperf`                | `--config O3-maxperf`                                     |
+| `--preset O3-maxperf`                | `--config default` (or any entry in `configurations.json`) |
 | `build-configs/presets/*.yml`        | `build-configs/configurations.json`                       |
 | `scripts/experiments/*.yml`          | Entries in `configurations.json` + separate consumer YAML |
 | `build-cache.py compute-key`         | Nx content-hash based caching                             |
