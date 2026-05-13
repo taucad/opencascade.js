@@ -508,6 +508,41 @@ class Bindings:
     """
     return arg.spelling if arg.spelling else f"argNo{index}"
 
+  def _effectiveAllArgNames(self, theClass, method, allArgs):
+    """Per-arg JS-visible name list for the full argument tuple.
+
+    When this method overrides a base method with identical arity and
+    positionally-compatible types, mirror the BASE class's argument names
+    so the derived signature's input parameter names line up with the
+    envelope field names already aligned by `_effectiveOutputNames`.
+
+    Eliminates the input/field naming drift the user flagged. Without this,
+    `CSLib_NormalPolyDef.Derivative(theX, theD)` emits an envelope field
+    `D` (base-mirrored) but keeps the input arg `theD` (derived spelling),
+    confusing the reader who expects the input and the envelope field
+    representing its updated value to share one name end-to-end. With
+    this in place the override emits `Derivative(X, D): { …; D: number }`
+    matching the base verbatim.
+
+    Returns a list of length `len(allArgs)`. Falls back to derived names
+    when no override exists, when arity differs, or when any positional
+    canonical type disagrees (so an override that legitimately repurposes
+    an argument is never silently retitled).
+    """
+    derived_names = [self._effectiveArgName(a, i) for i, a in enumerate(allArgs)]
+    if theClass is None or method is None:
+      return derived_names
+    base_override = self._find_base_override_target(theClass, method)
+    if base_override is None:
+      return derived_names
+    base_args = list(base_override.get_arguments())
+    if len(base_args) != len(allArgs):
+      return derived_names
+    for derived_a, base_a in zip(allArgs, base_args):
+      if derived_a.type.get_canonical().spelling != base_a.type.get_canonical().spelling:
+        return derived_names
+    return [self._effectiveArgName(base_a, i) for i, base_a in enumerate(base_args)]
+
   def _find_base_override_target(self, theClass, method):
     """Walk the inheritance chain to find the most precisely matching
     same-name method on a base class.
@@ -3098,7 +3133,7 @@ class TypescriptBindings(Bindings):
         return self._escape_jsdoc(self._normalize_link_tokens(param.get("description", "")))
     return ""
 
-  def _jsdoc(self, class_name, member_name=None, indent_str="", param_count=None, overload_index=0, template_name=None, param_names=None, mutated_class_param_names=None, envelope_descriptor=None):
+  def _jsdoc(self, class_name, member_name=None, indent_str="", param_count=None, overload_index=0, template_name=None, param_names=None, mutated_class_param_names=None, envelope_descriptor=None, param_name_map=None):
     """Emit a JSDoc block from Doxygen-derived brief, detailed text, `@param`,
     `@returns`, and simplesect tags only.
 
@@ -3159,12 +3194,17 @@ class TypescriptBindings(Bindings):
       self._emit_jsdoc_text(lines, indent_str, detailed)
     mutated_seq = mutated_class_param_names or ()
     mutated_set = set(mutated_seq)
+    name_map = param_name_map or {}
     emitted_param_names = set()
     suffix = TypescriptBindings.MUTATED_CLASS_PARAM_SUFFIX
     for param in member.get("params", []):
-      if param_names is not None and param["name"] not in param_names:
+      # Map Doxygen's parameter name (the derived class's own spelling, e.g.
+      # `theD`) to the JS-visible name (e.g. base-mirrored `D`) so the
+      # `@param` line agrees with the TS signature emission.
+      doxygen_name = param["name"]
+      pname = name_map.get(doxygen_name, doxygen_name)
+      if param_names is not None and pname not in param_names:
         continue
-      pname = param["name"]
       desc = self._escape_jsdoc(self._normalize_link_tokens(param.get("description", "")))
       if pname in mutated_set:
         desc = (desc + " " + suffix).strip() if desc else suffix
@@ -4237,6 +4277,16 @@ class TypescriptBindings(Bindings):
     typeName = self.resolve_type(arg.type, templateDecl, templateArgs)
     return self._argname(arg, suffix) + ": " + typeName
 
+  def getTypescriptDefFromArgWithName(self, arg, name, templateDecl = None, templateArgs = None):
+    """Like `getTypescriptDefFromArg` but emits the caller-supplied `name`
+    instead of `arg.spelling`. Used by overrides that mirror the base's
+    parameter names so input args line up with envelope fields (see
+    `_effectiveAllArgNames`).
+    """
+    typeName = self.resolve_type(arg.type, templateDecl, templateArgs)
+    safe_name = name + "_" if name in TypescriptBindings._TS_RESERVED_WORDS else name
+    return safe_name + ": " + typeName
+
   def _render_synthesized_base_signature(self, method, className, tplName):
     """Render a TS overload signature for a base-class method synthesized into
     a derived class to satisfy the structural override contract.
@@ -4404,11 +4454,16 @@ class TypescriptBindings(Bindings):
         return True
     return self._returnIsEmbindManaged(method)
 
-  def _mutatedClassParamNames(self, method, allArgs):
+  def _mutatedClassParamNames(self, method, allArgs, effective_names=None):
     """Names of the JS-visible class output params that this method mutates in
     place (R1), preserving argument order. Used by `_jsdoc` to append the
     "Mutated in place..." suffix to each param's description and to synthesize
     a `@param` when upstream Doxygen omits it.
+
+    When `effective_names` is supplied (a list aligned with `allArgs`), the
+    returned names use the base-mirrored JS spelling so the set agrees with
+    the TS signature's input args and the JSDoc `@param` lines. Otherwise
+    falls back to the derived class's own spellings via `_argname`.
 
     Returns a tuple (insertion-stable) so JSDoc emission is deterministic
     across runs — iterating a `set` mixes hash order across builds and
@@ -4418,7 +4473,7 @@ class TypescriptBindings(Bindings):
     seen = set()
     for i, arg in enumerate(allArgs):
       if isClassOutputParam(arg.type) and not shouldStripParam(arg.type, method):
-        name = self._argname(arg, i)
+        name = effective_names[i] if effective_names is not None else self._argname(arg, i)
         if name not in seen:
           names.append(name)
           seen.add(name)
@@ -4603,7 +4658,7 @@ class TypescriptBindings(Bindings):
 
     return "{ " + "; ".join(fields) + " }"
 
-  def _buildKeptArgs(self, method, allArgs, templateDecl, templateArgs):
+  def _buildKeptArgs(self, method, allArgs, templateDecl, templateArgs, effective_names=None):
     """Build the TS arg list under Input-Passthrough RBV with Approach G
     Handle elision.
 
@@ -4616,13 +4671,24 @@ class TypescriptBindings(Bindings):
     elision; `_emitOutputParamBinding` declares the matching stack-local null
     Handle inside the optional_override lambda body.
 
+    When `effective_names` is supplied (a list aligned with `allArgs`), each
+    kept arg is emitted with that name instead of `arg.spelling`. This is
+    the base-override mirroring path — see `_effectiveAllArgNames` for the
+    rule and rationale (eliminates input-name vs envelope-field-name drift
+    on virtual overrides where the base and derived use different spellings).
+
     See `docs/research/ocjs-rbv-handle-output-param-elision.md` for the
     decision record (Approach G); supersedes the earlier Option C from
     `docs/research/ocjs-rbv-blueprint-p0-p1-stocktake.md` §F3.
     """
-    keptArgs = [self.getTypescriptDefFromArg(arg, i, templateDecl, templateArgs)
-                for i, arg in enumerate(allArgs)
-                if not shouldStripParam(arg.type, method)]
+    if effective_names is not None:
+      keptArgs = [self.getTypescriptDefFromArgWithName(arg, effective_names[i], templateDecl, templateArgs)
+                  for i, arg in enumerate(allArgs)
+                  if not shouldStripParam(arg.type, method)]
+    else:
+      keptArgs = [self.getTypescriptDefFromArg(arg, i, templateDecl, templateArgs)
+                  for i, arg in enumerate(allArgs)
+                  if not shouldStripParam(arg.type, method)]
     return ", ".join(keptArgs)
 
   def processMethodOrProperty(self, theClass, method, templateDecl = None, templateArgs = None, overload_index = 0, override_postfix = None):
@@ -4633,22 +4699,27 @@ class TypescriptBindings(Bindings):
         overloadPostfix = override_postfix
 
       allArgs = list(method.get_arguments())
+      effective_names = self._effectiveAllArgNames(theClass, method, allArgs)
       outputReturnType = self._buildOutputParamReturnType(method, allArgs, templateDecl, templateArgs, theClass=theClass)
 
       if outputReturnType is not None:
-        args = self._buildKeptArgs(method, allArgs, templateDecl, templateArgs)
+        args = self._buildKeptArgs(method, allArgs, templateDecl, templateArgs, effective_names=effective_names)
         returnType = outputReturnType
       else:
-        args = ", ".join(list(map(lambda x: self.getTypescriptDefFromArg(x[1], x[0], templateDecl, templateArgs), enumerate(allArgs))))
+        args = ", ".join(self.getTypescriptDefFromArgWithName(arg, effective_names[i], templateDecl, templateArgs)
+                          for i, arg in enumerate(allArgs))
         returnType = self.getTypescriptDefFromResultType(method.result_type, templateDecl, templateArgs)
 
       className = getClassTypeName(theClass, templateDecl)
       tplName = theClass.spelling if templateDecl is not None else None
-      kept_names = [self._argname(arg, i) for i, arg in enumerate(allArgs)
+      kept_names = [effective_names[i] for i, arg in enumerate(allArgs)
                     if not shouldStripParam(arg.type, method)]
-      mutated_names = self._mutatedClassParamNames(method, allArgs)
+      mutated_names = self._mutatedClassParamNames(method, allArgs, effective_names=effective_names)
       envelope = self._describeEnvelope(method, allArgs, templateDecl, templateArgs, theClass=theClass)
-      output += self._jsdoc(className, method.spelling, "  ", param_count=len(allArgs), overload_index=overload_index, template_name=tplName, param_names=kept_names, mutated_class_param_names=mutated_names, envelope_descriptor=envelope)
+      param_name_map = {self._argname(a, i): effective_names[i]
+                        for i, a in enumerate(allArgs)
+                        if self._argname(a, i) != effective_names[i]}
+      output += self._jsdoc(className, method.spelling, "  ", param_count=len(allArgs), overload_index=overload_index, template_name=tplName, param_names=kept_names, mutated_class_param_names=mutated_names, envelope_descriptor=envelope, param_name_map=param_name_map or None)
       output += "  " + ("static " if method.is_static_method() else "") + method.spelling + overloadPostfix + "(" + args + "): " + returnType + ";\n"
     if method.access_specifier == clang.cindex.AccessSpecifier.PUBLIC and method.kind == clang.cindex.CursorKind.FIELD_DECL:
       if method.type.kind == clang.cindex.TypeKind.CONSTANTARRAY:
@@ -4747,31 +4818,40 @@ class TypescriptBindings(Bindings):
     def _ts_args_and_return(m):
       """Get TS args string and return type, accounting for output params."""
       allArgs = list(m.get_arguments())
+      effective_names = self._effectiveAllArgNames(theClass, m, allArgs)
       outputReturnType = self._buildOutputParamReturnType(m, allArgs, templateDecl, templateArgs, theClass=theClass)
       if outputReturnType is not None:
-        args = self._buildKeptArgs(m, allArgs, templateDecl, templateArgs)
+        args = self._buildKeptArgs(m, allArgs, templateDecl, templateArgs, effective_names=effective_names)
         returnType = outputReturnType
       else:
-        args = ", ".join(list(map(lambda x: self.getTypescriptDefFromArg(x[1], x[0], templateDecl, templateArgs), enumerate(allArgs))))
+        args = ", ".join(self.getTypescriptDefFromArgWithName(arg, effective_names[i], templateDecl, templateArgs)
+                          for i, arg in enumerate(allArgs))
         returnType = self.getTypescriptDefFromResultType(m.result_type, templateDecl, templateArgs)
       return args, returnType
 
     def _kept_names(m):
       """Compute TS param names for a method, excluding stripped output params."""
       allArgs = list(m.get_arguments())
-      return [self._argname(arg, i) for i, arg in enumerate(allArgs)
+      effective_names = self._effectiveAllArgNames(theClass, m, allArgs)
+      return [effective_names[i] for i, arg in enumerate(allArgs)
               if not shouldStripParam(arg.type, m)]
 
     def _jsdoc_kwargs(m):
-      """Compute the mutated-class-param set and envelope descriptor for `m`
-      so every same-arity-group `_jsdoc` call shares a single source of truth
-      (kept in lockstep with `_buildOutputParamReturnType` via
-      `_describeEnvelope`).
+      """Compute the mutated-class-param set, envelope descriptor, and the
+      Doxygen→JS-name map for `m` so every same-arity-group `_jsdoc` call
+      shares a single source of truth (kept in lockstep with
+      `_buildOutputParamReturnType` via `_describeEnvelope` and with the
+      TS signature via `_effectiveAllArgNames`).
       """
       allArgs = list(m.get_arguments())
+      effective_names = self._effectiveAllArgNames(theClass, m, allArgs)
+      param_name_map = {self._argname(a, i): effective_names[i]
+                        for i, a in enumerate(allArgs)
+                        if self._argname(a, i) != effective_names[i]}
       return {
-        "mutated_class_param_names": self._mutatedClassParamNames(m, allArgs),
+        "mutated_class_param_names": self._mutatedClassParamNames(m, allArgs, effective_names=effective_names),
         "envelope_descriptor": self._describeEnvelope(m, allArgs, templateDecl, templateArgs, theClass=theClass),
+        "param_name_map": param_name_map or None,
       }
 
     arity_idx_map = {}
