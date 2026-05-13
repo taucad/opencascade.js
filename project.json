@@ -143,7 +143,7 @@
       "cache": false,
       "dependsOn": ["link"],
       "options": {
-        "command": "python3 scripts/validate-build.py \"${OCJS_YAML}\" dist/ --build-dir build",
+        "command": ".venv/bin/python scripts/validate-build.py \"${OCJS_YAML}\" dist/ --build-dir build",
         "cwd": "{projectRoot}"
       }
     },

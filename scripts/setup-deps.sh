@@ -73,9 +73,63 @@ fi
 echo "Activating emsdk $EMSDK_VERSION..."
 "$EMSDK_DIR/emsdk" activate "$EMSDK_VERSION"
 
+# Project-local Python virtualenv: pinned to 3.14, populated from requirements.txt.
+# Provides a reproducible interpreter across macOS / Linux / Docker / CI without
+# coupling to the operator's system python3 or emsdk's bundled CPython.
+VENV_DIR="$REPO_ROOT/.venv"
+REQUIRED_PYTHON_MINOR="3.14"
+
+if [ ! -x "$VENV_DIR/bin/python" ]; then
+  if command -v uv >/dev/null 2>&1; then
+    echo "Creating project-local venv at $VENV_DIR (Python $REQUIRED_PYTHON_MINOR via uv)..."
+    uv venv --python "${REQUIRED_PYTHON_MINOR}" "$VENV_DIR"
+  else
+    BOOTSTRAP_PY="$(command -v "python${REQUIRED_PYTHON_MINOR}" || true)"
+    if [ -z "$BOOTSTRAP_PY" ]; then
+      cat >&2 <<EOF
+ERROR: python${REQUIRED_PYTHON_MINOR} not found on PATH and 'uv' is not installed.
+
+The opencascade.js build pins its Python toolchain to ${REQUIRED_PYTHON_MINOR}.
+Install one of:
+
+  Any OS (uv — recommended):  https://docs.astral.sh/uv/getting-started/installation/
+                              uv python install ${REQUIRED_PYTHON_MINOR}
+  macOS (Homebrew):           brew install python@${REQUIRED_PYTHON_MINOR}
+  Any OS (pyenv):             pyenv install ${REQUIRED_PYTHON_MINOR}
+
+Then re-run scripts/setup-deps.sh.
+EOF
+      exit 1
+    fi
+    echo "Creating project-local venv at $VENV_DIR (Python $REQUIRED_PYTHON_MINOR)..."
+    if ! "$BOOTSTRAP_PY" -m venv "$VENV_DIR"; then
+      cat >&2 <<EOF
+ERROR: python -m venv failed (common on macOS when ensurepip/pyexpat is broken).
+
+Install uv and re-run setup-deps (uv downloads a portable CPython wheel):
+
+  curl -LsSf https://astral.sh/uv/install.sh | sh
+  uv python install ${REQUIRED_PYTHON_MINOR}
+
+Or use pyenv-installed Python 3.14 instead of Homebrew python@3.14.
+EOF
+      exit 1
+    fi
+  fi
+fi
+
+echo "Installing Python build requirements (libclang, cerberus, pyyaml)..."
+if command -v uv >/dev/null 2>&1; then
+  uv pip install --python "$VENV_DIR/bin/python" --upgrade pip setuptools wheel
+  uv pip install --python "$VENV_DIR/bin/python" -r "$REPO_ROOT/requirements.txt"
+else
+  "$VENV_DIR/bin/python" -m pip install --quiet --upgrade pip setuptools wheel
+  "$VENV_DIR/bin/python" -m pip install --quiet -r "$REPO_ROOT/requirements.txt"
+fi
+
 if [ "${OCJS_STRICT_DEPS:-0}" = "1" ]; then
   echo "Validating dependency commits..."
-  python3 -c "
+  "$VENV_DIR/bin/python" -c "
 import json, subprocess, os, sys
 deps = json.load(open('$DEPS_FILE'))['dependencies']
 checks = [

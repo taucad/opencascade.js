@@ -18,6 +18,10 @@ build-configs/provenance.json
 
 # Nx
 .nx/
+/nx-build-*.log
+
+# Project-local Python (scripts/setup-deps.sh)
+/.venv/
 
 # Self-contained dependencies (Phase 2)
 /deps/

@@ -168,6 +168,39 @@ def _replace_undeclared_with_unknown(source: str, declared_names: set, ancestor_
   return ''.join(out_parts)
 
 
+# Forward-declaration + inline-namespace preamble injected into BOTH the
+# additionalBindCode TU AND every generated binding TU (via embindPreamble in
+# generateBindings.py). The EM_JS *definition* lives only in the
+# additionalBindCode TU (a regular C function — one definition only) so the
+# linker resolves the symbol once; the per-binding TUs see the namespace
+# helpers and an extern "C" forward decl. Without this in the binding
+# preamble, every binding that references `::ocjs::getRbvDispose()` fails to
+# compile with "no member named 'ocjs' in the global namespace" and the
+# linker dead-code-eliminates the EM_JS symbol from the final JS glue.
+OCJS_RBV_PREAMBLE = r"""
+#include <emscripten/val.h>
+
+extern "C" void ocjs_register_rbv_dispose();
+
+namespace ocjs {
+  // Magic-static + cached val: registration runs exactly once per TU on first
+  // call, after the emscripten runtime is up. Subsequent calls return the
+  // cached val handle directly — no JS<->WASM crossings per RBV call.
+  // `ocjs_register_rbv_dispose` is idempotent (assigns to Module), so multiple
+  // TU-local registrations are safe.
+  inline ::emscripten::val getRbvDispose() {
+    static const auto _init = []() { ocjs_register_rbv_dispose(); return 0; }();
+    (void)_init;
+    static ::emscripten::val cached = ::emscripten::val::module_property("__ocjsRbvDispose__");
+    return cached;
+  }
+  inline ::emscripten::val getSymbolDispose() {
+    static ::emscripten::val cached = ::emscripten::val::global("Symbol")["dispose"];
+    return cached;
+  }
+}
+"""
+
 BUILTIN_ADDITIONAL_BIND_CODE = r"""
 #include <TopoDS.hxx>
 #include <TopoDS_Vertex.hxx>
@@ -180,6 +213,39 @@ BUILTIN_ADDITIONAL_BIND_CODE = r"""
 #include <TopoDS_Compound.hxx>
 #include <TColStd_IndexedDataMapOfStringString.hxx>
 #include <Standard_Failure.hxx>
+#include <emscripten/em_js.h>
+""" + OCJS_RBV_PREAMBLE + r"""
+
+// Shared disposer for val::object() RBV containers. Authored via EM_JS so the
+// JS body is emitted at link time (CSP-strict / -sDYNAMIC_EXECUTION=0 compatible).
+// The disposer is UNBOUND — `using` invokes it as a method call so `this` is
+// naturally the container, sidestepping the V8 13.6 Function.prototype.bind
+// `using` rejection. See docs/research/ocjs-unified-rbv-blueprint.md Appendix 5.
+//
+// Idempotency and alias-safety: Embind retains the `.delete` method on the
+// prototype after the underlying instance is destroyed, so a naïve
+// `typeof v.delete === 'function'` guard does NOT prevent a second call from
+// throwing `BindingError: <T> instance already deleted`. Two cases hit this
+// in practice: (a) a caller invokes `result[Symbol.dispose]()` manually and
+// then `using` re-disposes at scope exit; (b) Input-Passthrough RBV legitimately
+// produces aliased handles across sibling containers that disposed earlier.
+// We make the disposer truly one-shot by (1) swallowing a redundant `.delete()`
+// throw and (2) clearing the slot via `this[k] = undefined` so subsequent
+// iterations find nothing to delete.
+EM_JS(void, ocjs_register_rbv_dispose, (), {
+  Module["__ocjsRbvDispose__"] = function () {
+    for (const k in this) {
+      if (Object.prototype.hasOwnProperty.call(this, k)) {
+        const v = this[k];
+        if (v && typeof v.delete === 'function') {
+          try { v.delete(); } catch {}
+          this[k] = undefined;
+        }
+      }
+    }
+  };
+});
+
 struct TopoDS_Bind_ {};
 class OCJS {
 public:
@@ -643,23 +709,6 @@ def main():
       )
 
     if uses_native_wasm_eh and exports_eh_helpers:
-      # Ambient declarations for the native-WASM-exception types. lib.dom.d.ts
-      # only ships these in modern releases; declaring them locally keeps the
-      # .d.ts portable across TS/lib versions and resolves TS2694 for
-      # WebAssembly.Exception / WebAssembly.Tag references below.
-      typescriptDefinitionOutput += \
-        "declare global {\n" + \
-        "  namespace WebAssembly {\n" + \
-        "    interface Exception {\n" + \
-        "      is(tag: Tag): boolean;\n" + \
-        "      getArg(tag: Tag, index: number): unknown;\n" + \
-        "      readonly stack?: string;\n" + \
-        "    }\n" + \
-        "    class Tag {\n" + \
-        "      constructor(type: { parameters: ReadonlyArray<string> });\n" + \
-        "    }\n" + \
-        "  }\n" + \
-        "}\n\n"
       typescriptDefinitionOutput += \
         "/**\n" + \
         " * Extract the exception type and message from a caught `WebAssembly.Exception`.\n" + \

@@ -1,6 +1,6 @@
 {
   "name": "@taucad/opencascade.js",
-  "version": "3.0.0-beta.1",
+  "version": "3.0.0-beta.d3056ef",
   "description": "Port of the OpenCascade CAD library to JavaScript and WebAssembly via Emscripten.",
   "main": "dist/opencascade_full.js",
   "author": "Sebastian Alff <donalffons@gmail.com>",
@@ -25,15 +25,21 @@
   },
   "type": "module",
   "scripts": {
+    "test": "vitest run tests/smoke/",
     "test:smoke": "vitest run tests/smoke/",
-    "typecheck": "tsc --project tests/tsconfig.json"
+    "typecheck": "tsc --project tests/tsconfig.json",
+    "lint": "eslint --config eslint.config.mjs tests",
+    "lint:fix": "eslint --config eslint.config.mjs --fix tests"
   },
   "dependencies": {
     "@gltf-transform/core": "^4.3.0",
     "@gltf-transform/functions": "^4.3.0"
   },
   "devDependencies": {
-    "nx": "22.5.2"
+    "@types/node": "~24.0.15",
+    "eslint": "^9.32.0",
+    "nx": "22.5.2",
+    "typescript-eslint": "^8.56.1"
   },
   "nx": {}
 }

@@ -1,0 +1,74 @@
+{
+  "schema": "wasm-build-provenance-v1",
+  "buildId": "20260512T161120-O3-noLTO-single",
+  "timestamp": "2026-05-12T16:11:20.988600+00:00",
+  "toolchain": {
+    "emscripten": "5.0.1",
+    "llvm": "17",
+    "wasmOpt": "(version_123-685-g18ba06162)",
+    "python": "3.14.4"
+  },
+  "source": {
+    "occtCommit": "d3056ef80c9668f395da40f5fd7be186cae4501f",
+    "opencascadejsCommit": "3c5e4e008aeb8997b3fd12b0fe15a9fa96126d56",
+    "filterPackagesHash": "8b12ca608181",
+    "pinnedDeps": {
+      "occt": {
+        "commit": "d3056ef80c9668f395da40f5fd7be186cae4501f",
+        "version": "V8_0_0"
+      },
+      "rapidjson": {
+        "commit": "24b5e7a8b27f42fa16b96fc70aade9106cf7102f",
+        "version": "post-1.1.0 (master)"
+      },
+      "freetype": {
+        "commit": "de8b92dd7ec634e9e2b25ef534c54a3537555c11",
+        "version": "VER-2-13-0"
+      },
+      "emscripten": {
+        "docker_digest": "sha256:c89732ef63a56de5a96395c5a8c1c7904f7420131a045406e6fedc4cbe1cc198",
+        "emsdk_version": "5.0.1"
+      },
+      "doxygen": {
+        "version": "1.16.1",
+        "commit": "669aeeefca743c148e2d935b3d3c69535c7491e6"
+      }
+    }
+  },
+  "compilation": {
+    "cacheKey": "O3-noLTO-noExc-single-8b12ca60-d3056e",
+    "cacheHit": false,
+    "optimization": "-O3",
+    "lto": false,
+    "exceptions": "none",
+    "threading": "single-threaded",
+    "wasmOptLevel": "-O4",
+    "emccCompileFlags": [
+      "-O3",
+      "-sDISABLE_EXCEPTION_CATCHING=1"
+    ],
+    "sourceFiles": 0,
+    "bindingFiles": 0,
+    "compileDuration_s": 0
+  },
+  "linking": {},
+  "postProcessing": {},
+  "output": {
+    "opencascade_full.wasm": {
+      "size": 35471787,
+      "sha256": "d00df5a20e829aee"
+    },
+    "opencascade_full.js": {
+      "size": 165972
+    },
+    "opencascade_full.d.ts": {
+      "size": 11082499,
+      "lines": 225826
+    }
+  },
+  "sections": {},
+  "filtering": {
+    "excludedPackages": []
+  },
+  "totalDuration_s": 1
+}

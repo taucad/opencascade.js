@@ -106,9 +106,270 @@ unbindablePointerTypes = [
 def isCString(type):
   return type.get_canonical().spelling in cStringTypes
 
+def _isDefaultConstructibleClass(pointee):
+  """True iff the pointee is a non-abstract class/struct/class-template type
+  with an accessible default constructor (explicit zero-arg ctor OR implicit
+  default ctor when no ctors are declared). Drives class-typed
+  input-passthrough RBV.
+
+  Abstract classes are excluded — embind binds class-typed lambda parameters
+  by value, which requires an instantiable type. OCCT exposes many abstract
+  function objects (e.g. math_Function, math_MultipleVarFunctionWithGradient)
+  as non-const-ref parameters; those stay on the standard embind reference
+  path rather than the input-passthrough RBV transform.
+
+  Defensive fallback: when the AST declaration cannot be resolved, returns
+  False so the legacy embind proxy-mutation path stays in effect.
+  """
+  decl = pointee.get_declaration()
+  if decl is None:
+    return False
+  if decl.kind not in (
+    clang.cindex.CursorKind.CLASS_DECL,
+    clang.cindex.CursorKind.STRUCT_DECL,
+    clang.cindex.CursorKind.CLASS_TEMPLATE,
+  ):
+    return False
+  if decl.is_abstract_record():
+    return False
+
+  # The class must be value-parameter-safe — embind binds class-typed lambda
+  # parameters by value, so an accessible non-deleted copy constructor is
+  # required in addition to a default ctor. Many OCCT classes (e.g.
+  # BRepGProp_Domain) are *implicitly* non-copyable because they hold a
+  # non-copyable member (e.g. NCollection_LocalArray inside TopExp_Explorer)
+  # without declaring a copy ctor themselves. libclang in this build does not
+  # expose is_copy_constructible, so we approximate by recursively walking
+  # fields/bases.
+  if not _isCopyConstructibleClass(decl):
+    return False
+
+  public_ctors = [
+    c for c in decl.get_children()
+    if c.kind == clang.cindex.CursorKind.CONSTRUCTOR
+    and c.access_specifier == clang.cindex.AccessSpecifier.PUBLIC
+  ]
+  if not public_ctors:
+    return True
+  return any(
+    len(list(c.get_arguments())) == 0 and not c.is_deleted_method()
+    for c in public_ctors
+  )
+
+
+def _ctor_is_copy(ctor, decl):
+  """True iff `ctor` is a copy constructor for `decl` — a single argument
+  whose pointee declaration is `decl` itself. Works for both concrete
+  classes and class templates (where the canonical type spelling carries
+  template parameters that don't match the unparameterised decl spelling).
+  """
+  args = list(ctor.get_arguments())
+  if len(args) != 1:
+    return False
+  arg_type = args[0].type
+  if arg_type.kind != clang.cindex.TypeKind.LVALUEREFERENCE:
+    return False
+  pointee = arg_type.get_pointee()
+  pointee_decl = pointee.get_declaration()
+  if pointee_decl is not None:
+    # Cursor equality in libclang's Python binding compares the underlying
+    # CXCursor structs which include hashable USR identity; both `==` and
+    # USR comparison are reliable. For templates, the injected class name
+    # inside the class body refers back to the same CLASS_TEMPLATE cursor.
+    if pointee_decl == decl:
+      return True
+    if pointee_decl.get_usr() and decl.get_usr() and pointee_decl.get_usr() == decl.get_usr():
+      return True
+    # For class templates the injected-class-name reference may surface as
+    # a typedef/alias to the same template; compare unqualified spellings
+    # as a last resort.
+    if pointee_decl.spelling and decl.spelling and pointee_decl.spelling == decl.spelling:
+      return True
+  # Fall back to canonical spelling match (concrete classes).
+  pointee_canon = pointee.get_canonical()
+  return pointee_canon.spelling.replace("const ", "").strip() == decl.type.get_canonical().spelling
+
+
+# Cached on canonical class spelling so we don't re-walk the same class for
+# every call site. The cache is populated only after a definitive answer
+# (recursion-cycle short-circuit returns True conservatively but is NOT
+# cached so that a later non-cyclic call can record the real answer).
+_COPY_CTOR_CACHE = {}
+
+
+# Lazily built once per TU traversal pass. Maps unqualified class-template
+# name → CLASS_TEMPLATE cursor with a non-empty body. Populated on first
+# fallback lookup from `_resolve_record_decl` when an instantiation node has
+# no children (i.e. libclang's synthetic instantiation CLASS_DECL is empty).
+_CLASS_TEMPLATE_INDEX = {}
+
+
+def _findClassTemplateByName(synthetic_decl):
+  """Find the original CLASS_TEMPLATE definition for a synthetic
+  instantiation CLASS_DECL. Walks up to the TU root (via translation_unit)
+  and caches the result.
+  """
+  global _CLASS_TEMPLATE_INDEX
+  tu = getattr(synthetic_decl, "translation_unit", None)
+  if tu is None:
+    return None
+  if not _CLASS_TEMPLATE_INDEX:
+    def _walk(c):
+      if c.kind == clang.cindex.CursorKind.CLASS_TEMPLATE and c.spelling:
+        if list(c.get_children()):
+          existing = _CLASS_TEMPLATE_INDEX.get(c.spelling)
+          if existing is None:
+            _CLASS_TEMPLATE_INDEX[c.spelling] = c
+      for child in c.get_children():
+        _walk(child)
+    _walk(tu.cursor)
+  return _CLASS_TEMPLATE_INDEX.get(synthetic_decl.spelling)
+
+
+def _isCopyConstructibleClass(decl, _visiting=None):
+  """Conservative recursive copy-constructibility check.
+
+  - If the class explicitly declares any copy ctor, the union of those ctors
+    must contain an accessible non-deleted one.
+  - If there is no user-declared copy ctor, every non-static field's class
+    type and every base's class type must itself be copy-constructible
+    (recursive). Primitives, enums, pointers, and Handle<T> smart-pointers
+    are always copy-constructible. Reference members are not — a class with
+    a `T&` field has its implicit copy assignment deleted but copy ctor is
+    OK; treat them as fine.
+
+  Cycles (e.g. CRTP self-reference) short-circuit to True (conservative)
+  but the result is NOT cached for the cyclic node so a later non-cyclic
+  evaluation can record the real answer.
+  """
+  if _visiting is None:
+    _visiting = set()
+
+  decl_key = decl.type.get_canonical().spelling
+  if not decl_key:
+    decl_key = decl.spelling or "<anon>"
+  if decl_key in _COPY_CTOR_CACHE:
+    return _COPY_CTOR_CACHE[decl_key]
+  if decl_key in _visiting:
+    return True  # cycle: defer to outer caller
+  _visiting.add(decl_key)
+
+  try:
+    all_ctors = [
+      c for c in decl.get_children()
+      if c.kind == clang.cindex.CursorKind.CONSTRUCTOR
+    ]
+    copy_ctors = [c for c in all_ctors if _ctor_is_copy(c, decl)]
+    if copy_ctors:
+      ok_copy = any(
+        c.access_specifier == clang.cindex.AccessSpecifier.PUBLIC
+        and not c.is_deleted_method()
+        for c in copy_ctors
+      )
+      _COPY_CTOR_CACHE[decl_key] = ok_copy
+      return ok_copy
+
+    _record_decl_kinds = (
+      clang.cindex.CursorKind.CLASS_DECL,
+      clang.cindex.CursorKind.STRUCT_DECL,
+      clang.cindex.CursorKind.CLASS_TEMPLATE,
+      clang.cindex.CursorKind.CLASS_TEMPLATE_PARTIAL_SPECIALIZATION,
+    )
+
+    def _resolve_record_decl(t):
+      """Resolve a type to its underlying record declaration if any. libclang
+      sometimes hands back UNEXPOSED/ELABORATED for template instantiations
+      where TypeKind.RECORD would be expected, so we fall back to
+      get_declaration() and probe the cursor kind directly.
+
+      For template instantiations the AST node returned by get_declaration()
+      is a synthetic CLASS_DECL with NO child cursors — the template body
+      lives on the underlying CLASS_TEMPLATE. We follow the specialization
+      link so the recursive copy-ctor walk sees the real ctors / fields.
+      """
+      d = t.get_declaration()
+      if d is None:
+        return None
+      if d.kind in _record_decl_kinds:
+        # Template-instantiation CLASS_DECL nodes have no children; fall
+        # back to the underlying template's definition. Try the cursor's
+        # own definition link first, then probe the TU for a CLASS_TEMPLATE
+        # with the same unqualified name (libclang in this version does
+        # not expose clang_getSpecializedCursorTemplate on Cursor).
+        if not list(d.get_children()):
+          defn = d.get_definition()
+          if defn is not None and defn != d and list(defn.get_children()):
+            return defn
+          tmpl = _findClassTemplateByName(d)
+          if tmpl is not None:
+            return tmpl
+        return d
+      return None
+
+    for child in decl.get_children():
+      if child.kind == clang.cindex.CursorKind.CXX_BASE_SPECIFIER:
+        base_type = child.type.get_canonical()
+        base_decl = _resolve_record_decl(base_type)
+        if base_decl and not _isCopyConstructibleClass(base_decl, _visiting):
+          _COPY_CTOR_CACHE[decl_key] = False
+          return False
+      elif child.kind == clang.cindex.CursorKind.FIELD_DECL:
+        field_type = child.type.get_canonical()
+        spelling = field_type.spelling
+        # Handle<T> smart-pointer types are always copy-constructible
+        # (refcount bump). Detect by canonical spelling.
+        if spelling.startswith("opencascade::handle<") or \
+           spelling.startswith("Handle_"):
+          continue
+        field_decl = _resolve_record_decl(field_type)
+        if field_decl is None:
+          continue
+        if not _isCopyConstructibleClass(field_decl, _visiting):
+          _COPY_CTOR_CACHE[decl_key] = False
+          return False
+
+    _COPY_CTOR_CACHE[decl_key] = True
+    return True
+  finally:
+    _visiting.discard(decl_key)
+
+def isClassOutputParam(arg_type):
+  """Non-const lvalue reference to a default-constructible class/struct type
+  (excluding handles, which are detected separately)."""
+  if arg_type.kind != clang.cindex.TypeKind.LVALUEREFERENCE:
+    return False
+  pointee = arg_type.get_pointee()
+  if pointee.is_const_qualified():
+    return False
+  if pointee.kind == clang.cindex.TypeKind.POINTER:
+    return False
+  canonical = pointee.get_canonical()
+  if canonical.spelling in builtInTypes:
+    return False
+  if pointee.kind == clang.cindex.TypeKind.ENUM or canonical.kind == clang.cindex.TypeKind.ENUM:
+    return False
+  if _isHandleType(pointee):
+    return False
+  return _isDefaultConstructibleClass(pointee)
+
+# Names used for the C++ return value inside an RBV envelope. Renamed from the
+# legacy "result" to "returnValue" per R4 of docs/research/ocjs-rbv-return-shape-revisit.md
+# so the envelope field that carries the C++ return is not mistaken for the
+# whole result object. The collision fallback is used when an OCCT output
+# parameter is itself named `returnValue` — picking a trailing underscore keeps
+# the canonical name available for the C++ return.
+ENVELOPE_RETURN_FIELD = "returnValue"
+ENVELOPE_RETURN_FIELD_COLLISION = "returnValue_"
+
 def isOutputParam(arg_type):
-  """Non-const lvalue reference to primitive, enum, or handle = output parameter.
-  Excludes pointer references (char*&, etc.) which need C-string or val wrapping instead."""
+  """Non-const lvalue reference to primitive, enum, handle, or default-
+  constructible class = output parameter. Excludes pointer references
+  (char*&, etc.) which need C-string or val wrapping instead.
+
+  The class branch enables input-passthrough RBV for user-defined class types
+  (gp_Pnt, gp_Vec, Bnd_Box, ...). See docs/research/ocjs-unified-rbv-blueprint.md
+  Architecture Blueprint.
+  """
   if arg_type.kind != clang.cindex.TypeKind.LVALUEREFERENCE:
     return False
   pointee = arg_type.get_pointee()
@@ -122,6 +383,8 @@ def isOutputParam(arg_type):
   if pointee.kind == clang.cindex.TypeKind.ENUM or canonical.kind == clang.cindex.TypeKind.ENUM:
     return True
   if _isHandleType(pointee):
+    return True
+  if _isDefaultConstructibleClass(pointee):
     return True
   return False
 
@@ -165,15 +428,73 @@ def isRawPointerParam(arg_type):
 
 def shouldStripParam(arg_type, method):
   """Whether to remove the param from the JS-visible signature.
-  Handles are always stripped. Primitives are always stripped (output-only)."""
-  if isHandleOutputParam(arg_type):
-    return True
-  if isPrimitiveOutputParam(arg_type):
-    return True
-  return False
+
+  The R1-R6 minimal transformation (`docs/research/ocjs-rbv-return-shape-revisit.md`)
+  describes the full decision tree the codegen applies to each output param.
+  Strip-from-JS-signature is the right-most branch of that tree:
+
+    - Primitive/enum output (input-passthrough): stays as JS arg; value copies
+      in and an updated copy comes back via the envelope's named field.
+    - Class output (`gp_Pnt&`, `Bnd_Box&`, ...): stays as JS arg; the caller
+      supplies the instance and the C++ lambda mutates it in place via
+      `*<arg>.as<T*>(allow_raw_pointers())` (R1/R2 in the research doc).
+      It is NOT echoed in the envelope.
+    - Handle<T> output (Approach G — input elision): REMOVED from the
+      JS-visible surface. OCCT's contract guarantees non-const `Handle<T>&`
+      is output-only (never read by C++), so the caller's input is gratuitous.
+      The C++ codegen allocates a stack-local null Handle inside the
+      optional_override lambda instead; the resulting wrapper is surfaced as
+      a container field whose lifetime is owned by the envelope's
+      `[Symbol.dispose]`.
+
+  Flipping this predicate to return True for `isHandleOutputParam` propagates
+  the elision through every downstream arity, kept-name, and JSDoc path
+  (see bindings.py:501, 560, 1726, 1735, 1749, 2507, 4088, 4116, 4347, 4419,
+  4462). The C++ lambda emitter (`_emitOutputParamBinding`) does its own
+  per-arg inspection and emits the stack-local declaration for Handle outputs
+  and the `val::as<T*>` deref for class outputs.
+
+  Design refs:
+    - docs/research/ocjs-rbv-return-shape-revisit.md (R1-R6 decision tree)
+    - docs/research/ocjs-rbv-handle-output-param-elision.md (Approach G)
+  """
+  return isHandleOutputParam(arg_type)
 
 def getClassTypeName(theClass, templateDecl = None):
   return templateDecl.spelling if templateDecl is not None else theClass.spelling
+
+def getClassQualifiedName(theClass, templateDecl = None):
+  """Fully-qualified C++ symbol for a class (e.g. BRepGraph::CacheView).
+
+  Walks semantic_parent for CXX-nested and namespace-nested classes so
+  EMSCRIPTEN_BINDINGS template args and member pointers use names visible at file scope.
+
+  When ``templateDecl`` is set (template typedef alias, e.g. IMeshData::BndBox2dTreeFiller),
+  walk the typedef's parents — ``theClass`` is the underlying template (NCollection_UBTreeFiller),
+  whose semantic_parent chain does not include IMeshData.
+  """
+  parent_kinds = (
+    clang.cindex.CursorKind.CLASS_DECL,
+    clang.cindex.CursorKind.STRUCT_DECL,
+    clang.cindex.CursorKind.CLASS_TEMPLATE,
+    clang.cindex.CursorKind.NAMESPACE,
+  )
+  if templateDecl is not None and templateDecl.spelling:
+    parts = [templateDecl.spelling]
+    parent = templateDecl.semantic_parent
+    while parent and parent.kind in parent_kinds:
+      if parent.spelling:
+        parts.append(parent.spelling)
+      parent = parent.semantic_parent
+    return "::".join(reversed(parts))
+  base = theClass.spelling if (templateDecl is None or not templateDecl.spelling) else templateDecl.spelling
+  parts = [base]
+  parent = theClass.semantic_parent
+  while parent and parent.kind in parent_kinds:
+    if parent.spelling:
+      parts.append(parent.spelling)
+    parent = parent.semantic_parent
+  return "::".join(reversed(parts))
 
 class Bindings:
   def __init__(self, tuInfo):
@@ -386,6 +707,17 @@ class Bindings:
       return False
     return args[0].type.kind == clang.cindex.TypeKind.RVALUEREFERENCE
 
+  def _is_deleted_method(self, ctor):
+    """Detect explicitly-deleted constructors (`= delete`).
+
+    OCCT V8 marks copy (and sometimes move) ctors `= delete` on many classes.
+    Bindgen still lists them as public CONSTRUCTOR cursors; emitting
+    ``.constructor<const T &>()`` instantiates embind ``operator_new<T, const T&>``
+    against the deleted symbol and the TU fails. ``is_deleted_method()`` is the
+    libclang hook for deleted special members.
+    """
+    return ctor.is_deleted_method()
+
   def _is_float_only_variant(self, ctor):
     """Check if constructor uses float (not double) args."""
     for arg in ctor.get_arguments():
@@ -431,11 +763,53 @@ class Bindings:
     return [ov for ov in overloads if not self._is_wider_string_ctor(ov)]
 
   def _filter_overloads(self, overloads):
-    """Apply all safe filters: move ctors, float/double dedup, string encoding dedup."""
-    filtered = [c for c in overloads if not self._is_move_constructor(c)]
+    """Apply all safe filters: deleted ctors, move ctors, float/double dedup, string encoding dedup."""
+    filtered = [c for c in overloads if not self._is_deleted_method(c)]
+    filtered = [c for c in filtered if not self._is_move_constructor(c)]
     filtered = self._dedupe_float_double(filtered)
     filtered = self._dedupe_string_encodings(filtered)
     return filtered
+
+  def _isWireSafeFieldType(self, clang_type):
+    """Embind value_object/.property cannot wire raw pointers, deleted-copy
+    types, or std::atomic. Skip those fields instead of failing the TU."""
+    if isRawPointerParam(clang_type):
+      return False
+    canonical = clang_type.get_canonical().spelling
+    if 'std::atomic' in canonical:
+      return False
+    decl = clang_type.get_canonical().get_declaration()
+    if decl:
+      for child in decl.get_children():
+        if (child.kind == clang.cindex.CursorKind.CONSTRUCTOR
+            and child.is_copy_constructor()
+            and child.is_deleted_method()):
+          return False
+    return True
+
+  def _returnTypeRequiresValueWrapper(self, method):
+    """Embind copy-marshals C++ returns through wire.h:391. Non-copyable
+    types (deleted copy ctor) need optional_override: ref returns use
+    ``val(&ref)``; by-value returns use a ``thread_local`` staging slot."""
+    rt = method.result_type
+    if rt.spelling == "void":
+      return False
+    if rt.kind in (
+      clang.cindex.TypeKind.LVALUEREFERENCE,
+      clang.cindex.TypeKind.RVALUEREFERENCE,
+    ):
+      target = rt.get_pointee()
+    else:
+      target = rt
+    decl = target.get_canonical().get_declaration()
+    if not decl:
+      return False
+    for child in decl.get_children():
+      if (child.kind == clang.cindex.CursorKind.CONSTRUCTOR
+          and child.is_copy_constructor()
+          and child.is_deleted_method()):
+        return True
+    return False
 
   # ---------------------------------------------------------------------------
   # Default parameter detection
@@ -738,22 +1112,57 @@ class Bindings:
       base = base.get_pointee()
     decl = base.get_declaration()
     if decl and decl.spelling:
+      unqualified = decl.spelling
       parent = decl.semantic_parent
-      if parent and parent.kind in (
-        clang.cindex.CursorKind.CLASS_DECL,
-        clang.cindex.CursorKind.STRUCT_DECL,
-        clang.cindex.CursorKind.CLASS_TEMPLATE,
+      if (
+        parent
+        and parent.spelling
+        and parent.kind
+        in (
+          clang.cindex.CursorKind.CLASS_DECL,
+          clang.cindex.CursorKind.STRUCT_DECL,
+          clang.cindex.CursorKind.CLASS_TEMPLATE,
+          clang.cindex.CursorKind.NAMESPACE,
+        )
       ):
-        unqualified = decl.spelling
         qualified = f"{parent.spelling}::{unqualified}"
-        if unqualified in result and qualified not in result:
-          result = result.replace(unqualified, qualified, 1)
+        if qualified not in result:
+          # Do not rewrite `handle` in `occ::handle<…>` / `opencascade::handle<…>` into
+          # `opencascade::handle` (libclang parents the template under namespace opencascade).
+          pattern = re.compile(r'(?<!::)\b' + re.escape(unqualified) + r'\b')
+          if pattern.search(result):
+            result = pattern.sub(qualified, result, count=1)
     num_targs = base.get_num_template_arguments()
     for idx in range(num_targs):
       targ = base.get_template_argument_type(idx)
       if targ and targ.kind != clang.cindex.TypeKind.INVALID:
         result = self._qualify_nested_type(result, targ)
     return result
+
+  def _substitute_canonical_template_names(self, canonical_spelling: str, templateArgs) -> str:
+    """Substitute template parameter names and type-parameter-0-N in a canonical type spelling.
+
+    libclang 18+ often spells dependent types with the source parameter name (e.g. TheItemType)
+    instead of ``type-parameter-0-0``. ``replaceTemplateArgs`` handles those names; ``_TYPE_PARAM_RE``
+    handles the internal spellings.
+    """
+    if not templateArgs:
+      return canonical_spelling
+    s = self.replaceTemplateArgs(canonical_spelling, templateArgs)
+    if "type-parameter-" not in s:
+      return s
+    if Bindings._TYPE_PARAM_RE is None:
+      Bindings._TYPE_PARAM_RE = re.compile(r'type-parameter-(\d+)-(\d+)')
+
+    def replacer(m):
+      depth, index = int(m.group(1)), int(m.group(2))
+      if depth == 0:
+        arg_values = list(templateArgs.values())
+        if index < len(arg_values):
+          return arg_values[index].spelling
+      return m.group(0)
+
+    return Bindings._TYPE_PARAM_RE.sub(replacer, s)
 
   def resolveWithCanonicalFallback(self, spelling, clangType, templateDecl = None, templateArgs = None):
     """Resolve a type spelling, falling back to canonical type for member typedefs.
@@ -762,36 +1171,33 @@ class Bindings:
     (value_type, const_reference) that resolve to concrete types (gp_Pnt, const gp_Pnt&)
     in the canonical form. When clang returns type-parameter-0-N for the canonical type
     (template definitions), we map it through templateArgs to the concrete type.
+    With libclang 18+, canonical spellings may use the source template parameter name
+    (e.g. TheItemType) instead of type-parameter-0-0; templateArgs substitutes those too.
     Nested types are always qualified with their parent class scope.
     """
     resolved = self.getTypedefedTemplateTypeAsString(spelling, templateDecl, templateArgs)
     if any(td in resolved for td in self._DEPRECATED_TYPEDEFS):
       canonical = clangType.get_canonical().spelling
       if "type-parameter-" not in canonical:
-        return canonical
+        return self._qualify_nested_type(
+          self._substitute_canonical_template_names(canonical, templateArgs),
+          clangType,
+        )
     if not any(td in resolved for td in self._MEMBER_TYPEDEFS):
       return self._qualify_nested_type(resolved, clangType)
 
     canonical = clangType.get_canonical().spelling
     if "type-parameter-" not in canonical:
-      return canonical
+      return self._qualify_nested_type(
+        self._substitute_canonical_template_names(canonical, templateArgs),
+        clangType,
+      )
 
     if not templateArgs:
       return self._qualify_nested_type(resolved, clangType)
 
-    import re
-    if Bindings._TYPE_PARAM_RE is None:
-      Bindings._TYPE_PARAM_RE = re.compile(r'type-parameter-(\d+)-(\d+)')
-
-    def replacer(m):
-      depth, index = int(m.group(1)), int(m.group(2))
-      if depth == 0:
-        argValues = list(templateArgs.values())
-        if index < len(argValues):
-          return argValues[index].spelling
-      return m.group(0)
-
-    return self._qualify_nested_type(Bindings._TYPE_PARAM_RE.sub(replacer, canonical), clangType)
+    substituted = self._substitute_canonical_template_names(canonical, templateArgs)
+    return self._qualify_nested_type(substituted, clangType)
 
   def getTypedefedTemplateTypeAsString(self, theTypeSpelling, templateDecl = None, templateArgs = None):
     if templateDecl is None:
@@ -895,12 +1301,16 @@ class EmbindBindings(Bindings):
     self._result_struct_defs = []
     self._result_struct_registrations = []
     self._emitted_structs = {}
+    self._ret_wrapper_serial = 0
 
   def processClass(self, theClass, templateDecl = None, templateArgs = None):
     output = ""
     className = getClassTypeName(theClass, templateDecl)
     if className == "":
       className = theClass.type.spelling
+    classCpp = getClassQualifiedName(theClass, templateDecl)
+    if not classCpp:
+      classCpp = className
 
     baseSpec = list(filter(lambda x: x.kind == clang.cindex.CursorKind.CXX_BASE_SPECIFIER and x.access_specifier == clang.cindex.AccessSpecifier.PUBLIC, theClass.get_children()))
 
@@ -927,10 +1337,10 @@ class EmbindBindings(Bindings):
     for reg in self._result_struct_registrations:
       output += reg
 
-    output += "  class_<" + className + baseClassBinding + ">(\"" + className + "\")\n"
+    output += "  class_<" + classCpp + baseClassBinding + ">(\"" + className + "\")\n"
 
     if isTransientDerived(theClass, self.tuInfo.classDict):
-      output += "    .smart_ptr<opencascade::handle<" + className + ">>(\"Handle_" + className + "\")\n"
+      output += "    .smart_ptr<opencascade::handle<" + classCpp + ">>(\"Handle_" + className + "\")\n"
 
     if className == "Standard_Transient":
       output += "    .function(\"isNull\", &handle_isNull<Standard_Transient>)\n"
@@ -942,8 +1352,8 @@ class EmbindBindings(Bindings):
       if child.kind == clang.cindex.CursorKind.ENUM_DECL and child.access_specifier == clang.cindex.AccessSpecifier.PUBLIC and child.spelling != "" and child.spelling.isidentifier():
         enumName = className + "_" + child.spelling
         isScoped = child.is_scoped_enum()
-        valuePrefix = className + "::" + child.spelling + "::" if isScoped else className + "::"
-        output += "  enum_<" + className + "::" + child.spelling + ">(\"" + enumName + "\", emscripten::enum_value_type::string)\n"
+        valuePrefix = classCpp + "::" + child.spelling + "::" if isScoped else classCpp + "::"
+        output += "  enum_<" + classCpp + "::" + child.spelling + ">(\"" + enumName + "\", emscripten::enum_value_type::string)\n"
         for enumChild in list(child.get_children()):
           if enumChild.kind == clang.cindex.CursorKind.ENUM_CONSTANT_DECL:
             output += "    .value(\"" + enumChild.spelling + "\", " + valuePrefix + enumChild.spelling + ")\n"
@@ -958,10 +1368,30 @@ class EmbindBindings(Bindings):
           clang.cindex.CursorKind.DESTRUCTOR,
         )]
         if fields and not non_field_members:
+          ctors_nested = [
+            c for c in child.get_children()
+            if c.kind == clang.cindex.CursorKind.CONSTRUCTOR
+            and c.access_specifier == clang.cindex.AccessSpecifier.PUBLIC
+          ]
+          has_default_ctor = (
+            not ctors_nested
+            or any(
+              len(list(c.get_arguments())) == 0 and not c.is_deleted_method()
+              for c in ctors_nested
+            )
+          )
+          if not has_default_ctor:
+            continue
+          # Nested public POD struct (fields only) → standalone embind `value_object`.
+          # This is the **S0** return path for struct *values* returned from methods that
+          # have no OCJS-classified output params (see `_emitOutputParamBinding` for S1/S2).
+          # Taxonomy: `docs/research/ocjs-rbv-test-corpus-contract-drift.md`.
           structName = className + "_" + child.spelling
-          cppType = className + "::" + child.spelling
+          cppType = classCpp + "::" + child.spelling
           output += f'  value_object<{cppType}>("{structName}")\n'
           for field in fields:
+            if not self._isWireSafeFieldType(field.type):
+              continue
             output += f'    .field("{field.spelling}", &{cppType}::{field.spelling})\n'
           output += "  ;\n"
 
@@ -971,44 +1401,59 @@ class EmbindBindings(Bindings):
     nonPublicDestructor = any(x.kind == clang.cindex.CursorKind.DESTRUCTOR and not x.access_specifier == clang.cindex.AccessSpecifier.PUBLIC for x in theClass.get_children())
     placementDelete = next((x for x in theClass.get_children() if x.spelling == "operator delete" and len(list(x.get_arguments())) == 2), None) is not None
     if nonPublicDestructor or placementDelete:
-      output += "namespace emscripten { namespace internal { template<> void raw_destructor<" + className + ">(" + className + "* ptr) { /* do nothing */ } } }\n"
+      output += "namespace emscripten { namespace internal { template<> void raw_destructor<" + classCpp + ">(" + classCpp + "* ptr) { /* do nothing */ } } }\n"
     return output
 
   def processFinalizeClass(self):
     return "  ;\n"
 
-  def _emitConstructor(self, className, args, templateDecl, templateArgs, useHandleOverride):
-    """Emit a single constructor binding, using optional_override for Handle wrapping or CString conversion."""
-    hasCString = any(isCString(a.type) for a in args)
+  def _rewrite_typedef_nested_types(self, type_str, class_cpp, underlying_spelling, template_decl):
+    """Template typedefs (e.g. BndBox2dTreeFiller -> NCollection_UBTreeFiller<int,Bnd_Box2d>)
+    need nested names like ``Underlying::UBTree`` rewritten to ``class_cpp::UBTree`` so
+    constructor templates instantiate the typedef's nested members, not an unspecialized template."""
+    if template_decl is None or not underlying_spelling or not class_cpp:
+      return type_str
+    prefix = underlying_spelling + "::"
+    if prefix not in type_str:
+      return type_str
+    return type_str.replace(prefix, class_cpp + "::")
 
-    if not useHandleOverride and not hasCString:
-      argTypesBindings = ", ".join([
-        self.getSingleArgumentBinding(False, True, templateDecl, templateArgs)(arg)[0]
+  def _emitConstructor(self, class_cpp, args, template_decl, template_args, use_handle_override, underlying_spelling=None):
+    """Emit a single constructor binding, using optional_override for Handle wrapping or CString conversion."""
+    def rw(s):
+      return self._rewrite_typedef_nested_types(s, class_cpp, underlying_spelling, template_decl)
+
+    has_c_string = any(isCString(a.type) for a in args)
+    needs_raw = any(isRawPointerParam(a.type) and not isCString(a.type) for a in args)
+
+    if not use_handle_override and not has_c_string and not needs_raw:
+      arg_types_bindings = ", ".join([
+        rw(self.getSingleArgumentBinding(False, True, template_decl, template_args)(arg)[0])
         for arg in args
       ])
-      return "    .constructor<" + argTypesBindings + ">()\n"
+      return "    .constructor<" + arg_types_bindings + ">()\n"
 
-    namedArgs = []
+    named_args = []
     for i, arg in enumerate(args):
       name = arg.spelling if arg.spelling else f"a{i}"
-      typeStr = self.getSingleArgumentBinding(False, True, templateDecl, templateArgs)(arg)[0]
+      type_str = rw(self.getSingleArgumentBinding(False, True, template_decl, template_args)(arg)[0])
       if isCString(arg.type):
-        namedArgs.append(("std::string " + name, name + ".c_str()"))
+        named_args.append(("std::string " + name, name + ".c_str()"))
       else:
-        namedArgs.append((typeStr + " " + name, name))
-    typedArgs = ", ".join([a[0] for a in namedArgs])
-    argNames = ", ".join([a[1] for a in namedArgs])
+        named_args.append((type_str + " " + name, name))
+    typed_args = ", ".join([a[0] for a in named_args])
+    arg_names = ", ".join([a[1] for a in named_args])
 
-    if useHandleOverride:
+    if use_handle_override:
       return (
-        "    .constructor(optional_override([](" + typedArgs + ") {\n"
-        "      return opencascade::handle<" + className + ">(new " + className + "(" + argNames + "));\n"
+        "    .constructor(optional_override([](" + typed_args + ") {\n"
+        "      return opencascade::handle<" + class_cpp + ">(new " + class_cpp + "(" + arg_names + "));\n"
         "    }))\n"
       )
 
     return (
-      "    .constructor(optional_override([](" + typedArgs + ") {\n"
-      "      return new " + className + "(" + argNames + ");\n"
+      "    .constructor(optional_override([](" + typed_args + ") {\n"
+      "      return new " + class_cpp + "(" + arg_names + ");\n"
       "    }), allow_raw_pointers())\n"
     )
 
@@ -1122,12 +1567,18 @@ class EmbindBindings(Bindings):
     children = list(theClass.get_children())
     constructors = list(filter(lambda x: x.kind == clang.cindex.CursorKind.CONSTRUCTOR, children))
     className = getClassTypeName(theClass, templateDecl)
+    if className == "":
+      className = theClass.type.spelling
+    classCpp = getClassQualifiedName(theClass, templateDecl)
+    if not classCpp:
+      classCpp = className
     useHandleOverride = isTransientDerived(theClass, self.tuInfo.classDict)
+    underlying_spelling = theClass.spelling if templateDecl is not None else None
 
     if len(constructors) == 0:
       if useHandleOverride:
         output += "    .constructor(optional_override([]() {\n"
-        output += "      return opencascade::handle<" + className + ">(new " + className + "());\n"
+        output += "      return opencascade::handle<" + classCpp + ">(new " + classCpp + "());\n"
         output += "    }))\n"
       else:
         output += "    .constructor<>()\n"
@@ -1152,13 +1603,13 @@ class EmbindBindings(Bindings):
 
     if len(bindable) == 1:
       args = list(bindable[0].get_arguments())
-      output += self._emitConstructor(className, args, templateDecl, templateArgs, useHandleOverride)
+      output += self._emitConstructor(classCpp, args, templateDecl, templateArgs, useHandleOverride, underlying_spelling)
       # Default parameter expansion for single constructor
       nDefaults = self._countTrailingDefaults(bindable[0])
       nArgs = len(args)
       for d in range(1, nDefaults + 1):
         truncated = args[:nArgs - d]
-        output += self._emitConstructor(className, truncated, templateDecl, templateArgs, useHandleOverride)
+        output += self._emitConstructor(classCpp, truncated, templateDecl, templateArgs, useHandleOverride, underlying_spelling)
       return output
 
     # Group by arity and handle each group
@@ -1193,7 +1644,7 @@ class EmbindBindings(Bindings):
         c = group[0]
         actual_args = list(c.get_arguments())
         emit_args = actual_args[:arity]
-        output += self._emitConstructor(className, emit_args, templateDecl, templateArgs, useHandleOverride)
+        output += self._emitConstructor(classCpp, emit_args, templateDecl, templateArgs, useHandleOverride, underlying_spelling)
       else:
         js_tree = self._build_js_dispatch_tree(group, available_positions=list(range(arity)), templateDecl=templateDecl, templateArgs=templateArgs)
         js_ambiguous = self._collect_ambiguous_overloads(js_tree)
@@ -1201,7 +1652,7 @@ class EmbindBindings(Bindings):
 
         for c in js_distinguishable:
           actual_args = list(c.get_arguments())[:arity]
-          output += self._emitConstructor(className, actual_args, templateDecl, templateArgs, useHandleOverride)
+          output += self._emitConstructor(classCpp, actual_args, templateDecl, templateArgs, useHandleOverride, underlying_spelling)
 
         if js_ambiguous:
           val_tree = self._build_dispatch_tree(js_ambiguous, available_positions=list(range(arity)), templateDecl=templateDecl, templateArgs=templateArgs)
@@ -1213,7 +1664,7 @@ class EmbindBindings(Bindings):
             val_dispatchable = []
 
           if val_dispatchable or (js_ambiguous and not val_ambiguous_remaining):
-            output += self._emitValDispatchConstructor(className, arity, val_tree, useHandleOverride, templateDecl, templateArgs)
+            output += self._emitValDispatchConstructor(classCpp, arity, val_tree, useHandleOverride, templateDecl, templateArgs)
 
           # Truly ambiguous overloads (indistinguishable even by val dispatch) are handled
           # by processOverloadedConstructors which emits _N subclasses
@@ -1327,7 +1778,13 @@ class EmbindBindings(Bindings):
       if not pointee.is_const_qualified():
         return None
 
-    output_params = [(i, a) for i, a in enumerate(args) if isOutputParam(a.type)]
+    # Envelope-bound output params: every output param EXCEPT concrete classes
+    # (non-Handle, default-constructible). Per R1 of
+    # docs/research/ocjs-rbv-return-shape-revisit.md class outputs are mutated
+    # in place via val::as<T&>() and never mirrored into the return envelope;
+    # the caller reads the updated value from the input variable they own.
+    output_params = [(i, a) for i, a in enumerate(args)
+                     if isOutputParam(a.type) and not isClassOutputParam(a.type)]
     stripped_indices = set(i for i, a in enumerate(args) if shouldStripParam(a.type, method))
 
     structName = f"{className}_{method.spelling}_Result"
@@ -1337,16 +1794,18 @@ class EmbindBindings(Bindings):
     # Align the value_object field names with the base class's output-param
     # names when this method overrides one. This keeps the JS payload keys in
     # lock-step with `_buildOutputParamReturnType`'s TS signature, preventing
-    # `result.ACode` (runtime) vs `result.Code` (TS) divergence.
+    # `returnValue.ACode` (runtime) vs `returnValue.Code` (TS) divergence.
     effective_output_names = dict(self._effectiveOutputNames(theClass, method, args))
 
     struct_fields = []
+    disposable_field_names = []
     for i, arg in output_params:
       name = effective_output_names.get(i, self._getArgName(arg, i))
       pointee = arg.type.get_pointee()
       cppType = self._resolveArgType(arg, templateDecl, templateArgs)
       if _isHandleType(pointee):
         cppType = pointee.spelling
+        disposable_field_names.append(name)
       elif pointee.get_canonical().spelling in builtInTypes:
         cppType = pointee.get_canonical().spelling
       elif pointee.kind == clang.cindex.TypeKind.ENUM or pointee.get_canonical().kind == clang.cindex.TypeKind.ENUM:
@@ -1364,11 +1823,20 @@ class EmbindBindings(Bindings):
         retType = retType[:-2].strip()
       if retType.startswith('const '):
         retType = retType[6:].strip()
-      ret_field_name = "result"
+      ret_field_name = ENVELOPE_RETURN_FIELD
       existing_names = {n for n, _ in struct_fields}
       if ret_field_name in existing_names:
-        ret_field_name = "return_value"
+        ret_field_name = ENVELOPE_RETURN_FIELD_COLLISION
       struct_fields.insert(0, (ret_field_name, retType))
+      # `result` is embind-managed when the C++ return type is a Handle<T> or
+      # a registered class. Detect either by walking the canonical type of the
+      # method's return.
+      ret_canonical = ret.get_canonical()
+      if _isHandleType(ret) or _isHandleType(ret_canonical) or _isDefaultConstructibleClass(ret_canonical):
+        if ret_canonical.spelling not in builtInTypes and not (
+          ret.kind == clang.cindex.TypeKind.ENUM or ret_canonical.kind == clang.cindex.TypeKind.ENUM
+        ):
+          disposable_field_names.insert(0, ret_field_name)
 
     field_key = tuple((fname, ftype) for fname, ftype in struct_fields)
 
@@ -1380,8 +1848,21 @@ class EmbindBindings(Bindings):
       structName = f"{structName}_{counter}"
     self._emitted_structs[structName] = field_key
 
+    # When the container holds embind-managed fields (class instances or
+    # Handle<T>), the per-method lambda returns ::emscripten::val (not the
+    # value_object struct) so it can attach Symbol.dispose via the EM_JS
+    # shared disposer registered in BUILTIN_ADDITIONAL_BIND_CODE. Skip the
+    # struct definition + value_object registration for those — embind would
+    # also fail to auto-register class fields inside a value_object anyway.
+    needs_dispose = bool(disposable_field_names)
+    # value_object structs are only used by the S1 lambda return type. R2
+    # collapses methods whose only outputs are mutated-in-place class refs
+    # to a native return — when `output_params` is empty the lambda never
+    # references this struct, so skip the registration to avoid emitting a
+    # dead `<Class>_<Method>_Result` symbol that only carries the C++ return.
+    is_s1_envelope_path = bool(output_params) and not needs_dispose
     already_defined = any(f"struct {structName} {{" in d for d in self._result_struct_defs)
-    if not already_defined:
+    if not already_defined and is_s1_envelope_path:
       struct_def = f"struct {structName} {{\n"
       for fname, ftype in struct_fields:
         struct_def += f"  {ftype} {fname};\n"
@@ -1389,14 +1870,14 @@ class EmbindBindings(Bindings):
       self._result_struct_defs.append(struct_def)
 
     already_registered = any(f'"{structName}"' in r for r in self._result_struct_registrations)
-    if not already_registered:
+    if not already_registered and is_s1_envelope_path:
       reg = f"  value_object<{structName}>(\"{structName}\")\n"
       for fname, ftype in struct_fields:
         reg += f"    .field(\"{fname}\", &{structName}::{fname})\n"
       reg += f"  ;\n"
       self._result_struct_registrations.append(reg)
 
-    return (structName, struct_fields, output_params, stripped_indices)
+    return (structName, struct_fields, output_params, stripped_indices, disposable_field_names)
 
   def _emitRbvCollisionDispatch(self, theClass, colliding_methods, js_arity, className, templateDecl, templateArgs):
     """Emit separate typed bindings for methods that collide at same JS arity due to RBV stripping.
@@ -1425,52 +1906,133 @@ class EmbindBindings(Bindings):
 
     return output
 
+  def _containerNeedsDispose(self, disposable_field_names):
+    """Pure predicate over the disposable-field list produced by
+    `_ensureResultStruct`. The list is non-empty iff at least one container
+    field is an embind-managed type (class instance or Handle<T>).
+
+    Drives the val::object()-vs-value_object branch in `_emitOutputParamBinding`
+    and the `[Symbol.dispose](): void` member in `_buildOutputParamReturnType`.
+    """
+    return bool(disposable_field_names)
+
   def _emitOutputParamBinding(self, theClass, method, args, className, classTypeName, overloadPostfix, templateDecl, templateArgs):
-    """Generate value_object return binding for methods with output params.
-    Returns None if the method can't use value_object (e.g. raw pointer return type)."""
+    """Emit the embind binding lambda for a method with OCJS-classified output parameters.
+
+    Three **cross-boundary return shapes** (S0/S1/S2) determine what TS/JS consumers see.
+    This function implements **S1** and **S2** only — it is skipped when the method has
+    no output params (**S0**: direct native embind return; struct PODs register as nested
+    `value_object` in `processClass`).
+
+    The R1-R6 minimal transformation
+    (`docs/research/ocjs-rbv-return-shape-revisit.md`) trims the envelope further:
+      - R1 — class output params are NOT echoed in the envelope (they mutate in
+        place via `*<arg>.as<T*>(allow_raw_pointers())`).
+      - R3 — when filtering by R1 yields no envelope outputs, this hook collapses
+        to a native return (or `void` if the C++ return is `void`); no
+        `value_object`/`val::object` is registered.
+      - R5 — the C++ return-value field inside any envelope is named
+        ``returnValue`` (with ``returnValue_`` reserved as the collision fallback
+        when an OCCT parameter is already named ``returnValue``).
+      - R6 — `_jsdoc` consumes `_describeEnvelope` to emit a multi-line
+        ``@returns A result object with fields:`` block and tag every class
+        output param with ``Mutated in place; read the updated value from this
+        argument after the call.``
+
+    **S0 — Direct return (no RBV envelope from this hook).**
+      Trigger: `isOutputParam` is false for every argument (e.g. `BRepGraph_Builder::Add`),
+      OR R1 filtered every output away so only class mutations remain (R3 collapse).
+      Codegen: no `optional_override` from this function; struct returns use nested
+      `value_object<Class_Nested>` registration in `processClass`.
+      Consumer dts (representative)::
+          static Add(theGraph: BRepGraph, theShape: TopoDS_Shape): BRepGraph_Builder_Result;
+          D2(u: number, v: number, P: gp_Pnt, D1U: gp_Vec, D1V: gp_Vec, D2U: gp_Vec, D2V: gp_Vec, D2UV: gp_Vec): void;
+      Consumer call-site: ``const r = oc.BRepGraph_Builder.Add(g, s);`` — no `using`, no
+      `Symbol.dispose`; for class-output-only voids the caller reads mutated args back.
+
+    **S1 — `value_object` envelope (primitive / enum outputs only; no `Symbol.dispose`).**
+      Trigger: at least one R1-surviving output param AND `_containerNeedsDispose` is false.
+      Codegen: `optional_override` returning aggregate ``StructName{ret?, outs...}`` where
+      the C++ return (if any) lives at field ``returnValue``.
+      Consumer dts (representative)::
+          Bounds(U1: number, U2: number, V1: number, V2: number):
+              { U1: number; U2: number; V1: number; V2: number };
+      Consumer call-site: ``const b = surface.Bounds(0, 0, 0, 0);`` — input-passthrough
+      seed values; no `using`.
+
+    **S2 — `val::object` envelope + `[Symbol.dispose]` (embind-managed fields).**
+      Trigger: `_containerNeedsDispose` is true (any Handle<T> field; class instances
+      no longer trigger this branch — they mutate in place per R1).
+      Includes **Approach G**: non-const `Handle<T>&` outputs are elided from the JS arity
+      (`shouldStripParam`); stack-local null Handles are declared inside this lambda; fresh
+      wrappers surface as container fields. See `docs/research/ocjs-rbv-handle-output-param-elision.md`.
+      Consumer dts (representative; Handle elision on `Segment`)::
+          Segment(Index: number):
+              { Curve1: Geom2d_Curve; Curve2: Geom2d_Curve; [Symbol.dispose](): void };
+      Consumer call-site: ``using seg = inter.Segment(1);`` — `tau-lint/require-using-on-disposable`
+      enforces disposal of the envelope.
+
+    Output-param paths inside S1/S2:
+      - Primitive / enum (input-passthrough): JS arg, in/out value copy (fixes zero-init bug).
+      - Default-constructible class: JS arg; caller supplies the instance.
+      - `Handle<T>&` (**Approach G**): **not** a JS arg; stack-local Handle in this lambda;
+        populated wrapper is a container field.
+
+    Branch authority:
+      - S0 vs (S1|S2): whether this function runs at all (any `isOutputParam`).
+      - S1 vs S2: `_containerNeedsDispose(disposable_field_names)`.
+
+    Returns None if the method can't use this codepath (e.g. raw pointer return).
+    """
     result = self._ensureResultStruct(method, args, className, overloadPostfix, templateDecl, templateArgs, theClass=theClass)
     if result is None:
       return None
-    structName, struct_fields, output_params, stripped_indices = result
+    structName, struct_fields, output_params, stripped_indices, disposable_field_names = result
     has_nonvoid_return = method.result_type.spelling != "void"
+    needs_dispose = self._containerNeedsDispose(disposable_field_names)
 
     lambda_params = []
+    elided_handle_decls = []  # stack-local null Handle declarations (Approach G)
     if not method.is_static_method():
       constPrefix = "const " if method.is_const_method() else ""
       lambda_params.append(f"{constPrefix}{classTypeName}& self")
 
+    # Per-arg metadata so we can pair the lambda-params loop with the
+    # call-args loop without re-classifying each arg in two places. Class
+    # outputs (R1: mutated in place via val::as<T&>()) and Handle outputs
+    # (Approach G: stack-local null) need their own forwarding lanes.
+    class_output_call_types = {}
+
     for i, arg in enumerate(args):
-      if i in stripped_indices:
-        continue
       name = self._getArgName(arg, i)
       if self._needsCStringWrapper(arg.type):
         lambda_params.append(f"std::string {name}")
-      else:
-        argType = self.getOriginalArgumentType(arg, templateDecl, templateArgs)
-        if isOutputParam(arg.type):
-          pointee = arg.type.get_pointee()
-          if pointee.get_canonical().spelling in builtInTypes:
-            argType = pointee.get_canonical().spelling
-          elif pointee.kind == clang.cindex.TypeKind.ENUM or pointee.get_canonical().kind == clang.cindex.TypeKind.ENUM:
-            argType = pointee.spelling
-        lambda_params.append(f"{argType} {name}")
-
-    body = ""
-    for i, arg in output_params:
-      name = self._getArgName(arg, i)
-      pointee = arg.type.get_pointee()
-      if i in stripped_indices:
-        if _isHandleType(pointee):
-          cppType = pointee.spelling
-          body += f"        {cppType} {name};\n"
-        elif pointee.get_canonical().spelling in builtInTypes:
-          cppType = pointee.get_canonical().spelling
-          body += f"        {cppType} {name} = 0;\n"
+        continue
+      argType = self.getOriginalArgumentType(arg, templateDecl, templateArgs)
+      if isOutputParam(arg.type):
+        pointee = arg.type.get_pointee()
+        if isHandleOutputParam(arg.type):
+          # Approach G: elide from JS-facing arg list; declare a stack-local
+          # null Handle inside the lambda body so the C++ business call still
+          # receives a non-const Handle<T>& to write into. The resulting
+          # wrapper is exposed via the val::object() container field below.
+          elided_handle_decls.append(f"        {pointee.spelling} {name};\n")
+          continue
+        if isClassOutputParam(arg.type):
+          # R1 minimal transformation: lambda accepts the caller's JS instance
+          # as ::emscripten::val and decodes it with val::as<T&>() so the C++
+          # method mutates the caller's underlying instance in place. The
+          # mutated value lives on the input variable; the envelope (if any)
+          # does NOT mirror it.
+          raw = pointee.get_canonical().spelling.replace("const ", "").strip()
+          class_output_call_types[i] = self.replaceTemplateArgs(raw, templateArgs)
+          lambda_params.append(f"::emscripten::val {name}")
+          continue
+        if pointee.get_canonical().spelling in builtInTypes:
+          argType = pointee.get_canonical().spelling
         elif pointee.kind == clang.cindex.TypeKind.ENUM or pointee.get_canonical().kind == clang.cindex.TypeKind.ENUM:
-          cppType = pointee.spelling
-          body += f"        {cppType} {name}{{}};\n"
-      else:
-        pass
+          argType = pointee.spelling
+      lambda_params.append(f"{argType} {name}")
 
     call_args = []
     for i, arg in enumerate(args):
@@ -1480,19 +2042,79 @@ class EmbindBindings(Bindings):
           call_args.append(f"strdup({name}.c_str())")
         else:
           call_args.append(f"{name}.c_str()")
-      elif isOutputParam(arg.type):
-        call_args.append(name)
+      elif i in class_output_call_types:
+        # Decode the JS-side val into the underlying C++ class instance so the
+        # OCCT call mutates the caller's object. We deliberately use the raw
+        # pointer wire format (`val::as<T*>(allow_raw_pointers())` + deref)
+        # instead of `val::as<T&>()` — embind's reference wire format
+        # round-trips by value (BindingType<T&> degrades to BindingType<T>
+        # which materialises a copy), so mutations on a `T&` view of a val
+        # never propagate back to the JS instance. The pointer wire returns
+        # the registered class pointer directly, so dereferencing it inside
+        # the call yields a true reference into the caller's heap object.
+        call_args.append(f"*{name}.as<{class_output_call_types[i]}*>(emscripten::allow_raw_pointers())")
       else:
         call_args.append(name)
 
-    caller = "self." if not method.is_static_method() else f"{className}::"
+    caller = "self." if not method.is_static_method() else f"{classTypeName}::"
     call_str = f"{caller}{method.spelling}({', '.join(call_args)})"
+
+    # R2: when the envelope-bound output list is empty (only class outputs
+    # were present, and they are mutated in place rather than mirrored), the
+    # lambda has nothing to wrap — return the native C++ value or void
+    # directly. Approach G's elided Handle outputs still count as envelope
+    # fields, so methods that only have class + elided-Handle outputs go
+    # through the envelope path.
+    envelope_is_empty = not output_params and not has_nonvoid_return
+    envelope_native_only = not output_params and has_nonvoid_return
+
+    body = "".join(elided_handle_decls)
+    params_str = ", ".join(lambda_params)
+
+    if envelope_is_empty:
+      # Class-only method with `void` C++ return — mutate inputs in place and
+      # return void. No value_object, no val::object envelope, no Symbol.dispose.
+      body += f"        {call_str};\n"
+      return f"\n      optional_override([]({params_str}) -> void {{\n{body}      }})"
+
+    if envelope_native_only:
+      # Class-only method with a non-void C++ return — forward the native
+      # value as-is. The caller reads class outputs from their inputs and
+      # uses the return value directly (no envelope, no Symbol.dispose).
+      ret = method.result_type
+      if ret.kind == clang.cindex.TypeKind.LVALUEREFERENCE:
+        ret = ret.get_pointee()
+      retSpelling = ret.spelling.replace("const ", "").strip()
+      retType = self.resolveWithCanonicalFallback(retSpelling, ret, templateDecl, templateArgs)
+      if retType.endswith(' &'):
+        retType = retType[:-2].strip()
+      if retType.startswith('const '):
+        retType = retType[6:].strip()
+      body += f"        return {call_str};\n"
+      return f"\n      optional_override([]({params_str}) -> {retType} {{\n{body}      }})"
 
     if has_nonvoid_return:
       body += f"        auto ret = {call_str};\n"
     else:
       body += f"        {call_str};\n"
 
+    if needs_dispose:
+      # val::object() return + EM_JS-registered Symbol.dispose. The disposer
+      # is unbound — `using` invokes it as a method call so `this` is the
+      # container at runtime, sidestepping the V8 13.6 bound-function bug.
+      body += "        ::emscripten::val out = ::emscripten::val::object();\n"
+      if has_nonvoid_return:
+        ret_field_name = struct_fields[0][0]
+        body += f'        out.set("{ret_field_name}", ret);\n'
+      for i, arg in output_params:
+        name = self._getArgName(arg, i)
+        body += f'        out.set("{name}", {name});\n'
+      body += "        out.set(::ocjs::getSymbolDispose(), ::ocjs::getRbvDispose());\n"
+      body += "        return out;\n"
+      return f"\n      optional_override([]({params_str}) -> ::emscripten::val {{\n{body}      }})"
+
+    # Primitive-only: keep value_object struct return. Faster and no
+    # Symbol.dispose needed.
     return_fields = []
     if has_nonvoid_return:
       return_fields.append("ret")
@@ -1500,19 +2122,16 @@ class EmbindBindings(Bindings):
       name = self._getArgName(arg, i)
       return_fields.append(name)
     body += f"        return {structName}{{{', '.join(return_fields)}}};\n"
-
-    params_str = ", ".join(lambda_params)
-    code = f"\n      optional_override([]({params_str}) -> {structName} {{\n"
-    code += body
-    code += f"      }})"
-
-    return code
+    return f"\n      optional_override([]({params_str}) -> {structName} {{\n{body}      }})"
 
   def processMethodOrProperty(self, theClass, method, templateDecl = None, templateArgs = None, overload_index = 0, override_postfix = None):
     output = ""
     className = getClassTypeName(theClass, templateDecl)
     if className == "":
       className = theClass.type.spelling
+    classCpp = getClassQualifiedName(theClass, templateDecl)
+    if not classCpp:
+      classCpp = className
     if method.access_specifier == clang.cindex.AccessSpecifier.PUBLIC and method.kind == clang.cindex.CursorKind.CXX_METHOD and not method.spelling.startswith("operator"):
       [overloadPostfix, numOverloads] = getMethodOverloadPostfix(theClass, method)
       if override_postfix is not None:
@@ -1527,9 +2146,8 @@ class EmbindBindings(Bindings):
 
       functionBinding = None
       if hasOutputParams:
-        classTypeName = getClassTypeName(theClass, templateDecl)
         functionBinding = self._emitOutputParamBinding(
-          theClass, method, args, className, classTypeName, overloadPostfix, templateDecl, templateArgs)
+          theClass, method, args, className, classCpp, overloadPostfix, templateDecl, templateArgs)
       if functionBinding is None and hasOutputParams:
         print(f"Skipping {className}::{method.spelling}: output params with unbindable return type")
         return ""
@@ -1561,7 +2179,7 @@ class EmbindBindings(Bindings):
             args[x[0]].spelling,
             f"argNo{str(x[0])}"
           )
-        classTypeName = getClassTypeName(theClass, templateDecl)
+        classTypeName = classCpp
         wrappedParamTypes = merge(", ", *map(lambda x:
           pick(
             x[1],
@@ -1629,7 +2247,7 @@ class EmbindBindings(Bindings):
               ""
             ),
             merge("",
-              pick(not method.is_static_method(), "that.", f"{className}::"),
+              pick(not method.is_static_method(), "that.", f"{classCpp}::"),
               f'{method.spelling}({merge(", ", *map(lambda x: generateInvocationArgs(x), enumerate(argsNeedingWrapper)))})',
             ),
             ";\n",
@@ -1667,16 +2285,109 @@ class EmbindBindings(Bindings):
             f"{indent(2)})",
           )
       if functionBinding is None:
-        if numOverloads == 1:
-          functionBinding = " &" + className + "::" + method.spelling
+        if self._returnTypeRequiresValueWrapper(method):
+          self._ret_wrapper_serial += 1
+          storage = f"__ocjs_ret_{self._ret_wrapper_serial}"
+          args_m = list(method.get_arguments())
+          arg_decl = []
+          fwd = []
+          for i, a in enumerate(args_m):
+            typ = self.getOriginalArgumentType(a, templateDecl, templateArgs)
+            nm = a.spelling if a.spelling else f"a{i}"
+            arg_decl.append(f"{typ} {nm}")
+            fwd.append(nm)
+          decls = ", ".join(arg_decl)
+          call_fwd = ", ".join(fwd)
+          rt = method.result_type
+          return_by_ref = rt.kind in (
+            clang.cindex.TypeKind.LVALUEREFERENCE,
+            clang.cindex.TypeKind.RVALUEREFERENCE,
+          )
+          ret_clang_type = rt.get_pointee() if return_by_ref else rt
+          ret_cpp = self.resolveWithCanonicalFallback(
+            ret_clang_type.spelling, ret_clang_type, templateDecl, templateArgs)
+          if method.is_static_method():
+            call_expr = f"{classCpp}::{method.spelling}({call_fwd})"
+          else:
+            call_expr = f"self.{method.spelling}({call_fwd})"
+          if return_by_ref:
+            if method.is_static_method():
+              functionBinding = merge("",
+                " optional_override([](",
+                decls,
+                ") -> emscripten::val {\n",
+                indent(3),
+                "auto& ret = ",
+                call_expr,
+                ";\n",
+                indent(3),
+                "return emscripten::val(&ret, allow_raw_pointers());\n",
+                indent(2),
+                "})",
+              )
+            else:
+              const_self = "const " if method.is_const_method() else ""
+              self_and = f"{const_self}{classCpp}& self"
+              sep = ", " if decls else ""
+              functionBinding = merge("",
+                " optional_override([](",
+                self_and,
+                sep,
+                decls,
+                ") -> emscripten::val {\n",
+                indent(3),
+                "auto& ret = ",
+                call_expr,
+                ";\n",
+                indent(3),
+                "return emscripten::val(&ret, allow_raw_pointers());\n",
+                indent(2),
+                "})",
+              )
+          else:
+            if method.is_static_method():
+              functionBinding = merge("",
+                " optional_override([](",
+                decls,
+                ") -> emscripten::val {\n",
+                indent(3),
+                f"thread_local {ret_cpp} {storage};\n",
+                indent(3),
+                f"{storage} = {call_expr};\n",
+                indent(3),
+                f"return emscripten::val(&{storage}, allow_raw_pointers());\n",
+                indent(2),
+                "})",
+              )
+            else:
+              const_self = "const " if method.is_const_method() else ""
+              self_and = f"{const_self}{classCpp}& self"
+              sep = ", " if decls else ""
+              functionBinding = merge("",
+                " optional_override([](",
+                self_and,
+                sep,
+                decls,
+                ") -> emscripten::val {\n",
+                indent(3),
+                f"thread_local {ret_cpp} {storage};\n",
+                indent(3),
+                f"{storage} = {call_expr};\n",
+                indent(3),
+                f"return emscripten::val(&{storage}, allow_raw_pointers());\n",
+                indent(2),
+                "})",
+              )
+        elif numOverloads == 1:
+          functionBinding = " &" + classCpp + "::" + method.spelling
         else:
           functionBinding = merge("",
             " select_overload<",
             self.resolveWithCanonicalFallback(method.result_type.spelling, method.result_type, templateDecl, templateArgs),
             f'({merge(", ", *map(lambda x: self.getOriginalArgumentType(x, templateDecl, templateArgs), list(method.get_arguments())))})',
             pick(method.is_const_method(), "const", ""),
-            pick(not method.is_static_method(), f", {getClassTypeName(theClass, templateDecl)}", ""),
-            f">(&{className}::{method.spelling})",
+            pick(not method.is_static_method(), f", {classCpp}", ""),
+            f">(&{classCpp}::{method.spelling})",
           )
 
       if method.is_static_method():
@@ -1691,26 +2402,28 @@ class EmbindBindings(Bindings):
       elif not method.type.get_pointee().kind == clang.cindex.TypeKind.INVALID:
         print("Cannot handle pointer properties, skipping " + className + "::" + method.spelling)
       else:
-        output += f"{indent(2)}.property(\"{method.spelling}\", &{className}::{method.spelling})\n"
+        if not self._isWireSafeFieldType(method.type):
+          return output
+        output += f"{indent(2)}.property(\"{method.spelling}\", &{classCpp}::{method.spelling})\n"
     return output
 
-  def _emitValDispatchMethod(self, theClass, methodName, arity, tree, className, isStatic, templateDecl, templateArgs, mixed_returns=False):
+  def _emitValDispatchMethod(self, theClass, methodName, arity, tree, classCpp, isStatic, templateDecl, templateArgs, mixed_returns=False):
     """Emit a single optional_override method binding with val-based dispatch for same-arity overloads."""
     val_args = ", ".join([f"emscripten::val arg{i}" for i in range(arity)])
     if isStatic:
       sig_args = val_args
       functionCommand = "class_function"
     else:
-      sig_args = f"{className}& self" + (", " + val_args if val_args else "")
+      sig_args = f"{classCpp}& self" + (", " + val_args if val_args else "")
       functionCommand = "function"
 
     ret_type = " -> emscripten::val" if mixed_returns else ""
     output = f'{indent(2)}.{functionCommand}("{methodName}", optional_override([]({sig_args}){ret_type} {{\n'
-    output += self._codegen_method_dispatch_tree(tree, className, isStatic, templateDecl, templateArgs, ind=6, mixed_returns=mixed_returns)
+    output += self._codegen_method_dispatch_tree(tree, classCpp, isStatic, templateDecl, templateArgs, ind=6, mixed_returns=mixed_returns)
     output += "    }), allow_raw_pointers())\n"
     return output
 
-  def _codegen_method_dispatch_tree(self, tree, className, isStatic, templateDecl, templateArgs, ind=6, mixed_returns=False):
+  def _codegen_method_dispatch_tree(self, tree, classCpp, isStatic, templateDecl, templateArgs, ind=6, mixed_returns=False):
     """Generate C++ dispatch code for a method dispatch tree."""
     sp = " " * ind
     if isinstance(tree, DispatchLeaf):
@@ -1733,7 +2446,7 @@ class EmbindBindings(Bindings):
             canon = self.resolveWithCanonicalFallback(arg.type.spelling, arg.type, templateDecl, templateArgs)
           conversions.append(f'arg{i}.as<{canon}>()')
       args_str = ", ".join(conversions)
-      caller = f"{className}::" if method.is_static_method() else "self."
+      caller = f"{classCpp}::" if method.is_static_method() else "self."
       has_return = method.result_type.spelling != "void"
       if mixed_returns:
         if has_return:
@@ -1794,13 +2507,13 @@ class EmbindBindings(Bindings):
         else:
           check = f'arg{tree.arg_position}.typeOf().as<std::string>() == "number"'
           code += f'{sp}{keyword} ({check}) {{\n'
-        code += self._codegen_method_dispatch_tree(subtree, className, isStatic, templateDecl, templateArgs, ind + 2, mixed_returns=mixed_returns)
+        code += self._codegen_method_dispatch_tree(subtree, classCpp, isStatic, templateDecl, templateArgs, ind + 2, mixed_returns=mixed_returns)
         code += f'{sp}}}\n'
       return code
 
     if isinstance(tree, DispatchAmbiguous):
       fallback = DispatchLeaf(tree.overloads[0])
-      return self._codegen_method_dispatch_tree(fallback, className, isStatic, templateDecl, templateArgs, ind, mixed_returns=mixed_returns)
+      return self._codegen_method_dispatch_tree(fallback, classCpp, isStatic, templateDecl, templateArgs, ind, mixed_returns=mixed_returns)
 
     return ''
 
@@ -1824,11 +2537,13 @@ class EmbindBindings(Bindings):
     returnType = self.resolveWithCanonicalFallback(m.result_type.spelling, m.result_type, templateDecl, templateArgs)
     argTypesStr = ', '.join(self.getOriginalArgumentType(a, templateDecl, templateArgs) for a in argList)
     constStr = "const" if m.is_const_method() else ""
-    classTypeName = getClassTypeName(theClass, templateDecl)
+    classCpp = getClassQualifiedName(theClass, templateDecl)
+    if not classCpp:
+      classCpp = className
     if m.is_static_method():
-      selectStr = f' select_overload<{returnType}({argTypesStr})>(&{className}::{m.spelling})'
+      selectStr = f' select_overload<{returnType}({argTypesStr})>(&{classCpp}::{m.spelling})'
     else:
-      selectStr = f' select_overload<{returnType}({argTypesStr}){constStr}, {classTypeName}>(&{className}::{m.spelling})'
+      selectStr = f' select_overload<{returnType}({argTypesStr}){constStr}, {classCpp}>(&{classCpp}::{m.spelling})'
     funcCmd = "class_function" if m.is_static_method() else "function"
     return f'{indent(2)}.{funcCmd}("{m.spelling}{suffix}",{selectStr}, allow_raw_pointers())\n'
 
@@ -1838,6 +2553,9 @@ class EmbindBindings(Bindings):
     className = getClassTypeName(theClass, templateDecl)
     if className == "":
       className = theClass.type.spelling
+    classCpp = getClassQualifiedName(theClass, templateDecl)
+    if not classCpp:
+      classCpp = className
 
     bindable = []
     for m in methods:
@@ -1977,7 +2695,7 @@ class EmbindBindings(Bindings):
                 return_types = set(m.result_type.get_canonical().spelling for m in js_ambiguous)
                 mixed_returns = len(return_types) > 1
                 isStatic = all(m.is_static_method() for m in js_ambiguous)
-                output += self._emitValDispatchMethod(theClass, js_ambiguous[0].spelling, arity, val_tree, className, isStatic, templateDecl, templateArgs, mixed_returns=mixed_returns)
+                output += self._emitValDispatchMethod(theClass, js_ambiguous[0].spelling, arity, val_tree, classCpp, isStatic, templateDecl, templateArgs, mixed_returns=mixed_returns)
 
               for m in val_ambiguous:
                 idx = all_methods_of_name.index(m) if m in all_methods_of_name else 0
@@ -2027,6 +2745,9 @@ class EmbindBindings(Bindings):
 
     useHandleOverride = isTransientDerived(theClass, self.tuInfo.classDict)
     name = getClassTypeName(theClass, templateDecl)
+    qual = getClassQualifiedName(theClass, templateDecl)
+    if not qual:
+      qual = name
     allOverloads = constructors
 
     for constructor in ambiguous_ctors:
@@ -2036,10 +2757,10 @@ class EmbindBindings(Bindings):
         argNames = ", ".join(list(map(lambda x: (x.spelling + ".c_str()") if isCString(x.type) else x.spelling, constructor.get_arguments())))
         argTypes = ", ".join(list(map(lambda x: "std::string" if isCString(x.type) else self.getSingleArgumentBinding(False, True, templateDecl, templateArgs)(x)[0], constructor.get_arguments())))
 
-        output += "    struct " + name + overloadPostfix + " : public " + name + " {\n"
-        output += "      " + name + overloadPostfix + "(" + args + ") : " + name + "(" + argNames + ") {}\n"
+        output += "    struct " + name + overloadPostfix + " : public " + qual + " {\n"
+        output += "      " + name + overloadPostfix + "(" + args + ") : " + qual + "(" + argNames + ") {}\n"
         output += "    };\n"
-        output += "    class_<" + name + overloadPostfix + ", base<" + name + ">>(\"" + name + overloadPostfix + "\")\n"
+        output += "    class_<" + name + overloadPostfix + ", base<" + qual + ">>(\"" + name + overloadPostfix + "\")\n"
         if useHandleOverride:
           output += "      .smart_ptr<opencascade::handle<" + name + overloadPostfix + ">>(\"Handle_" + name + overloadPostfix + "\")\n"
           output += "      .constructor(optional_override([](" + args + ") {\n"
@@ -2358,7 +3079,39 @@ class TypescriptBindings(Bindings):
       else:
         lines.append(f"{indent_str} * @see `{target_escaped}`")
 
-  def _jsdoc(self, class_name, member_name=None, indent_str="", param_count=None, overload_index=0, template_name=None, param_names=None):
+  # Suffix appended to @param descriptions for class outputs that mutate in
+  # place (R5 of docs/research/ocjs-rbv-return-shape-revisit.md). Generated
+  # JSDoc preserves upstream Doxygen prose and concatenates this with a single
+  # space so the IntelliSense tooltip carries both the OCCT description and
+  # the OCJS mechanic on the same line.
+  MUTATED_CLASS_PARAM_SUFFIX = "Mutated in place; read the updated value from this argument after the call."
+
+  def _param_description(self, member, param_name):
+    """Look up the upstream Doxygen `@param` description for a given name on
+    a resolved member entry. Returns the escaped/normalized text (without
+    surrounding tags) or "" when no description is present. Used by the
+    envelope-fields block in `_jsdoc` to mine reusable copy for Handle /
+    primitive envelope fields whose value originated as an output param.
+    """
+    for param in member.get("params", []):
+      if param["name"] == param_name:
+        return self._escape_jsdoc(self._normalize_link_tokens(param.get("description", "")))
+    return ""
+
+  def _jsdoc(self, class_name, member_name=None, indent_str="", param_count=None, overload_index=0, template_name=None, param_names=None, mutated_class_param_names=None, envelope_descriptor=None):
+    """Emit a JSDoc block from Doxygen-derived brief, detailed text, `@param`,
+    `@returns`, and simplesect tags only.
+
+    Consumer-facing return-shape contract: see the read-site decision tree in
+    docs/research/ocjs-rbv-return-shape-revisit.md. When the dts signature
+    embeds an RBV envelope (`{ returnValue, …, [Symbol.dispose] }`), the
+    caller passes an `envelope_descriptor` so this method rewrites `@returns`
+    into the corresponding envelope-fields block. When a JS-visible class
+    output param is mutated in place, the caller passes its name in
+    `mutated_class_param_names` so this method appends `MUTATED_CLASS_PARAM_SUFFIX`
+    to the existing description (or synthesizes one when upstream Doxygen
+    omits the param).
+    """
     used_template = False
     entry = self._docs.get(class_name)
     if not entry and template_name:
@@ -2404,13 +3157,54 @@ class TypescriptBindings(Bindings):
       if brief:
         lines.append(f"{indent_str} *")
       self._emit_jsdoc_text(lines, indent_str, detailed)
+    mutated_seq = mutated_class_param_names or ()
+    mutated_set = set(mutated_seq)
+    emitted_param_names = set()
+    suffix = TypescriptBindings.MUTATED_CLASS_PARAM_SUFFIX
     for param in member.get("params", []):
       if param_names is not None and param["name"] not in param_names:
         continue
+      pname = param["name"]
       desc = self._escape_jsdoc(self._normalize_link_tokens(param.get("description", "")))
-      lines.append(f"{indent_str} * @param {param['name']} {desc}".rstrip())
+      if pname in mutated_set:
+        desc = (desc + " " + suffix).strip() if desc else suffix
+      lines.append(f"{indent_str} * @param {pname} {desc}".rstrip())
+      emitted_param_names.add(pname)
+    # R5/Q4: synthesize a concise `@param` for class outputs that mutate in
+    # place when upstream Doxygen omitted them. Restricted to JS-visible
+    # mutated class params — elided Handle outputs and primitives without
+    # docs deliberately stay silent (per the JSDoc contract table). Iterates
+    # in argument order (mutated_seq is a tuple) so output is deterministic.
+    for pname in mutated_seq:
+      if pname in emitted_param_names:
+        continue
+      if param_names is not None and pname not in param_names:
+        continue
+      lines.append(f"{indent_str} * @param {pname} {suffix}")
+      emitted_param_names.add(pname)
+
     ret_desc = self._escape_jsdoc(self._normalize_link_tokens(member.get("returns_description", "")))
-    if ret_desc:
+    if envelope_descriptor and envelope_descriptor.get("has_envelope"):
+      # R5: rewrite `@returns` as a multi-line envelope-fields block so the
+      # tooltip surfaces every field a caller can read.
+      lines.append(f"{indent_str} * @returns A result object with fields:")
+      for field in envelope_descriptor.get("fields", []):
+        fname = field["name"]
+        kind = field["kind"]
+        if kind == "return":
+          field_desc = ret_desc if ret_desc else "the C++ return value"
+        elif kind == "handle":
+          base_desc = self._param_description(member, fname)
+          field_desc = (base_desc + ", owned by the returned envelope.") if base_desc else "owned by the returned envelope."
+        else:
+          # Primitive / enum envelope field — placeholder param the caller
+          # also passed in. Use the upstream `@param` description when present.
+          base_desc = self._param_description(member, fname)
+          field_desc = base_desc if base_desc else "updated value from the call."
+        lines.append(f"{indent_str} * - `{fname}`: {field_desc}".rstrip())
+      if envelope_descriptor.get("has_dispose"):
+        lines.append(f"{indent_str} * Dispose the returned envelope to release owned Handle fields.")
+    elif ret_desc:
       lines.append(f"{indent_str} * @returns {ret_desc}")
     self._emit_simplesect_tags(lines, indent_str, member)
     if member.get("deprecated"):
@@ -2896,7 +3690,7 @@ class TypescriptBindings(Bindings):
   _any_reasons = {}
   _known_export_names = set()
   _CONTAINER_ALIASES = {
-    "NCollection_DynamicArray": "NCollection_Vector",
+    "NCollection_Vector": "NCollection_DynamicArray",
   }
 
   @classmethod
@@ -3198,6 +3992,11 @@ class TypescriptBindings(Bindings):
         inner = self.resolve_type(t.get_template_argument_type(0), templateDecl, templateArgs)
         return f"{inner}[]"
 
+    if container == "NCollection_LinearVector":
+      if numArgs >= 1:
+        inner = self.resolve_type(t.get_template_argument_type(0), templateDecl, templateArgs)
+        return f"{inner}[]"
+
     if container == "initializer_list":
       if numArgs >= 1:
         inner = self.resolve_type(t.get_template_argument_type(0), templateDecl, templateArgs)
@@ -3445,19 +4244,32 @@ class TypescriptBindings(Bindings):
     Emitted independently of the normal overload pipeline because the cursor
     does not belong to `theClass.get_children()` — `getMethodOverloadPostfix`
     would crash on it.
+
+    Uses the same RBV emission path as direct methods so synthesized base
+    overloads keep their (optional-input, RBV-return) shape — without this
+    the base would emit `Show(theUserSec?: number): {theUserSec: number}`
+    while the derived's synthesized copy would emit `Show(theUserSec: number): void`,
+    tripping TS2416 override variance.
     """
     try:
       allArgs = list(method.get_arguments())
-      args = ", ".join(
-        self.getTypescriptDefFromArg(arg, i, None, None)
-        for i, arg in enumerate(allArgs)
-      )
-      returnType = self.getTypescriptDefFromResultType(method.result_type, None, None)
+      outputReturnType = self._buildOutputParamReturnType(method, allArgs, None, None, theClass=None)
+      if outputReturnType is not None:
+        args = self._buildKeptArgs(method, allArgs, None, None)
+        returnType = outputReturnType
+      else:
+        args = ", ".join(
+          self.getTypescriptDefFromArg(arg, i, None, None)
+          for i, arg in enumerate(allArgs)
+        )
+        returnType = self.getTypescriptDefFromResultType(method.result_type, None, None)
     except Exception:
       return ""
     kept_names = [self._argname(arg, i) for i, arg in enumerate(allArgs)
                   if not shouldStripParam(arg.type, method)]
-    out = self._jsdoc(className, method.spelling, "  ", param_count=len(allArgs), overload_index=0, template_name=tplName, param_names=kept_names)
+    mutated_names = self._mutatedClassParamNames(method, allArgs)
+    envelope = self._describeEnvelope(method, allArgs, None, None, theClass=None)
+    out = self._jsdoc(className, method.spelling, "  ", param_count=len(allArgs), overload_index=0, template_name=tplName, param_names=kept_names, mutated_class_param_names=mutated_names, envelope_descriptor=envelope)
     out += "  " + ("static " if method.is_static_method() else "") + method.spelling + "(" + args + "): " + returnType + ";\n"
     return out
 
@@ -3542,27 +4354,196 @@ class TypescriptBindings(Bindings):
     _walk_bases(theClass)
     return base_overloads
 
+  def _outputArgIsEmbindManaged(self, arg):
+    """True if an output-param arg's pointee is a Handle<T> or default-
+    constructible class. Drives `[Symbol.dispose](): void` emission on the
+    return container literal.
+    """
+    if not isOutputParam(arg.type):
+      return False
+    pointee = arg.type.get_pointee()
+    if _isHandleType(pointee):
+      return True
+    canonical = pointee.get_canonical()
+    if canonical.spelling in builtInTypes:
+      return False
+    if pointee.kind == clang.cindex.TypeKind.ENUM or canonical.kind == clang.cindex.TypeKind.ENUM:
+      return False
+    return _isDefaultConstructibleClass(pointee)
+
+  def _returnIsEmbindManaged(self, method):
+    """True if the method's non-void return type is a Handle<T> or class."""
+    ret_type = method.result_type
+    if ret_type.spelling == "void":
+      return False
+    ret = ret_type
+    if ret.kind == clang.cindex.TypeKind.LVALUEREFERENCE:
+      ret = ret.get_pointee()
+    if _isHandleType(ret):
+      return True
+    canonical = ret.get_canonical()
+    if _isHandleType(canonical):
+      return True
+    if canonical.spelling in builtInTypes:
+      return False
+    if ret.kind == clang.cindex.TypeKind.ENUM or canonical.kind == clang.cindex.TypeKind.ENUM:
+      return False
+    if canonical.kind == clang.cindex.TypeKind.POINTER:
+      return False
+    return _isDefaultConstructibleClass(canonical)
+
+  def _containerNeedsDispose(self, outputArgs, method):
+    """TS-side mirror of `EmbindBindings._containerNeedsDispose` — returns
+    True iff at least one output arg OR the non-void return is embind-managed
+    (class instance or Handle<T>). Keeps the `[Symbol.dispose](): void` member
+    in the return type literal aligned with the C++ codegen's val::object()
+    branch in `_emitOutputParamBinding`.
+    """
+    for _i, arg in outputArgs:
+      if self._outputArgIsEmbindManaged(arg):
+        return True
+    return self._returnIsEmbindManaged(method)
+
+  def _mutatedClassParamNames(self, method, allArgs):
+    """Names of the JS-visible class output params that this method mutates in
+    place (R1), preserving argument order. Used by `_jsdoc` to append the
+    "Mutated in place..." suffix to each param's description and to synthesize
+    a `@param` when upstream Doxygen omits it.
+
+    Returns a tuple (insertion-stable) so JSDoc emission is deterministic
+    across runs — iterating a `set` mixes hash order across builds and
+    produces byte-divergent `.d.ts` outputs.
+    """
+    names = []
+    seen = set()
+    for i, arg in enumerate(allArgs):
+      if isClassOutputParam(arg.type) and not shouldStripParam(arg.type, method):
+        name = self._argname(arg, i)
+        if name not in seen:
+          names.append(name)
+          seen.add(name)
+    return tuple(names)
+
+  def _describeEnvelope(self, method, allArgs, templateDecl, templateArgs, theClass=None):
+    """Describe the envelope `_buildOutputParamReturnType` will emit for this
+    method, in the shape `_jsdoc` consumes. Returns None when the method
+    collapses to a native return (no envelope).
+
+    Keeping this in lockstep with `_buildOutputParamReturnType` is critical —
+    a drift between the two would silently produce JSDoc that describes
+    fields the dts no longer contains.
+    """
+    ret_type = method.result_type
+    if ret_type.spelling != "void" and ret_type.get_canonical().kind == clang.cindex.TypeKind.POINTER:
+      return None
+    outputArgs = [(i, a) for i, a in enumerate(allArgs)
+                  if isOutputParam(a.type) and not isClassOutputParam(a.type)]
+    if not outputArgs:
+      return None
+    base_override = self._find_base_override_target(theClass, method) if theClass is not None else None
+    if base_override is not None:
+      base_args = list(base_override.get_arguments())
+      base_output = [(i, a) for i, a in enumerate(base_args)
+                     if isOutputParam(a.type) and not isClassOutputParam(a.type)]
+      if not base_output:
+        return None
+      if len(base_output) == len(outputArgs):
+        outputArgs = [(i, derived_a) for (i, derived_a), (_bi, base_a) in zip(outputArgs, base_output)]
+        output_names = [self._argname(base_a, bi) for (bi, base_a) in base_output]
+      else:
+        # Mixed-arity virtual override — describe the union of base + derived
+        # output names (matching `_buildOutputParamReturnType`'s union path).
+        emitted = set()
+        union_fields = []
+        if method.result_type.spelling != "void":
+          base_names = {self._argname(a, i) for i, a in base_output}
+          ret_field_name = ENVELOPE_RETURN_FIELD_COLLISION if ENVELOPE_RETURN_FIELD in base_names else ENVELOPE_RETURN_FIELD
+          union_fields.append({"name": ret_field_name, "kind": "return"})
+          emitted.add(ret_field_name)
+        for bi, base_a in base_output:
+          base_name = self._argname(base_a, bi)
+          if base_name in emitted:
+            continue
+          union_fields.append({"name": base_name, "kind": self._envelopeFieldKind(base_a)})
+          emitted.add(base_name)
+        for di, derived_a in outputArgs:
+          derived_name = self._argname(derived_a, di)
+          if derived_name in emitted:
+            continue
+          union_fields.append({"name": derived_name, "kind": self._envelopeFieldKind(derived_a)})
+          emitted.add(derived_name)
+        needs_dispose = self._containerNeedsDispose(outputArgs, method)
+        return {
+          "has_envelope": True,
+          "return_field": union_fields[0]["name"] if union_fields and union_fields[0]["kind"] == "return" else None,
+          "fields": union_fields,
+          "has_dispose": needs_dispose,
+        }
+    else:
+      output_names = [self._argname(a, i) for i, a in outputArgs]
+
+    fields = []
+    return_field = None
+    if method.result_type.spelling != "void":
+      names_set = set(output_names)
+      return_field = ENVELOPE_RETURN_FIELD_COLLISION if ENVELOPE_RETURN_FIELD in names_set else ENVELOPE_RETURN_FIELD
+      fields.append({"name": return_field, "kind": "return"})
+    for (i, arg), out_name in zip(outputArgs, output_names):
+      fields.append({"name": out_name, "kind": self._envelopeFieldKind(arg)})
+    needs_dispose = self._containerNeedsDispose(outputArgs, method)
+    return {
+      "has_envelope": True,
+      "return_field": return_field,
+      "fields": fields,
+      "has_dispose": needs_dispose,
+    }
+
+  def _envelopeFieldKind(self, arg):
+    """Classify an envelope-bound output arg for JSDoc emission. Class outputs
+    never reach this helper — they are filtered out before any envelope
+    description is built. Returns 'handle', 'enum', or 'primitive'.
+    """
+    pointee = arg.type.get_pointee()
+    if _isHandleType(pointee):
+      return "handle"
+    canonical = pointee.get_canonical()
+    if pointee.kind == clang.cindex.TypeKind.ENUM or canonical.kind == clang.cindex.TypeKind.ENUM:
+      return "enum"
+    return "primitive"
+
   def _buildOutputParamReturnType(self, method, allArgs, templateDecl, templateArgs, theClass=None):
-    """Build a TS inline object return type from output params, or None if no output params.
+    """Build a TS inline object return type from output params, or None when
+    the method should fall back to the native C++ return.
+
+    Per R1 of docs/research/ocjs-rbv-return-shape-revisit.md, concrete class
+    outputs (non-Handle, default-constructible) are mutated in place and do
+    NOT appear in the return envelope. Per R2, methods whose only output
+    params are class refs collapse to a plain native return (or void).
 
     For overrides, mirrors the base class's output-param field names so the
     derived signature stays structurally assignable to the base (TS2416).
     """
-    outputArgs = [(i, a) for i, a in enumerate(allArgs) if isOutputParam(a.type)]
-    if not outputArgs:
-      return None
+    # R1 filter: class outputs are mutated in place and not envelope fields.
+    outputArgs = [(i, a) for i, a in enumerate(allArgs)
+                  if isOutputParam(a.type) and not isClassOutputParam(a.type)]
     ret_type = method.result_type
     if ret_type.spelling != "void" and ret_type.get_canonical().kind == clang.cindex.TypeKind.POINTER:
       return None
+    if not outputArgs:
+      # R2: no envelope-bound outputs → native return path. Caller emits the
+      # raw C++ return type directly (`void` or the native return).
+      return None
+    needsDispose = self._containerNeedsDispose(outputArgs, method)
 
     # Virtual overrides must keep the base class signature shape, otherwise
     # TS2416 fires. If the same-name same-arity method exists on a base, mirror
-    # its output-param naming. If the base has no output params at all, drop the
-    # inline-object transform entirely.
+    # its output-param naming. If the base has no envelope-bound output params,
+    # drop the inline-object transform entirely.
     base_override = self._find_base_override_target(theClass, method) if theClass is not None else None
     if base_override is not None:
       base_args = list(base_override.get_arguments())
-      base_output = [(i, a) for i, a in enumerate(base_args) if isOutputParam(a.type)]
+      base_output = [(i, a) for i, a in enumerate(base_args)
+                     if isOutputParam(a.type) and not isClassOutputParam(a.type)]
       if not base_output:
         return None
       if len(base_output) == len(outputArgs):
@@ -3582,7 +4563,7 @@ class TypescriptBindings(Bindings):
         if method.result_type.spelling != "void":
           ret = self.getTypescriptDefFromResultType(method.result_type, templateDecl, templateArgs)
           base_names = {self._argname(a, i) for i, a in base_output}
-          ret_field_name = "return_value" if "result" in base_names else "result"
+          ret_field_name = ENVELOPE_RETURN_FIELD_COLLISION if ENVELOPE_RETURN_FIELD in base_names else ENVELOPE_RETURN_FIELD
           fields.append(f"{ret_field_name}: {ret}")
           emitted.add(ret_field_name)
         for bi, base_a in base_output:
@@ -3599,6 +4580,8 @@ class TypescriptBindings(Bindings):
           tsType = self.resolve_type(derived_a.type, templateDecl, templateArgs)
           fields.append(f"{derived_name}: {tsType}")
           emitted.add(derived_name)
+        if needsDispose:
+          fields.append("[Symbol.dispose](): void")
         return "{ " + "; ".join(fields) + " }"
     else:
       derived_output_names = [self._argname(a, i) for i, a in outputArgs]
@@ -3608,22 +4591,38 @@ class TypescriptBindings(Bindings):
     output_names = set(derived_output_names)
     if hasNonVoidReturn:
       origReturn = self.getTypescriptDefFromResultType(method.result_type, templateDecl, templateArgs)
-      ret_field_name = "return_value" if "result" in output_names else "result"
+      ret_field_name = ENVELOPE_RETURN_FIELD_COLLISION if ENVELOPE_RETURN_FIELD in output_names else ENVELOPE_RETURN_FIELD
       fields.append(f"{ret_field_name}: {origReturn}")
 
     for (i, arg), out_name in zip(outputArgs, derived_output_names):
       tsType = self.resolve_type(arg.type, templateDecl, templateArgs)
       fields.append(f"{out_name}: {tsType}")
 
+    if needsDispose:
+      fields.append("[Symbol.dispose](): void")
+
     return "{ " + "; ".join(fields) + " }"
 
   def _buildKeptArgs(self, method, allArgs, templateDecl, templateArgs):
-    """Build args string with stripped output params removed."""
-    keptArgs = []
-    for i, arg in enumerate(allArgs):
-      if shouldStripParam(arg.type, method):
-        continue
-      keptArgs.append(self.getTypescriptDefFromArg(arg, i, templateDecl, templateArgs))
+    """Build the TS arg list under Input-Passthrough RBV with Approach G
+    Handle elision.
+
+    Primitive/enum and default-constructible class output params continue to
+    appear in the JS signature as REQUIRED slots (input-passthrough — the
+    caller supplies the seed and reads the result via the return container).
+    Non-const `Handle<T>&` outputs are ELIDED — per OCCT contract these are
+    output-only, never read by C++, and the JS-facing input was a gratuitous
+    wrapper allocation. `shouldStripParam` is the single source of truth for
+    elision; `_emitOutputParamBinding` declares the matching stack-local null
+    Handle inside the optional_override lambda body.
+
+    See `docs/research/ocjs-rbv-handle-output-param-elision.md` for the
+    decision record (Approach G); supersedes the earlier Option C from
+    `docs/research/ocjs-rbv-blueprint-p0-p1-stocktake.md` §F3.
+    """
+    keptArgs = [self.getTypescriptDefFromArg(arg, i, templateDecl, templateArgs)
+                for i, arg in enumerate(allArgs)
+                if not shouldStripParam(arg.type, method)]
     return ", ".join(keptArgs)
 
   def processMethodOrProperty(self, theClass, method, templateDecl = None, templateArgs = None, overload_index = 0, override_postfix = None):
@@ -3647,7 +4646,9 @@ class TypescriptBindings(Bindings):
       tplName = theClass.spelling if templateDecl is not None else None
       kept_names = [self._argname(arg, i) for i, arg in enumerate(allArgs)
                     if not shouldStripParam(arg.type, method)]
-      output += self._jsdoc(className, method.spelling, "  ", param_count=len(allArgs), overload_index=overload_index, template_name=tplName, param_names=kept_names)
+      mutated_names = self._mutatedClassParamNames(method, allArgs)
+      envelope = self._describeEnvelope(method, allArgs, templateDecl, templateArgs, theClass=theClass)
+      output += self._jsdoc(className, method.spelling, "  ", param_count=len(allArgs), overload_index=overload_index, template_name=tplName, param_names=kept_names, mutated_class_param_names=mutated_names, envelope_descriptor=envelope)
       output += "  " + ("static " if method.is_static_method() else "") + method.spelling + overloadPostfix + "(" + args + "): " + returnType + ";\n"
     if method.access_specifier == clang.cindex.AccessSpecifier.PUBLIC and method.kind == clang.cindex.CursorKind.FIELD_DECL:
       if method.type.kind == clang.cindex.TypeKind.CONSTANTARRAY:
@@ -3761,6 +4762,18 @@ class TypescriptBindings(Bindings):
       return [self._argname(arg, i) for i, arg in enumerate(allArgs)
               if not shouldStripParam(arg.type, m)]
 
+    def _jsdoc_kwargs(m):
+      """Compute the mutated-class-param set and envelope descriptor for `m`
+      so every same-arity-group `_jsdoc` call shares a single source of truth
+      (kept in lockstep with `_buildOutputParamReturnType` via
+      `_describeEnvelope`).
+      """
+      allArgs = list(m.get_arguments())
+      return {
+        "mutated_class_param_names": self._mutatedClassParamNames(m, allArgs),
+        "envelope_descriptor": self._describeEnvelope(m, allArgs, templateDecl, templateArgs, theClass=theClass),
+      }
+
     arity_idx_map = {}
     for arity, group in sorted(by_arity.items()):
       if len(group) == 1:
@@ -3769,7 +4782,7 @@ class TypescriptBindings(Bindings):
         args, returnType = _ts_args_and_return(group[0])
         methodArgs = list(group[0].get_arguments())
         names = _kept_names(group[0])
-        output += self._jsdoc(className, group[0].spelling, "  ", param_count=len(methodArgs), overload_index=idx, template_name=tplName, param_names=names)
+        output += self._jsdoc(className, group[0].spelling, "  ", param_count=len(methodArgs), overload_index=idx, template_name=tplName, param_names=names, **_jsdoc_kwargs(group[0]))
         output += "  " + ("static " if group[0].is_static_method() else "") + group[0].spelling + "(" + args + "): " + returnType + ";\n"
       else:
         def _ts_method_has_wrapper_args(m):
@@ -3797,7 +4810,7 @@ class TypescriptBindings(Bindings):
             args, returnType = _ts_args_and_return(ov)
             methodArgs = list(ov.get_arguments())
             names = _kept_names(ov)
-            output += self._jsdoc(className, ov.spelling, "  ", param_count=len(methodArgs), overload_index=idx, template_name=tplName, param_names=names)
+            output += self._jsdoc(className, ov.spelling, "  ", param_count=len(methodArgs), overload_index=idx, template_name=tplName, param_names=names, **_jsdoc_kwargs(ov))
             output += "  " + ("static " if ov.is_static_method() else "") + ov.spelling + "(" + args + "): " + returnType + ";\n"
 
           for ov in ambiguous:
@@ -3809,10 +4822,11 @@ class TypescriptBindings(Bindings):
             methodArgs = list(ov.get_arguments())
             names = _kept_names(ov)
             is_primary = id(ov) in ambiguous_primaries
+            jsdoc_extra = _jsdoc_kwargs(ov)
             if is_primary:
-              output += self._jsdoc(className, ov.spelling, "  ", param_count=len(methodArgs), overload_index=idx, template_name=tplName, param_names=names)
+              output += self._jsdoc(className, ov.spelling, "  ", param_count=len(methodArgs), overload_index=idx, template_name=tplName, param_names=names, **jsdoc_extra)
               output += "  " + ("static " if ov.is_static_method() else "") + ov.spelling + "(" + args + "): " + returnType + ";\n"
-            output += self._jsdoc(className, ov.spelling, "  ", param_count=len(methodArgs), overload_index=idx, template_name=tplName, param_names=names)
+            output += self._jsdoc(className, ov.spelling, "  ", param_count=len(methodArgs), overload_index=idx, template_name=tplName, param_names=names, **jsdoc_extra)
             output += "  " + ("static " if ov.is_static_method() else "") + ov.spelling + suffix + "(" + args + "): " + returnType + ";\n"
 
         for ov in wrapper_methods:
@@ -3823,7 +4837,7 @@ class TypescriptBindings(Bindings):
           args, returnType = _ts_args_and_return(ov)
           methodArgs = list(ov.get_arguments())
           names = _kept_names(ov)
-          output += self._jsdoc(className, ov.spelling, "  ", param_count=len(methodArgs), overload_index=idx, template_name=tplName, param_names=names)
+          output += self._jsdoc(className, ov.spelling, "  ", param_count=len(methodArgs), overload_index=idx, template_name=tplName, param_names=names, **_jsdoc_kwargs(ov))
           output += "  " + ("static " if ov.is_static_method() else "") + ov.spelling + suffix + "(" + args + "): " + returnType + ";\n"
 
     for base_method in base_overloads_to_synthesize:

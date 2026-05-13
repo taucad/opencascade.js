@@ -125,39 +125,148 @@ For genuinely ambiguous cases that share an arity (e.g. two constructors that bo
 
 **Action**: search-and-replace `_N` overload subclass names with the bare symbol. Most call sites collapse cleanly; the few that don't surface as TypeScript errors with the correct alternative spelling visible in IntelliSense.
 
-### B2 — Output parameters return a value object
+### B2 — Minimal transformation — class outputs mutate in place; envelopes only when JS truly needs them
 
-Methods that previously took a `T&` output reference no longer require a caller-allocated placeholder. The codegen strips primitive output parameters from the JS signature and returns them as a structured object via `emscripten::val_object`.
+> **Updated 2026-05-13 (v3.0-beta)** — supersedes the prior "Universal Input-Passthrough RBV / read from the container" contract. The intermediate "envelope mirrors every output" approach has been replaced with a minimal transformation that keeps JS signatures recognisable to OCCT users.
 
-Reference smoke test: [`tests/smoke/smoke-output-params.test.ts`](tests/smoke/smoke-output-params.test.ts).
+The codegen now emits the narrowest JS shape that faithfully represents each C++ method. Class output parameters (`gp_Pnt&`, `Bnd_Box&`, `GProp_GProps&`, `TopoDS_Shape&`, etc.) **are no longer echoed** as fields on a return envelope — the caller's instance is mutated in place and read directly from the input variable. Envelopes are emitted only when JavaScript genuinely needs a multi-field return: primitives that mutate, elided `Handle<T>&` outputs, or a mix of both alongside a native C++ return value.
 
-**Before**
+Reference smoke tests: [`tests/smoke/smoke-output-params.test.ts`](tests/smoke/smoke-output-params.test.ts), [`tests/smoke/smoke-properties.test.ts`](tests/smoke/smoke-properties.test.ts), [`tests/smoke/smoke-output-params-disposal.test.ts`](tests/smoke/smoke-output-params-disposal.test.ts). Type-level contract: [`tests/output-params.test-d.ts`](tests/output-params.test-d.ts), [`tests/disposable-containers.test-d.ts`](tests/disposable-containers.test-d.ts). Bindgen-shape regression guard: [`tests/bindgen-output-shape.test.ts`](tests/bindgen-output-shape.test.ts).
 
-```ts
-const u1 = { current: 0 }, u2 = { current: 0 };
-const v1 = { current: 0 }, v2 = { current: 0 };
-sphere.Bounds(u1, u2, v1, v2);
-console.log(u1.current, u2.current, v1.current, v2.current);
+**Decision tree** (the codegen applies this to every C++ method with output parameters; the resulting JS shape follows from the bullet that fires first):
+
+| C++ return | C++ output params | Resulting JS shape |
+| --- | --- | --- |
+| Non-`void` | None | Native return (no envelope). `Curve(): Handle_Geom_Curve` |
+| Non-`void` | Class only (mutated in place) | Native return. Read mutated classes from your input variables. `curve.D0(u, pt) → void`; `surface.D2(u, v, P, D1U, D1V, D2U, D2V, D2UV) → void` |
+| `void` | Class only | `void`. Read mutated classes from your input variables. `BRepBndLib.Add(shape, box, useTri) → void` |
+| Non-`void` | Primitives / enums / elided Handles (with or without class outputs) | Envelope with `returnValue` for the C++ return + one named field per non-class output. Class outputs are NOT echoed. `Surface.Bounds(u1, u2, v1, v2): { U1: number; U2: number; V1: number; V2: number; [Symbol.dispose](): void }` |
+| `void` | Primitives / enums / elided Handles (with or without class outputs) | Envelope with the same shape minus `returnValue` |
+
+**The six directives** (R1–R6 in [`docs/research/ocjs-rbv-return-shape-revisit.md`](../../docs/research/ocjs-rbv-return-shape-revisit.md)):
+
+1. **R1 — Class outputs never mirror into the return envelope.** A method that previously surfaced `result.thePlane` after mutating `thePlane` now mutates the caller's `thePlane` in place and never echoes it back. The R1 regression is guarded by `tests/bindgen-output-shape.test.ts > no envelope mirrors a concrete class output as a non-return field`.
+2. **R2 — Class arguments are mutated in place.** Pass your own freshly-constructed `gp_Pnt` / `Bnd_Box` / `GProp_GProps` / `TopoDS_Shape` and read it back after the call. There is no second copy.
+3. **R3 — Native return values surface directly when no envelope is required.** A method whose only outputs are class-typed (or none at all) returns its native C++ value (or `void`) — not an `{ returnValue }` wrapper.
+4. **R4 — Envelopes only for primitives, elided Handles, and mixed cases.** The envelope exists when JS cannot otherwise see a primitive/Handle output, and only those non-class outputs become fields.
+5. **R5 — The C++ return value lives at `envelope.returnValue`.** Renamed from the prior `result` field so it never collides with any OCCT parameter named `result`.
+6. **R6 — JSDoc is explicit.** Class params that mutate in place get a `Mutated in place; read the updated value from this argument after the call.` suffix (appended to the upstream Doxygen description when present). Envelope fields get a multi-line `@returns A result object with fields:` block.
+
+**Placeholder conventions** (only relevant for envelope outputs — primitives and elided Handles):
+
+| Slot type | Passes through as |
+| --- | --- |
+| Primitive (`Standard_Real&`, `Standard_Integer&`, `Standard_Boolean&`) | Pass any value of the type (`0`, `0.0`, `false`); read the updated value from `envelope.<FieldName>` |
+| Enum output (`TopAbs_State&`, `FairCurve_AnalysisCode&`) | Pass any enum value (e.g. `oc.TopAbs_State.TopAbs_IN.value`); read from `envelope.<FieldName>` |
+| Concrete class output (`gp_Pnt&`, `gp_Vec&`, `Bnd_Box&`, `GProp_GProps&`, `TopoDS_Shape&`) | **Mutated in place** — construct it, pass it, read it back from your input variable. No envelope field. |
+| `Handle<T>&` output (any class) | **Position elided from the JS signature** — see [§B3](#b3--non-const-handlet-output-positions-elided-from-the-js-signature). Read from `envelope.<FieldName>`. |
+
+**Migration table** (canonical cases):
+
+| Method | Old (`result` envelope mirrors output) | New (minimal transformation) |
+| --- | --- | --- |
+| `Geom_Curve.D0` (class out, void return) | `using r = curve.D0(u, pt); console.log(r.P)` | `curve.D0(u, pt); console.log(pt.X(), pt.Y(), pt.Z())` |
+| `Geom_Curve.D2` (3 class outs, void return) | `using r = curve.D2(u, p, v1, v2); console.log(r.P, r.V1, r.V2)` | `curve.D2(u, p, v1, v2); console.log(p.X(), v1.X(), v2.X())` |
+| `Geom_Surface.Bounds` (4 primitive outs, void return) | `using r = surface.Bounds(0, 0, 0, 0); console.log(r.U1, r.U2, r.V1, r.V2)` | unchanged — envelope persists for primitive outs |
+| `BRepGProp.VolumeProperties` (class out, native return) | `using r = BRepGProp.VolumeProperties(shape, props); console.log(r.VProps.Mass(), r.result)` | `using props = new oc.GProp_GProps(); const epsilon = BRepGProp.VolumeProperties(shape, props); console.log(props.Mass(), epsilon)` |
+| `BRepBndLib.Add` (class out, void return) | `using r = BRepBndLib.Add(shape, box, useTri); console.log(r.B.IsVoid())` | `BRepBndLib.Add(shape, box, useTri); console.log(box.IsVoid())` |
+| `BRep_Builder.MakeVertex` (class out, void return) | `using r = builder.MakeVertex(v, p, tol); console.log(r.V)` | `builder.MakeVertex(v, p, tol); console.log(v.IsNull())` |
+| `XCAFDoc_ColorTool.GetColor` (boolean return, class out) | `using r = colorTool.GetColor(label, type, color); console.log(r.result, r.<colorField>)` | `const hasColor = colorTool.GetColor(label, type, color); console.log(hasColor, color.Red(), color.Green(), color.Blue())` |
+| `BRep_Tool.Curve` (Handle return, 2 primitive outs, 1 class loc out) | `using r = BRep_Tool.Curve(edge, loc, 0, 0); console.log(r.Curve, r.First, r.Last)` | `using r = BRep_Tool.Curve(edge, loc, 0, 0); console.log(r.returnValue, r.First, r.Last)` — class `loc` is mutated in place, primitives remain enveloped, native Handle return now at `returnValue` |
+| `XCAFDoc_ClippingPlaneTool.GetClippingPlane` (boolean return, 1 class out, 1 Handle out, 1 primitive out) | `using r = tool.GetClippingPlane(label, plane, capping); console.log(r.result, r.thePlane, r.theName, r.theCapping)` | `using r = tool.GetClippingPlane(label, plane, capping); console.log(r.returnValue, plane.<…>, r.theName, r.theCapping)` — `plane` mutated in place; envelope holds boolean return as `returnValue`, the Handle output, and the primitive `theCapping` |
+
+How the C++ layer mutates a JS-supplied class argument: the codegen accepts the slot as `::emscripten::val`, then dereferences a raw-pointer cast back into the registered class instance:
+
+```cpp
+BRepBndLib::Add(S, *B.as<Bnd_Box*>(emscripten::allow_raw_pointers()), useTriangulation);
 ```
 
-**After**
+The `val::as<T*>(allow_raw_pointers())` + deref pattern is the only form that round-trips through embind without making a copy — `val::as<T&>()` falls back to `BindingType<T>` which copies by value and would silently lose mutations. The regression is locked down by `tests/bindgen-output-shape.test.ts > class outputs forward via *val::as<T*>(allow_raw_pointers())`.
+
+**`using` is still required for envelope returns** that own C++ resources (Handle fields). The custom oxlint rule [`tau-lint/require-using-on-disposable`](../../libs/oxlint/src/rules/require-using-on-disposable.js) enforces this workspace-wide. A class-output-only method returning `void` does **not** require `using` on the call site (there is nothing disposable to track).
+
+**Disposer idempotency** (relevant for try/finally migration paths): the envelope's `[Symbol.dispose]()` is one-shot per instance and alias-safe. Callers can invoke it manually inside try/finally **and** rely on `using` scope-exit to re-dispose without throwing `BindingError: <T> instance already deleted`.
+
+**Action**:
+
+1. Walk the decision tree above for each call site and determine the new return shape.
+2. For class output params: stop reading from a return envelope; read directly from the input variable after the call.
+3. For envelope returns: rename every `r.result` to `r.returnValue` (see [§B4](#b4--envelope-return-field-renamed-from-result-to-returnvalue)).
+4. Drop any `using` declaration on calls that now return `void` or a non-disposable native value; keep `using` for envelopes and class returns that own C++ resources.
+
+### B3 — Non-const `Handle<T>&` output positions elided from the JS signature
+
+> **Updated 2026-05-13 (v3.0-beta)** — composes with the minimal-transformation decision tree in [§B2](#b2--minimal-transformation--class-outputs-mutate-in-place-envelopes-only-when-js-truly-needs-them). The Handle-output elision is the row that makes an envelope appear in the first place when there are no other non-class outputs.
+
+Methods with non-const `Handle<T>&` output parameters no longer accept a JS-side placeholder for those positions. The codegen drops the Handle position from the JS-facing signature entirely; the C++ optional_override lambda declares a stack-local null Handle internally and forwards it into the call by reference. The resulting wrapper is surfaced as a container field disposed by the envelope's `[Symbol.dispose]`.
+
+Rationale: OCCT's contract guarantees that non-const `Handle<T>&` is output-only — C++ never reads the input. The prior placeholder was a gratuitous wrapper allocation (JS Embind wrapper + C++ smart_ptr) that doubled the dispose path and produced a "double dispose stutter" when the input variable was disposed alongside the container field aliasing it. See [`docs/research/ocjs-rbv-handle-output-param-elision.md`](../../docs/research/ocjs-rbv-handle-output-param-elision.md) for the empirical evidence (2.29× wall-clock speedup, half the JS wrapper allocations).
+
+Reference smoke test: [`tests/smoke/smoke-handle-output-elision.test.ts`](tests/smoke/smoke-handle-output-elision.test.ts).
+
+**Before** (under B2's universal Input-Passthrough RBV):
 
 ```ts
-const { U1, U2, V1, V2 } = sphere.Bounds();
-console.log(U1, U2, V1, V2);
+using poly = new oc.Poly_PolygonOnTriangulation(0, false);
+using tri = new oc.Poly_Triangulation();
+using r = oc.BRep_Tool.PolygonOnTriangulation(edge, poly, tri, loc);
+console.log(r.P, r.T);
 ```
 
-The same pattern applies to `Handle<T>&` outputs (returned objects own `.delete()`):
+**After**:
 
 ```ts
-const { Curve1, Curve2 } = intersector.Segment(1);
-Curve1.delete();
-Curve2.delete();
+using r = oc.BRep_Tool.PolygonOnTriangulation(edge, loc);
+console.log(r.P, r.T); // freshly-assigned Handles owned by r's Symbol.dispose
+// loc (a class output) is mutated in place — read its updated value directly,
+// it is never echoed into r per the §B2 R1 rule.
 ```
 
-…and to static methods (`oc.BRepTools.UVBounds(face)` returns `{ UMin, UMax, VMin, VMax }`).
+Other affected signatures (full list materialises in `dist/opencascade_full.d.ts`):
 
-**Action**: drop the placeholder-object pattern (`{current: 0}`) for every method whose `.d.ts` now shows a non-`void` return; destructure the named fields from the return value.
+| Method | Before (placeholder-style) | After (elided) |
+| --- | --- | --- |
+| `GeomInt_IntSS.BuildPCurves` | `BuildPCurves(f, l, Tol, S, C, /* placeholder */ null)` | `BuildPCurves(f, l, Tol, S, C)` |
+| `ShapeAnalysis_Edge.TreatRLine` | `TreatRLine(RL, S1, S2, /* placeholder */ null, null, null, tol)` | `TreatRLine(RL, S1, S2, tol)` |
+| `ShapeConstruct.JoinCurves` (and many `New*` methods) | `NewCurve(edge, loc, tol, /* placeholder */ null)` | `NewCurve(edge, loc, tol)` |
+| `HelixGeom_BuilderApproxCurve3d.ApprHelix` | `ApprHelix(t1, t2, pitch, rStart, taper, isCW, tol, /* placeholder */ null, maxErr)` | `ApprHelix(t1, t2, pitch, rStart, taper, isCW, tol, maxErr)` |
+
+**Placeholder table delta** (refines the `Handle<T>&` row in the [§B2 placeholder table](#b2--minimal-transformation--class-outputs-mutate-in-place-envelopes-only-when-js-truly-needs-them)):
+
+| Slot type | Placeholder |
+| --- | --- |
+| Non-const `Handle<T>&` output (concrete or abstract class) | **Elided — caller passes nothing for this position. Read from `envelope.<fieldName>` (see [§B4](#b4--envelope-return-field-renamed-from-result-to-returnvalue) for the `returnValue` rename).** |
+
+Primitive and enum output positions retain the in-passthrough placeholder contract from [§B2](#b2--minimal-transformation--class-outputs-mutate-in-place-envelopes-only-when-js-truly-needs-them); concrete-class outputs mutate in place per the §B2 R1/R2 rules; only `Handle<T>&` outputs are elided.
+
+**Action**:
+
+1. Drop every non-const `Handle<T>&` argument from your call sites; the position is no longer part of the JS signature.
+2. Continue to read every result field from the returned envelope (the field name and shape are unchanged).
+3. Stop allocating `new oc.Handle_*()` placeholders for output-only Handle slots — they were never used by C++ and now have no effect.
+
+### B4 — Envelope return field renamed from `result` to `returnValue`
+
+> **Updated 2026-05-13 (v3.0-beta)** — composes with the minimal-transformation decision tree in [§B2](#b2--minimal-transformation--class-outputs-mutate-in-place-envelopes-only-when-js-truly-needs-them).
+
+Inside every envelope return ([§B2](#b2--minimal-transformation--class-outputs-mutate-in-place-envelopes-only-when-js-truly-needs-them) row 4 and 5), the field that surfaces the C++ method's native return value is now `returnValue` rather than `result`. The rename eliminates a long-standing collision with OCCT parameters named `result` (OCCT uses `result` as a parameter name in roughly a dozen public methods), letting both the C++ return and an OCCT-named `result` parameter coexist in the same envelope without one shadowing the other.
+
+The rename is mechanical and applies to every envelope that carries a non-`void` C++ return alongside one or more primitive/enum/Handle outputs. Envelopes that have no C++ return value (the `void`-return + primitive-outputs row) are unaffected — they never had a `result` field.
+
+**Migration table** (canonical cases):
+
+| Method | Before | After |
+| --- | --- | --- |
+| `BRep_Tool.Curve` (Handle return + primitive outs) | `r.result, r.First, r.Last` | `r.returnValue, r.First, r.Last` |
+| `XCAFDoc_ClippingPlaneTool.GetClippingPlane` (boolean + Handle + primitive) | `r.result, r.theName, r.theCapping` | `r.returnValue, r.theName, r.theCapping` |
+| `FairCurve_Batten.Compute` (`FairCurve_AnalysisCode` enum return + primitive outs) | `r.result, r.<paramOuts>` | `r.returnValue, r.<paramOuts>` |
+| Any other envelope that previously surfaced `r.result` | `r.result` | `r.returnValue` |
+
+Envelopes whose C++ return is `void` (e.g. `Geom_Surface.Bounds`) never had a `result` field and remain unchanged — the envelope only carries the primitive/Handle outputs.
+
+**Collision fallback** — if a future OCCT method declares a parameter named `returnValue`, the codegen falls back to a suffixed name (`returnValue_`) for the parameter so the C++ return always stays at `envelope.returnValue`. This makes `returnValue` the stable, documented field name across every release.
+
+**Action**: regex-replace `\.result\b` → `.returnValue` in your call sites where the receiver is an envelope returned from an OCCT method. Calls that read a class output (now mutated in place; see [§B2](#b2--minimal-transformation--class-outputs-mutate-in-place-envelopes-only-when-js-truly-needs-them)) drop the `.result` access entirely.
 
 ---
 

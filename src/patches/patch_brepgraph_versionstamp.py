@@ -1,29 +1,26 @@
 #!/usr/bin/env python3
-"""Idempotently patch BRepGraph_VersionStamp::ToGUID for wasm32 builds.
+"""Idempotently patch BRepGraph_VersionStamp::ToGUID for wasm32 builds (legacy OCCT).
 
 OCCT v8.0.0-rc5 introduced BRepGraph_VersionStamp.cxx with a hard
 `static_assert(sizeof(size_t) >= 8, "Expected 64-bit size_t")`. Under
 wasm32 (Emscripten's default), size_t is 32-bit, so the assertion fails
 at compile time.
 
-The `ToGUID` body relies on packing two `size_t` hashes into a 128-bit
-GUID via `std::memcpy(..., 8)`. On wasm32 the hashes are 4 bytes, which
-is silently truncating/over-reading. Replicad does not whitelist any
-`BRepGraph_*` symbols, so the function body is never invoked from JS,
-but the file still has to compile because `TKBRep` depends on it.
+**OCCT v8.0.0 final** rewrites ToGUID to quarter-buffer hashing and
+packs four uint32_t values into Standard_UUID — no static_assert and
+wasm32-safe. This script detects that shape and **skips** patching.
 
-This patch swaps the assertion + memcpy for a `#ifdef __EMSCRIPTEN__`
-fallback that zero-pads the 32-bit hashes into the 64-bit slots, keeping
-the function compileable and well-defined under wasm32 without changing
-behavior on native 64-bit targets.
-
-Reversible via `git checkout` in the OCCT tree.
+For rc5-style sources only, this patch swaps the assertion + memcpy for a
+SIZE_MAX preprocessor branch. Reversible via `git checkout` in the OCCT tree.
 """
 
 import os
 import sys
 
 SENTINEL = "OCJS_PATCH_BREPGRAPH_VERSIONSTAMP"
+
+# Present in OCCT 8.0.0 final (d3056ef8); indicates upstream fixed wasm32.
+UPSTREAM_V8_FINAL_MARKER = "Truncate each size_t hash to uint32_t"
 
 OLD_BLOCK = """  Standard_UUID aResultUUID;
   static_assert(sizeof(size_t) >= 8, "Expected 64-bit size_t");
@@ -46,22 +43,27 @@ REPLACEMENT = f"""  Standard_UUID aResultUUID;
 
 
 def patch(filepath: str) -> bool:
-    with open(filepath, "r", encoding="utf-8") as f:
-        content = f.read()
+    with open(filepath, encoding="utf-8") as file:
+        content = file.read()
 
     if SENTINEL in content:
         print(f"Already patched: {filepath}")
         return True
 
+    if UPSTREAM_V8_FINAL_MARKER in content:
+        print(f"Skip (upstream wasm32-safe): {filepath}")
+        print("  OCCT 8.0.0+ ToGUID uses uint32_t quarters; no VersionStamp patch needed.")
+        return True
+
     if OLD_BLOCK not in content:
         print(f"ERROR: Expected block not found in {filepath}")
-        print(f"  Looked for static_assert + memcpy block; OCCT may have changed upstream.")
+        print("  Looked for static_assert + memcpy block; OCCT may have changed upstream.")
         return False
 
     new_content = content.replace(OLD_BLOCK, REPLACEMENT, 1)
 
-    with open(filepath, "w", encoding="utf-8") as f:
-        f.write(new_content)
+    with open(filepath, "w", encoding="utf-8") as file:
+        file.write(new_content)
 
     print(f"Patched: {filepath}")
     print("  Guarded sizeof(size_t) >= 8 assertion with __EMSCRIPTEN__/wasm32 fallback.")

@@ -181,9 +181,11 @@ additionalIncludePaths = [
 def _get_system_cxx_include_paths():
   """Get system C++ include paths for libclang parsing.
 
-  The pip libclang (v18) cannot parse emsdk Clang 23's headers, causing
-  template types like occ::handle<T> to silently degrade to int.
-  Using the system libc++ + Clang built-in headers resolves this.
+  Defence-in-depth: with `libclang>=18.1.1` (matched to OCCT V8.0.0's
+  `template <class T> using occ::handle = opencascade::handle<T>;`) the
+  pip libclang resolves modern libc++ correctly on its own. Keeping the
+  system-libc++ path resolution as a fallback preserves macOS vs Linux
+  parity for future libclang/libc++ version skew.
   """
   if platform.system() == "Darwin":
     paths = []

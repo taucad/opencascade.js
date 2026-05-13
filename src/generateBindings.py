@@ -2,6 +2,7 @@
 
 from typing import Callable
 from bindings import EmbindBindings, TypescriptBindings, shouldProcessClass
+from buildFromYaml import OCJS_RBV_PREAMBLE
 import clang.cindex
 import os
 import errno
@@ -242,6 +243,7 @@ referenceTypeTemplateDefs = \
   "#include <stdexcept>\n" + \
   "#include \"ocjs_smart_ptr.h\"\n" + \
   "#include \"ocjs_handle_helpers.h\"\n" + \
+  OCJS_RBV_PREAMBLE + \
   "\n"
 
 def generateCustomCodeBindings(customCode, known_exports=None):

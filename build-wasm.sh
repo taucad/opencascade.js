@@ -117,9 +117,9 @@ _resolve_symlink_target() {
 
 _ensure_doxygen() {
   local version commit tag
-  version=$(python3 -c "import json; d=json.load(open('$SCRIPT_DIR/DEPS.json'))['dependencies']['doxygen']; print(d['version'])" 2>/dev/null || echo "")
-  commit=$(python3 -c "import json; d=json.load(open('$SCRIPT_DIR/DEPS.json'))['dependencies']['doxygen']; print(d['commit'])" 2>/dev/null || echo "")
-  tag=$(python3 -c "import json; d=json.load(open('$SCRIPT_DIR/DEPS.json'))['dependencies']['doxygen']; print(d['release_tag'])" 2>/dev/null || echo "")
+  version=$("$OCJS_PYTHON" -c "import json; d=json.load(open('$SCRIPT_DIR/DEPS.json'))['dependencies']['doxygen']; print(d['version'])" 2>/dev/null || echo "")
+  commit=$("$OCJS_PYTHON" -c "import json; d=json.load(open('$SCRIPT_DIR/DEPS.json'))['dependencies']['doxygen']; print(d['commit'])" 2>/dev/null || echo "")
+  tag=$("$OCJS_PYTHON" -c "import json; d=json.load(open('$SCRIPT_DIR/DEPS.json'))['dependencies']['doxygen']; print(d['release_tag'])" 2>/dev/null || echo "")
   local doxygen_bin="$SCRIPT_DIR/tools/doxygen/bin/doxygen"
   local stamp_file="$SCRIPT_DIR/tools/doxygen/.commit"
 
@@ -247,6 +247,14 @@ if [ -z "${EMSDK:-}" ] || [ ! -d "${EMSDK:-}" ]; then
 fi
 source "$EMSDK/emsdk_env.sh" 2>/dev/null
 
+# Project-local Python venv is the canonical interpreter for every build script.
+# See docs/research/occt-v8-final-migration-stocktake.md (Python Toolchain Reshaping).
+export OCJS_PYTHON="$SCRIPT_DIR/.venv/bin/python"
+if [ ! -x "$OCJS_PYTHON" ]; then
+  echo "ERROR: $OCJS_PYTHON not found. Run scripts/setup-deps.sh first." >&2
+  exit 1
+fi
+
 export OCJS_ROOT="$SCRIPT_DIR"
 export OCCT_ROOT="${OCCT_ROOT:-$(cd "$SCRIPT_DIR/deps/OCCT" 2>/dev/null && pwd || { cd "$SCRIPT_DIR/../OCCT" 2>/dev/null && pwd; } || echo "")}"
 export RAPIDJSON_ROOT="${RAPIDJSON_ROOT:-$(cd "$SCRIPT_DIR/deps/rapidjson" 2>/dev/null && pwd || { cd "$SCRIPT_DIR/../rapidjson" 2>/dev/null && pwd; } || echo "$SCRIPT_DIR/rapidjson")}"
@@ -264,7 +272,7 @@ done
 
 DEPS_FILE="$SCRIPT_DIR/DEPS.json"
 if [ -f "$DEPS_FILE" ]; then
-  python3 -c "
+  "$OCJS_PYTHON" -c "
 import json, subprocess, os, sys
 deps = json.load(open('$DEPS_FILE'))['dependencies']
 checks = [
@@ -307,7 +315,7 @@ if [ -n "${OCJS_CONFIG:-}" ]; then
     exit 1
   fi
   echo "Loading configuration: $OCJS_CONFIG"
-  eval "$(python3 -c "
+  eval "$("$OCJS_PYTHON" -c "
 import json, sys
 configs = json.load(open('$_CONFIG_FILE'))
 name = '$OCJS_CONFIG'
@@ -376,7 +384,7 @@ mkdir -p "$OCJS_OUTPUT_DIR"
 # ── Build flag validation ─────────────────────────────────────────────
 
 validate_build_flags() {
-  python3 -c "
+  "$OCJS_PYTHON" -c "
 import sys; sys.path.insert(0, 'src')
 from Common import validate_build_flags, BuildFlagMismatch
 try:
@@ -400,7 +408,7 @@ _ensure_standard_version_hxx() {
     return 0
   fi
   echo "  Generating Standard_Version.hxx from cmake template..."
-  python3 -c "
+  "$OCJS_PYTHON" -c "
 import re
 with open('$template') as f: c = f.read()
 with open('$OCCT_ROOT/adm/cmake/version.cmake') as f: v = f.read()
@@ -422,7 +430,7 @@ step_pch() {
   _ensure_standard_version_hxx
   rm -f build/pch.h.pch build/pch.h
   rm -rf build/occt-includes
-  python3 -c "
+  "$OCJS_PYTHON" -c "
 import sys; sys.path.insert(0, 'src')
 from Common import buildFlatIncludes, buildPch
 buildFlatIncludes()
@@ -434,7 +442,7 @@ buildPch(threading='$THREADING')
 step_docs() {
   echo "═══ Generating OCCT documentation JSON ═══"
   _ensure_doxygen
-  python3 src/extract-docs.py
+  "$OCJS_PYTHON" src/extract-docs.py
   echo ""
 }
 
@@ -461,13 +469,13 @@ step_generate() {
     echo "  Using bindgen config: $config"
     export OCJS_BINDGEN_CONFIG="$config"
   fi
-  python3 -m ocjs_bindgen --config "$config"
+  "$OCJS_PYTHON" -m ocjs_bindgen --config "$config"
   echo ""
 }
 
 step_bindings() {
   echo "═══ Compiling bindings ═══"
-  python3 src/compileBindings.py "$THREADING"
+  "$OCJS_PYTHON" src/compileBindings.py "$THREADING"
   echo ""
 }
 
@@ -479,7 +487,7 @@ step_sources() {
 
 step_sources_legacy() {
   echo "═══ Compiling OCCT sources (legacy Python) ═══"
-  python3 src/compileSources.py "$THREADING"
+  "$OCJS_PYTHON" src/compileSources.py "$THREADING"
   echo ""
 }
 
@@ -606,7 +614,7 @@ step_dts() {
   yaml_abs="$(cd "$(dirname "$yaml")" && pwd)/$(basename "$yaml")"
   echo "═══ Regenerating .d.ts from $yaml_abs (no compile/link) ═══"
   cd "$(dirname "$yaml_abs")"
-  python3 "$OCJS_ROOT/src/buildFromYaml.py" --dts-only "$(basename "$yaml_abs")"
+  "$OCJS_PYTHON" "$OCJS_ROOT/src/buildFromYaml.py" --dts-only "$(basename "$yaml_abs")"
   cd "$SCRIPT_DIR"
   echo ""
 }
@@ -624,7 +632,7 @@ step_link() {
   mkdir -p "$OCJS_OUTPUT_DIR"
   find "$OCJS_OUTPUT_DIR" -maxdepth 1 \( -name '*.wasm' -o -name '*.js' -o -name '*.d.ts' -o -name '*.js.symbols' -o -name '*.provenance.json' -o -name 'build-manifest.json' \) -delete 2>/dev/null || true
   cd "$OCJS_OUTPUT_DIR"
-  python3 "$OCJS_ROOT/src/buildFromYaml.py" "$yaml_abs"
+  "$OCJS_PYTHON" "$OCJS_ROOT/src/buildFromYaml.py" "$yaml_abs"
   cd "$SCRIPT_DIR"
   echo ""
 }
@@ -639,15 +647,15 @@ step_apply_patches() {
 
   if [ "$OCJS_PATCH_DUMP" = "true" ]; then
     echo "  Applying Standard_Dump stub patch..."
-    python3 src/patches/patch_standard_dump.py
+    "$OCJS_PYTHON" src/patches/patch_standard_dump.py
     if [ "${OCJS_PATCH_STEPCAF:-true}" = "true" ]; then
       echo "  Applying noexcept destructors patch (7 classes)..."
-      OCCT_ROOT="$OCJS_ROOT/deps/OCCT" python3 src/patches/patch_noexcept_destructors.py
+      OCCT_ROOT="$OCJS_ROOT/deps/OCCT" "$OCJS_PYTHON" src/patches/patch_noexcept_destructors.py
       echo "  Applying STEPCAFControl_Controller DynamicType patch..."
-      OCCT_ROOT="$OCJS_ROOT/deps/OCCT" python3 src/patches/patch_stepcaf_dyntype.py
+      OCCT_ROOT="$OCJS_ROOT/deps/OCCT" "$OCJS_PYTHON" src/patches/patch_stepcaf_dyntype.py
     fi
     echo "  Applying BRepGraph_VersionStamp wasm32 size_t guard..."
-    OCCT_ROOT="$OCJS_ROOT/deps/OCCT" python3 src/patches/patch_brepgraph_versionstamp.py
+    OCCT_ROOT="$OCJS_ROOT/deps/OCCT" "$OCJS_PYTHON" src/patches/patch_brepgraph_versionstamp.py
     echo "  All patches applied."
   else
     echo "  OCJS_PATCH_DUMP=false — no patches to apply (clean OCCT tree)."
@@ -689,13 +697,26 @@ step_patch_embind() {
 
   if [ -f "$patch_hash_file" ]; then
     echo "  Patch content changed — reverting and re-applying..."
-    cd "$embind_dir" && patch -R -p0 --no-backup-if-mismatch < "$patch_file" 2>/dev/null || true
+    cd "$embind_dir" && patch -R -p0 --ignore-whitespace --no-backup-if-mismatch < "$patch_file" 2>/dev/null || true
   fi
 
   echo "  Applying libembind-overloading.patch..."
-  cd "$embind_dir" && patch -p0 --no-backup-if-mismatch < "$patch_file"
+  cd "$embind_dir" || exit 1
+  if patch -p0 -N --ignore-whitespace --no-backup-if-mismatch < "$patch_file"; then
+    :
+  else
+    patch_status=$?
+    # macOS patch exits 1 when all hunks are already applied (-N).
+    if grep -q '$getSignature__deps' "$embind_file"; then
+      echo "  libembind overload patch already present (skipping re-apply)."
+    else
+      echo "ERROR: libembind patch failed (exit $patch_status) and overload helpers missing" >&2
+      exit 1
+    fi
+  fi
   echo "$current_hash" > "$patch_hash_file"
   echo "  libembind.js patched successfully."
+  cd "$OCJS_ROOT" || exit 1
 }
 
 # (step_compile_all removed -- Nx manages task orchestration and caching)
@@ -790,7 +811,7 @@ for cmd in "${COMMANDS[@]}"; do
     link)      validate_build_flags && step_link "$YAML_CONFIG" ;;
     validate)
       echo "═══ Validating YAML config: $YAML_CONFIG ═══"
-      python3 -c "
+      "$OCJS_PYTHON" -c "
 import yaml, sys
 sys.path.insert(0, '$OCJS_ROOT/src')
 from cerberus import Validator
@@ -813,8 +834,8 @@ else:
       ;;
     provenance)
       echo "═══ Generating build provenance ═══"
-      python3 src/provenance.py init
-      python3 src/provenance.py finalize --wasm-dir "$OCJS_OUTPUT_DIR" --yaml "${YAML_CONFIG:-}" --duration 0
+      "$OCJS_PYTHON" src/provenance.py init
+      "$OCJS_PYTHON" src/provenance.py finalize --wasm-dir "$OCJS_OUTPUT_DIR" --yaml "${YAML_CONFIG:-}" --duration 0
       echo ""
       ;;
     full)
@@ -825,7 +846,7 @@ else:
       step_sources_cmake
       step_link "$YAML_CONFIG"
       echo "═══ Post-build validation ═══"
-      python3 "$OCJS_ROOT/scripts/validate-build.py" "$YAML_CONFIG" "$OCJS_OUTPUT_DIR" --build-dir "$BUILD_DIR" || true
+      "$OCJS_PYTHON" "$OCJS_ROOT/scripts/validate-build.py" "$YAML_CONFIG" "$OCJS_OUTPUT_DIR" --build-dir "$BUILD_DIR" || true
       echo ""
       ;;
   esac
@@ -837,7 +858,7 @@ ELAPSED=$((END_TIME - START_TIME))
 # ── Finalize provenance ──────────────────────────────────────────────
 
 if [ -n "$YAML_CONFIG" ]; then
-  python3 src/provenance.py finalize --wasm-dir "$OCJS_OUTPUT_DIR" --yaml "$YAML_CONFIG" --duration "$ELAPSED" 2>/dev/null || true
+  "$OCJS_PYTHON" src/provenance.py finalize --wasm-dir "$OCJS_OUTPUT_DIR" --yaml "$YAML_CONFIG" --duration "$ELAPSED" 2>/dev/null || true
 fi
 
 echo ""
