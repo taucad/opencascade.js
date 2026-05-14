@@ -1,6 +1,15 @@
 {
   "$schema": "./node_modules/nx/schemas/nx-schema.json",
   "nxCloudAccessToken": "",
+  "targetDefaults": {
+    "nx:run-commands": {
+      "options": {
+        "env": {
+          "OCJS_CONFIG": "O3-wasm-exc-simd"
+        }
+      }
+    }
+  },
   "namedInputs": {
     "compileConfig": [
       "{projectRoot}/build-configs/configurations.json",
@@ -25,7 +34,8 @@
       { "env": "OCJS_EVAL_CTORS_LEVEL" },
       { "env": "OCJS_BIGINT" },
       { "env": "OCJS_SKIP_WASM_OPT" },
-      { "env": "BINARYEN_EXTRA_PASSES" }
+      { "env": "BINARYEN_EXTRA_PASSES" },
+      { "env": "OCJS_MALLOC" }
     ],
     "toolchain": [{ "runtime": "emcc --version 2>/dev/null || echo not-installed" }],
     "depsVersion": ["{projectRoot}/DEPS.json"],

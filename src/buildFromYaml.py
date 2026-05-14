@@ -481,12 +481,16 @@ def runBuild(build, libraryBasePath):
   emcc_flags = build.get("emccFlags", [])
   has_opt = any(f.startswith("-O") for f in emcc_flags)
   has_lto = "-flto" in emcc_flags
+  has_malloc = any(f.startswith("-sMALLOC=") for f in emcc_flags)
 
   fill_flags = []
   if not has_opt:
     fill_flags.append(os.environ.get("OCJS_LINK_OPT", os.environ.get("OCJS_OPT", "-O3")))
   if not has_lto and os.environ.get("OCJS_LTO", "0") == "1":
     fill_flags.append("-flto")
+  if not has_malloc:
+    malloc_choice = os.environ.get("OCJS_MALLOC", "dlmalloc")
+    fill_flags.append(f"-sMALLOC={malloc_choice}")
 
   output_dir = os.environ.get("OCJS_OUTPUT_DIR", os.getcwd())
   linkCmd = [
@@ -557,7 +561,7 @@ def runBuild(build, libraryBasePath):
       yaml_hash=_yaml_config_hash,
       bound_symbols=len(symbol_list),
       symbol_list=symbol_list,
-      emcc_flags=build.get("emccFlags", []),
+      emcc_flags=list(fill_flags) + list(emcc_flags),
       link_duration=link_duration,
       wasm_opt_flags=wasm_opt_flag_list,
       pre_opt_size=sizeBefore,

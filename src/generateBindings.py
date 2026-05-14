@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 
 from typing import Callable
-from bindings import EmbindBindings, TypescriptBindings, shouldProcessClass
+from bindings import EmbindBindings, TypescriptBindings, shouldProcessClass, getClassJsPublicName, getEnumJsPublicName
 from buildFromYaml import OCJS_RBV_PREAMBLE
 import clang.cindex
 import os
@@ -87,8 +87,16 @@ def filterClasses(child, customBuild):
   )
 
 _FILTERED_TEMPLATE_TYPEDEFS = frozenset({
-  "Handle_math_NotSquare",
-  "Handle_math_SingularMatrix",
+  # NOTE: `Handle_math_NotSquare` / `Handle_math_SingularMatrix` /
+  # `Handle_Standard_Type` were previously listed here as name-by-name
+  # band-aids. They are now filtered structurally at the YAML link manifest
+  # level by `scripts/enumerate-symbols.py::collect_symbols` (drop
+  # `Handle_X` typedefs whose underlying type is `opencascade::handle<X>`
+  # when X is bound — the class binding emits the smart_ptr that
+  # registers the JS name "Handle_X"). The `.cpp` files are still
+  # generated and compiled here, but the link step drops them because
+  # they are absent from the YAML symbol list (see
+  # `src/buildFromYaml.py::shouldProcessSymbol`).
   "TColStd_PackedMapOfInteger",
   "TColStd_SequenceOfAddress",
   "TopTools_IndexedDataMapOfShapeAddress",
@@ -134,6 +142,27 @@ def filterEnums(child, customBuild):
     child.kind == clang.cindex.CursorKind.ENUM_DECL
   )
 
+def _output_basename(child) -> str:
+  """Filename stem for a generated binding fragment.
+
+  Aligns with the JS public name emitted by `bindings.py` so the verifier
+  in `buildFromYaml._collect_compiled_symbols` (which strips `.cpp.o` from
+  the basename and uses it as the symbol key) can match YAML entries like
+  `ExtremaPC_Status` against namespace-scoped declarations whose bare
+  `child.spelling` is just `Status`. Top-level types fall through to the
+  bare spelling for backward-compatible filenames.
+  """
+  if child.kind in (clang.cindex.CursorKind.CLASS_DECL, clang.cindex.CursorKind.STRUCT_DECL, clang.cindex.CursorKind.CLASS_TEMPLATE):
+    return getClassJsPublicName(child)
+  if child.kind == clang.cindex.CursorKind.ENUM_DECL:
+    return getEnumJsPublicName(child)
+  if child.kind in (clang.cindex.CursorKind.TYPEDEF_DECL, clang.cindex.CursorKind.TYPE_ALIAS_DECL):
+    # Template typedef aliases: emit under the alias's JS public name (which
+    # is the alias spelling for top-level aliases, or `Namespace_alias` for
+    # namespace-scoped aliases — same rule as `getClassJsPublicName`).
+    return getClassJsPublicName(child, child)
+  return child.spelling
+
 def processChildren(tuInfo: TuInfo, children, extension: str, filterFunction: Callable[[any], bool], processFunction: Callable[[any, any], str], preamble: str, customBuild: bool):
   for child in children:
     if not filterFunction(child, customBuild) or child.spelling == "" or child.spelling.startswith("("):
@@ -142,7 +171,10 @@ def processChildren(tuInfo: TuInfo, children, extension: str, filterFunction: Ca
     relOcFileName: str = child.extent.start.file.name.replace(occtBasePath, "")
     mkdirp(buildDirectory + "/bindings/" + os.path.dirname(relOcFileName))
     mkdirp(buildDirectory + "/bindings/" + relOcFileName)
-    filename = buildDirectory + "/bindings/" + relOcFileName + "/" + (child.spelling if not child.spelling == "" else child.type.spelling) + extension
+    basename = _output_basename(child)
+    if not basename:
+      basename = child.spelling if child.spelling else child.type.spelling
+    filename = buildDirectory + "/bindings/" + relOcFileName + "/" + basename + extension
 
     if not os.path.exists(filename):
       print("Processing " + child.spelling)
@@ -159,22 +191,143 @@ def split(a, n):
   k, m = divmod(len(a), n)
   return (a[i * k + min(i, m):(i + 1) * k + min(i + 1, m)] for i in range(n))
 
+class NonTypeTemplateArg:
+  """Marker for a non-type template argument captured from an alias.
+
+  libclang's `clang.cindex.Type` is the natural carrier for type arguments,
+  but non-type arguments are scalar/enum values (`Kind::Product`, `42`,
+  `true`). Existing call sites in `bindings.py` consume `templateArgs[param]`
+  via `.spelling` to splice the value text into emitted C++. Mirroring that
+  attribute here lets every consumer treat `NonTypeTemplateArg` as a duck-
+  typed type without per-call-site changes; downstream sites that need
+  richer type queries (`.kind`, `.get_canonical()`) can use `isinstance()`
+  to disambiguate when they evolve. Keeping the literal text verbatim is
+  the architecturally correct choice — Embind's `class_<T>(...)` template
+  argument expansion eventually emits a fully-qualified expression like
+  `BRepGraph_NodeId::Typed<BRepGraph_NodeId::Kind::Product>`, which is what
+  the linker resolves against.
+  """
+
+  def __init__(self, value: str):
+    self.value = value
+    self.spelling = value
+
+  def __repr__(self):
+    return f"NonTypeTemplateArg({self.value!r})"
+
+
+def _split_template_args(text: str):
+  """Split the comma-separated argument list inside the OUTERMOST `<…>` of `text`.
+
+  Respects bracket nesting so `Outer<A, B<C, D>>` yields `["A", "B<C, D>"]`.
+  Returns `None` if `text` has no balanced `<…>` segment.
+  """
+  start = text.find("<")
+  if start == -1:
+    return None
+  depth = 0
+  end = -1
+  for i, ch in enumerate(text[start:], start=start):
+    if ch == "<":
+      depth += 1
+    elif ch == ">":
+      depth -= 1
+      if depth == 0:
+        end = i
+        break
+  if end == -1:
+    return None
+  inner = text[start + 1:end]
+  parts = []
+  buf = []
+  depth = 0
+  for ch in inner:
+    if ch == "<":
+      depth += 1
+      buf.append(ch)
+    elif ch == ">":
+      depth -= 1
+      buf.append(ch)
+    elif ch == "," and depth == 0:
+      parts.append("".join(buf).strip())
+      buf = []
+    else:
+      buf.append(ch)
+  if buf:
+    parts.append("".join(buf).strip())
+  return parts
+
+
 def processTemplate(child):
+  # libclang yields one TEMPLATE_REF per template name appearing in the alias's
+  # right-hand side, in source-order. For `using X = Outer<Inner<T>>;` it
+  # produces two refs (Outer, Inner). The OUTER template is what we need to
+  # instantiate against; OCCT V8 makes this pattern common via the LProps
+  # template family (e.g. `using GeomLProp_SLProps = GeomLProp_SLPropsBase<
+  # occ::handle<Geom_Surface>>` produces refs for both `GeomLProp_SLPropsBase`
+  # and `occ::handle`). The first TEMPLATE_REF is always the outermost one
+  # because libclang walks left-to-right; relying on `len() == 1` mis-skips
+  # every alias whose template arg is itself a template instance.
   templateRefs = list(filter(lambda x: x.kind == clang.cindex.CursorKind.TEMPLATE_REF, child.get_children()))
-  if len(templateRefs) != 1:
-    raise SkipException("The number of template refs for the template typedef \"" + child.spelling + "\" is not 1!")
+  if len(templateRefs) == 0:
+    raise SkipException("No template ref found for the template typedef \"" + child.spelling + "\"")
 
   templateClass = templateRefs[0].get_definition()
   if templateClass is None:
     raise SkipException("Template class is None (" + child.spelling + ")")
-  templateArgNames = list(filter(lambda x: x.kind == clang.cindex.CursorKind.TEMPLATE_TYPE_PARAMETER, templateClass.get_children()))
+  # Walk BOTH type and non-type parameters so OCCT's typed-id pattern
+  # (BRepGraph_NodeId::Typed<TheKind = enum value>) resolves correctly.
+  templateParams = list(filter(
+    lambda x: x.kind in (
+      clang.cindex.CursorKind.TEMPLATE_TYPE_PARAMETER,
+      clang.cindex.CursorKind.TEMPLATE_NON_TYPE_PARAMETER,
+    ),
+    templateClass.get_children(),
+  ))
+
+  # When a `using` alias omits trailing template arguments that the primary
+  # template defines defaults for (OCCT V8 pattern, e.g. `using
+  # GeomLProp_SLProps = GeomLProp_SLPropsBase<occ::handle<Geom_Surface>>`
+  # leaves the second `Access` parameter to its in-class default), libclang
+  # reports `child.type.get_template_argument_type(i).spelling == ""` for the
+  # defaulted slots. Resolving the alias first via `get_canonical()` yields a
+  # fully-instantiated type whose template arguments expose the defaults.
+  canonicalType = child.type.get_canonical()
+  # Non-type template args are extracted from the alias's UNDERLYING spelling,
+  # not from the fully-resolved canonical spelling. The underlying preserves
+  # the outer template instantiation as written (`BVH::VectorType<double,3>
+  # ::Type`, `BRepGraph_NodeId::Typed<Kind::Product>`), so its arg list
+  # aligns slot-by-slot with `templateParams` from the outer template's
+  # definition. The canonical spelling, by contrast, walks every typedef
+  # alias to the root (`NCollection_Vec3<double>`), losing the non-type arg
+  # entirely when a deeper alias drops it. `_split_template_args` already
+  # respects nested `<…>` and ignores any trailing `::Member` after the
+  # outermost closing bracket.
+  underlyingSpelling = child.underlying_typedef_type.spelling
+  underlyingArgTexts = _split_template_args(underlyingSpelling)
   templateArgs = {}
-  for i, templateArgName in enumerate(templateArgNames):
+  for i, templateArgName in enumerate(templateParams):
+    if templateArgName.kind == clang.cindex.CursorKind.TEMPLATE_NON_TYPE_PARAMETER:
+      # Non-type args are scalar/enum values. libclang's
+      # `get_template_argument_type(i)` returns the parameter's *type*
+      # (e.g. `Kind`), not the supplied value. The alias's underlying
+      # spelling carries the value verbatim — extract it and stash a
+      # NonTypeTemplateArg marker so downstream emit sites splice the
+      # literal text directly into the generated C++.
+      if not underlyingArgTexts or i >= len(underlyingArgTexts):
+        raise SkipException(
+          "Cannot extract non-type template argument [" + str(i) + "] for alias \"" + child.spelling + "\" (underlying spelling: " + underlyingSpelling + ")"
+        )
+      templateArgs[templateArgName.spelling] = NonTypeTemplateArg(underlyingArgTexts[i])
+      continue
+
     templateArgType = child.type.get_template_argument_type(i)
     if templateArgType.spelling == "":
-      raise SkipException("Template argument type is empty for at least one argument. Is this class using default values for template arguments? This is currently not supported (" + child.spelling + ")")
+      templateArgType = canonicalType.get_template_argument_type(i)
+    if templateArgType.spelling == "":
+      raise SkipException("Template argument type is empty for parameter \"" + templateArgName.spelling + "\" of template typedef \"" + child.spelling + "\" (no value supplied and no resolvable default).")
     templateArgs[templateArgName.spelling] = templateArgType
-  
+
   return [templateClass, templateArgs]
 
 def embindGenerationFuncClasses(tuInfo: TuInfo, preamble, child) -> str:
@@ -196,9 +349,46 @@ def embindGenerationFuncEnums(tuInfo: TuInfo, preamble, child) -> str:
 
   return preamble + output
 
+def dedupeTemplateTypedefsByCanonical(typedefs):
+  """Pick one cursor per canonical instantiation from a list of template typedefs.
+
+  OCCT V8's `BRepGraph_ReverseIterator.hxx` exposes families of `using` aliases
+  that all instantiate the same primary template — e.g. five aliases
+  (`BRepGraph_CompoundsOfFace`, `…OfShell`, `…OfSolid`, `…OfCompSolid`,
+  `…OfCompound`) all expand to `BRepGraph_ReverseIterator::ParentsOf<
+  BRepGraph_CompoundId>`. Embind keys class registrations by C++ TypeID
+  (canonical type), so a second `class_<…>("BRepGraph_CompoundsOfShell")`
+  collides with the first registration and aborts Module() with
+  `BindingError: Cannot register type 'BRepGraph_CompoundsOfFace' twice`.
+
+  Pick a single canonical winner (the alphabetically-first alias for
+  determinism across runs) and drop the rest from the binding pipeline.
+  Downstream consumers can address dropped aliases via the winner's JS
+  name; richer multi-alias surfacing (e.g. `export type DroppedAlias =
+  WinningAlias` in d.ts) is a future enhancement and not needed for
+  correctness — the data layout is identical across all aliases.
+  """
+  by_canonical: "dict[str, list]" = {}
+  for td in typedefs:
+    if td.kind not in (clang.cindex.CursorKind.TYPEDEF_DECL, clang.cindex.CursorKind.TYPE_ALIAS_DECL):
+      continue
+    canonical = td.underlying_typedef_type.get_canonical().spelling
+    if not canonical:
+      continue
+    by_canonical.setdefault(canonical, []).append(td)
+  winners = []
+  for canonical, group in by_canonical.items():
+    group.sort(key=lambda c: c.spelling)
+    winners.append(group[0])
+  winner_set = {(w.spelling, w.location.file.name if w.location.file else "", w.location.line) for w in winners}
+  return [td for td in typedefs if (
+    td.spelling, td.location.file.name if td.location.file else "", td.location.line
+  ) in winner_set or td.kind not in (clang.cindex.CursorKind.TYPEDEF_DECL, clang.cindex.CursorKind.TYPE_ALIAS_DECL)]
+
 def process(tuInfo: TuInfo, extension, embindGenerationFuncClasses, embindGenerationFuncTemplates, embindGenerationFuncEnums, preamble, customBuild):
   processChildren(tuInfo, tuInfo.allChildren, extension, filterClasses, embindGenerationFuncClasses, preamble, customBuild)
-  processChildren(tuInfo, tuInfo.templateTypedefs, extension, filterTemplates, embindGenerationFuncTemplates, preamble, customBuild)
+  dedupedTypedefs = dedupeTemplateTypedefsByCanonical(tuInfo.templateTypedefs)
+  processChildren(tuInfo, dedupedTypedefs, extension, filterTemplates, embindGenerationFuncTemplates, preamble, customBuild)
   processChildren(tuInfo, tuInfo.enums, extension, filterEnums, embindGenerationFuncEnums, preamble, customBuild)
 
 def typescriptGenerationFuncClasses(tuInfo: TuInfo, preamble, child) -> str:

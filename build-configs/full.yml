@@ -24,36 +24,6 @@ mainBuild:
   - symbol: AppBlend_Approx
   - symbol: AppCont_Function
   - symbol: AppCont_LeastSquare
-  - symbol: AppDef_BSpGradient_BFGSOfMyBSplGradientOfBSplineCompute
-  - symbol: AppDef_BSpParFunctionOfMyBSplGradientOfBSplineCompute
-  - symbol: AppDef_BSpParLeastSquareOfMyBSplGradientOfBSplineCompute
-  - symbol: AppDef_BSplineCompute
-  - symbol: AppDef_Compute
-  - symbol: AppDef_Gradient_BFGSOfMyGradientOfCompute
-  - symbol: AppDef_Gradient_BFGSOfMyGradientbisOfBSplineCompute
-  - symbol: AppDef_Gradient_BFGSOfTheGradient
-  - symbol: AppDef_LinearCriteria
-  - symbol: AppDef_MultiLine
-  - symbol: AppDef_MultiPointConstraint
-  - symbol: AppDef_MyBSplGradientOfBSplineCompute
-  - symbol: AppDef_MyGradientOfCompute
-  - symbol: AppDef_MyGradientbisOfBSplineCompute
-  - symbol: AppDef_MyLineTool
-  - symbol: AppDef_ParFunctionOfMyGradientOfCompute
-  - symbol: AppDef_ParFunctionOfMyGradientbisOfBSplineCompute
-  - symbol: AppDef_ParFunctionOfTheGradient
-  - symbol: AppDef_ParLeastSquareOfMyGradientOfCompute
-  - symbol: AppDef_ParLeastSquareOfMyGradientbisOfBSplineCompute
-  - symbol: AppDef_ParLeastSquareOfTheGradient
-  - symbol: AppDef_ResConstraintOfMyGradientOfCompute
-  - symbol: AppDef_ResConstraintOfMyGradientbisOfBSplineCompute
-  - symbol: AppDef_ResConstraintOfTheGradient
-  - symbol: AppDef_SmoothCriterion
-  - symbol: AppDef_TheFunction
-  - symbol: AppDef_TheGradient
-  - symbol: AppDef_TheLeastSquares
-  - symbol: AppDef_TheResol
-  - symbol: AppDef_Variational
   - symbol: AppParCurves
   - symbol: AppParCurves_Constraint
   - symbol: AppParCurves_ConstraintCouple
@@ -64,6 +34,7 @@ mainBuild:
   - symbol: AppStd_Application
   - symbol: ApproxInt_KnotTools
   - symbol: ApproxInt_SvSurfaces
+  - symbol: Approx_BSplineApproxInterp
   - symbol: Approx_Curve2d
   - symbol: Approx_Curve3d
   - symbol: Approx_CurveOnSurface
@@ -291,6 +262,7 @@ mainBuild:
   - symbol: BRepClass3d_Intersector3d
   - symbol: BRepClass3d_SClassifier
   - symbol: BRepClass3d_SolidClassifier
+  - symbol: BRepClass3d_SolidExplorer
   - symbol: BRepClass3d_SolidPassiveClassifier
   - symbol: BRepClass_Edge
   - symbol: BRepClass_FClass2dOfFClassifier
@@ -375,10 +347,180 @@ mainBuild:
   - symbol: BRepGProp_TFunction
   - symbol: BRepGProp_UFunction
   - symbol: BRepGProp_Vinert
+  - symbol: BRepGraph
+  - symbol: BRepGraphInc_BaseDef
+  - symbol: BRepGraphInc_BaseRef
+  - symbol: BRepGraphInc_BaseRep
+  - symbol: BRepGraphInc_ChildRef
+  - symbol: BRepGraphInc_CoEdgeDef
+  - symbol: BRepGraphInc_CoEdgeRef
+  - symbol: BRepGraphInc_CompSolidDef
+  - symbol: BRepGraphInc_CompoundDef
+  - symbol: BRepGraphInc_Curve2DRep
+  - symbol: BRepGraphInc_Curve3DRep
+  - symbol: BRepGraphInc_EdgeDef
+  - symbol: BRepGraphInc_FaceDef
+  - symbol: BRepGraphInc_FaceRef
+  - symbol: BRepGraphInc_OccurrenceDef
+  - symbol: BRepGraphInc_OccurrenceRef
+  - symbol: BRepGraphInc_Polygon2DRep
+  - symbol: BRepGraphInc_Polygon3DRep
+  - symbol: BRepGraphInc_PolygonOnTriRep
+  - symbol: BRepGraphInc_Populate
+  - symbol: BRepGraphInc_ProductDef
+  - symbol: BRepGraphInc_Reconstruct
+  - symbol: BRepGraphInc_ReverseIndex
+  - symbol: BRepGraphInc_ShellDef
+  - symbol: BRepGraphInc_ShellRef
+  - symbol: BRepGraphInc_SolidDef
+  - symbol: BRepGraphInc_SolidRef
+  - symbol: BRepGraphInc_Storage
+  - symbol: BRepGraphInc_SurfaceRep
+  - symbol: BRepGraphInc_TriangulationRep
+  - symbol: BRepGraphInc_VertexDef
+  - symbol: BRepGraphInc_VertexRef
+  - symbol: BRepGraphInc_WireDef
+  - symbol: BRepGraphInc_WireInstance
+  - symbol: BRepGraphInc_WireRef
+  - symbol: BRepGraph_Builder
+  - symbol: BRepGraph_CacheKind
+  - symbol: BRepGraph_CacheKindRegistry
+  - symbol: BRepGraph_CacheValue
+  - symbol: BRepGraph_ChildExplorer
+  - symbol: BRepGraph_ChildRefId
+  - symbol: BRepGraph_CoEdgeId
+  - symbol: BRepGraph_CoEdgeRefId
+  - symbol: BRepGraph_CoEdgesOfEdge
+  - symbol: BRepGraph_CompSolidId
+  - symbol: BRepGraph_CompSolidsOfSolid
+  - symbol: BRepGraph_Compact
+  - symbol: BRepGraph_CompoundId
+  - symbol: BRepGraph_CompoundsOfCompSolid
+  - symbol: BRepGraph_CompoundsOfCompound
+  - symbol: BRepGraph_CompoundsOfFace
+  - symbol: BRepGraph_CompoundsOfShell
+  - symbol: BRepGraph_CompoundsOfSolid
+  - symbol: BRepGraph_Copy
+  - symbol: BRepGraph_Curve2DRepId
+  - symbol: BRepGraph_Curve3DRepId
+  - symbol: BRepGraph_Data
+  - symbol: BRepGraph_Deduplicate
+  - symbol: BRepGraph_DeferredScope
+  - symbol: BRepGraph_DefsChildOfCompound
+  - symbol: BRepGraph_DefsChildOfShell
+  - symbol: BRepGraph_DefsChildOfSolid
+  - symbol: BRepGraph_DefsCoEdgeOfWire
+  - symbol: BRepGraph_DefsEdgeOfWire
+  - symbol: BRepGraph_DefsFaceOfShell
+  - symbol: BRepGraph_DefsIterator_ChildOfCompoundTraits
+  - symbol: BRepGraph_DefsIterator_ChildOfShellTraits
+  - symbol: BRepGraph_DefsIterator_ChildOfSolidTraits
+  - symbol: BRepGraph_DefsIterator_CoEdgeOfWireTraits
+  - symbol: BRepGraph_DefsIterator_DefsVertexOfEdge
+  - symbol: BRepGraph_DefsIterator_EdgeOfWireTraits
+  - symbol: BRepGraph_DefsIterator_FaceOfShellTraits
+  - symbol: BRepGraph_DefsIterator_OccurrenceOfProductTraits
+  - symbol: BRepGraph_DefsIterator_ShellOfSolidTraits
+  - symbol: BRepGraph_DefsIterator_SolidOfCompSolidTraits
+  - symbol: BRepGraph_DefsIterator_VertexOfFaceTraits
+  - symbol: BRepGraph_DefsIterator_WireOfFaceTraits
+  - symbol: BRepGraph_DefsOccurrenceOfProduct
+  - symbol: BRepGraph_DefsShellOfSolid
+  - symbol: BRepGraph_DefsSolidOfCompSolid
+  - symbol: BRepGraph_DefsVertexOfFace
+  - symbol: BRepGraph_DefsWireOfFace
+  - symbol: BRepGraph_EdgeId
+  - symbol: BRepGraph_EdgesOfVertex
+  - symbol: BRepGraph_FaceId
+  - symbol: BRepGraph_FaceRefId
+  - symbol: BRepGraph_FacesOfEdge
+  - symbol: BRepGraph_FacesOfWire
+  - symbol: BRepGraph_FullChildRefIterator
+  - symbol: BRepGraph_FullCoEdgeRefIterator
+  - symbol: BRepGraph_FullFaceRefIterator
+  - symbol: BRepGraph_FullOccurrenceRefIterator
+  - symbol: BRepGraph_FullShellRefIterator
+  - symbol: BRepGraph_FullSolidRefIterator
+  - symbol: BRepGraph_FullVertexRefIterator
+  - symbol: BRepGraph_FullWireRefIterator
+  - symbol: BRepGraph_History
+  - symbol: BRepGraph_HistoryRecord
+  - symbol: BRepGraph_Layer
+  - symbol: BRepGraph_LayerIterator
+  - symbol: BRepGraph_LayerParam
+  - symbol: BRepGraph_LayerRegistry
+  - symbol: BRepGraph_LayerRegularity
+  - symbol: BRepGraph_MeshCacheStorage
+  - symbol: BRepGraph_MeshCache_CoEdgeMeshEntry
+  - symbol: BRepGraph_MeshCache_EdgeMeshEntry
+  - symbol: BRepGraph_MeshCache_FaceMeshEntry
+  - symbol: BRepGraph_NodeId
+  - symbol: BRepGraph_OccurrenceId
+  - symbol: BRepGraph_OccurrenceRefId
+  - symbol: BRepGraph_OccurrencesOfProduct
+  - symbol: BRepGraph_ParallelPolicy
+  - symbol: BRepGraph_ParentExplorer
+  - symbol: BRepGraph_Polygon2DRepId
+  - symbol: BRepGraph_Polygon3DRepId
+  - symbol: BRepGraph_PolygonOnTriRepId
+  - symbol: BRepGraph_ProductId
+  - symbol: BRepGraph_RefId
+  - symbol: BRepGraph_RefTransientCache
+  - symbol: BRepGraph_RefUID
+  - symbol: BRepGraph_RefsChildOfCompound
+  - symbol: BRepGraph_RefsChildOfShell
+  - symbol: BRepGraph_RefsChildOfSolid
+  - symbol: BRepGraph_RefsCoEdgeOfWire
+  - symbol: BRepGraph_RefsCompSolidsOfSolid
+  - symbol: BRepGraph_RefsCompoundsOfChild
+  - symbol: BRepGraph_RefsEdgesOfVertex
+  - symbol: BRepGraph_RefsFaceOfShell
+  - symbol: BRepGraph_RefsFacesOfWire
+  - symbol: BRepGraph_RefsIterator_RefsVertexOfEdge
+  - symbol: BRepGraph_RefsOccurrenceOfProduct
+  - symbol: BRepGraph_RefsProductsOfOccurrence
+  - symbol: BRepGraph_RefsShellOfSolid
+  - symbol: BRepGraph_RefsShellsOfFace
+  - symbol: BRepGraph_RefsSolidOfCompSolid
+  - symbol: BRepGraph_RefsSolidsOfShell
+  - symbol: BRepGraph_RefsVertexOfFace
+  - symbol: BRepGraph_RefsWireOfFace
+  - symbol: BRepGraph_RefsWiresOfCoEdge
+  - symbol: BRepGraph_RelatedIterator
+  - symbol: BRepGraph_RepId
+  - symbol: BRepGraph_ReverseIterator_CompSolidOfSolidRefTraits
+  - symbol: BRepGraph_ReverseIterator_CompoundOfChildRefTraits
+  - symbol: BRepGraph_ReverseIterator_EdgeOfVertexRefTraits
+  - symbol: BRepGraph_ReverseIterator_FaceOfWireRefTraits
+  - symbol: BRepGraph_ReverseIterator_ProductOfOccurrenceRefTraits
+  - symbol: BRepGraph_ReverseIterator_ShellOfFaceRefTraits
+  - symbol: BRepGraph_ReverseIterator_SolidOfShellRefTraits
+  - symbol: BRepGraph_ReverseIterator_WireOfCoEdgeRefTraits
+  - symbol: BRepGraph_RootProductIterator
+  - symbol: BRepGraph_ShellId
+  - symbol: BRepGraph_ShellRefId
+  - symbol: BRepGraph_ShellsOfFace
+  - symbol: BRepGraph_SolidId
+  - symbol: BRepGraph_SolidRefId
+  - symbol: BRepGraph_SolidsOfShell
+  - symbol: BRepGraph_SurfaceRepId
+  - symbol: BRepGraph_Tool
+  - symbol: BRepGraph_Transform
+  - symbol: BRepGraph_TransientCache
+  - symbol: BRepGraph_TriangulationRepId
+  - symbol: BRepGraph_UID
+  - symbol: BRepGraph_Validate
+  - symbol: BRepGraph_VersionStamp
+  - symbol: BRepGraph_VertexId
+  - symbol: BRepGraph_VertexRefId
+  - symbol: BRepGraph_WireExplorer
+  - symbol: BRepGraph_WireId
+  - symbol: BRepGraph_WireRefId
+  - symbol: BRepGraph_WiresOfCoEdge
+  - symbol: BRepGraph_WiresOfEdge
   - symbol: BRepIntCurveSurface_Inter
   - symbol: BRepLProp
   - symbol: BRepLProp_CLProps
-  - symbol: BRepLProp_CurveTool
   - symbol: BRepLProp_SLProps
   - symbol: BRepLProp_SurfaceTool
   - symbol: BRepLib
@@ -566,15 +708,39 @@ mainBuild:
   - symbol: BSplSLib
   - symbol: BSplSLib_Cache
   - symbol: BSplSLib_EvaluatorFunction
+  - symbol: BVH_Array2d
+  - symbol: BVH_Array2f
+  - symbol: BVH_Array2i
+  - symbol: BVH_Array3d
+  - symbol: BVH_Array3f
+  - symbol: BVH_Array3i
+  - symbol: BVH_Array4d
+  - symbol: BVH_Array4f
+  - symbol: BVH_Array4i
   - symbol: BVH_BinaryTree
+  - symbol: BVH_BitComparator
+  - symbol: BVH_BitPredicate
   - symbol: BVH_BuildQueue
   - symbol: BVH_BuildThread
   - symbol: BVH_BuildTool
   - symbol: BVH_BuilderTransient
+  - symbol: BVH_EncodedLink
+  - symbol: BVH_Mat4d
+  - symbol: BVH_Mat4f
   - symbol: BVH_ObjectTransient
   - symbol: BVH_Properties
   - symbol: BVH_QuadTree
+  - symbol: BVH_RadixSorter
   - symbol: BVH_TreeBaseTransient
+  - symbol: BVH_Vec2d
+  - symbol: BVH_Vec2f
+  - symbol: BVH_Vec2i
+  - symbol: BVH_Vec3d
+  - symbol: BVH_Vec3f
+  - symbol: BVH_Vec3i
+  - symbol: BVH_Vec4d
+  - symbol: BVH_Vec4f
+  - symbol: BVH_Vec4i
   - symbol: BiTgte_Blend
   - symbol: BiTgte_ContactType
   - symbol: BiTgte_CurveOnEdge
@@ -637,6 +803,7 @@ mainBuild:
   - symbol: Blend_SurfCurvFuncInv
   - symbol: Blend_SurfPointFuncInv
   - symbol: Blend_SurfRstFunction
+  - symbol: BndBox2dTreeFiller
   - symbol: BndLib
   - symbol: BndLib_Add2dCurve
   - symbol: BndLib_Add3dCurve
@@ -674,6 +841,7 @@ mainBuild:
   - symbol: CSLib_DerivativeStatus
   - symbol: CSLib_NormalPolyDef
   - symbol: CSLib_NormalStatus
+  - symbol: CacheView
   - symbol: ChFi2d
   - symbol: ChFi2d_AnaFilletAlgo
   - symbol: ChFi2d_Builder
@@ -705,6 +873,7 @@ mainBuild:
   - symbol: ChFiDS_SurfData
   - symbol: ChFiDS_TypeOfConcavity
   - symbol: ChFiKPart_ComputeData
+  - symbol: CircleCellFilter
   - symbol: Contap_ArcFunction
   - symbol: Contap_ContAna
   - symbol: Contap_Contour
@@ -765,6 +934,7 @@ mainBuild:
   - symbol: Draft_FaceInfo
   - symbol: Draft_Modification
   - symbol: Draft_VertexInfo
+  - symbol: EditorView
   - symbol: ElCLib
   - symbol: ElSLib
   - symbol: Expr
@@ -832,6 +1002,22 @@ mainBuild:
   - symbol: Expr_UnaryFunction
   - symbol: Expr_UnaryMinus
   - symbol: Expr_UnknownIterator
+  - symbol: ExtremaPC_BSplineCurve
+  - symbol: ExtremaPC_BezierCurve
+  - symbol: ExtremaPC_Circle
+  - symbol: ExtremaPC_Curve
+  - symbol: ExtremaPC_DistanceFunction
+  - symbol: ExtremaPC_Ellipse
+  - symbol: ExtremaPC_ExtremumResult
+  - symbol: ExtremaPC_GridEvaluator
+  - symbol: ExtremaPC_Hyperbola
+  - symbol: ExtremaPC_Line
+  - symbol: ExtremaPC_OffsetCurve
+  - symbol: ExtremaPC_OtherCurve
+  - symbol: ExtremaPC_Parabola
+  - symbol: ExtremaPC_Result
+  - symbol: ExtremaPC_SearchMode
+  - symbol: ExtremaPC_Status
   - symbol: Extrema_Curve2dTool
   - symbol: Extrema_CurveTool
   - symbol: Extrema_ElementType
@@ -888,7 +1074,6 @@ mainBuild:
   - symbol: FairCurve_AnalysisCode
   - symbol: FairCurve_Batten
   - symbol: FairCurve_BattenLaw
-  - symbol: FairCurve_MinimalVariation
   - symbol: FairCurve_DistributionOfEnergy
   - symbol: FairCurve_DistributionOfJerk
   - symbol: FairCurve_DistributionOfSagging
@@ -896,6 +1081,7 @@ mainBuild:
   - symbol: FairCurve_Energy
   - symbol: FairCurve_EnergyOfBatten
   - symbol: FairCurve_EnergyOfMVC
+  - symbol: FairCurve_MinimalVariation
   - symbol: FairCurve_Newton
   - symbol: FilletPoint
   - symbol: FilletSurf_Builder
@@ -903,22 +1089,6 @@ mainBuild:
   - symbol: FilletSurf_InternalBuilder
   - symbol: FilletSurf_StatusDone
   - symbol: FilletSurf_StatusType
-  # GCE2d_* classes are deprecated `using` aliases in OCCT 8.0+.
-  # Bind their canonical replacements (GC_*2d) instead.
-  - symbol: GC_MakeArcOfCircle2d
-  - symbol: GC_MakeArcOfEllipse2d
-  - symbol: GC_MakeArcOfHyperbola2d
-  - symbol: GC_MakeArcOfParabola2d
-  - symbol: GC_MakeCircle2d
-  - symbol: GC_MakeEllipse2d
-  - symbol: GC_MakeHyperbola2d
-  - symbol: GC_MakeLine2d
-  - symbol: GC_MakeMirror2d
-  - symbol: GC_MakeParabola2d
-  - symbol: GC_MakeRotation2d
-  - symbol: GC_MakeScale2d
-  - symbol: GC_MakeSegment2d
-  - symbol: GC_MakeTranslation2d
   - symbol: GCPnts_AbscissaPoint
   - symbol: GCPnts_AbscissaType
   - symbol: GCPnts_DeflectionType
@@ -930,21 +1100,35 @@ mainBuild:
   - symbol: GCPnts_UniformAbscissa
   - symbol: GCPnts_UniformDeflection
   - symbol: GC_MakeArcOfCircle
+  - symbol: GC_MakeArcOfCircle2d
   - symbol: GC_MakeArcOfEllipse
+  - symbol: GC_MakeArcOfEllipse2d
   - symbol: GC_MakeArcOfHyperbola
+  - symbol: GC_MakeArcOfHyperbola2d
   - symbol: GC_MakeArcOfParabola
+  - symbol: GC_MakeArcOfParabola2d
   - symbol: GC_MakeCircle
+  - symbol: GC_MakeCircle2d
   - symbol: GC_MakeConicalSurface
   - symbol: GC_MakeCylindricalSurface
   - symbol: GC_MakeEllipse
+  - symbol: GC_MakeEllipse2d
   - symbol: GC_MakeHyperbola
+  - symbol: GC_MakeHyperbola2d
   - symbol: GC_MakeLine
+  - symbol: GC_MakeLine2d
   - symbol: GC_MakeMirror
+  - symbol: GC_MakeMirror2d
+  - symbol: GC_MakeParabola2d
   - symbol: GC_MakePlane
   - symbol: GC_MakeRotation
+  - symbol: GC_MakeRotation2d
   - symbol: GC_MakeScale
+  - symbol: GC_MakeScale2d
   - symbol: GC_MakeSegment
+  - symbol: GC_MakeSegment2d
   - symbol: GC_MakeTranslation
+  - symbol: GC_MakeTranslation2d
   - symbol: GC_MakeTrimmedCone
   - symbol: GC_MakeTrimmedCylinder
   - symbol: GC_Root
@@ -991,6 +1175,18 @@ mainBuild:
   - symbol: Geom2dConvert_BSplineCurveToBezierCurve
   - symbol: Geom2dConvert_CompCurveToBSplineCurve
   - symbol: Geom2dConvert_PPoint
+  - symbol: Geom2dEval_AHTBezierCurve
+  - symbol: Geom2dEval_ArchimedeanSpiralCurve
+  - symbol: Geom2dEval_CircleInvoluteCurve
+  - symbol: Geom2dEval_LogarithmicSpiralCurve
+  - symbol: Geom2dEval_RepCurveDesc_Base
+  - symbol: Geom2dEval_RepCurveDesc_DerivBounded
+  - symbol: Geom2dEval_RepCurveDesc_Domain1d
+  - symbol: Geom2dEval_RepCurveDesc_Full
+  - symbol: Geom2dEval_RepCurveDesc_Map1d
+  - symbol: Geom2dEval_RepCurveDesc_Mapped
+  - symbol: Geom2dEval_SineWaveCurve
+  - symbol: Geom2dEval_TBezierCurve
   - symbol: Geom2dGcc
   - symbol: Geom2dGcc_CurveTool
   - symbol: Geom2dGcc_FunctionTanCirCu
@@ -1072,6 +1268,38 @@ mainBuild:
   - symbol: GeomAdaptor_SurfaceOfRevolution
   - symbol: GeomAdaptor_TransformedCurve
   - symbol: GeomAdaptor_TransformedSurface
+  - symbol: GeomBndLib_BSplineCurve
+  - symbol: GeomBndLib_BSplineCurve2d
+  - symbol: GeomBndLib_BSplineSurface
+  - symbol: GeomBndLib_BezierCurve
+  - symbol: GeomBndLib_BezierCurve2d
+  - symbol: GeomBndLib_BezierSurface
+  - symbol: GeomBndLib_Circle
+  - symbol: GeomBndLib_Circle2d
+  - symbol: GeomBndLib_Cone
+  - symbol: GeomBndLib_Curve
+  - symbol: GeomBndLib_Curve2d
+  - symbol: GeomBndLib_Cylinder
+  - symbol: GeomBndLib_Ellipse
+  - symbol: GeomBndLib_Ellipse2d
+  - symbol: GeomBndLib_Hyperbola
+  - symbol: GeomBndLib_Hyperbola2d
+  - symbol: GeomBndLib_Line
+  - symbol: GeomBndLib_Line2d
+  - symbol: GeomBndLib_OffsetCurve
+  - symbol: GeomBndLib_OffsetCurve2d
+  - symbol: GeomBndLib_OffsetSurface
+  - symbol: GeomBndLib_OtherCurve
+  - symbol: GeomBndLib_OtherCurve2d
+  - symbol: GeomBndLib_OtherSurface
+  - symbol: GeomBndLib_Parabola
+  - symbol: GeomBndLib_Parabola2d
+  - symbol: GeomBndLib_Plane
+  - symbol: GeomBndLib_Sphere
+  - symbol: GeomBndLib_Surface
+  - symbol: GeomBndLib_SurfaceOfExtrusion
+  - symbol: GeomBndLib_SurfaceOfRevolution
+  - symbol: GeomBndLib_Torus
   - symbol: GeomConvert
   - symbol: GeomConvert_ApproxCurve
   - symbol: GeomConvert_ApproxSurface
@@ -1088,6 +1316,19 @@ mainBuild:
   - symbol: GeomConvert_FuncSphereLSDist
   - symbol: GeomConvert_SurfToAnaSurf
   - symbol: GeomConvert_Units
+  - symbol: GeomEval_AHTBezierCurve
+  - symbol: GeomEval_AHTBezierSurface
+  - symbol: GeomEval_CircularHelicoidSurface
+  - symbol: GeomEval_CircularHelixCurve
+  - symbol: GeomEval_EllipsoidSurface
+  - symbol: GeomEval_HypParaboloidSurface
+  - symbol: GeomEval_HyperboloidSurface
+  - symbol: GeomEval_ParaboloidSurface
+  - symbol: GeomEval_RepSurfaceDesc_Domain2d
+  - symbol: GeomEval_RepSurfaceDesc_Map2d
+  - symbol: GeomEval_SineWaveCurve
+  - symbol: GeomEval_TBezierCurve
+  - symbol: GeomEval_TBezierSurface
   - symbol: GeomFill
   - symbol: GeomFill_AppSurf
   - symbol: GeomFill_AppSweep
@@ -1117,6 +1358,8 @@ mainBuild:
   - symbol: GeomFill_FunctionDraft
   - symbol: GeomFill_FunctionGuide
   - symbol: GeomFill_Generator
+  - symbol: GeomFill_Gordon
+  - symbol: GeomFill_GordonBuilder
   - symbol: GeomFill_GuideTrihedronAC
   - symbol: GeomFill_GuideTrihedronPlan
   - symbol: GeomFill_Line
@@ -1177,9 +1420,9 @@ mainBuild:
   - symbol: GeomInt_WLApprox
   - symbol: GeomLProp
   - symbol: GeomLProp_CLProps
-  - symbol: GeomLProp_CurveTool
+  - symbol: GeomLProp_CLProps2d
+  - symbol: GeomLProp_CurAndInf2d
   - symbol: GeomLProp_SLProps
-  - symbol: GeomLProp_SurfaceTool
   - symbol: GeomLib
   - symbol: GeomLib_Check2dBSplineCurve
   - symbol: GeomLib_CheckBSplineCurve
@@ -1192,15 +1435,6 @@ mainBuild:
   - symbol: GeomLib_MakeCurvefromApprox
   - symbol: GeomLib_PolyFunc
   - symbol: GeomLib_Tool
-  - symbol: GeomPlate_Aij
-  - symbol: GeomPlate_BuildAveragePlane
-  - symbol: GeomPlate_BuildPlateSurface
-  - symbol: GeomPlate_CurveConstraint
-  - symbol: GeomPlate_MakeApprox
-  - symbol: GeomPlate_PlateG0Criterion
-  - symbol: GeomPlate_PlateG1Criterion
-  - symbol: GeomPlate_PointConstraint
-  - symbol: GeomPlate_Surface
   - symbol: GeomProjLib
   - symbol: GeomToIGES_GeomCurve
   - symbol: GeomToIGES_GeomEntity
@@ -1364,11 +1598,6 @@ mainBuild:
   - symbol: Hatch_Line
   - symbol: Hatch_LineForm
   - symbol: Hatch_Parameter
-  - symbol: HeaderSection
-  - symbol: HeaderSection_FileDescription
-  - symbol: HeaderSection_FileName
-  - symbol: HeaderSection_FileSchema
-  - symbol: HeaderSection_Protocol
   - symbol: HelixBRep_BuilderHelix
   - symbol: HelixGeom_BuilderApproxCurve
   - symbol: HelixGeom_BuilderHelix
@@ -1960,6 +2189,7 @@ mainBuild:
   - symbol: IntPatch_ALine
   - symbol: IntPatch_ALineToWLine
   - symbol: IntPatch_ArcFunction
+  - symbol: IntPatch_BVHTraversal
   - symbol: IntPatch_CSFunction
   - symbol: IntPatch_CurvIntSurf
   - symbol: IntPatch_GLine
@@ -1977,6 +2207,7 @@ mainBuild:
   - symbol: IntPatch_PolyArc
   - symbol: IntPatch_PolyLine
   - symbol: IntPatch_Polygo
+  - symbol: IntPatch_PolyhedronBVH
   - symbol: IntPatch_PolyhedronTool
   - symbol: IntPatch_PrmPrmIntersection
   - symbol: IntPatch_PrmPrmIntersection_T3Bits
@@ -2027,7 +2258,7 @@ mainBuild:
   - symbol: IntTools_BaseRangeSample
   - symbol: IntTools_BeanFaceIntersector
   - symbol: IntTools_CommonPrt
-
+  - symbol: IntTools_Context
   - symbol: IntTools_Curve
   - symbol: IntTools_CurveRangeLocalizeData
   - symbol: IntTools_CurveRangeSample
@@ -2047,6 +2278,8 @@ mainBuild:
   - symbol: IntTools_WLineTool
   - symbol: IntWalk_StatusDeflection
   - symbol: IntWalk_TheInt2S
+  - symbol: IntWalk_VectorOfInteger
+  - symbol: IntWalk_VectorOfWalkingData
   - symbol: IntWalk_WalkingData
   - symbol: Interface_BitMap
   - symbol: Interface_Category
@@ -2133,6 +2366,7 @@ mainBuild:
   - symbol: LProp_CurAndInf
   - symbol: LProp_NotDefined
   - symbol: LProp_Status
+  - symbol: LProp_SurfaceUtils_DirectAccess
   - symbol: Law
   - symbol: Law_BSpFunc
   - symbol: Law_BSpline
@@ -2141,6 +2375,7 @@ mainBuild:
   - symbol: Law_Constant
   - symbol: Law_Function
   - symbol: Law_Interpol
+  - symbol: Law_Interpolate
   - symbol: Law_Linear
   - symbol: Law_S
   - symbol: LocOpe
@@ -2184,6 +2419,78 @@ mainBuild:
   - symbol: MAT_TListNodeOfListOfBisector
   - symbol: MAT_TListNodeOfListOfEdge
   - symbol: MAT_Zone
+  - symbol: MathInteg_DoubleExpConfig
+  - symbol: MathInteg_KronrodConfig
+  - symbol: MathInteg_MultipleConfig
+  - symbol: MathInteg_SetResult
+  - symbol: MathLin_CroutResult
+  - symbol: MathLin_LUResult
+  - symbol: MathLin_LeastSquaresMethod
+  - symbol: MathLin_LeastSquaresResult
+  - symbol: MathLin_QRResult
+  - symbol: MathLin_SVDResult
+  - symbol: MathOpt_ConjugateGradientFormula
+  - symbol: MathOpt_FRPRConfig
+  - symbol: MathOpt_GlobalConfig
+  - symbol: MathOpt_GlobalStrategy
+  - symbol: MathOpt_NewtonConfig
+  - symbol: MathOpt_PSOBoundaryMode
+  - symbol: MathOpt_PSOConfig
+  - symbol: MathOpt_PSOInertiaSchedule
+  - symbol: MathOpt_PSOInitMode
+  - symbol: MathOpt_PSOSeedParticle
+  - symbol: MathOpt_PSOStats
+  - symbol: MathOpt_UzawaConfig
+  - symbol: MathOpt_UzawaResult
+  - symbol: MathPoly_GeneralPolyResult
+  - symbol: MathRoot_AllRootsResult
+  - symbol: MathRoot_MultipleNoExtraHandler
+  - symbol: MathRoot_MultipleResult
+  - symbol: MathRoot_NullInterval
+  - symbol: MathRoot_TrigResult
+  - symbol: MathSys_LMConfig
+  - symbol: MathSys_NewtonOptions
+  - symbol: MathUtils_Ackley
+  - symbol: MathUtils_Beale
+  - symbol: MathUtils_Booth
+  - symbol: MathUtils_BoundedConfig
+  - symbol: MathUtils_BracketResult
+  - symbol: MathUtils_Config
+  - symbol: MathUtils_Constant
+  - symbol: MathUtils_Cosine
+  - symbol: MathUtils_DecompResult
+  - symbol: MathUtils_Domain1D
+  - symbol: MathUtils_Domain2D
+  - symbol: MathUtils_EigenResult
+  - symbol: MathUtils_Exponential
+  - symbol: MathUtils_Gaussian
+  - symbol: MathUtils_Himmelblau
+  - symbol: MathUtils_IntegConfig
+  - symbol: MathUtils_IntegResult
+  - symbol: MathUtils_InverseResult
+  - symbol: MathUtils_LinConfig
+  - symbol: MathUtils_LineSearchResult
+  - symbol: MathUtils_Linear
+  - symbol: MathUtils_LinearMultipleResult
+  - symbol: MathUtils_LinearResidual
+  - symbol: MathUtils_LinearResult
+  - symbol: MathUtils_MinBracketOptions
+  - symbol: MathUtils_MinBracketResult
+  - symbol: MathUtils_NDimConfig
+  - symbol: MathUtils_PolyResult
+  - symbol: MathUtils_Polynomial
+  - symbol: MathUtils_Power
+  - symbol: MathUtils_QuadraticForm
+  - symbol: MathUtils_RandomGenerator
+  - symbol: MathUtils_Rastrigin
+  - symbol: MathUtils_Rational
+  - symbol: MathUtils_Rosenbrock
+  - symbol: MathUtils_ScalarResult
+  - symbol: MathUtils_Sine
+  - symbol: MathUtils_Sphere
+  - symbol: MathUtils_Status
+  - symbol: MathUtils_VectorResult
+  - symbol: MeshView
   - symbol: Message_Alert
   - symbol: Message_AlertExtended
   - symbol: Message_Algorithm
@@ -2205,6 +2512,7 @@ mainBuild:
   - symbol: Message_PrinterToReport
   - symbol: Message_ProgressIndicator
   - symbol: Message_ProgressRange
+  - symbol: Message_ProgressScope
   - symbol: Message_ProgressSentry
   - symbol: Message_Report
   - symbol: Message_Status
@@ -2229,10 +2537,10 @@ mainBuild:
   - symbol: NCollection_BaseAllocator
   - symbol: NCollection_BaseList
   - symbol: NCollection_BaseMap
-  - symbol: NCollection_BasePointerVector
   - symbol: NCollection_BaseSequence
   - symbol: NCollection_Buffer
   - symbol: NCollection_CellFilter_Action
+  - symbol: NCollection_ForwardRangeSentinel
   - symbol: NCollection_HeapAllocator
   - symbol: NCollection_IncAllocator
   - symbol: NCollection_SparseArrayBase
@@ -2354,20 +2662,6 @@ mainBuild:
   - symbol: Poly_Triangulation
   - symbol: Poly_TriangulationParameters
   - symbol: Precision
-  - symbol: ProjLib
-  - symbol: ProjLib_CompProjectedCurve
-  - symbol: ProjLib_ComputeApprox
-  - symbol: ProjLib_ComputeApproxOnPolarSurface
-  - symbol: ProjLib_Cone
-  - symbol: ProjLib_Cylinder
-  - symbol: ProjLib_Plane
-  - symbol: ProjLib_PrjFunc
-  - symbol: ProjLib_PrjResolve
-  - symbol: ProjLib_ProjectOnPlane
-  - symbol: ProjLib_ProjectedCurve
-  - symbol: ProjLib_Projector
-  - symbol: ProjLib_Sphere
-  - symbol: ProjLib_Torus
   - symbol: Quantity_Color
   - symbol: Quantity_ColorRGBA
   - symbol: Quantity_Date
@@ -2434,6 +2728,7 @@ mainBuild:
   - symbol: RWPly_PlyWriterContext
   - symbol: RWStl
   - symbol: RWStl_Reader
+  - symbol: RefsView
   - symbol: Resource_FormatType
   - symbol: Resource_LexicalCompare
   - symbol: Resource_Manager
@@ -2473,6 +2768,10 @@ mainBuild:
   - symbol: STEPSelections_SelectForTransfer
   - symbol: STEPSelections_SelectGSCurves
   - symbol: STEPSelections_SelectInstances
+  - symbol: SequenceOfInteger
+  - symbol: SequenceOfPnt
+  - symbol: SequenceOfPnt2d
+  - symbol: SequenceOfReal
   - symbol: ShapeAlgo
   - symbol: ShapeAlgo_AlgoContainer
   - symbol: ShapeAlgo_ToolContainer
@@ -2545,10 +2844,12 @@ mainBuild:
   - symbol: ShapeFix_Wire
   - symbol: ShapeFix_WireVertex
   - symbol: ShapeFix_Wireframe
+  - symbol: ShapeProcess
   - symbol: ShapeProcessAPI_ApplySequence
   - symbol: ShapeProcess_Context
   - symbol: ShapeProcess_OperLibrary
   - symbol: ShapeProcess_Operator
+  - symbol: ShapeProcess_ShapeContext
   - symbol: ShapeProcess_UOperator
   - symbol: ShapeUpgrade
   - symbol: ShapeUpgrade_ClosedEdgeDivide
@@ -2583,6 +2884,7 @@ mainBuild:
   - symbol: ShapeUpgrade_Tool
   - symbol: ShapeUpgrade_UnifySameDomain
   - symbol: ShapeUpgrade_WireDivide
+  - symbol: ShapesView
   - symbol: Standard
   - symbol: Standard_AbortiveTransaction
   - symbol: Standard_ArrayStreamBuffer
@@ -3772,6 +4074,7 @@ mainBuild:
   - symbol: TNaming_TranslateTool
   - symbol: TNaming_Translator
   - symbol: TNaming_UsedShapes
+  - symbol: TopAbs
   - symbol: TopAbs_Orientation
   - symbol: TopAbs_ShapeEnum
   - symbol: TopAbs_State
@@ -3784,135 +4087,6 @@ mainBuild:
   - symbol: TopLoc_Location
   - symbol: TopLoc_SListNodeOfItemLocation
   - symbol: TopLoc_SListOfItemLocation
-  - symbol: TopOpeBRep
-  - symbol: TopOpeBRepBuild_Area1dBuilder
-  - symbol: TopOpeBRepBuild_Area2dBuilder
-  - symbol: TopOpeBRepBuild_Area3dBuilder
-  - symbol: TopOpeBRepBuild_AreaBuilder
-  - symbol: TopOpeBRepBuild_BlockBuilder
-  - symbol: TopOpeBRepBuild_BlockIterator
-  - symbol: TopOpeBRepBuild_BuilderON
-  - symbol: TopOpeBRepBuild_CompositeClassifier
-  - symbol: TopOpeBRepBuild_CorrectFace2d
-  - symbol: TopOpeBRepBuild_EdgeBuilder
-  - symbol: TopOpeBRepBuild_FaceAreaBuilder
-  - symbol: TopOpeBRepBuild_FaceBuilder
-  - symbol: TopOpeBRepBuild_FuseFace
-  - symbol: TopOpeBRepBuild_GTool
-  - symbol: TopOpeBRepBuild_HBuilder
-  - symbol: TopOpeBRepBuild_Loop
-  - symbol: TopOpeBRepBuild_LoopClassifier
-  - symbol: TopOpeBRepBuild_LoopEnum
-  - symbol: TopOpeBRepBuild_LoopSet
-  - symbol: TopOpeBRepBuild_Pave
-  - symbol: TopOpeBRepBuild_PaveClassifier
-  - symbol: TopOpeBRepBuild_PaveSet
-  - symbol: TopOpeBRepBuild_ShapeListOfShape
-  - symbol: TopOpeBRepBuild_ShapeSet
-  - symbol: TopOpeBRepBuild_ShellFaceClassifier
-  - symbol: TopOpeBRepBuild_ShellFaceSet
-  - symbol: TopOpeBRepBuild_ShellToSolid
-  - symbol: TopOpeBRepBuild_SolidAreaBuilder
-  - symbol: TopOpeBRepBuild_SolidBuilder
-  - symbol: TopOpeBRepBuild_Tools
-  - symbol: TopOpeBRepBuild_Tools2d
-  - symbol: TopOpeBRepBuild_VertexInfo
-  - symbol: TopOpeBRepBuild_WireEdgeClassifier
-  - symbol: TopOpeBRepBuild_WireEdgeSet
-  - symbol: TopOpeBRepBuild_WireToFace
-  - symbol: TopOpeBRepDS
-  - symbol: TopOpeBRepDS_Association
-  - symbol: TopOpeBRepDS_BuildTool
-  - symbol: TopOpeBRepDS_Check
-  - symbol: TopOpeBRepDS_CheckStatus
-  - symbol: TopOpeBRepDS_Config
-  - symbol: TopOpeBRepDS_Curve
-  - symbol: TopOpeBRepDS_CurveData
-  - symbol: TopOpeBRepDS_CurveExplorer
-  - symbol: TopOpeBRepDS_CurveIterator
-  - symbol: TopOpeBRepDS_CurvePointInterference
-  - symbol: TopOpeBRepDS_DataStructure
-  - symbol: TopOpeBRepDS_Dumper
-  - symbol: TopOpeBRepDS_EIR
-  - symbol: TopOpeBRepDS_Edge3dInterferenceTool
-  - symbol: TopOpeBRepDS_EdgeInterferenceTool
-  - symbol: TopOpeBRepDS_EdgeVertexInterference
-  - symbol: TopOpeBRepDS_Explorer
-  - symbol: TopOpeBRepDS_FIR
-  - symbol: TopOpeBRepDS_FaceEdgeInterference
-  - symbol: TopOpeBRepDS_FaceInterferenceTool
-  - symbol: TopOpeBRepDS_Filter
-  - symbol: TopOpeBRepDS_GapFiller
-  - symbol: TopOpeBRepDS_GapTool
-  - symbol: TopOpeBRepDS_GeometryData
-  - symbol: TopOpeBRepDS_InterferenceIterator
-  - symbol: TopOpeBRepDS_InterferenceTool
-  - symbol: TopOpeBRepDS_Kind
-  - symbol: TopOpeBRepDS_ListOfShapeOn1State
-  - symbol: TopOpeBRepDS_Marker
-  - symbol: TopOpeBRepDS_Point
-  - symbol: TopOpeBRepDS_PointData
-  - symbol: TopOpeBRepDS_PointExplorer
-  - symbol: TopOpeBRepDS_PointIterator
-  - symbol: TopOpeBRepDS_Reducer
-  - symbol: TopOpeBRepDS_ShapeData
-  - symbol: TopOpeBRepDS_ShapeShapeInterference
-  - symbol: TopOpeBRepDS_ShapeWithState
-  - symbol: TopOpeBRepDS_SolidSurfaceInterference
-  - symbol: TopOpeBRepDS_Surface
-  - symbol: TopOpeBRepDS_SurfaceCurveInterference
-  - symbol: TopOpeBRepDS_SurfaceData
-  - symbol: TopOpeBRepDS_SurfaceExplorer
-  - symbol: TopOpeBRepDS_SurfaceIterator
-  - symbol: TopOpeBRepDS_TOOL
-  - symbol: TopOpeBRepDS_Transition
-  - symbol: TopOpeBRepTool
-  - symbol: TopOpeBRepTool_AncestorsTool
-  - symbol: TopOpeBRepTool_BoxSort
-  - symbol: TopOpeBRepTool_C2DF
-  - symbol: TopOpeBRepTool_CLASSI
-  - symbol: TopOpeBRepTool_CORRISO
-  - symbol: TopOpeBRepTool_CurveTool
-  - symbol: TopOpeBRepTool_FuseEdges
-  - symbol: TopOpeBRepTool_GeomTool
-  - symbol: TopOpeBRepTool_HBoxTool
-  - symbol: TopOpeBRepTool_OutCurveType
-  - symbol: TopOpeBRepTool_PurgeInternalEdges
-  - symbol: TopOpeBRepTool_REGUS
-  - symbol: TopOpeBRepTool_REGUW
-  - symbol: TopOpeBRepTool_ShapeClassifier
-  - symbol: TopOpeBRepTool_ShapeExplorer
-  - symbol: TopOpeBRepTool_ShapeTool
-  - symbol: TopOpeBRepTool_SolidClassifier
-  - symbol: TopOpeBRepTool_connexity
-  - symbol: TopOpeBRepTool_face
-  - symbol: TopOpeBRepTool_mkTondgE
-  - symbol: TopOpeBRep_Bipoint
-  - symbol: TopOpeBRep_DSFiller
-  - symbol: TopOpeBRep_EdgesFiller
-  - symbol: TopOpeBRep_EdgesIntersector
-  - symbol: TopOpeBRep_FFDumper
-  - symbol: TopOpeBRep_FFTransitionTool
-  - symbol: TopOpeBRep_FaceEdgeFiller
-  - symbol: TopOpeBRep_FaceEdgeIntersector
-  - symbol: TopOpeBRep_FacesIntersector
-  - symbol: TopOpeBRep_GeomTool
-  - symbol: TopOpeBRep_Hctxee2d
-  - symbol: TopOpeBRep_Hctxff2d
-  - symbol: TopOpeBRep_LineInter
-  - symbol: TopOpeBRep_P2Dstatus
-  - symbol: TopOpeBRep_Point2d
-  - symbol: TopOpeBRep_PointClassifier
-  - symbol: TopOpeBRep_PointGeomTool
-  - symbol: TopOpeBRep_ShapeIntersector
-  - symbol: TopOpeBRep_ShapeIntersector2d
-  - symbol: TopOpeBRep_ShapeScanner
-  - symbol: TopOpeBRep_TypeLineCurve
-  - symbol: TopOpeBRep_VPointInter
-  - symbol: TopOpeBRep_VPointInterClassifier
-  - symbol: TopOpeBRep_VPointInterIterator
-  - symbol: TopOpeBRep_WPointInter
-  - symbol: TopOpeBRep_WPointInterIterator
   - symbol: TopTools
   - symbol: TopTools_FormatVersion
   - symbol: TopTools_LocationSet
@@ -3969,6 +4143,7 @@ mainBuild:
   - symbol: TopoDS_UnCompatibleShapes
   - symbol: TopoDS_Vertex
   - symbol: TopoDS_Wire
+  - symbol: TopoView
   - symbol: TransferBRep_BinderOfShape
   - symbol: TransferBRep_Reader
   - symbol: TransferBRep_ShapeBinder
@@ -4010,6 +4185,7 @@ mainBuild:
   - symbol: Transfer_TransientProcess
   - symbol: Transfer_UndefMode
   - symbol: Transfer_VoidBinder
+  - symbol: UIDsView
   - symbol: Units
   - symbol: UnitsAPI
   - symbol: UnitsAPI_SystemUnits
@@ -4032,6 +4208,7 @@ mainBuild:
   - symbol: Units_UnitsDictionary
   - symbol: Units_UnitsLexicon
   - symbol: Units_UnitsSystem
+  - symbol: VertexCellFilter
   - symbol: Vrml
   - symbol: VrmlAPI
   - symbol: VrmlAPI_CafReader
@@ -4131,11 +4308,13 @@ mainBuild:
   - symbol: XCAFApp_Application
   - symbol: XCAFDimTolObjects_AngularQualifier
   - symbol: XCAFDimTolObjects_DatumModifWithValue
+  - symbol: XCAFDimTolObjects_DatumObject
   - symbol: XCAFDimTolObjects_DatumSingleModif
   - symbol: XCAFDimTolObjects_DatumTargetType
   - symbol: XCAFDimTolObjects_DimensionFormVariance
   - symbol: XCAFDimTolObjects_DimensionGrade
   - symbol: XCAFDimTolObjects_DimensionModif
+  - symbol: XCAFDimTolObjects_DimensionObject
   - symbol: XCAFDimTolObjects_DimensionQualifier
   - symbol: XCAFDimTolObjects_DimensionType
   - symbol: XCAFDimTolObjects_GeomToleranceMatReqModif
@@ -4305,6 +4484,7 @@ mainBuild:
   - symbol: math_GlobOptMin
   - symbol: math_Jacobi
   - symbol: math_KronrodSingleIntegration
+  - symbol: math_Matrix
   - symbol: math_MultipleVarFunction
   - symbol: math_MultipleVarFunctionWithGradient
   - symbol: math_MultipleVarFunctionWithHessian
@@ -4320,20 +4500,58 @@ mainBuild:
   - symbol: math_TrigonometricFunctionRoots
   - symbol: math_Uzawa
   - symbol: math_ValueAndWeight
+  - symbol: step_parser
+  - symbol: step_scanner
+  additionalBindCode: |
+    #include <TopoDS.hxx>
+    #include <TopoDS_Vertex.hxx>
+    #include <TopoDS_Edge.hxx>
+    #include <TopoDS_Wire.hxx>
+    #include <TopoDS_Face.hxx>
+    #include <TopoDS_Shell.hxx>
+    #include <TopoDS_Solid.hxx>
+    #include <TopoDS_CompSolid.hxx>
+    #include <TopoDS_Compound.hxx>
+    #include <FairCurve_Batten.hxx>
+    #include <FairCurve_MinimalVariation.hxx>
+    #include <FairCurve_AnalysisCode.hxx>
+    struct TopoDS_Cast {};
+    using namespace emscripten;
+    EMSCRIPTEN_BINDINGS(ocjs_additional) {
+      function("FairCurve_Batten_Compute", optional_override([](FairCurve_Batten& self, int nbIter, double tol) -> int {
+        FairCurve_AnalysisCode code;
+        self.Compute(code, nbIter, tol);
+        return static_cast<int>(code);
+      }));
+      function("FairCurve_MinimalVariation_Compute", optional_override([](FairCurve_MinimalVariation& self, int nbIter, double tol) -> int {
+        FairCurve_AnalysisCode code;
+        self.Compute(code, nbIter, tol);
+        return static_cast<int>(code);
+      }));
+      class_<TopoDS_Cast>("TopoDS_Cast")
+        .class_function("Edge", optional_override([](const TopoDS_Shape& s) -> TopoDS_Edge { return TopoDS::Edge(s); }))
+        .class_function("Wire", optional_override([](const TopoDS_Shape& s) -> TopoDS_Wire { return TopoDS::Wire(s); }))
+        .class_function("Face", optional_override([](const TopoDS_Shape& s) -> TopoDS_Face { return TopoDS::Face(s); }))
+        .class_function("Vertex", optional_override([](const TopoDS_Shape& s) -> TopoDS_Vertex { return TopoDS::Vertex(s); }))
+        .class_function("Shell", optional_override([](const TopoDS_Shape& s) -> TopoDS_Shell { return TopoDS::Shell(s); }))
+        .class_function("Solid", optional_override([](const TopoDS_Shape& s) -> TopoDS_Solid { return TopoDS::Solid(s); }))
+        .class_function("Compound", optional_override([](const TopoDS_Shape& s) -> TopoDS_Compound { return TopoDS::Compound(s); }))
+        ;
+    }
   emccFlags:
   - -fwasm-exceptions
   - -sEXPORT_EXCEPTION_HANDLING_HELPERS
   - -sEXPORT_ES6=1
   - -sMODULARIZE
   - -sALLOW_MEMORY_GROWTH=1
-  - -sINITIAL_MEMORY=100MB
-  - -sMAXIMUM_MEMORY=4GB
   - -sEXPORTED_RUNTIME_METHODS=["FS"]
+  - -sINITIAL_MEMORY=128MB
+  - -sMAXIMUM_MEMORY=4GB
   - -sUSE_FREETYPE=1
-  - --no-entry
-  - --emit-symbol-map
   - -sERROR_ON_UNDEFINED_SYMBOLS=0
+  - --no-entry
   - -Wl,--allow-undefined
+  - --emit-symbol-map
   - -sSTACK_SIZE=8388608
   - -sWASM_BIGINT
   - -sEVAL_CTORS=2

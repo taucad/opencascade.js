@@ -50,16 +50,23 @@ def mangle_template_name(container, arg_spellings):
 
 
 def _extract_template_args(clang_type):
-    """Extract template argument spellings from a clang type."""
+    """Extract template argument spellings from a clang type.
+
+    Always prefers the canonical spelling, which is namespace-qualified for
+    types declared inside a namespace (e.g. `ExtremaPC::ExtremumResult`).
+    The naked `arg_type.spelling` would return the lookup-context-relative
+    name (`ExtremumResult` when scanned from inside `ExtremaPC::Result`),
+    and emitting an unqualified `using NCollection_…<ExtremumResult>;` at
+    global scope in `myMain.h` would fail to compile.
+    """
     num_args = clang_type.get_num_template_arguments()
     if num_args <= 0:
         return []
     args = []
     for i in range(num_args):
         arg_type = clang_type.get_template_argument_type(i)
-        spelling = arg_type.spelling
-        if not spelling:
-            spelling = arg_type.get_canonical().spelling
+        canonical = arg_type.get_canonical()
+        spelling = canonical.spelling or arg_type.spelling
         if spelling:
             args.append(spelling)
     return args
@@ -135,7 +142,14 @@ def _scan_type_for_ncollection(clang_type, needed):
 
 
 def _scan_class_methods(class_cursor, needed):
-    """Scan all public methods of a class for NCollection types."""
+    """Scan all public methods, constructors, and FIELD_DECLs of a class for NCollection types.
+
+    Public FIELD_DECLs matter because Embind exposes them via `.property(...)`,
+    and the wrapping NCollection type must be registered for JS access to work
+    (otherwise `Cannot access X.field due to unbound types` at runtime). OCCT
+    V8's namespace-scoped result/config structs (e.g. `ExtremaPC::Result.Extrema`)
+    rely on this path.
+    """
     for child in class_cursor.get_children():
         if child.kind == clang.cindex.CursorKind.CXX_METHOD:
             if child.access_specifier != clang.cindex.AccessSpecifier.PUBLIC:
@@ -148,6 +162,10 @@ def _scan_class_methods(class_cursor, needed):
                 continue
             for arg in child.get_arguments():
                 _scan_type_for_ncollection(arg.type, needed)
+        elif child.kind == clang.cindex.CursorKind.FIELD_DECL:
+            if child.access_specifier != clang.cindex.AccessSpecifier.PUBLIC:
+                continue
+            _scan_type_for_ncollection(child.type, needed)
 
 
 _HARRAY_TO_ARRAY = {
@@ -155,6 +173,18 @@ _HARRAY_TO_ARRAY = {
     "NCollection_HArray2": "NCollection_Array2",
     "NCollection_HSequence": "NCollection_Sequence",
 }
+
+# Mangled NCollection names that are also registered manually in
+# BUILTIN_ADDITIONAL_BIND_CODE (src/buildFromYaml.py). Embind requires each
+# C++ type to be registered exactly once; auto-emitting these collides at
+# Module() instantiation with `BindingError: Cannot register type ... twice`.
+# The manual stubs preserve the OCCT-deprecated public names that downstream
+# consumers (smoke tests, @taucad/runtime) call into via
+# `oc.TColStd_IndexedDataMapOfStringString()`. Skip auto-discovery here so
+# the manual binding remains the sole registration site.
+_BUILTIN_BIND_CONFLICTS = frozenset({
+    "NCollection_IndexedDataMap_TCollection_AsciiString_TCollection_AsciiString",
+})
 
 
 def discover_ncollection_types(tuInfo, filter_classes_fn):
@@ -170,11 +200,13 @@ def discover_ncollection_types(tuInfo, filter_classes_fn):
 
     augmented = set()
     for mangled_name, container, arg_spellings in needed:
+        if mangled_name in _BUILTIN_BIND_CONFLICTS:
+            continue
         augmented.add((mangled_name, container, arg_spellings))
         inner_container = _HARRAY_TO_ARRAY.get(container)
         if inner_container:
             inner_mangled = mangle_template_name(inner_container, list(arg_spellings))
-            if inner_mangled:
+            if inner_mangled and inner_mangled not in _BUILTIN_BIND_CONFLICTS:
                 augmented.add((inner_mangled, inner_container, arg_spellings))
 
     return augmented

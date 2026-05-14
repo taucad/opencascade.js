@@ -14,6 +14,7 @@
     "OCJS_CONVERGE": "true",
     "OCJS_PATCH_DUMP": "true",
     "OCJS_BIGINT": "1",
+    "OCJS_MALLOC": "mimalloc",
     "BINARYEN_EXTRA_PASSES": ""
   },
   "O0-debug": {
@@ -45,6 +46,7 @@
     "OCJS_CONVERGE": "true",
     "OCJS_PATCH_DUMP": "true",
     "OCJS_BIGINT": "1",
+    "OCJS_MALLOC": "mimalloc",
     "BINARYEN_EXTRA_PASSES": ""
   },
   "O3-noLTO-simd": {
@@ -62,6 +64,7 @@
     "OCJS_CONVERGE": "false",
     "OCJS_PATCH_DUMP": "true",
     "OCJS_BIGINT": "1",
+    "OCJS_MALLOC": "mimalloc",
     "BINARYEN_EXTRA_PASSES": ""
   },
   "Os-noLTO-simd": {
@@ -79,6 +82,7 @@
     "OCJS_CONVERGE": "true",
     "OCJS_PATCH_DUMP": "true",
     "OCJS_BIGINT": "1",
+    "OCJS_MALLOC": "mimalloc",
     "BINARYEN_EXTRA_PASSES": ""
   }
 }

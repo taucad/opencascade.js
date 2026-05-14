@@ -463,6 +463,55 @@ def shouldStripParam(arg_type, method):
 def getClassTypeName(theClass, templateDecl = None):
   return templateDecl.spelling if templateDecl is not None else theClass.spelling
 
+def getClassJsPublicName(theClass, templateDecl = None):
+  """JS-public class name (Embind class_<>("…") and TS export name).
+
+  Adds a `Namespace_` prefix when the type is directly inside a non-stdlib
+  C++ namespace (e.g. `ExtremaPC::Result` → `ExtremaPC_Result`). For
+  template typedef aliases the alias name typically already lives at file
+  scope, but if it's namespace-scoped the same prefix rule applies. For
+  top-level types the bare spelling is returned, preserving every existing
+  binding's JS name unchanged.
+
+  This is intentionally NOT folded into `getClassTypeName` because many
+  non-emit call sites (member-pointer expressions, base-class-resolution
+  string compares) compare against the bare spelling. Keeping the plain
+  helper untouched avoids cascading those changes and limits blast radius
+  to genuine emit sites.
+  """
+  base = getClassTypeName(theClass, templateDecl)
+  decl = templateDecl if templateDecl is not None else theClass
+  parent = decl.semantic_parent
+  if parent is not None and parent.kind == clang.cindex.CursorKind.NAMESPACE:
+    if parent.spelling and parent.spelling not in ("std", "emscripten", "__gnu_cxx", "__cxxabiv1", "__cxx", "__1"):
+      return parent.spelling + "_" + base
+  return base
+
+def getEnumJsPublicName(theEnum):
+  """JS-public enum name. Adds `Namespace_` prefix for namespace-scoped enums."""
+  base = theEnum.spelling
+  parent = theEnum.semantic_parent
+  if parent is not None and parent.kind == clang.cindex.CursorKind.NAMESPACE:
+    if parent.spelling and parent.spelling not in ("std", "emscripten", "__gnu_cxx", "__cxxabiv1", "__cxx", "__1"):
+      return parent.spelling + "_" + base
+  return base
+
+def getEnumQualifiedName(theEnum):
+  """Fully-qualified C++ name of an enum, walking namespaces and enclosing classes."""
+  parts = [theEnum.spelling]
+  parent = theEnum.semantic_parent
+  parent_kinds = (
+    clang.cindex.CursorKind.NAMESPACE,
+    clang.cindex.CursorKind.CLASS_DECL,
+    clang.cindex.CursorKind.STRUCT_DECL,
+    clang.cindex.CursorKind.CLASS_TEMPLATE,
+  )
+  while parent is not None and parent.kind in parent_kinds:
+    if parent.spelling:
+      parts.append(parent.spelling)
+    parent = parent.semantic_parent
+  return "::".join(reversed(parts))
+
 def getClassQualifiedName(theClass, templateDecl = None):
   """Fully-qualified C++ symbol for a class (e.g. BRepGraph::CacheView).
 
@@ -1340,7 +1389,7 @@ class EmbindBindings(Bindings):
 
   def processClass(self, theClass, templateDecl = None, templateArgs = None):
     output = ""
-    className = getClassTypeName(theClass, templateDecl)
+    className = getClassJsPublicName(theClass, templateDecl)
     if className == "":
       className = theClass.type.spelling
     classCpp = getClassQualifiedName(theClass, templateDecl)
@@ -1350,11 +1399,30 @@ class EmbindBindings(Bindings):
     baseSpec = list(filter(lambda x: x.kind == clang.cindex.CursorKind.CXX_BASE_SPECIFIER and x.access_specifier == clang.cindex.AccessSpecifier.PUBLIC, theClass.get_children()))
 
     if len(baseSpec) > 0:
-      baseType = baseSpec[0].type.spelling
-      if any(x in baseType for x in [":", "<"]):
+      # Use canonical spelling so namespace-scoped base classes are emitted as
+      # fully-qualified C++ expressions (e.g. `BRepGraphInc::BaseRef`). The
+      # bare `baseSpec[0].type.spelling` is lookup-context-relative — for a
+      # derived class declared inside the SAME namespace as its base, it
+      # returns just the base spelling (`BaseRef`), which would not resolve
+      # at file scope inside the EMSCRIPTEN_BINDINGS block. Embind requires
+      # the base type to be both bound (registered via `class_<>`) AND
+      # expressible at the binding site; canonical spelling satisfies both.
+      canonicalBaseType = baseSpec[0].type.get_canonical().spelling
+      if "<" in canonicalBaseType:
+        # Templated base — embind cannot consume `base<T<...>>` directly.
         baseClassBinding = ""
       else:
-        baseClassBinding = ", base<" + baseType + ">"
+        baseDecl = baseSpec[0].type.get_declaration()
+        baseSpelling = baseDecl.spelling if baseDecl is not None else ""
+        baseIsBound = bool(baseSpelling) and baseSpelling in self.tuInfo.classDict
+        if baseIsBound:
+          baseClassBinding = ", base<" + canonicalBaseType + ">"
+        else:
+          # Base class is not in the bound class set — emitting `base<X>`
+          # would fail Module() with `Cannot register class derived from
+          # unbound class`. Drop the base specifier and let embind treat
+          # the type as a root.
+          baseClassBinding = ""
     else:
       baseClassBinding = ""
 
@@ -1367,7 +1435,7 @@ class EmbindBindings(Bindings):
     for struct_def in self._result_struct_defs:
       output += struct_def
 
-    output += "EMSCRIPTEN_BINDINGS(" + (theClass.spelling if templateDecl is None else templateDecl.spelling) + ") {\n"
+    output += "EMSCRIPTEN_BINDINGS(" + className + ") {\n"
 
     for reg in self._result_struct_registrations:
       output += reg
@@ -1802,6 +1870,44 @@ class EmbindBindings(Bindings):
       return [(i, a) for i, a in enumerate(args)]
     return [(i, a) for i, a in enumerate(args) if not shouldStripParam(a.type, method) and not isRawPointerParam(a.type)]
 
+  def _js_effective_sig(self, method, templateDecl=None, templateArgs=None):
+    """JS-effective signature tuple for dedup keying.
+
+    Keys on `_classify_js_type` over the JS-visible (kept) args after RBV
+    elision, so two C++ overloads that collapse to the same JS-callable
+    signature are detected as duplicates. Distinct from the existing
+    JS-type-tuple dedup which keys on ALL C++ args.
+    """
+    return tuple(
+      self._classify_js_type(a.type, templateDecl, templateArgs)
+      for _i, a in self._getJsVisibleArgs(method)
+    )
+
+  def _envelope_richness(self, method):
+    """Rank methods that share a JS-effective signature.
+
+    Higher = richer envelope = preferred survivor. The RBV-envelope variant's
+    `returnValue` field strictly subsumes the bare-return variant's return,
+    and the envelope additionally surfaces elided `Handle<T>` outputs that
+    would otherwise be unreachable from JS — there is no scenario where the
+    bare-return form is functionally superior to the envelope form.
+    """
+    args = list(method.get_arguments())
+    if not any(isOutputParam(a.type) for a in args) or not self._canDoRbv(method):
+      return 0
+    stripped = sum(1 for a in args if shouldStripParam(a.type, method))
+    envelope_outputs = sum(
+      1 for a in args
+      if isOutputParam(a.type) and not isClassOutputParam(a.type)
+    )
+    if stripped >= 1 and envelope_outputs >= 2:
+      return 3
+    if stripped >= 1:
+      return 2
+    if envelope_outputs >= 1:
+      return 1
+    return 0
+
   def _ensureResultStruct(self, method, args, className, overloadPostfix, templateDecl, templateArgs, theClass=None):
     """Register the value_object result struct for an RBV method.
     Returns (structName, struct_fields, output_params, stripped_indices) or None."""
@@ -2042,6 +2148,32 @@ class EmbindBindings(Bindings):
       name = self._getArgName(arg, i)
       if self._needsCStringWrapper(arg.type):
         lambda_params.append(f"std::string {name}")
+        continue
+      # C-array params must inject the parameter name in a position the C++
+      # parser accepts. `getOriginalArgumentType` (used downstream) emits the
+      # unnamed reference form `T (&)[N]` and the plain-array form `T[N]`;
+      # both blow up when concatenated with " {name}". Rewrite both shapes
+      # with the name in the legal slot:
+      #   reference-to-array form (`double (&theParam)[2]`): inside parens
+      #   plain C-array form      (`const double theParam[4]`): before brackets
+      hasDefault = any(x.spelling == "=" for x in list(arg.get_tokens()))
+      refArrayMatch = (
+        re.match(r"^(.*?)\s*\(&\)\[(\d+)\]\s*$", arg.type.spelling)
+        if not hasDefault else None
+      )
+      plainArrayMatch = (
+        re.match(r"^(.*?)\s*\[(\d+)\]\s*$", arg.type.spelling)
+        if not hasDefault and refArrayMatch is None else None
+      )
+      if refArrayMatch:
+        elementType = refArrayMatch.group(1).strip()
+        arrayCount = refArrayMatch.group(2)
+        lambda_params.append(f"{elementType} (&{name})[{arrayCount}]")
+        continue
+      if plainArrayMatch:
+        elementType = plainArrayMatch.group(1).strip()
+        arrayCount = plainArrayMatch.group(2)
+        lambda_params.append(f"{elementType} {name}[{arrayCount}]")
         continue
       argType = self.getOriginalArgumentType(arg, templateDecl, templateArgs)
       if isOutputParam(arg.type):
@@ -2613,18 +2745,71 @@ class EmbindBindings(Bindings):
     if not bindable:
       return output
 
-    # Deduplicate const/non-const overloads with identical argument types.
-    # JS has no const `this` — these are JS-indistinguishable and force
-    # unnecessary _N suffixes. Prefer the const version.
+    # Deduplicate overloads that are JS-indistinguishable.
+    #
+    # The key is the JS-classified type tuple, not the C++ canonical spelling,
+    # so V8's parallel `size_t`/`int` NCollection overloads (size_t API
+    # migration #1212) collapse to one entry. Without this, both survive into
+    # the dispatch tree as a doubly-ambiguous group and no primary method is
+    # emitted (RC-B). Tie-breakers:
+    #   1. Prefer the wider / unsigned integer (V8-modern `size_t` over
+    #      legacy `int`).
+    #   2. On equal score, prefer the const version (JS has no const `this`).
+    def _typedef_preference_score(m):
+      score = 0
+      for a in m.get_arguments():
+        k = a.type.get_canonical().kind
+        if k in (clang.cindex.TypeKind.ULONGLONG, clang.cindex.TypeKind.ULONG,
+                 clang.cindex.TypeKind.UINT, clang.cindex.TypeKind.USHORT):
+          score += 10
+        if k in (clang.cindex.TypeKind.ULONGLONG, clang.cindex.TypeKind.LONGLONG):
+          score += 4
+        elif k in (clang.cindex.TypeKind.ULONG, clang.cindex.TypeKind.LONG):
+          score += 2
+        elif k in (clang.cindex.TypeKind.UINT, clang.cindex.TypeKind.INT):
+          score += 1
+      return score
+
     deduped = {}
     for m in bindable:
-      arg_key = tuple(a.type.get_canonical().spelling for a in m.get_arguments())
-      is_const = m.is_const_method()
-      if arg_key not in deduped:
-        deduped[arg_key] = m
-      elif is_const and not deduped[arg_key].is_const_method():
-        deduped[arg_key] = m
+      js_key = tuple(
+        self._classify_js_type(a.type, templateDecl, templateArgs)
+        for a in m.get_arguments()
+      )
+      existing = deduped.get(js_key)
+      if existing is None:
+        deduped[js_key] = m
+        continue
+      cur_score = _typedef_preference_score(m)
+      prev_score = _typedef_preference_score(existing)
+      if cur_score > prev_score:
+        deduped[js_key] = m
+      elif cur_score == prev_score and m.is_const_method() and not existing.is_const_method():
+        deduped[js_key] = m
     bindable = list(deduped.values())
+    if not bindable:
+      return output
+
+    # Second dedup pass: collapse overloads that share an identical JS-EFFECTIVE
+    # signature (after RBV elision). Two C++ overloads can have distinct
+    # type tuples over ALL args yet identical type tuples over only the
+    # JS-visible (kept) args — e.g. `Read(path, doc, progress)` (arity 3)
+    # vs `Read(path, doc, Handle<TShape>&, progress)` (arity 4 → JS arity 3
+    # after stripping the Handle output). The runtime patched dispatcher's
+    # `signaturesArray` keys on the same JS-effective tuple, so identical
+    # tuples leave nothing to discriminate the two overloads — the last to
+    # register silently shadows the first. Picking the highest-richness
+    # survivor keeps the RBV-envelope variant (whose `returnValue` field
+    # subsumes the bare-return variant's return) and drops the shadowing
+    # bare-return registration. The TS `.d.ts` continues to expose both
+    # shapes via the existing `processMethodOrProperty` overload-index path.
+    js_effective = {}
+    for m in bindable:
+      key = self._js_effective_sig(m, templateDecl, templateArgs)
+      prev = js_effective.get(key)
+      if prev is None or self._envelope_richness(m) > self._envelope_richness(prev):
+        js_effective[key] = m
+    bindable = list(js_effective.values())
     if not bindable:
       return output
 
@@ -2712,26 +2897,45 @@ class EmbindBindings(Bindings):
             except SkipException as e:
               print(str(e))
           else:
-            js_tree = self._build_js_dispatch_tree(dispatchable, templateDecl=templateDecl, templateArgs=templateArgs)
-            js_ambiguous = self._collect_ambiguous_overloads(js_tree)
-            js_distinguishable = [m for m in dispatchable if m not in js_ambiguous]
-
-            for m in js_distinguishable:
-              try:
-                output += self.processMethodOrProperty(theClass, m, templateDecl, templateArgs, overload_index=0, override_postfix="")
-              except SkipException as e:
-                print(str(e))
-
-            if js_ambiguous:
-              val_tree = self._build_dispatch_tree(js_ambiguous, templateDecl=templateDecl, templateArgs=templateArgs)
-              val_ambiguous = self._collect_ambiguous_overloads(val_tree)
-
-              if len(js_ambiguous) > len(val_ambiguous):
-                return_types = set(m.result_type.get_canonical().spelling for m in js_ambiguous)
-                mixed_returns = len(return_types) > 1
-                isStatic = all(m.is_static_method() for m in js_ambiguous)
-                output += self._emitValDispatchMethod(theClass, js_ambiguous[0].spelling, arity, val_tree, classCpp, isStatic, templateDecl, templateArgs, mixed_returns=mixed_returns)
-
+            # One val-based dispatcher per same-arity multi-overload group.
+            # Embind keys its method table on (name, arity), so emitting
+            # multiple `.function("Name", select_overload<…>(…))` for the
+            # same name + arity silently clobbers all but the last
+            # registration. Routing the whole group through
+            # `_emitValDispatchMethod` eliminates the clobber and gives
+            # every overload (class-typed or not) a single runtime entry
+            # point that dispatches via `val::instanceof` / typeof.
+            #
+            # Mixed static+instance groups (e.g. `XCAFDoc_ColorTool::GetColor`
+            # where OCCT exposes both `static GetColor(TDF_Label, …)` and
+            # `GetColor(TopoDS_Shape, …)` overloads with the same arity) are
+            # split into two dispatchers: one `class_function` for the
+            # static subset and one `function` for the instance subset.
+            # A single combined dispatcher can only be `class_function`
+            # OR `function`, never both, so JS-side `Class.foo(...)` calls
+            # would fail arity match against an instance-only registration.
+            static_methods = [m for m in dispatchable if m.is_static_method()]
+            instance_methods = [m for m in dispatchable if not m.is_static_method()]
+            subsets = []
+            if static_methods:
+              subsets.append((static_methods, True))
+            if instance_methods:
+              subsets.append((instance_methods, False))
+            for subset, isStatic in subsets:
+              subset_return_types = set(m.result_type.get_canonical().spelling for m in subset)
+              subset_mixed_returns = len(subset_return_types) > 1
+              if len(subset) == 1:
+                try:
+                  output += self.processMethodOrProperty(theClass, subset[0], templateDecl, templateArgs, overload_index=0, override_postfix="")
+                except SkipException as e:
+                  print(str(e))
+                continue
+              subset_tree = self._build_dispatch_tree(subset, templateDecl=templateDecl, templateArgs=templateArgs)
+              output += self._emitValDispatchMethod(theClass, subset[0].spelling, arity, subset_tree, classCpp, isStatic, templateDecl, templateArgs, mixed_returns=subset_mixed_returns)
+              # Emit `_N`-suffixed variants only for genuinely val-ambiguous
+              # leaves so consumers can still reach a specific overload
+              # explicitly when type-of/instanceof cannot disambiguate.
+              val_ambiguous = self._collect_ambiguous_overloads(subset_tree)
               for m in val_ambiguous:
                 idx = all_methods_of_name.index(m) if m in all_methods_of_name else 0
                 suffix = "_" + str(idx + 1)
@@ -2779,7 +2983,7 @@ class EmbindBindings(Bindings):
       return output
 
     useHandleOverride = isTransientDerived(theClass, self.tuInfo.classDict)
-    name = getClassTypeName(theClass, templateDecl)
+    name = getClassJsPublicName(theClass, templateDecl)
     qual = getClassQualifiedName(theClass, templateDecl)
     if not qual:
       qual = name
@@ -2811,11 +3015,13 @@ class EmbindBindings(Bindings):
     return output
 
   def processEnum(self, theEnum):
-    output = "EMSCRIPTEN_BINDINGS(" + theEnum.spelling + ") {\n"
+    jsName = getEnumJsPublicName(theEnum)
+    cppQual = getEnumQualifiedName(theEnum)
+    output = "EMSCRIPTEN_BINDINGS(" + jsName + ") {\n"
 
-    bindingsOutput = "  enum_<" + theEnum.spelling + ">(\"" + theEnum.spelling + "\", emscripten::enum_value_type::string)\n"
+    bindingsOutput = "  enum_<" + cppQual + ">(\"" + jsName + "\", emscripten::enum_value_type::string)\n"
     enumChildren = list(theEnum.get_children())
-    prefix = (theEnum.spelling + "::") if theEnum.is_scoped_enum() else ""
+    prefix = (cppQual + "::") if theEnum.is_scoped_enum() else (cppQual.rsplit("::", 1)[0] + "::" if "::" in cppQual else "")
     for enumChild in enumChildren:
       bindingsOutput += "    .value(\"" + enumChild.spelling + "\", " + prefix + enumChild.spelling + ")\n"
     bindingsOutput += "  ;\n"
@@ -3315,9 +3521,27 @@ class TypescriptBindings(Bindings):
     idx = min(overload_index, len(best) - 1)
     return best[idx]
 
+  @staticmethod
+  def _baseJsPublicName(baseSpec):
+    """JS public name of a base-class spec cursor, namespace-aware.
+
+    `baseSpec.type.spelling` is lookup-context-relative — for a namespace-
+    scoped derived class deriving from a base in the same namespace, it
+    returns the bare base spelling (e.g. `BaseRef` for `BRepGraphInc::BaseRef`),
+    which never matches the JS export set keyed by `Namespace_TypeName`.
+    Resolve via the base's declaration cursor + `getClassJsPublicName` so
+    the lookup uses the same public name the bindgen actually emits. Falls
+    back to the canonical type spelling when the declaration cannot be
+    reached (forward-declared bases, NO_DECL_FOUND, etc.).
+    """
+    baseDef = baseSpec.type.get_declaration()
+    if baseDef is not None and baseDef.kind != clang.cindex.CursorKind.NO_DECL_FOUND and baseDef.spelling:
+      return getClassJsPublicName(baseDef)
+    return baseSpec.type.get_canonical().spelling or baseSpec.type.spelling
+
   def _findBoundAncestor(self, theClass):
     """Walk the inheritance chain to find the nearest ancestor that is in the build.
-    
+
     When an intermediate class (e.g. GeomAdaptor_TransformedSurface) is not included
     in the build config, skip it and find the next ancestor that IS included, so the
     TypeScript `extends` clause references a declared class.
@@ -3334,26 +3558,26 @@ class TypescriptBindings(Bindings):
       ))
       if not baseSpecs:
         break
-      baseType = baseSpecs[0].type.spelling
-      if any(x in baseType for x in [":", "<"]):
+      if "<" in baseSpecs[0].type.spelling:
         break
-      if baseType in self.exports:
-        return baseType
+      baseName = self._baseJsPublicName(baseSpecs[0])
+      if baseName in self.exports:
+        return baseName
       baseDef = baseSpecs[0].type.get_declaration()
       if baseDef is None or baseDef.kind == clang.cindex.CursorKind.NO_DECL_FOUND:
-        return baseType
+        return baseName
       current = baseDef
     return None
 
   def _computeAncestorChain(self, theClass):
     """Walk the full public inheritance chain via clang AST and return the list of
-    ancestor type spellings (nearest base first).
+    ancestor JS public names (nearest base first).
 
     Captured in fragment metadata so the cross-file assembler can re-link
     `extends` clauses when an intermediate ancestor is not part of the merged
-    declaration set. Stops at templated/qualified base names (as the current
-    `extends` codegen does) so the chain only contains identifiers safe to emit
-    verbatim.
+    declaration set. Stops at templated base names so the chain only contains
+    identifiers safe to emit verbatim. Namespace-scoped ancestors flow through
+    `_baseJsPublicName` so they match the JS export naming convention.
     """
     chain = []
     visited = set()
@@ -3368,10 +3592,9 @@ class TypescriptBindings(Bindings):
       ))
       if not baseSpecs:
         break
-      baseType = baseSpecs[0].type.spelling
-      if any(x in baseType for x in [":", "<"]):
+      if "<" in baseSpecs[0].type.spelling:
         break
-      chain.append(baseType)
+      chain.append(self._baseJsPublicName(baseSpecs[0]))
       baseDef = baseSpecs[0].type.get_declaration()
       if baseDef is None or baseDef.kind == clang.cindex.CursorKind.NO_DECL_FOUND:
         break
@@ -3401,10 +3624,10 @@ class TypescriptBindings(Bindings):
     baseSpec = list(filter(lambda x: x.kind == clang.cindex.CursorKind.CXX_BASE_SPECIFIER and x.access_specifier == clang.cindex.AccessSpecifier.PUBLIC, theClass.get_children()))
     baseClassDefinition = ""
     if len(baseSpec) > 0:
-      if any(x in baseSpec[0].type.spelling for x in [":", "<"]):
+      if "<" in baseSpec[0].type.spelling:
         print("Unsupported character for base class \"" + baseSpec[0].type.spelling + "\" (" + theClass.spelling + ")")
       else:
-        directBase = baseSpec[0].type.spelling
+        directBase = self._baseJsPublicName(baseSpec[0])
         if directBase in self.exports:
           baseClassDefinition = " extends " + directBase
         else:
@@ -3414,7 +3637,7 @@ class TypescriptBindings(Bindings):
           else:
             baseClassDefinition = " extends " + directBase
 
-    name = getClassTypeName(theClass, templateDecl)
+    name = getClassJsPublicName(theClass, templateDecl)
     tplName = theClass.spelling if templateDecl is not None else None
     output += self._jsdoc(name, template_name=tplName)
     output += "export declare class " + name + baseClassDefinition + " {\n"
@@ -4767,17 +4990,47 @@ class TypescriptBindings(Bindings):
     if not bindable:
       return output
 
-    # Deduplicate const/non-const overloads with identical argument types.
-    # JS has no const `this` — these are JS-indistinguishable and force
-    # unnecessary _N suffixes. Prefer the const version.
+    # Deduplicate overloads that are JS-indistinguishable.
+    #
+    # The key is the JS-classified type tuple, not the C++ canonical spelling,
+    # so V8's parallel `size_t`/`int` NCollection overloads (size_t API
+    # migration #1212) collapse to one entry. Without this, both survive into
+    # the dispatch tree as a doubly-ambiguous group and no primary method is
+    # emitted (RC-B). Tie-breakers:
+    #   1. Prefer the wider / unsigned integer (V8-modern `size_t` over
+    #      legacy `int`).
+    #   2. On equal score, prefer the const version (JS has no const `this`).
+    def _typedef_preference_score(m):
+      score = 0
+      for a in m.get_arguments():
+        k = a.type.get_canonical().kind
+        if k in (clang.cindex.TypeKind.ULONGLONG, clang.cindex.TypeKind.ULONG,
+                 clang.cindex.TypeKind.UINT, clang.cindex.TypeKind.USHORT):
+          score += 10
+        if k in (clang.cindex.TypeKind.ULONGLONG, clang.cindex.TypeKind.LONGLONG):
+          score += 4
+        elif k in (clang.cindex.TypeKind.ULONG, clang.cindex.TypeKind.LONG):
+          score += 2
+        elif k in (clang.cindex.TypeKind.UINT, clang.cindex.TypeKind.INT):
+          score += 1
+      return score
+
     deduped = {}
     for m in bindable:
-      arg_key = tuple(a.type.get_canonical().spelling for a in m.get_arguments())
-      is_const = m.is_const_method()
-      if arg_key not in deduped:
-        deduped[arg_key] = m
-      elif is_const and not deduped[arg_key].is_const_method():
-        deduped[arg_key] = m
+      js_key = tuple(
+        self._classify_js_type(a.type, templateDecl, templateArgs)
+        for a in m.get_arguments()
+      )
+      existing = deduped.get(js_key)
+      if existing is None:
+        deduped[js_key] = m
+        continue
+      cur_score = _typedef_preference_score(m)
+      prev_score = _typedef_preference_score(existing)
+      if cur_score > prev_score:
+        deduped[js_key] = m
+      elif cur_score == prev_score and m.is_const_method() and not existing.is_const_method():
+        deduped[js_key] = m
     bindable = list(deduped.values())
     if not bindable:
       return output
@@ -4957,7 +5210,7 @@ class TypescriptBindings(Bindings):
     if not ambiguous_ctors:
       return output
 
-    name = getClassTypeName(theClass, templateDecl)
+    name = getClassJsPublicName(theClass, templateDecl)
     tplName = theClass.spelling if templateDecl is not None else None
     allOverloads = constructors
     allOverloadedConstructors = []
@@ -4982,7 +5235,7 @@ class TypescriptBindings(Bindings):
 
   def processEnum(self, theEnum):
     output = ""
-    enumName = theEnum.spelling
+    enumName = getEnumJsPublicName(theEnum)
     output += "export type " + enumName + " = typeof " + enumName + "[keyof typeof " + enumName + "];\n"
     output += self._jsdoc(enumName)
     output += "export declare const " + enumName + ": {\n"

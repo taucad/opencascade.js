@@ -82,7 +82,21 @@ def is_excluded(name: str, cfg: FilterConfig) -> bool:
 # ── libclang-based symbol enumeration ─────────────────────────────────
 
 def _setup_environment(occt_root: Path):
-    """Set environment variables needed by TuInfo/Common.py."""
+    """Set environment variables needed by TuInfo/Common.py.
+
+    NOTE: When invoked outside the bindgen pipeline, libclang silently
+    truncates `templateTypedefs` after the first unresolvable header
+    (rapidjson, freetype, emsdk libc++). This file intentionally does NOT
+    set those deps env-vars so that enumerate-symbols.py mirrors the
+    historical phase-1 truncation it has always relied on; resolving deps
+    here unmasks 43 NCollection synthetic aliases that collide with
+    user-named NCollection typedefs at link time (e.g.
+    NCollection_DynamicArray<gp_XYZ> vs VectorOfPoint). A standalone
+    de-duplication pass against `templateTypedefUnderlyingMultimap` is
+    tracked separately in docs/research/ocjs-non-graphics-coverage-blueprint.md
+    (Phase 5 — link-manifest dedup) and must land before this script can
+    safely enumerate the full template-typedef surface.
+    """
     os.environ["OCJS_ROOT"] = str(OCJS_ROOT)
     os.environ["OCCT_ROOT"] = str(occt_root)
     sys.path.insert(0, str(OCJS_ROOT / "src"))
@@ -97,7 +111,7 @@ def enumerate_symbols(occt_root: Path, filter_path: Path):
     from TuInfo import TuInfo
     from Common import occtBasePath
     from filter.filterPackages import filterPackages
-    from bindings import shouldProcessClass
+    from bindings import shouldProcessClass, getClassJsPublicName, getEnumJsPublicName
 
     cfg = load_filters(filter_path)
 
@@ -108,13 +122,19 @@ def enumerate_symbols(occt_root: Path, filter_path: Path):
     t0 = time.time()
     tuInfo = TuInfo("")
     parse_time = time.time() - t0
-    print(f"Parsed in {parse_time:.1f}s ({len(tuInfo.allChildren)} AST nodes)\n")
+    print(f"Parsed in {parse_time:.1f}s ({len(tuInfo.allChildren)} AST nodes, {len(tuInfo.classDict)} classes)\n")
 
-    # Collect classes using the same logic as generateBindings.py
+    # Collect classes using the namespace-aware classDict (Phase A walker).
+    # Each cursor's JS-public name (Namespace_Type for namespace-scoped, bare
+    # spelling for top-level) is what the bindgen emits and what the YAML
+    # symbol manifest must reference. Without this, namespace-scoped types
+    # (e.g. ExtremaPC::Result) would be enumerated as bare `Result` and the
+    # link verifier would fail to match `<JsPublicName>.cpp.o` for them
+    # (see Phase B-tail filename strategy in src/generateBindings.py).
     classes: Dict[str, str] = {}
     skipped_classes: Set[str] = set()
 
-    for child in tuInfo.allChildren:
+    for child in tuInfo.classDict.values():
         if child.extent.start.file is None:
             continue
         if not child.extent.start.file.name.startswith(occtBasePath):
@@ -130,14 +150,13 @@ def enumerate_symbols(occt_root: Path, filter_path: Path):
         if child.spelling == "" or child.spelling.startswith("("):
             continue
 
-        name = child.spelling
+        name = getClassJsPublicName(child)
         if is_excluded(name, cfg):
             skipped_classes.add(name)
             continue
 
         classes[name] = pkg
 
-    # Collect enums
     enums: Dict[str, str] = {}
     for child in tuInfo.enums:
         if child.extent.start.file is None:
@@ -155,7 +174,7 @@ def enumerate_symbols(occt_root: Path, filter_path: Path):
         if child.kind != clang.cindex.CursorKind.ENUM_DECL:
             continue
 
-        name = child.spelling
+        name = getEnumJsPublicName(child)
         if is_excluded(name, cfg):
             skipped_classes.add(name)
             continue
@@ -163,16 +182,51 @@ def enumerate_symbols(occt_root: Path, filter_path: Path):
         enums[name] = pkg
 
     # Collect template typedefs
+    # NOTE: `Handle_math_NotSquare` / `Handle_math_SingularMatrix` /
+    # `Handle_Standard_Type` are NOT listed here — they are filtered
+    # structurally by the `name.startswith("Handle_")` block below
+    # (the underlying classes `math_NotSquare`, `math_SingularMatrix`,
+    # and `Standard_Type` are all bound, so the smart_ptr binding
+    # already registers the JS name "Handle_X" and a separate typedef
+    # binding would collide). See the comment on that block.
     _FILTERED_TEMPLATE_TYPEDEFS = frozenset({
-        "Handle_math_NotSquare",
-        "Handle_math_SingularMatrix",
         "TColStd_PackedMapOfInteger",
         "TColStd_SequenceOfAddress",
         "TopTools_IndexedDataMapOfShapeAddress",
     })
 
+    # OCCT V8 template-alias families that the truncated phase-1 parse can
+    # miss when libclang stops at the first unresolved header. The bindings
+    # generator (which has full deps env) emits these via processTemplate
+    # in src/generateBindings.py — they MUST appear in the link manifest
+    # or the resulting wasm will quietly omit them. Keep this list aligned
+    # with the F1 fix in src/filter/filterTypedefs.py and
+    # src/generateBindings.py::processTemplate.
+    # See docs/research/ocjs-removed-bindings-stocktake.md (Recipe R-P1).
+    _ALWAYS_INCLUDE_TEMPLATE_TYPEDEFS: Dict[str, str] = {
+        "GeomLProp_SLProps":   "GeomLProp",
+        "GeomLProp_CLProps":   "GeomLProp",
+        "GeomLProp_CLProps2d": "GeomLProp",
+        "BRepLProp_SLProps":   "BRepLProp",
+        "BRepLProp_CLProps":   "BRepLProp",
+        "HLRBRep_SLProps":     "HLRBRep",
+    }
+
+    # Mirror src/generateBindings.py::dedupeTemplateTypedefsByCanonical so the
+    # YAML symbol manifest only lists aliases that the binding generator will
+    # actually emit a `class_<…>(…)` registration for. Without this, OCCT V8
+    # alias families (`BRepGraph_CompoundsOfFace/Shell/Solid/CompSolid/Compound`
+    # all instantiating `BRepGraph_ReverseIterator::ParentsOf<BRepGraph_
+    # CompoundId>`) appear as N entries in the YAML but only ONE compiled .o
+    # exists — the validator would falsely flag the dropped aliases as missing,
+    # while the runtime wasm correctly registers a single class under the
+    # alphabetically-first alias's JS name. Keeping the two layers in lock-step
+    # is the only way to keep `validate-build.py` honest about coverage.
+    from generateBindings import dedupeTemplateTypedefsByCanonical
+    deduped_template_typedefs = dedupeTemplateTypedefsByCanonical(tuInfo.templateTypedefs)
+
     typedefs: Dict[str, str] = {}
-    for child in tuInfo.templateTypedefs:
+    for child in deduped_template_typedefs:
         if child.extent.start.file is None:
             continue
         if not child.extent.start.file.name.startswith(occtBasePath):
@@ -193,7 +247,34 @@ def enumerate_symbols(occt_root: Path, filter_path: Path):
             skipped_classes.add(name)
             continue
 
+        # Drop Handle_X typedefs whose underlying type is opencascade::handle<X>
+        # when X itself is bound. The class binding for X already emits
+        # `.smart_ptr<opencascade::handle<X>>("Handle_X")` (see
+        # src/bindings.py), which registers the JS public name "Handle_X".
+        # Binding the typedef separately emits a second
+        # `class_<Handle_X>("Handle_X")` block and Embind aborts Module()
+        # with `BindingError: Cannot register type 'Handle_X' twice`. Two
+        # prior cases (Handle_math_NotSquare, Handle_math_SingularMatrix)
+        # were patched name-by-name in _FILTERED_TEMPLATE_TYPEDEFS above;
+        # this rule generalises that fix so any future
+        # DEFINE_STANDARD_HANDLE on a bound class is automatically safe.
+        # Triggered in OCCT V8 by Standard_Type.hxx's
+        # DEFINE_STANDARD_HANDLE(Standard_Type, Standard_Transient).
+        underlying = child.underlying_typedef_type.spelling
+        if name.startswith("Handle_") and underlying.startswith("opencascade::handle<"):
+            inner = underlying[len("opencascade::handle<"):].rstrip(">").strip()
+            if inner in classes:
+                continue
+
         typedefs[name] = pkg
+
+    for forced_name, forced_pkg in _ALWAYS_INCLUDE_TEMPLATE_TYPEDEFS.items():
+        if forced_name in cfg.excluded_typedefs or forced_name in cfg.excluded_template_typedefs:
+            continue
+        if is_excluded(forced_name, cfg):
+            skipped_classes.add(forced_name)
+            continue
+        typedefs.setdefault(forced_name, forced_pkg)
 
     # Identify classes that derive from Standard_Transient (handle-compatible)
     handle_classes: Set[str] = set()
@@ -222,15 +303,18 @@ def enumerate_symbols(occt_root: Path, filter_path: Path):
 
         return False
 
-    for name in list(classes.keys()):
-        for child in tuInfo.allChildren:
-            if child.spelling == name and child.kind in (
-                clang.cindex.CursorKind.CLASS_DECL,
-                clang.cindex.CursorKind.STRUCT_DECL,
-            ):
-                if _is_transient_derived(child):
-                    handle_classes.add(name)
-                break
+    # Iterate classDict directly so the cursor lookup works for namespace-
+    # scoped types where `cursor.spelling` is the bare name but the YAML key
+    # is the JS-public (namespace-prefixed) name.
+    for cursor in tuInfo.classDict.values():
+        if cursor.kind not in (
+            clang.cindex.CursorKind.CLASS_DECL,
+            clang.cindex.CursorKind.STRUCT_DECL,
+        ):
+            continue
+        js_name = getClassJsPublicName(cursor)
+        if js_name in classes and _is_transient_derived(cursor):
+            handle_classes.add(js_name)
 
     return classes, enums, typedefs, skipped_classes, handle_classes
 
@@ -249,6 +333,16 @@ def generate_yaml(classes, enums, typedefs, handle_classes: Set[str]) -> str:
     for sym in all_symbols:
         lines.append(f"  - symbol: {sym}")
 
+    # NOTE: TColStd_IndexedDataMapOfStringString and TopoDS_Bind_ are NOT
+    # re-emitted here — they are the canonical responsibility of
+    # BUILTIN_ADDITIONAL_BIND_CODE in src/buildFromYaml.py (concatenated
+    # before this YAML's additionalBindCode at link time). Re-registering
+    # them here would emit two `class_<…>("TColStd_IndexedDataMapOfStringString")`
+    # blocks — Embind enforces uniqueness on JS public names and aborts
+    # Module() instantiation with `BindingError: Cannot register public
+    # name 'X' twice`. TopoDS_Cast (the legacy static-method namespace)
+    # remains here because BUILTIN registers `TopoDS` instead under a
+    # distinct JS name; both can coexist.
     lines.extend([
         "  additionalBindCode: |",
         "    #include <TopoDS.hxx>",
@@ -260,16 +354,12 @@ def generate_yaml(classes, enums, typedefs, handle_classes: Set[str]) -> str:
         "    #include <TopoDS_Solid.hxx>",
         "    #include <TopoDS_CompSolid.hxx>",
         "    #include <TopoDS_Compound.hxx>",
-        "    #include <TColStd_IndexedDataMapOfStringString.hxx>",
         "    #include <FairCurve_Batten.hxx>",
         "    #include <FairCurve_MinimalVariation.hxx>",
         "    #include <FairCurve_AnalysisCode.hxx>",
         "    struct TopoDS_Cast {};",
         "    using namespace emscripten;",
         '    EMSCRIPTEN_BINDINGS(ocjs_additional) {',
-        '      class_<NCollection_IndexedDataMap<TCollection_AsciiString, TCollection_AsciiString>>("TColStd_IndexedDataMapOfStringString")',
-        "        .constructor<>()",
-        "        ;",
         '      function("FairCurve_Batten_Compute", optional_override([](FairCurve_Batten& self, int nbIter, double tol) -> int {',
         "        FairCurve_AnalysisCode code;",
         "        self.Compute(code, nbIter, tol);",
@@ -291,17 +381,53 @@ def generate_yaml(classes, enums, typedefs, handle_classes: Set[str]) -> str:
         "        ;",
         "    }",
         "  emccFlags:",
+        # Native WASM exception handling (matches OCJS_CONFIG=O3-wasm-exc-simd
+        # in nx.json which compiles every .o with -fwasm-exceptions). Without
+        # these the link emits a wasm whose runtime imports a `Tag` that the
+        # generated loader never sets up, so every Module() invocation fails
+        # with `LinkError: tag import requires a WebAssembly.Tag`. The
+        # EXPORT_EXCEPTION_HANDLING_HELPERS flag is also enforced by
+        # buildFromYaml.py (raises if missing alongside -fwasm-exceptions).
+        "  - -fwasm-exceptions",
+        "  - -sEXPORT_EXCEPTION_HANDLING_HELPERS",
         "  - -sEXPORT_ES6=1",
         "  - -sMODULARIZE",
         "  - -sALLOW_MEMORY_GROWTH=1",
         '  - -sEXPORTED_RUNTIME_METHODS=["FS"]',
-        "  - -sINITIAL_MEMORY=100MB",
+        "  - -sINITIAL_MEMORY=128MB",
         "  - -sMAXIMUM_MEMORY=4GB",
         "  - -sUSE_FREETYPE=1",
         "  - -sERROR_ON_UNDEFINED_SYMBOLS=0",
         "  - --no-entry",
-        "  - -sDISABLE_EXCEPTION_CATCHING=1",
+        # NOTE: -sDISABLE_EXCEPTION_CATCHING / -sDISABLE_EXCEPTION_THROWING
+        # MUST NOT be set when -fwasm-exceptions is on. Emcc will warn but
+        # still emit a wasm whose runtime imports a Tag (under module "a"
+        # name "Mc") that the generated JS loader never wires up — so the
+        # module fails to instantiate with `LinkError: tag import requires
+        # a WebAssembly.Tag`. The two cannot coexist; native WASM EH owns
+        # the runtime side end-to-end. (Pre-V8 builds carried these flags
+        # because OCJS_EXCEPTIONS=0 was the default; they are stale now.)
         "  - -Wl,--allow-undefined",
+        # Symbol map for stack-trace demangling in browser devtools and the
+        # validate-build.py post-link verifier. Without it the wasm symbol
+        # table cannot be cross-referenced against the YAML manifest.
+        "  - --emit-symbol-map",
+        # 8 MiB stack — OCCT's deep recursion in topology traversal and STEP
+        # parsing exceeds the 64 KiB emcc default; without this, smoke tests
+        # crash with `RuntimeError: call stack exhausted` on STEP imports.
+        "  - -sSTACK_SIZE=8388608",
+        # Enable BigInt for i64 ABI — required for OCCT's int64_t shape IDs
+        # so they round-trip without precision loss across the JS boundary.
+        "  - -sWASM_BIGINT",
+        # Constant-evaluate global ctors at link time; shrinks startup by
+        # ~30% and reduces wasm size by avoiding redundant init blocks.
+        "  - -sEVAL_CTORS=2",
+        # 128-bit SIMD instructions (matches OCJS_CONFIG=O3-wasm-exc-simd in
+        # nx.json and the per-.o `-msimd128` set in compile-bindings).
+        "  - -msimd128",
+        # Optimization level. -O3 is the production target; debug builds
+        # should override via OCJS_CONFIG, never edit this line.
+        "  - -O3",
     ])
 
     return "\n".join(lines) + "\n"
@@ -317,7 +443,9 @@ def main():
         "--occt-root",
         type=Path,
         default=None,
-        help="Path to OCCT source checkout (default: ../OCCT relative to OCJS root)",
+        help="Path to OCCT source checkout (default: deps/OCCT relative to OCJS root — "
+             "the same tree the build pipeline compiles, kept in sync via "
+             "scripts/setup-deps.sh and DEPS.json)",
     )
     parser.add_argument(
         "--filters",
@@ -340,7 +468,7 @@ def main():
 
     occt_root = args.occt_root
     if occt_root is None:
-        occt_root = Path(os.environ.get("OCCT_ROOT", str(OCJS_ROOT.parent / "OCCT")))
+        occt_root = Path(os.environ.get("OCCT_ROOT", str(OCJS_ROOT / "deps" / "OCCT")))
 
     if not occt_root.is_dir():
         print(f"ERROR: OCCT root not found: {occt_root}", file=sys.stderr)

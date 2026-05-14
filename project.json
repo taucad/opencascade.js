@@ -134,7 +134,8 @@
         "command": "./build-wasm.sh link \"${OCJS_YAML}\"",
         "cwd": "{projectRoot}",
         "env": {
-          "OCJS_OUTPUT_DIR": "{projectRoot}/dist"
+          "OCJS_OUTPUT_DIR": "{projectRoot}/dist",
+          "OCJS_CONFIG": "O3-wasm-exc-simd"
         }
       }
     },
@@ -155,7 +156,8 @@
         "command": "./build-wasm.sh provenance \"${OCJS_YAML}\"",
         "cwd": "{projectRoot}",
         "env": {
-          "OCJS_OUTPUT_DIR": "{projectRoot}/dist"
+          "OCJS_OUTPUT_DIR": "{projectRoot}/dist",
+          "OCJS_CONFIG": "O3-wasm-exc-simd"
         }
       }
     },
@@ -165,6 +167,32 @@
       "dependsOn": ["validate", "provenance"],
       "options": {
         "command": "echo 'Build complete. Outputs in dist/'"
+      }
+    },
+    "docs": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "dependsOn": ["link"],
+      "inputs": [
+        "{projectRoot}/scripts/generate-docs.mjs",
+        "{projectRoot}/scripts/lib/dts-parser.mjs",
+        "{projectRoot}/dist/opencascade_full.d.ts",
+        "{projectRoot}/dist/opencascade_full.build-manifest.json",
+        { "dependentTasksOutputFiles": "**/*.d.ts.json", "transitive": false }
+      ],
+      "outputs": ["{projectRoot}/docs-site/data/"],
+      "options": {
+        "command": "node scripts/generate-docs.mjs",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "docs-serve": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "dependsOn": ["docs"],
+      "options": {
+        "command": "node scripts/serve-docs.mjs",
+        "cwd": "{projectRoot}"
       }
     }
   }

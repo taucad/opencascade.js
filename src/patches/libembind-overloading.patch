@@ -77,7 +77,7 @@
    // Creates a function overload resolution table to the given method 'methodName' in the given prototype,
    // if the overload table doesn't yet exist.
    $ensureOverloadTable__deps: ['$throwBindingError'],
-@@ -81,44 +151,80 @@
+@@ -81,44 +151,82 @@
     name: The name of the symbol that's being exposed.
     value: The object itself to expose (function, class, ...)
     numArguments: For functions, specifies the number of arguments the function takes in. For other types, unused and undefined.
@@ -165,6 +165,8 @@
 +        Module[name].overloadTable[numArguments].signaturesArray.push(signatureArray);
 +      } else {
 +        Module[name].overloadTable[numArguments] = value;
++        Module[name].overloadTable[numArguments].signature = signatureString;
++        Module[name].overloadTable[numArguments].signatureArray = signatureArray;
 +      }
      } else {
        Module[name] = value;
@@ -174,7 +176,7 @@
      }
    },
  
-@@ -860,21 +966,25 @@
+@@ -860,21 +968,25 @@
    _embind_register_function__deps: [
      '$craftInvokerFunction', '$exposePublicSymbol', '$heap32VectorToArray',
      '$AsciiToString', '$replacePublicSymbol', '$embind__requireFunction',
@@ -203,7 +205,7 @@
        return [];
      });
    },
-@@ -1654,7 +1764,7 @@
+@@ -1654,7 +1766,7 @@
      '$makeLegalFunctionName', '$AsciiToString',
      '$RegisteredClass', '$RegisteredPointer', '$replacePublicSymbol',
      '$embind__requireFunction', '$throwUnboundTypeError',
@@ -212,7 +214,7 @@
    _embind_register_class: (rawType,
                             rawPointerType,
                             rawConstPointerType,
-@@ -1702,9 +1812,27 @@
+@@ -1702,9 +1814,27 @@
            if (undefined === registeredClass.constructor_body) {
              throw new BindingError(`${name} has no accessible constructor`);
            }
@@ -242,7 +244,7 @@
            }
            return body.apply(this, args);
          });
-@@ -1777,7 +1905,7 @@
+@@ -1777,7 +1907,7 @@
    _embind_register_class_constructor__deps: [
      '$heap32VectorToArray', '$embind__requireFunction',
      '$whenDependentTypesAreResolved',
@@ -251,7 +253,7 @@
    _embind_register_class_constructor: (
      rawClassType,
      argCount,
-@@ -1801,17 +1929,43 @@
+@@ -1801,17 +1931,43 @@
        if (undefined === classType.registeredClass.constructor_body) {
          classType.registeredClass.constructor_body = [];
        }
@@ -300,7 +302,7 @@
          return [];
        });
        return [];
-@@ -1866,7 +2020,8 @@
+@@ -1866,7 +2022,8 @@
    _embind_register_class_function__deps: [
      '$craftInvokerFunction', '$heap32VectorToArray', '$AsciiToString',
      '$embind__requireFunction', '$throwUnboundTypeError',
@@ -310,7 +312,7 @@
    _embind_register_class_function: (rawClassType,
                                      methodName,
                                      argCount,
-@@ -1900,21 +2055,34 @@
+@@ -1900,21 +2057,34 @@
  
        var proto = classType.registeredClass.instancePrototype;
        var method = proto[methodName];
@@ -347,7 +349,7 @@
  
          // Replace the initial unbound-handler-stub function with the
          // appropriate member function, now that all types are resolved. If
-@@ -1923,9 +2091,16 @@
+@@ -1923,9 +2093,17 @@
          if (undefined === proto[methodName].overloadTable) {
            // Set argCount in case an overload is registered later
            memberFunction.argCount = argCount - 2;
@@ -357,6 +359,7 @@
 -        } else {
 +        } else if (undefined === proto[methodName].overloadTable[argCount - 2].signatures) {
 +          memberFunction.signature = signatureString;
++          memberFunction.signatureArray = signatureArray;
            proto[methodName].overloadTable[argCount - 2] = memberFunction;
 +        } else {
 +          delete proto[methodName].overloadTable[argCount - 2].signatures[rawSignatureString];
@@ -365,7 +368,7 @@
          }
  
          return [];
-@@ -2004,7 +2179,8 @@
+@@ -2004,7 +2182,8 @@
    _embind_register_class_class_function__deps: [
      '$craftInvokerFunction', '$ensureOverloadTable', '$heap32VectorToArray',
      '$AsciiToString', '$embind__requireFunction', '$throwUnboundTypeError',
@@ -375,7 +378,7 @@
    _embind_register_class_class_function: (rawClassType,
                                            methodName,
                                            argCount,
-@@ -2031,15 +2207,24 @@
+@@ -2031,15 +2210,24 @@
        }
  
        var proto = classType.registeredClass.constructor;
@@ -401,7 +404,7 @@
        }
  
        whenDependentTypesAreResolved([], rawArgTypes, (argTypes) => {
-@@ -2048,11 +2233,20 @@
+@@ -2048,11 +2237,21 @@
          // go into an overload table.
          var invokerArgsArray = [argTypes[0] /* return value */, null /* no class 'this'*/].concat(argTypes.slice(1) /* actual params */);
          var func = craftInvokerFunction(humanName, invokerArgsArray, null /* no class 'this'*/, rawInvoker, fn, isAsync);
@@ -415,6 +418,7 @@
 -        } else {
 +        } else if (undefined === proto[methodName].overloadTable[argCount-1].signatures) {
 +          func.signature = signatureString;
++          func.signatureArray = signatureArray;
            proto[methodName].overloadTable[argCount-1] = func;
 +        } else {
 +          delete proto[methodName].overloadTable[argCount-1].signatures[rawSignatureString];

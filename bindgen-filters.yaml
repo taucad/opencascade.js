@@ -94,6 +94,15 @@ exclude:
     - Graphic3d_CubeMap
     - Storage_BaseDriver
     - AIS_Dimension
+    # OCCT V8 MathRoot::Multiple* family — internal functor structs holding
+    # `const &` fields (e.g. `const math_Vector& mySamples`). The const-ref
+    # member implicitly deletes the default constructor, and the structs are
+    # only used as ephemeral curry helpers inside the FindAllRoots template
+    # pipeline (driven through the public `MathRoot_AllRootsResult` API).
+    # Embind cannot bind a class with a deleted default ctor without a
+    # matching `.constructor<…>` declaration, and these have no exposed value
+    # constructor either. Expose `MathRoot_*` higher-level results only.
+    - MathRoot_MultipleGetValueFn
     # Misc compilation errors
     - DsgPrs_RadiusPresentation
     - Standard_Dump
@@ -142,7 +151,10 @@ exclude:
     - XBRepMesh
     - math_NewtonMinimum
     - math_NewtonFunctionSetRoot
-    - HLRBRep_CLProps
+    # HLRBRep_CLProps removed: in OCCT V8 it is now a `using` alias for
+    # GeomLProp_CLPropsBase<gp_Pnt2d, …, ToolAccess<HLRBRep_CLPropsATool>>;
+    # the F1 template-alias fix in filterTypedefs.py + processTemplate makes
+    # it bindable. See docs/research/ocjs-removed-bindings-stocktake.md.
     - HLRBRep_Intersector
     - BOPTest_Objects
     - BOPTest_DrawableShape
@@ -354,6 +366,10 @@ exclude:
     STEPCAFControl_GDTProperty: [] # entire class methods filtered
     NCollection_DataMap: [Find] # non-const lvalue reference output param
     NCollection_IndexedDataMap: [FindFromKey] # non-const lvalue reference output param
+    # OCCT V8 NCollection_DoubleMap exposes Find1/Find2 as a const-return + bool-with-non-const-output-ref overload pair.
+    # Embind's select_overload cannot dispatch the non-const-output overload (same root cause as DataMap::Find above).
+    # Excluding both names drops both overloads; consumers should use the const-return form via operator[]/Seek instead.
+    NCollection_DoubleMap: [Find1, Find2]
 
   # Methods excluded across ALL classes (any class containing these methods)
   global_methods:
@@ -395,16 +411,40 @@ exclude:
     - Interface_VectorOfFileParameter
     - Handle_StepKinematics_UnconstrainedPair
     - Handle_StepKinematics_UnconstrainedPairValue
-    - OpenGl_ListOfStructure
+    -     OpenGl_ListOfStructure
     - Graphic3d_Vec2
     - Graphic3d_Vec3
+    # OCCT V8 declares `typedef NCollection_DynamicArray<gp_XYZ> VectorOfPoint;` in TWO different headers
+    # (BRepExtrema_ProximityValueTool.hxx + BRepBuilderAPI_VertexInspector.hxx), causing the bindgen to emit
+    # two `VectorOfPoint.cpp` files that both register `NCollection_DynamicArray<gp_XYZ>` and produce a
+    # wasm-ld duplicate-symbol error on the embind `raw_destructor` symbol. The auto-discovery layer in
+    # ocjs_bindgen/discover.py already binds the same underlying type under the canonical mangled name
+    # `NCollection_DynamicArray_gp_XYZ`, so excluding the user-named alias loses no surface area.
+    - VectorOfPoint
 
   template_typedefs:
-    - Handle_math_NotSquare
-    - Handle_math_SingularMatrix
+    # Handle_math_NotSquare / Handle_math_SingularMatrix / Handle_Standard_Type
+    # were previously listed here. They are now filtered structurally by
+    # `scripts/enumerate-symbols.py::collect_symbols` — any `Handle_X`
+    # template typedef whose underlying type is `opencascade::handle<X>`
+    # where `X` is a bound class is dropped, because the class binding
+    # for `X` already emits `.smart_ptr<opencascade::handle<X>>("Handle_X")`
+    # (in `src/bindings.py:1378`) and a duplicate `class_<Handle_X>("Handle_X")`
+    # registration trips Embind's `BindingError: Cannot register type
+    # 'Handle_X' twice`. Triggered in OCCT V8 by Standard_Type.hxx's
+    # `DEFINE_STANDARD_HANDLE(Standard_Type, Standard_Transient)` macro,
+    # which is now exposed via libclang's `templateTypedefs`.
     - TColStd_PackedMapOfInteger
     - TColStd_SequenceOfAddress
     - TopTools_IndexedDataMapOfShapeAddress
+    # HLRBRep_CLProps is `using HLRBRep_CLProps = GeomLProp_CLPropsBase<…,
+    # const HLRBRep_Curve*, …>;` — the `const T*` template argument trips
+    # the bindings.py constructor codegen which emits `const const T* &`.
+    # The class is HLR-internal (HLRBRep_Curve is not exposed to JS) so
+    # excluding it costs no public surface; the codegen fix is tracked in
+    # docs/research/ocjs-removed-bindings-stocktake.md (codegen const-ptr
+    # template-arg bug, F1 follow-up).
+    - HLRBRep_CLProps
 
   headers:
     - AIS_DataMapOfSelStat.hxx
