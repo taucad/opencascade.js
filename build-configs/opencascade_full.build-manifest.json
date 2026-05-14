@@ -1,7 +1,7 @@
 {
-  "timestamp": "2026-05-14T03:07:57Z",
+  "timestamp": "2026-05-14T06:18:31Z",
   "yaml_config": "full.yml",
-  "yaml_hash": "17cfddd90b01",
+  "yaml_hash": "4089f3a6512f",
   "validation_passed": true,
   "symbols": {
     "requested": [
@@ -400,10 +400,6 @@
       "BRepGraph_Compact",
       "BRepGraph_CompoundId",
       "BRepGraph_CompoundsOfCompSolid",
-      "BRepGraph_CompoundsOfCompound",
-      "BRepGraph_CompoundsOfFace",
-      "BRepGraph_CompoundsOfShell",
-      "BRepGraph_CompoundsOfSolid",
       "BRepGraph_Copy",
       "BRepGraph_Curve2DRepId",
       "BRepGraph_Curve3DRepId",
@@ -438,7 +434,6 @@
       "BRepGraph_FaceId",
       "BRepGraph_FaceRefId",
       "BRepGraph_FacesOfEdge",
-      "BRepGraph_FacesOfWire",
       "BRepGraph_FullChildRefIterator",
       "BRepGraph_FullCoEdgeRefIterator",
       "BRepGraph_FullFaceRefIterator",
@@ -521,7 +516,6 @@
       "BRepGraph_WireId",
       "BRepGraph_WireRefId",
       "BRepGraph_WiresOfCoEdge",
-      "BRepGraph_WiresOfEdge",
       "BRepIntCurveSurface_Inter",
       "BRepLProp",
       "BRepLProp_CLProps",
@@ -728,6 +722,7 @@
       "BVH_BuildThread",
       "BVH_BuildTool",
       "BVH_BuilderTransient",
+      "BVH_EncodedLink",
       "BVH_Mat4d",
       "BVH_Mat4f",
       "BVH_ObjectTransient",
@@ -2771,6 +2766,8 @@
       "STEPSelections_SelectForTransfer",
       "STEPSelections_SelectGSCurves",
       "STEPSelections_SelectInstances",
+      "SequenceOfInteger",
+      "SequenceOfReal",
       "ShapeAlgo",
       "ShapeAlgo_AlgoContainer",
       "ShapeAlgo_ToolContainer",
@@ -4500,9 +4497,9 @@
       "math_Uzawa",
       "math_ValueAndWeight"
     ],
-    "compiled": 5261,
+    "compiled": 5260,
     "missing": [],
-    "extra_compiled": 767,
+    "extra_compiled": 769,
     "pass": true
   },
   "outputs": [
@@ -4510,9 +4507,9 @@
       "name": "opencascade_full.js",
       "wasm_file": "opencascade_full.wasm",
       "wasm_exists": true,
-      "wasm_size": 41012177,
+      "wasm_size": 41127360,
       "js_exists": true,
-      "js_size": 73474,
+      "js_size": 74751,
       "pass": true
     }
   ],

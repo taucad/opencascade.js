@@ -396,10 +396,6 @@ mainBuild:
   - symbol: BRepGraph_Compact
   - symbol: BRepGraph_CompoundId
   - symbol: BRepGraph_CompoundsOfCompSolid
-  - symbol: BRepGraph_CompoundsOfCompound
-  - symbol: BRepGraph_CompoundsOfFace
-  - symbol: BRepGraph_CompoundsOfShell
-  - symbol: BRepGraph_CompoundsOfSolid
   - symbol: BRepGraph_Copy
   - symbol: BRepGraph_Curve2DRepId
   - symbol: BRepGraph_Curve3DRepId
@@ -434,7 +430,6 @@ mainBuild:
   - symbol: BRepGraph_FaceId
   - symbol: BRepGraph_FaceRefId
   - symbol: BRepGraph_FacesOfEdge
-  - symbol: BRepGraph_FacesOfWire
   - symbol: BRepGraph_FullChildRefIterator
   - symbol: BRepGraph_FullCoEdgeRefIterator
   - symbol: BRepGraph_FullFaceRefIterator
@@ -517,7 +512,6 @@ mainBuild:
   - symbol: BRepGraph_WireId
   - symbol: BRepGraph_WireRefId
   - symbol: BRepGraph_WiresOfCoEdge
-  - symbol: BRepGraph_WiresOfEdge
   - symbol: BRepIntCurveSurface_Inter
   - symbol: BRepLProp
   - symbol: BRepLProp_CLProps
@@ -2769,8 +2763,6 @@ mainBuild:
   - symbol: STEPSelections_SelectGSCurves
   - symbol: STEPSelections_SelectInstances
   - symbol: SequenceOfInteger
-  - symbol: SequenceOfPnt
-  - symbol: SequenceOfPnt2d
   - symbol: SequenceOfReal
   - symbol: ShapeAlgo
   - symbol: ShapeAlgo_AlgoContainer
@@ -4500,8 +4492,6 @@ mainBuild:
   - symbol: math_TrigonometricFunctionRoots
   - symbol: math_Uzawa
   - symbol: math_ValueAndWeight
-  - symbol: step_parser
-  - symbol: step_scanner
   additionalBindCode: |
     #include <TopoDS.hxx>
     #include <TopoDS_Vertex.hxx>

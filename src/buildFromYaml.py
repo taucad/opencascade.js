@@ -317,7 +317,25 @@ def _load_auto_discovered_symbols(build_dir):
 
 _auto_symbols = _load_auto_discovered_symbols(BUILD_DIR)
 
+# Embind registers C++ classes by typeid. OCCT exposes several `using` aliases that
+# name the same template specialization (e.g. BRepGraph_ReverseIterator::ParentsOf<
+# BRepGraph_FaceId> is both BRepGraph_FacesOfEdge and BRepGraph_FacesOfWire). Linking
+# more than one binding object for those aliases registers the same type twice and
+# fails at module init with "Cannot register type ... twice". See
+# BRepGraph_ReverseIterator.hxx — keep the YAML-canonical symbol per family and skip
+# the rest even when they appear in ncollection-manifest.json.
+_EMBIND_OCTYPE_ALIAS_TYPENAME_SKIPS = frozenset({
+  "BRepGraph_FacesOfWire",
+  "BRepGraph_WiresOfEdge",
+  "BRepGraph_CompoundsOfFace",
+  "BRepGraph_CompoundsOfShell",
+  "BRepGraph_CompoundsOfSolid",
+  "BRepGraph_CompoundsOfCompound",
+})
+
 def shouldProcessSymbol(symbol: str, bindings) -> bool:
+  if symbol in _EMBIND_OCTYPE_ALIAS_TYPENAME_SKIPS:
+    return False
   if len(bindings) == 0:
     return True
   if symbol in _auto_symbols:
@@ -446,6 +464,12 @@ def runBuild(build, libraryBasePath):
     for item in filenames:
       if item.endswith(".cpp.o") and shouldProcessSymbol(item[:-6], build["bindings"]):
         bindingsO.append(dirpath + "/" + item)
+  # One object per basename: prevents duplicate embind static init if the same symbol
+  # ever appears under multiple directory paths (stable order — first path wins).
+  _bindings_by_base = {}
+  for o_path in bindingsO:
+    _bindings_by_base.setdefault(os.path.basename(o_path), o_path)
+  bindingsO = list(_bindings_by_base.values())
   sourcesO = []
   cmake_lib_marker = libraryBasePath + "/.cmake-lib-dir"
   if os.path.exists(cmake_lib_marker):
