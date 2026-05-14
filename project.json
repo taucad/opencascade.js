@@ -172,13 +172,11 @@
     "docs": {
       "executor": "nx:run-commands",
       "cache": true,
-      "dependsOn": ["link"],
       "inputs": [
         "{projectRoot}/scripts/generate-docs.mjs",
         "{projectRoot}/scripts/lib/dts-parser.mjs",
         "{projectRoot}/dist/opencascade_full.d.ts",
-        "{projectRoot}/dist/opencascade_full.build-manifest.json",
-        { "dependentTasksOutputFiles": "**/*.d.ts.json", "transitive": false }
+        "{projectRoot}/dist/opencascade_full.build-manifest.json"
       ],
       "outputs": ["{projectRoot}/docs-site/data/"],
       "options": {

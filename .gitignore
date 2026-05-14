@@ -18,6 +18,9 @@ build-configs/provenance.json
 
 # Nx
 .nx/
+
+# Docs viewer generated data shards (output of `nx run ocjs:docs`)
+docs-site/data/*.json
 /nx-build-*.log
 
 # Project-local Python (scripts/setup-deps.sh)
