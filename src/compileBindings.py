@@ -6,7 +6,8 @@ import subprocess
 import multiprocessing
 from functools import partial
 
-from Common import OCJS_ROOT, PCH_FILE, getFlatIncludePaths, FLAT_INCLUDE_DIR, WASM_EXCEPTION_FLAGS, SIMD_FLAGS, EXTRA_COMPILE_FLAGS, validate_build_flags, BuildFlagMismatch, BUILD_DIR, BUILD_FLAGS_PATH
+from ocjs_bindgen.config.paths import OCJS_ROOT, PCH_FILE, getFlatIncludePaths, FLAT_INCLUDE_DIR, BUILD_DIR
+from ocjs_bindgen.config.flags import WASM_EXCEPTION_FLAGS, SIMD_FLAGS, EXTRA_COMPILE_FLAGS, validate_build_flags, BuildFlagMismatch, BUILD_FLAGS_PATH
 from filter.filterPackages import filterPackages
 
 from argparse import ArgumentParser

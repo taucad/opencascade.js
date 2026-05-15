@@ -77,7 +77,7 @@ RUN mkdir -p build/bindings build/sources /output
 RUN python3 src/applyPatches.py && \
     python3 -c "\
 import sys; sys.path.insert(0, 'src'); \
-from Common import buildFlatIncludes, buildPch; \
+from ocjs_bindgen.config.paths import buildFlatIncludes, buildPch; \
 buildFlatIncludes(); \
 buildPch(threading='single-threaded')" && \
     python3 -m ocjs_bindgen --config bindgen-filters.yaml

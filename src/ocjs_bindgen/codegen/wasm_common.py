@@ -49,33 +49,6 @@ def isAbstractClass(theClass, classDict):
   
   return numPureVirtualMethods > numImplementedPureVirtualMethods
 
-def shouldProcessClass(child, headerFiles, filterClass):
-  if child.get_definition() is None or not child == child.get_definition():
-    return False
-
-  if not filterClass(child):
-    return False
-
-  if (
-    child.kind == clang.cindex.CursorKind.CLASS_DECL or
-    child.kind == clang.cindex.CursorKind.STRUCT_DECL
-  ) and not child.type.get_num_template_arguments() == -1:
-    print("Cannot handle template classes (must be typedef'd): " + child.spelling)
-    return False
-
-  if (
-    child.kind == clang.cindex.CursorKind.CLASS_DECL or
-    child.kind == clang.cindex.CursorKind.STRUCT_DECL
-  ):
-    baseSpec = list(filter(lambda x: x.kind == clang.cindex.CursorKind.CXX_BASE_SPECIFIER and x.access_specifier == clang.cindex.AccessSpecifier.PUBLIC, child.get_children()))
-    if len(baseSpec) > 1:
-      print("cannot handle multiple base classes (" + child.spelling + ")")
-      return False
-    
-    return True
-    
-  return False
-
 def getMethodOverloadPostfix(theClass, method, children = None):
   if children == None:
     children = theClass.get_children() 

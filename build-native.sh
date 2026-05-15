@@ -39,14 +39,14 @@ python3 src/applyPatches.py
 echo "=== Step 2: Building flat includes + precompiled header ==="
 python3 -c "
 import sys; sys.path.insert(0, 'src')
-from Common import buildFlatIncludes, buildPch
+from ocjs_bindgen.config.paths import buildFlatIncludes, buildPch
 buildFlatIncludes()
 buildPch()
 "
 
 # Step 3: Generate bindings
 echo "=== Step 3: Generating bindings ==="
-python3 src/generateBindings.py
+python3 -m ocjs_bindgen --config bindgen-filters.yaml
 
 # Step 4: Compile bindings (uses PCH + flat includes)
 echo "=== Step 4: Compiling bindings ==="
@@ -58,7 +58,7 @@ python3 src/compileSources.py single-threaded
 
 echo ""
 echo "=== Build complete ==="
-echo "Run 'python3 src/buildFromYaml.py <config.yml>' to link into final WASM."
+echo "Run 'PYTHONPATH=src python3 -m ocjs_bindgen.link.yaml_build <config.yml>' to link into final WASM."
 echo ""
 echo "Build optimization summary:"
 echo "  - Flat includes: 467 -I paths -> 1 (eliminates stat() overhead)"

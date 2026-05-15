@@ -82,7 +82,7 @@ def is_excluded(name: str, cfg: FilterConfig) -> bool:
 # ── libclang-based symbol enumeration ─────────────────────────────────
 
 def _setup_environment(occt_root: Path):
-    """Set environment variables needed by TuInfo/Common.py.
+    """Set environment variables needed by TuInfo / ocjs_bindgen.config.paths.
 
     NOTE: When invoked outside the bindgen pipeline, libclang silently
     truncates `templateTypedefs` after the first unresolvable header
@@ -108,10 +108,11 @@ def enumerate_symbols(occt_root: Path, filter_path: Path):
 
     _setup_environment(occt_root)
 
-    from TuInfo import TuInfo
-    from Common import occtBasePath
+    from ocjs_bindgen.ast import TuInfo
+    from ocjs_bindgen.config.paths import occtBasePath
     from filter.filterPackages import filterPackages
-    from bindings import shouldProcessClass, getClassJsPublicName, getEnumJsPublicName
+    from ocjs_bindgen.predicates import shouldProcessClass
+    from ocjs_bindgen.naming import getClassJsPublicName, getEnumJsPublicName
 
     cfg = load_filters(filter_path)
 
@@ -222,7 +223,7 @@ def enumerate_symbols(occt_root: Path, filter_path: Path):
     # while the runtime wasm correctly registers a single class under the
     # alphabetically-first alias's JS name. Keeping the two layers in lock-step
     # is the only way to keep `validate-build.py` honest about coverage.
-    from generateBindings import dedupeTemplateTypedefsByCanonical
+    from ocjs_bindgen.pipeline.generate import dedupeTemplateTypedefsByCanonical
     deduped_template_typedefs = dedupeTemplateTypedefsByCanonical(tuInfo.templateTypedefs)
 
     typedefs: Dict[str, str] = {}

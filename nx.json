@@ -44,11 +44,11 @@
     "patchScripts": ["{projectRoot}/src/patches/*.py", "{projectRoot}/src/patches/*.patch"],
     "compileBindingsScript": [
       "{projectRoot}/src/compileBindings.py",
-      "{projectRoot}/src/Common.py"
+      "{projectRoot}/src/ocjs_bindgen/config/**/*.py"
     ],
     "linkScript": [
-      "{projectRoot}/src/buildFromYaml.py",
-      "{projectRoot}/src/Common.py"
+      "{projectRoot}/src/ocjs_bindgen/link/**/*.py",
+      "{projectRoot}/src/ocjs_bindgen/config/**/*.py"
     ]
   }
 }

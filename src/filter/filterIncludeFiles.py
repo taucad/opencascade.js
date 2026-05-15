@@ -1,11 +1,3 @@
-def filterIncludeFile(filename):
-  # Name-based header exclusions are in bindgen-filters.yaml.
-  # Only semantic extension checks remain here.
+"""Compatibility shim — re-exports from `ocjs_bindgen.filters.include_files` (PR 2.5)."""
 
-  if not filename.endswith(".hxx"):
-    return False
-
-  if filename.endswith("_pch.hxx"):
-    return False
-
-  return True
+from ocjs_bindgen.filters.include_files import filterIncludeFile  # noqa: F401

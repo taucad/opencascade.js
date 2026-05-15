@@ -388,7 +388,7 @@ mkdir -p "$OCJS_OUTPUT_DIR"
 validate_build_flags() {
   "$OCJS_PYTHON" -c "
 import sys; sys.path.insert(0, 'src')
-from Common import validate_build_flags, BuildFlagMismatch
+from ocjs_bindgen.config.flags import validate_build_flags, BuildFlagMismatch
 try:
     validate_build_flags()
 except BuildFlagMismatch as e:
@@ -434,7 +434,7 @@ step_pch() {
   rm -rf build/occt-includes
   "$OCJS_PYTHON" -c "
 import sys; sys.path.insert(0, 'src')
-from Common import buildFlatIncludes, buildPch
+from ocjs_bindgen.config.paths import buildFlatIncludes, buildPch
 buildFlatIncludes()
 buildPch(threading='$THREADING')
 "
@@ -616,7 +616,7 @@ step_dts() {
   yaml_abs="$(cd "$(dirname "$yaml")" && pwd)/$(basename "$yaml")"
   echo "═══ Regenerating .d.ts from $yaml_abs (no compile/link) ═══"
   cd "$(dirname "$yaml_abs")"
-  "$OCJS_PYTHON" "$OCJS_ROOT/src/buildFromYaml.py" --dts-only "$(basename "$yaml_abs")"
+  PYTHONPATH="$OCJS_ROOT/src" "$OCJS_PYTHON" -m ocjs_bindgen.link.yaml_build --dts-only "$(basename "$yaml_abs")"
   cd "$SCRIPT_DIR"
   echo ""
 }
@@ -634,7 +634,7 @@ step_link() {
   mkdir -p "$OCJS_OUTPUT_DIR"
   find "$OCJS_OUTPUT_DIR" -maxdepth 1 \( -name '*.wasm' -o -name '*.js' -o -name '*.d.ts' -o -name '*.js.symbols' -o -name '*.provenance.json' -o -name 'build-manifest.json' \) -delete 2>/dev/null || true
   cd "$OCJS_OUTPUT_DIR"
-  "$OCJS_PYTHON" "$OCJS_ROOT/src/buildFromYaml.py" "$yaml_abs"
+  PYTHONPATH="$OCJS_ROOT/src" "$OCJS_PYTHON" -m ocjs_bindgen.link.yaml_build "$yaml_abs"
   cd "$SCRIPT_DIR"
   echo ""
 }

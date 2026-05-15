@@ -1,4 +1,3 @@
-def filterClass(theClass, additionalInfo=None):
-  # All name-based class exclusions (prefixes, exact names) are in bindgen-filters.yaml.
-  # No AST-based semantic checks are needed for class filtering.
-  return True
+"""Compatibility shim — re-exports from `ocjs_bindgen.filters.classes` (PR 2.5)."""
+
+from ocjs_bindgen.filters.classes import filterClass  # noqa: F401

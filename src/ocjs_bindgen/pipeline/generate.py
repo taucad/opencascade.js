@@ -1,19 +1,21 @@
 #!/usr/bin/python3
 
 from typing import Callable
-from bindings import EmbindBindings, TypescriptBindings, shouldProcessClass, getClassJsPublicName, getEnumJsPublicName
-from buildFromYaml import OCJS_RBV_PREAMBLE
+from ocjs_bindgen.codegen.bindings import EmbindBindings, TypescriptBindings
+from ocjs_bindgen.predicates import shouldProcessClass
+from ocjs_bindgen.naming import getClassJsPublicName, getEnumJsPublicName
+from ocjs_bindgen.link.yaml_build import OCJS_RBV_PREAMBLE
 import clang.cindex
 import os
 import errno
 import hashlib
-from wasmGenerator.Common import SkipException
-from Common import ocIncludeStatements
+from ocjs_bindgen.codegen.wasm_common import SkipException
+from ocjs_bindgen.config.paths import ocIncludeStatements
 import json
 from filter.filterPackages import filterPackages
-from TuInfo import TuInfo
+from ocjs_bindgen.ast import TuInfo
 
-from Common import OCJS_ROOT, OCCT_ROOT
+from ocjs_bindgen.config.paths import OCJS_ROOT, OCCT_ROOT
 libraryBasePath = OCJS_ROOT + "/build/bindings"
 buildDirectory = OCJS_ROOT + "/build"
 occtBasePath = OCCT_ROOT + "/src/"
@@ -502,7 +504,7 @@ if __name__ == "__main__":
     if config.excluded_template_typedefs:
       _FILTERED_TEMPLATE_TYPEDEFS = _FILTERED_TEMPLATE_TYPEDEFS | config.excluded_template_typedefs
 
-  from Common import BUILD_DIR
+  from ocjs_bindgen.config.paths import BUILD_DIR
   from ocjs_bindgen.discover import discover_ncollection_types, generate_using_declarations, write_manifest
 
   try:

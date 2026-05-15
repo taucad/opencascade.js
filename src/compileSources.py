@@ -11,7 +11,8 @@ from filter.filterPackages import filterPackages
 
 from argparse import ArgumentParser
 
-from Common import OCJS_ROOT, OCCT_ROOT, FLAT_INCLUDE_DIR, getFlatIncludePaths, WASM_EXCEPTION_FLAGS, EXTRA_COMPILE_FLAGS
+from ocjs_bindgen.config.paths import OCJS_ROOT, OCCT_ROOT, FLAT_INCLUDE_DIR, getFlatIncludePaths
+from ocjs_bindgen.config.flags import WASM_EXCEPTION_FLAGS, EXTRA_COMPILE_FLAGS
 
 libraryBasePath = OCJS_ROOT + "/build/sources"
 sourceBasePath = OCCT_ROOT + "/src/"

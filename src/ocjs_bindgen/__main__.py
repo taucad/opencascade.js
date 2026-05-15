@@ -53,11 +53,16 @@ def main():
     from ocjs_bindgen import filters
     filters.install(config)
 
+    # `src/` still hosts `filter/` and other shell-script-callable helpers
+    # (`compileBindings.py`, `compileSources.py`, `applyPatches.py`,
+    # `extract-docs.py`, `provenance.py`) that PR 3.4 will migrate into
+    # `ocjs_bindgen/`. Keeping `src/` on `sys.path` lets `from filter.X import Y`
+    # imports inside the bindgen continue to resolve.
     src_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     if src_dir not in sys.path:
         sys.path.insert(0, src_dir)
 
-    import generateBindings
+    from ocjs_bindgen.pipeline import generate as generateBindings
 
     # Merge template typedef exclusions from config into the hardcoded set
     if config.excluded_template_typedefs:
@@ -80,10 +85,10 @@ def main():
 
 def _run_full_pipeline(gen):
     """Run the full binding generation pipeline with two-phase NCollection discovery."""
-    from Common import ocIncludeStatements, BUILD_DIR
-    from TuInfo import TuInfo
+    from ocjs_bindgen.config.paths import ocIncludeStatements, BUILD_DIR
+    from ocjs_bindgen.ast import TuInfo
     from ocjs_bindgen.discover import discover_ncollection_types, generate_using_declarations, write_manifest
-    from bindings import TypescriptBindings
+    from ocjs_bindgen.codegen.bindings import TypescriptBindings
 
     os.makedirs(gen.libraryBasePath, exist_ok=True)
     gen._check_generator_hash_and_clean()
@@ -126,14 +131,20 @@ def _run_full_pipeline(gen):
 
 
 def _report_any_resolutions():
-    """Report all type resolution failures collected during generation."""
-    from bindings import TypescriptBindings
-    if not TypescriptBindings._any_reasons:
+    """Report all type resolution failures collected during generation.
+
+    PR 1.6 — reads from the :data:`DIAGNOSTICS` singleton instead of
+    ``TypescriptBindings._any_reasons``. The shape is preserved bit-for-bit
+    so ``any-type-report.json`` content stays byte-identical.
+    """
+    from ocjs_bindgen.diagnostics import DIAGNOSTICS
+    any_reasons = DIAGNOSTICS.any_reasons
+    if not any_reasons:
         return
     import json
     total_any = 0
     report = {}
-    for reason, types in sorted(TypescriptBindings._any_reasons.items()):
+    for reason, types in sorted(any_reasons.items()):
         subtotal = sum(types.values())
         total_any += subtotal
         report[reason] = {"count": subtotal, "types": dict(sorted(types.items(), key=lambda x: -x[1]))}
