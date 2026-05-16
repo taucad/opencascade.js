@@ -105,6 +105,7 @@ mainBuild:
   - symbol: BOPAlgo_GlueEnum
   - symbol: BOPAlgo_MakeConnected
   - symbol: BOPAlgo_MakePeriodic
+  - symbol: BOPAlgo_MakePeriodic_PeriodicityParams
   - symbol: BOPAlgo_MakerVolume
   - symbol: BOPAlgo_Operation
   - symbol: BOPAlgo_Options
@@ -280,6 +281,7 @@ mainBuild:
   - symbol: BRepExtrema_ExtPF
   - symbol: BRepExtrema_OverlapTool
   - symbol: BRepExtrema_Poly
+  - symbol: BRepExtrema_ProximityDistTool_PrjState
   - symbol: BRepExtrema_SelfIntersection
   - symbol: BRepExtrema_ShapeProximity
   - symbol: BRepExtrema_SolutionElem
@@ -369,6 +371,8 @@ mainBuild:
   - symbol: BRepGraphInc_Populate
   - symbol: BRepGraphInc_ProductDef
   - symbol: BRepGraphInc_Reconstruct
+  - symbol: BRepGraphInc_Reconstruct_Cache
+  - symbol: BRepGraphInc_Reconstruct_Cache_TempScope
   - symbol: BRepGraphInc_ReverseIndex
   - symbol: BRepGraphInc_ShellDef
   - symbol: BRepGraphInc_ShellRef
@@ -386,6 +390,7 @@ mainBuild:
   - symbol: BRepGraph_CacheKind
   - symbol: BRepGraph_CacheKindRegistry
   - symbol: BRepGraph_CacheValue
+  - symbol: BRepGraph_CacheView
   - symbol: BRepGraph_ChildExplorer
   - symbol: BRepGraph_ChildRefId
   - symbol: BRepGraph_CoEdgeId
@@ -427,6 +432,7 @@ mainBuild:
   - symbol: BRepGraph_DefsWireOfFace
   - symbol: BRepGraph_EdgeId
   - symbol: BRepGraph_EdgesOfVertex
+  - symbol: BRepGraph_EditorView
   - symbol: BRepGraph_FaceId
   - symbol: BRepGraph_FaceRefId
   - symbol: BRepGraph_FacesOfEdge
@@ -443,12 +449,19 @@ mainBuild:
   - symbol: BRepGraph_Layer
   - symbol: BRepGraph_LayerIterator
   - symbol: BRepGraph_LayerParam
+  - symbol: BRepGraph_LayerParam_VertexParams
   - symbol: BRepGraph_LayerRegistry
   - symbol: BRepGraph_LayerRegularity
+  - symbol: BRepGraph_LayerRegularity_EdgeRegularities
   - symbol: BRepGraph_MeshCacheStorage
   - symbol: BRepGraph_MeshCache_CoEdgeMeshEntry
   - symbol: BRepGraph_MeshCache_EdgeMeshEntry
   - symbol: BRepGraph_MeshCache_FaceMeshEntry
+  - symbol: BRepGraph_MeshView
+  - symbol: BRepGraph_MeshView_CoEdgeOps
+  - symbol: BRepGraph_MeshView_EdgeOps
+  - symbol: BRepGraph_MeshView_FaceOps
+  - symbol: BRepGraph_MeshView_PolyOps
   - symbol: BRepGraph_NodeId
   - symbol: BRepGraph_OccurrenceId
   - symbol: BRepGraph_OccurrenceRefId
@@ -471,7 +484,17 @@ mainBuild:
   - symbol: BRepGraph_RefsEdgesOfVertex
   - symbol: BRepGraph_RefsFaceOfShell
   - symbol: BRepGraph_RefsFacesOfWire
+  - symbol: BRepGraph_RefsIterator_ChildOfCompoundTraits
+  - symbol: BRepGraph_RefsIterator_ChildOfShellTraits
+  - symbol: BRepGraph_RefsIterator_ChildOfSolidTraits
+  - symbol: BRepGraph_RefsIterator_CoEdgeOfWireTraits
+  - symbol: BRepGraph_RefsIterator_FaceOfShellTraits
+  - symbol: BRepGraph_RefsIterator_OccurrenceOfProductTraits
   - symbol: BRepGraph_RefsIterator_RefsVertexOfEdge
+  - symbol: BRepGraph_RefsIterator_ShellOfSolidTraits
+  - symbol: BRepGraph_RefsIterator_SolidOfCompSolidTraits
+  - symbol: BRepGraph_RefsIterator_VertexOfFaceTraits
+  - symbol: BRepGraph_RefsIterator_WireOfFaceTraits
   - symbol: BRepGraph_RefsOccurrenceOfProduct
   - symbol: BRepGraph_RefsProductsOfOccurrence
   - symbol: BRepGraph_RefsShellOfSolid
@@ -479,6 +502,15 @@ mainBuild:
   - symbol: BRepGraph_RefsSolidOfCompSolid
   - symbol: BRepGraph_RefsSolidsOfShell
   - symbol: BRepGraph_RefsVertexOfFace
+  - symbol: BRepGraph_RefsView
+  - symbol: BRepGraph_RefsView_ChildOps
+  - symbol: BRepGraph_RefsView_CoEdgeOps
+  - symbol: BRepGraph_RefsView_FaceOps
+  - symbol: BRepGraph_RefsView_OccurrenceOps
+  - symbol: BRepGraph_RefsView_ShellOps
+  - symbol: BRepGraph_RefsView_SolidOps
+  - symbol: BRepGraph_RefsView_VertexOps
+  - symbol: BRepGraph_RefsView_WireOps
   - symbol: BRepGraph_RefsWireOfFace
   - symbol: BRepGraph_RefsWiresOfCoEdge
   - symbol: BRepGraph_RelatedIterator
@@ -492,6 +524,7 @@ mainBuild:
   - symbol: BRepGraph_ReverseIterator_SolidOfShellRefTraits
   - symbol: BRepGraph_ReverseIterator_WireOfCoEdgeRefTraits
   - symbol: BRepGraph_RootProductIterator
+  - symbol: BRepGraph_ShapesView
   - symbol: BRepGraph_ShellId
   - symbol: BRepGraph_ShellRefId
   - symbol: BRepGraph_ShellsOfFace
@@ -500,11 +533,35 @@ mainBuild:
   - symbol: BRepGraph_SolidsOfShell
   - symbol: BRepGraph_SurfaceRepId
   - symbol: BRepGraph_Tool
+  - symbol: BRepGraph_Tool_CoEdge
+  - symbol: BRepGraph_Tool_Edge
+  - symbol: BRepGraph_Tool_Face
+  - symbol: BRepGraph_Tool_Mesh
+  - symbol: BRepGraph_Tool_Shell
+  - symbol: BRepGraph_Tool_Vertex
+  - symbol: BRepGraph_Tool_Wire
+  - symbol: BRepGraph_TopoView
+  - symbol: BRepGraph_TopoView_CoEdgeOps
+  - symbol: BRepGraph_TopoView_CompSolidOps
+  - symbol: BRepGraph_TopoView_CompoundOps
+  - symbol: BRepGraph_TopoView_EdgeOps
+  - symbol: BRepGraph_TopoView_FaceOps
+  - symbol: BRepGraph_TopoView_GenOps
+  - symbol: BRepGraph_TopoView_GeometryOps
+  - symbol: BRepGraph_TopoView_OccurrenceOps
+  - symbol: BRepGraph_TopoView_ProductOps
+  - symbol: BRepGraph_TopoView_ShellOps
+  - symbol: BRepGraph_TopoView_SolidOps
+  - symbol: BRepGraph_TopoView_VertexOps
+  - symbol: BRepGraph_TopoView_WireOps
   - symbol: BRepGraph_Transform
   - symbol: BRepGraph_TransientCache
   - symbol: BRepGraph_TriangulationRepId
   - symbol: BRepGraph_UID
+  - symbol: BRepGraph_UIDsView
   - symbol: BRepGraph_Validate
+  - symbol: BRepGraph_Validate_Options
+  - symbol: BRepGraph_Validate_Result
   - symbol: BRepGraph_VersionStamp
   - symbol: BRepGraph_VertexId
   - symbol: BRepGraph_VertexRefId
@@ -576,6 +633,7 @@ mainBuild:
   - symbol: BRepMesh_IncrementalMeshFactory
   - symbol: BRepMesh_MeshAlgoFactory
   - symbol: BRepMesh_MeshTool
+  - symbol: BRepMesh_MeshTool_NodeClassifier
   - symbol: BRepMesh_ModelBuilder
   - symbol: BRepMesh_ModelHealer
   - symbol: BRepMesh_ModelPostProcessor
@@ -718,7 +776,6 @@ mainBuild:
   - symbol: BVH_BuildThread
   - symbol: BVH_BuildTool
   - symbol: BVH_BuilderTransient
-  - symbol: BVH_EncodedLink
   - symbol: BVH_Mat4d
   - symbol: BVH_Mat4f
   - symbol: BVH_ObjectTransient
@@ -835,7 +892,6 @@ mainBuild:
   - symbol: CSLib_DerivativeStatus
   - symbol: CSLib_NormalPolyDef
   - symbol: CSLib_NormalStatus
-  - symbol: CacheView
   - symbol: ChFi2d
   - symbol: ChFi2d_AnaFilletAlgo
   - symbol: ChFi2d_Builder
@@ -919,6 +975,8 @@ mainBuild:
   - symbol: DEXCAF_Provider
   - symbol: DE_ConfigurationContext
   - symbol: DE_ConfigurationNode
+  - symbol: DE_Provider_ReadStreamNode
+  - symbol: DE_Provider_WriteStreamNode
   - symbol: DE_ShapeFixConfigurationNode
   - symbol: DE_ShapeFixParameters
   - symbol: DE_ValidationUtils
@@ -928,7 +986,6 @@ mainBuild:
   - symbol: Draft_FaceInfo
   - symbol: Draft_Modification
   - symbol: Draft_VertexInfo
-  - symbol: EditorView
   - symbol: ElCLib
   - symbol: ElSLib
   - symbol: Expr
@@ -999,6 +1056,7 @@ mainBuild:
   - symbol: ExtremaPC_BSplineCurve
   - symbol: ExtremaPC_BezierCurve
   - symbol: ExtremaPC_Circle
+  - symbol: ExtremaPC_Config
   - symbol: ExtremaPC_Curve
   - symbol: ExtremaPC_DistanceFunction
   - symbol: ExtremaPC_Ellipse
@@ -1318,8 +1376,18 @@ mainBuild:
   - symbol: GeomEval_HypParaboloidSurface
   - symbol: GeomEval_HyperboloidSurface
   - symbol: GeomEval_ParaboloidSurface
+  - symbol: GeomEval_RepCurveDesc_Base
+  - symbol: GeomEval_RepCurveDesc_DerivBounded
+  - symbol: GeomEval_RepCurveDesc_Domain1d
+  - symbol: GeomEval_RepCurveDesc_Full
+  - symbol: GeomEval_RepCurveDesc_Map1d
+  - symbol: GeomEval_RepCurveDesc_Mapped
+  - symbol: GeomEval_RepSurfaceDesc_Base
+  - symbol: GeomEval_RepSurfaceDesc_DerivBounded
   - symbol: GeomEval_RepSurfaceDesc_Domain2d
+  - symbol: GeomEval_RepSurfaceDesc_Full
   - symbol: GeomEval_RepSurfaceDesc_Map2d
+  - symbol: GeomEval_RepSurfaceDesc_Mapped
   - symbol: GeomEval_SineWaveCurve
   - symbol: GeomEval_TBezierCurve
   - symbol: GeomEval_TBezierSurface
@@ -1513,9 +1581,11 @@ mainBuild:
   - symbol: Geom_VectorWithMagnitude
   - symbol: HLRAlgo
   - symbol: HLRAlgo_BiPoint
+  - symbol: HLRAlgo_BiPoint_PointsT
   - symbol: HLRAlgo_EdgeIterator
   - symbol: HLRAlgo_EdgeStatus
   - symbol: HLRAlgo_EdgesBlock
+  - symbol: HLRAlgo_EdgesBlock_MinMaxIndices
   - symbol: HLRAlgo_Interference
   - symbol: HLRAlgo_Intersection
   - symbol: HLRAlgo_PolyAlgo
@@ -2184,6 +2254,7 @@ mainBuild:
   - symbol: IntPatch_ALineToWLine
   - symbol: IntPatch_ArcFunction
   - symbol: IntPatch_BVHTraversal
+  - symbol: IntPatch_BVHTraversal_TrianglePair
   - symbol: IntPatch_CSFunction
   - symbol: IntPatch_CurvIntSurf
   - symbol: IntPatch_GLine
@@ -2358,6 +2429,7 @@ mainBuild:
   - symbol: LProp_BadContinuity
   - symbol: LProp_CIType
   - symbol: LProp_CurAndInf
+  - symbol: LProp_CurveUtils_DirectAccess
   - symbol: LProp_NotDefined
   - symbol: LProp_Status
   - symbol: LProp_SurfaceUtils_DirectAccess
@@ -2418,6 +2490,7 @@ mainBuild:
   - symbol: MathInteg_MultipleConfig
   - symbol: MathInteg_SetResult
   - symbol: MathLin_CroutResult
+  - symbol: MathLin_EigenResult
   - symbol: MathLin_LUResult
   - symbol: MathLin_LeastSquaresMethod
   - symbol: MathLin_LeastSquaresResult
@@ -2438,6 +2511,7 @@ mainBuild:
   - symbol: MathOpt_UzawaResult
   - symbol: MathPoly_GeneralPolyResult
   - symbol: MathRoot_AllRootsResult
+  - symbol: MathRoot_MultipleConfig
   - symbol: MathRoot_MultipleNoExtraHandler
   - symbol: MathRoot_MultipleResult
   - symbol: MathRoot_NullInterval
@@ -2484,7 +2558,6 @@ mainBuild:
   - symbol: MathUtils_Sphere
   - symbol: MathUtils_Status
   - symbol: MathUtils_VectorResult
-  - symbol: MeshView
   - symbol: Message_Alert
   - symbol: Message_AlertExtended
   - symbol: Message_Algorithm
@@ -2530,14 +2603,19 @@ mainBuild:
   - symbol: NCollection_AlignedAllocator
   - symbol: NCollection_BaseAllocator
   - symbol: NCollection_BaseList
+  - symbol: NCollection_BaseList_Iterator
   - symbol: NCollection_BaseMap
+  - symbol: NCollection_BaseMap_Iterator
   - symbol: NCollection_BaseSequence
+  - symbol: NCollection_BaseSequence_Iterator
   - symbol: NCollection_Buffer
   - symbol: NCollection_CellFilter_Action
   - symbol: NCollection_ForwardRangeSentinel
   - symbol: NCollection_HeapAllocator
   - symbol: NCollection_IncAllocator
+  - symbol: NCollection_IncAllocator_IBlock
   - symbol: NCollection_SparseArrayBase
+  - symbol: NCollection_SparseArrayBase_Iterator
   - symbol: NCollection_String
   - symbol: NCollection_UtfStringTool
   - symbol: NCollection_WinHeapAllocator
@@ -2601,6 +2679,7 @@ mainBuild:
   - symbol: OSD_SysType
   - symbol: OSD_Thread
   - symbol: OSD_ThreadPool
+  - symbol: OSD_ThreadPool_Launcher
   - symbol: OSD_Timer
   - symbol: OSD_WhoAmI
   - symbol: PCDM
@@ -2644,10 +2723,20 @@ mainBuild:
   - symbol: Poly_ArrayOfUVNodes
   - symbol: Poly_CoherentLink
   - symbol: Poly_CoherentNode
+  - symbol: Poly_CoherentTriPtr_Iterator
   - symbol: Poly_CoherentTriangle
   - symbol: Poly_CoherentTriangulation
+  - symbol: Poly_CoherentTriangulation_IteratorOfLink
+  - symbol: Poly_CoherentTriangulation_IteratorOfNode
+  - symbol: Poly_CoherentTriangulation_IteratorOfTriangle
   - symbol: Poly_Connect
   - symbol: Poly_MakeLoops
+  - symbol: Poly_MakeLoops2D_Helper
+  - symbol: Poly_MakeLoops3D_Helper
+  - symbol: Poly_MakeLoops_Hasher
+  - symbol: Poly_MakeLoops_HeapOfInteger
+  - symbol: Poly_MakeLoops_Helper
+  - symbol: Poly_MakeLoops_Link
   - symbol: Poly_MergeNodesTool
   - symbol: Poly_Polygon2D
   - symbol: Poly_Polygon3D
@@ -2704,6 +2793,7 @@ mainBuild:
   - symbol: RWMesh_NodeAttributes
   - symbol: RWMesh_ShapeIterator
   - symbol: RWMesh_TriangulationReader
+  - symbol: RWMesh_TriangulationReader_LoadingStatistic
   - symbol: RWMesh_TriangulationSource
   - symbol: RWMesh_VertexIterator
   - symbol: RWObj
@@ -2722,7 +2812,6 @@ mainBuild:
   - symbol: RWPly_PlyWriterContext
   - symbol: RWStl
   - symbol: RWStl_Reader
-  - symbol: RefsView
   - symbol: Resource_FormatType
   - symbol: Resource_LexicalCompare
   - symbol: Resource_Manager
@@ -2762,8 +2851,6 @@ mainBuild:
   - symbol: STEPSelections_SelectForTransfer
   - symbol: STEPSelections_SelectGSCurves
   - symbol: STEPSelections_SelectInstances
-  - symbol: SequenceOfInteger
-  - symbol: SequenceOfReal
   - symbol: ShapeAlgo
   - symbol: ShapeAlgo_AlgoContainer
   - symbol: ShapeAlgo_ToolContainer
@@ -2876,7 +2963,6 @@ mainBuild:
   - symbol: ShapeUpgrade_Tool
   - symbol: ShapeUpgrade_UnifySameDomain
   - symbol: ShapeUpgrade_WireDivide
-  - symbol: ShapesView
   - symbol: Standard
   - symbol: Standard_AbortiveTransaction
   - symbol: Standard_ArrayStreamBuffer
@@ -2889,6 +2975,7 @@ mainBuild:
   - symbol: Standard_DivideByZero
   - symbol: Standard_DomainError
   - symbol: Standard_DumpValue
+  - symbol: Standard_ErrorHandler_Callback
   - symbol: Standard_Failure
   - symbol: Standard_GUID
   - symbol: Standard_ImmutableObject
@@ -2899,6 +2986,7 @@ mainBuild:
   - symbol: Standard_MMgrRoot
   - symbol: Standard_MultiplyDefined
   - symbol: Standard_Mutex
+  - symbol: Standard_Mutex_Sentry
   - symbol: Standard_NegativeValue
   - symbol: Standard_NoMoreObject
   - symbol: Standard_NoSuchObject
@@ -4135,7 +4223,6 @@ mainBuild:
   - symbol: TopoDS_UnCompatibleShapes
   - symbol: TopoDS_Vertex
   - symbol: TopoDS_Wire
-  - symbol: TopoView
   - symbol: TransferBRep_BinderOfShape
   - symbol: TransferBRep_Reader
   - symbol: TransferBRep_ShapeBinder
@@ -4177,7 +4264,6 @@ mainBuild:
   - symbol: Transfer_TransientProcess
   - symbol: Transfer_UndefMode
   - symbol: Transfer_VoidBinder
-  - symbol: UIDsView
   - symbol: Units
   - symbol: UnitsAPI
   - symbol: UnitsAPI_SystemUnits
@@ -4320,6 +4406,7 @@ mainBuild:
   - symbol: XCAFDoc
   - symbol: XCAFDoc_Area
   - symbol: XCAFDoc_AssemblyGraph
+  - symbol: XCAFDoc_AssemblyGraph_Iterator
   - symbol: XCAFDoc_AssemblyItemId
   - symbol: XCAFDoc_AssemblyItemRef
   - symbol: XCAFDoc_AssemblyIterator
