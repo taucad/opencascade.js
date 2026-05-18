@@ -72,12 +72,19 @@ def _extract_template_args(clang_type):
     return args
 
 
-def _is_globally_accessible(arg_type):
+def _is_globally_accessible(arg_type, template_typedef_names=None):
     """Check whether a template argument type is accessible at file/namespace scope.
 
     Rejects types nested inside classes (e.g., Poly_CoherentTriangulation::TwoIntegers)
     or typedef aliases only visible within non-global namespaces that the using
     declaration site cannot reach.
+
+    Audit R5 — lift the rejection when the enclosing class is itself a
+    `tuInfo.templateTypedefs` instantiation. Such types acquire a global
+    file-scope name through the alias (e.g.
+    ``BRepGraph_ReverseIterator<FaceOfWireRefTraits>`` is reached via the
+    ``BRepGraph_FacesOfEdge`` typedef), so a ``using`` declaration at file
+    scope can name them via the alias.
     """
     decl = arg_type.get_declaration()
     if not decl or not decl.spelling:
@@ -89,14 +96,16 @@ def _is_globally_accessible(arg_type):
     if not parent:
         return True
 
-    if parent.kind == clang.cindex.CursorKind.CLASS_DECL:
-        return False
-    if parent.kind == clang.cindex.CursorKind.STRUCT_DECL:
+    if parent.kind in (clang.cindex.CursorKind.CLASS_DECL, clang.cindex.CursorKind.STRUCT_DECL):
+        # R5 — admit when the enclosing class is a known template-typedef
+        # instantiation (its alias is at file scope, so we can name it).
+        if template_typedef_names is not None and parent.spelling in template_typedef_names:
+            return True
         return False
     return True
 
 
-def _scan_type_for_ncollection(clang_type, needed):
+def _scan_type_for_ncollection(clang_type, needed, template_typedef_names=None):
     """Check if a type is or contains an NCollection template instantiation."""
     t = clang_type
     if t.kind == clang.cindex.TypeKind.LVALUEREFERENCE:
@@ -120,7 +129,7 @@ def _scan_type_for_ncollection(clang_type, needed):
         if t.get_num_template_arguments() > 0:
             for i in range(t.get_num_template_arguments()):
                 inner = t.get_template_argument_type(i)
-                _scan_type_for_ncollection(inner, needed)
+                _scan_type_for_ncollection(inner, needed, template_typedef_names)
         return
 
     arg_spellings = _extract_template_args(t)
@@ -129,7 +138,7 @@ def _scan_type_for_ncollection(clang_type, needed):
 
     for i in range(t.get_num_template_arguments()):
         arg_t = t.get_template_argument_type(i)
-        if not _is_globally_accessible(arg_t):
+        if not _is_globally_accessible(arg_t, template_typedef_names):
             return
         canonical = arg_t.get_canonical()
         if canonical.kind == clang.cindex.TypeKind.POINTER:
@@ -141,7 +150,7 @@ def _scan_type_for_ncollection(clang_type, needed):
     needed.add((mangled, container, tuple(arg_spellings)))
 
 
-def _scan_class_methods(class_cursor, needed):
+def _scan_class_methods(class_cursor, needed, template_typedef_names=None):
     """Scan all public methods, constructors, and FIELD_DECLs of a class for NCollection types.
 
     Public FIELD_DECLs matter because Embind exposes them via `.property(...)`,
@@ -154,18 +163,18 @@ def _scan_class_methods(class_cursor, needed):
         if child.kind == clang.cindex.CursorKind.CXX_METHOD:
             if child.access_specifier != clang.cindex.AccessSpecifier.PUBLIC:
                 continue
-            _scan_type_for_ncollection(child.result_type, needed)
+            _scan_type_for_ncollection(child.result_type, needed, template_typedef_names)
             for arg in child.get_arguments():
-                _scan_type_for_ncollection(arg.type, needed)
+                _scan_type_for_ncollection(arg.type, needed, template_typedef_names)
         elif child.kind == clang.cindex.CursorKind.CONSTRUCTOR:
             if child.access_specifier != clang.cindex.AccessSpecifier.PUBLIC:
                 continue
             for arg in child.get_arguments():
-                _scan_type_for_ncollection(arg.type, needed)
+                _scan_type_for_ncollection(arg.type, needed, template_typedef_names)
         elif child.kind == clang.cindex.CursorKind.FIELD_DECL:
             if child.access_specifier != clang.cindex.AccessSpecifier.PUBLIC:
                 continue
-            _scan_type_for_ncollection(child.type, needed)
+            _scan_type_for_ncollection(child.type, needed, template_typedef_names)
 
 
 _HARRAY_TO_ARRAY = {
@@ -187,16 +196,113 @@ _BUILTIN_BIND_CONFLICTS = frozenset({
 })
 
 
+def _scan_template_typedef_methods(tuInfo, template_typedef, needed, template_typedef_names):
+    """Audit R5 — discover NCollection types reachable through a template typedef.
+
+    Resolves the typedef's template (e.g.
+    ``BRepGraph_FacesOfEdge = BRepGraph_ReverseIterator<FaceOfWireRefTraits>``)
+    via the same ``processTemplate`` codepath used by codegen, augments
+    the substitution map with R2 canonical keys, then scans the
+    underlying template class's method signatures with the substitution
+    applied. NCollection types that depend on the substituted parameters
+    (e.g. ``NCollection_DynamicArray<typename TraitsT::ParentId>``)
+    enter the manifest as concrete instantiations
+    (``NCollection_DynamicArray<BRepGraphInc_FaceRef>``).
+
+    The substitution rewrites the AST-extracted argument spellings; we
+    don't need to walk the template's body recursively because any NCollection
+    used in a method signature is already visible via the existing
+    `_scan_class_methods` traversal — the only thing missing was the
+    substitution layer.
+    """
+    # Imported lazily so `discover` doesn't pull in the whole pipeline at
+    # module import time (the pipeline imports discover via codegen).
+    from ocjs_bindgen.pipeline.generate import processTemplate, SkipException
+    from ocjs_bindgen.ast.template_args import augment_template_args_with_canonical
+
+    try:
+        templateClass, templateArgs = processTemplate(template_typedef)
+    except SkipException:
+        return
+    except Exception:
+        return
+    augmented_args = augment_template_args_with_canonical(templateArgs, templateClass)
+
+    raw = set()
+    _scan_class_methods(templateClass, raw, template_typedef_names)
+    if not raw:
+        return
+
+    for mangled_name, container, arg_spellings in raw:
+        substituted_args = tuple(
+            _substitute_arg_spelling(spelling, augmented_args)
+            for spelling in arg_spellings
+        )
+        if any(s is None for s in substituted_args):
+            continue
+        if any("type-parameter-" in s for s in substituted_args):
+            continue
+        new_mangled = mangle_template_name(container, list(substituted_args))
+        if new_mangled is None:
+            continue
+        needed.add((new_mangled, container, substituted_args))
+
+
+def _substitute_arg_spelling(spelling, template_args):
+    """Substitute every key in `template_args` against `spelling`.
+
+    Returns the substituted spelling, or ``None`` if nothing remains
+    after stripping `typename` qualifiers and the spelling still
+    contains an unresolved template parameter (the caller treats that as
+    "skip this instantiation").
+    """
+    if not template_args or not spelling:
+        return spelling
+    out = spelling
+    # Source-name + canonical-key substitution. We iterate sorted-by-length
+    # descending so longer names (`TheItemType`) match before shorter ones
+    # (`T`) which would otherwise trigger spurious replacements.
+    for key in sorted(template_args, key=len, reverse=True):
+        sub = getattr(template_args[key], "spelling", None) or str(template_args[key])
+        if not sub:
+            continue
+        # Word-boundary substitution mirrors `replace_template_args` in
+        # `ocjs_bindgen/ast/template_args.py` so the same semantics apply.
+        out = re.sub(r"\b" + re.escape(key) + r"\b", sub, out)
+    out = out.replace("typename ", "").strip()
+    return out or None
+
+
 def discover_ncollection_types(tuInfo, filter_classes_fn):
     """Scan bound class methods for NCollection template instantiations.
 
     Returns a set of (mangled_name, container, arg_spellings_tuple) tuples.
+
+    Two passes:
+      1. Direct scan of every bound class's methods (legacy behaviour).
+      2. Audit R5 — substitute template typedefs (``using BRepGraph_FacesOfEdge
+         = BRepGraph_ReverseIterator<FaceOfWireRefTraits>;``) and rescan
+         the underlying template class with the concrete substitution
+         applied. This surfaces NCollection containers parameterised on
+         the substituted Traits members
+         (``NCollection_DynamicArray<BRepGraphInc_FaceRef>``).
     """
+    template_typedef_names = {td.spelling for td in tuInfo.templateTypedefs if td.spelling}
+
     needed = set()
     for child in tuInfo.allChildren:
         if not filter_classes_fn(child, False):
             continue
-        _scan_class_methods(child, needed)
+        _scan_class_methods(child, needed, template_typedef_names)
+
+    # R5 second pass — substitute through every template typedef.
+    for template_typedef in tuInfo.templateTypedefs:
+        _scan_template_typedef_methods(
+            tuInfo,
+            template_typedef,
+            needed,
+            template_typedef_names,
+        )
 
     augmented = set()
     for mangled_name, container, arg_spellings in needed:
@@ -209,7 +315,89 @@ def discover_ncollection_types(tuInfo, filter_classes_fn):
             if inner_mangled and inner_mangled not in _BUILTIN_BIND_CONFLICTS:
                 augmented.add((inner_mangled, inner_container, arg_spellings))
 
-    return augmented
+    # Audit R5 — canonical-args dedup.
+    #
+    # The first pass discovers `NCollection_DynamicArray<BRepGraph_SolidId>`
+    # (the alias-form), the R5 second pass discovers
+    # `NCollection_DynamicArray<BRepGraph_NodeId::Typed<...::Kind::Solid>>`
+    # (the substituted form). Both `using` declarations name the same
+    # underlying C++ type, so a fragment is emitted for each and Embind's
+    # `class_<>` registration produces two `raw_destructor<X>` explicit
+    # specializations for the same X — wasm-ld bails with a duplicate-symbol
+    # error.
+    #
+    # Resolve by collapsing entries whose args reduce to the same canonical
+    # spelling. The alias map is built from `tuInfo.templateTypedefs`
+    # (`using BRepGraph_SolidId = BRepGraph_NodeId::Typed<...>;`) — repeated
+    # word-boundary substitution chases multi-step aliases until the spelling
+    # is stable. Order-independent: the first manifest entry seen for a given
+    # canonical key wins, the rest are dropped.
+    return _dedupe_by_canonical_args(augmented, tuInfo)
+
+
+def _build_typedef_alias_map(tuInfo):
+    """Map every `using A = B;` template-typedef to its underlying spelling.
+
+    Used by `_dedupe_by_canonical_args` to collapse manifest entries whose
+    args differ only in alias spelling — without this, R5's second pass
+    can produce a second NCollection<X> registration under a different
+    mangled name for the same C++ type X, triggering wasm-ld duplicate
+    symbol errors at link time.
+    """
+    alias_map = {}
+    for td in tuInfo.templateTypedefs:
+        name = (td.spelling or "").strip()
+        if not name:
+            continue
+        try:
+          underlying = td.underlying_typedef_type
+        except Exception:
+          underlying = None
+        if underlying is None:
+            continue
+        underlying_spelling = (underlying.spelling or "").strip()
+        if not underlying_spelling or underlying_spelling == name:
+            continue
+        alias_map[name] = underlying_spelling
+    return alias_map
+
+
+def _normalize_arg(arg, alias_map):
+    """Resolve every alias in `arg` until the spelling reaches a fixed point."""
+    if not arg or not alias_map:
+        return arg
+    prev = None
+    cur = arg
+    # Cap iterations as a defensive guard against pathological alias cycles
+    # (`using A = B; using B = A;` shouldn't compile, but better safe than
+    # spinning forever in a discover pass).
+    for _ in range(8):
+        prev = cur
+        for alias in sorted(alias_map, key=len, reverse=True):
+            cur = re.sub(r"\b" + re.escape(alias) + r"\b", alias_map[alias], cur)
+        if cur == prev:
+            return cur
+    return cur
+
+
+def _dedupe_by_canonical_args(entries, tuInfo):
+    """Collapse manifest entries that share the same canonical args.
+
+    Returns a `set` of `(mangled_name, container, arg_spellings)` triples
+    where each canonical (container, normalized-args) key appears exactly
+    once. Preserves the first-seen entry per key — sorting the input by
+    mangled name keeps the output deterministic across runs.
+    """
+    alias_map = _build_typedef_alias_map(tuInfo)
+    seen = {}
+    for entry in sorted(entries):
+        mangled, container, args = entry
+        canonical_args = tuple(_normalize_arg(a, alias_map) for a in args)
+        key = (container, canonical_args)
+        if key in seen:
+            continue
+        seen[key] = entry
+    return set(seen.values())
 
 
 def generate_using_declarations(discovered):

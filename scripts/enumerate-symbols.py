@@ -125,17 +125,30 @@ def enumerate_symbols(occt_root: Path, filter_path: Path):
     parse_time = time.time() - t0
     print(f"Parsed in {parse_time:.1f}s ({len(tuInfo.allChildren)} AST nodes, {len(tuInfo.classDict)} classes)\n")
 
-    # Collect classes using the namespace-aware classDict (Phase A walker).
-    # Each cursor's JS-public name (Namespace_Type for namespace-scoped, bare
-    # spelling for top-level) is what the bindgen emits and what the YAML
-    # symbol manifest must reference. Without this, namespace-scoped types
-    # (e.g. ExtremaPC::Result) would be enumerated as bare `Result` and the
-    # link verifier would fail to match `<JsPublicName>.cpp.o` for them
-    # (see Phase B-tail filename strategy in src/generateBindings.py).
+    # Collect classes by walking the full cursor list (`tuInfo.allChildren`)
+    # rather than the bare-spelling-deduped `classDict`. The R1 recursive
+    # class walker emits multiple nested cursors that share a bare spelling
+    # (`BRepGraph::TopoView::FaceOps`, `BRepGraph::EditorView::FaceOps`,
+    # `BRepGraph::RefsView::FaceOps`, …) — `classDict` keeps only the first
+    # one because it keys by `cursor.spelling`. Iterating `allChildren`
+    # preserves every cursor; dedup is then applied at the JS-public-name
+    # layer (which encodes the full qualified path) so genuinely distinct
+    # nested classes survive.
     classes: Dict[str, str] = {}
     skipped_classes: Set[str] = set()
+    seen_class_cursors: Set[int] = set()
 
-    for child in tuInfo.classDict.values():
+    for child in tuInfo.allChildren:
+        if child.kind not in (
+            clang.cindex.CursorKind.CLASS_DECL,
+            clang.cindex.CursorKind.STRUCT_DECL,
+        ):
+            continue
+        cur_id = id(child)
+        if cur_id in seen_class_cursors:
+            continue
+        seen_class_cursors.add(cur_id)
+
         if child.extent.start.file is None:
             continue
         if not child.extent.start.file.name.startswith(occtBasePath):
@@ -156,7 +169,7 @@ def enumerate_symbols(occt_root: Path, filter_path: Path):
             skipped_classes.add(name)
             continue
 
-        classes[name] = pkg
+        classes.setdefault(name, pkg)
 
     enums: Dict[str, str] = {}
     for child in tuInfo.enums:

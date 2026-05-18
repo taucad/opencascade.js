@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from ocjs_bindgen.codegen.wasm_common import SkipException, isAbstractClass, isTransientDerived, getMethodOverloadPostfix
 from filter.filterClasses import filterClass
 from filter.filterMethodOrProperties import filterMethodOrProperty
+from ocjs_bindgen.filters.method_signature import pop_dropped_method_reasons
 from typing import Tuple, List, Any, Optional, Dict
 
 from ocjs_bindgen.predicates.types import (
@@ -502,29 +503,12 @@ def shouldStripParam(arg_type, method):
 def getClassTypeName(theClass, templateDecl = None):
   return templateDecl.spelling if templateDecl is not None else theClass.spelling
 
-def getClassJsPublicName(theClass, templateDecl = None):
-  """JS-public class name (Embind class_<>("…") and TS export name).
-
-  Adds a `Namespace_` prefix when the type is directly inside a non-stdlib
-  C++ namespace (e.g. `ExtremaPC::Result` → `ExtremaPC_Result`). For
-  template typedef aliases the alias name typically already lives at file
-  scope, but if it's namespace-scoped the same prefix rule applies. For
-  top-level types the bare spelling is returned, preserving every existing
-  binding's JS name unchanged.
-
-  This is intentionally NOT folded into `getClassTypeName` because many
-  non-emit call sites (member-pointer expressions, base-class-resolution
-  string compares) compare against the bare spelling. Keeping the plain
-  helper untouched avoids cascading those changes and limits blast radius
-  to genuine emit sites.
-  """
-  base = getClassTypeName(theClass, templateDecl)
-  decl = templateDecl if templateDecl is not None else theClass
-  parent = decl.semantic_parent
-  if parent is not None and parent.kind == clang.cindex.CursorKind.NAMESPACE:
-    if parent.spelling and parent.spelling not in ("std", "emscripten", "__gnu_cxx", "__cxxabiv1", "__cxx", "__1"):
-      return parent.spelling + "_" + base
-  return base
+# `getClassJsPublicName` is intentionally NOT redefined here. The single
+# source of truth is `NameEncoder.js_public_name` in
+# `ocjs_bindgen.naming.encoder`, re-exported via `naming.ts`. R1.b of
+# `docs/research/ocjs-bindgen-unknown-coverage-audit.md` made the
+# encoder walk the full enclosing-class chain; carrying a one-level
+# duplicate here would silently shadow that fix.
 
 def getEnumJsPublicName(theEnum):
   """JS-public enum name. Adds `Namespace_` prefix for namespace-scoped enums."""
@@ -1137,7 +1121,7 @@ class Bindings:
 
   def resolveWithCanonicalFallback(self, spelling, clangType, templateDecl = None, templateArgs = None):
     """Resolve a type spelling, falling back to canonical type for member typedefs.
-    
+
     Template specializations like NCollection_Array1<gp_Pnt> use member typedefs
     (value_type, const_reference) that resolve to concrete types (gp_Pnt, const gp_Pnt&)
     in the canonical form. When clang returns type-parameter-0-N for the canonical type
@@ -1145,8 +1129,36 @@ class Bindings:
     With libclang 18+, canonical spellings may use the source template parameter name
     (e.g. TheItemType) instead of type-parameter-0-0; templateArgs substitutes those too.
     Nested types are always qualified with their parent class scope.
+
+    Audit R8.1 fires immediately after `getTypedefedTemplateTypeAsString`
+    substitutes the template argument: when the resulting spelling is a
+    syntactic `opencascade::handle<X>` / `occ::handle<X>` / `Handle_X`
+    wrapper and `X` is a known TS export, return `X` directly. See
+    `docs/research/ocjs-bindgen-unknown-coverage-audit-v2.md` V2.1 addendum
+    "Where to next" — closes the residual handle-wrapped NCollection
+    accessor bucket left by R8.
     """
     resolved = self.getTypedefedTemplateTypeAsString(spelling, templateDecl, templateArgs)
+
+    # Audit R8.1 — peel substituted Handle wrappers at the string level.
+    # After template-arg substitution rewrites `TheItemType` to a syntactic
+    # `opencascade::handle<X>` / `occ::handle<X>` / `Handle_X`, recognise the
+    # wrapper and return the inner exported class. Mirrors the contract of
+    # `resolve_handle_recursive` one layer downstream where the AST has been
+    # replaced by a substituted string.
+    #
+    # `resolveWithCanonicalFallback` is shared with `EmbindBindings`, whose
+    # C++ generator has no TS-export concept. Gate on `_is_known_export_name`
+    # so R8.1 is a strict no-op for the Embind path; the TS resolver supplies
+    # the predicate and gets the peel behaviour.
+    if hasattr(self, "_is_known_export_name"):
+      from ocjs_bindgen.resolver.strategies import (
+        resolve_handle_substituted_typedef,
+      )
+      handle_peeled = resolve_handle_substituted_typedef(self, resolved)
+      if handle_peeled is not None:
+        return handle_peeled
+
     if any(td in resolved for td in self._DEPRECATED_TYPEDEFS):
       canonical = clangType.get_canonical().spelling
       if "type-parameter-" not in canonical:
@@ -1180,6 +1192,17 @@ class Bindings:
     from ocjs_bindgen.ast import replace_template_args
     return replace_template_args(string, templateArgs)
 
+  def render_dropped_method_jsdoc(self, theClass, method, reasons):
+    """R3 transparency hook — render comment(s) for a dropped method.
+
+    Default implementation is a no-op; the Embind .cpp output stays
+    binding-only. The TypescriptBindings subclass overrides to emit
+    `// dropped: <position> resolves to excluded type <name>` lines so
+    .d.ts consumers see why the method is missing rather than silently
+    losing the API surface (audit `Risks & Mitigations` row R3).
+    """
+    return ""
+
   def processClass(self, theClass, templateDecl = None, templateArgs = None):
     output = ""
     isAbstract = isAbstractClass(theClass, self.tuInfo.classDict)
@@ -1194,6 +1217,18 @@ class Bindings:
     all_children = list(theClass.get_children())
     for method in all_children:
       if not filterMethodOrProperty(theClass, method):
+        # R3 transparency: when the method was dropped because a
+        # parameter/return resolves to an excluded class, the wrapped
+        # filter recorded the reason in the side-table. The TS subclass
+        # renders a `// dropped: ...` comment here so .d.ts consumers
+        # see why the method is missing; the Embind subclass returns ""
+        # (no comment in the .cpp output).
+        try:
+          reasons = pop_dropped_method_reasons(theClass.spelling, method.displayname)
+        except Exception:
+          reasons = []
+        if reasons:
+          output += self.render_dropped_method_jsdoc(theClass, method, reasons)
         continue
       if method.access_specifier == clang.cindex.AccessSpecifier.PUBLIC and method.kind == clang.cindex.CursorKind.CXX_METHOD and not method.spelling.startswith("operator"):
         method_groups[method.spelling].append(method)
@@ -2323,6 +2358,27 @@ class TypescriptBindings(Bindings):
           TypescriptBindings._emitted_stub_names.add(structName)
 
     return output
+
+  def render_dropped_method_jsdoc(self, theClass, method, reasons):
+    """R3 transparency hook (TS-side override).
+
+    Emits a `// dropped: ...` comment for each recorded R3 reason at the
+    spot the method *would* have been declared in the class body. The
+    method itself is NOT emitted — the goal is to keep the .d.ts free of
+    `unknown`-littered signatures pointing at types the runtime never
+    exposes, while preserving forensic visibility of the elision so
+    consumers can audit why an OCCT method is missing from the surface.
+    """
+    if not reasons:
+      return ""
+    method_name = method.spelling or "<anonymous>"
+    parts = []
+    for excluded_name, position in reasons:
+      parts.append(
+        "  // dropped: " + method_name + " " + position
+        + " resolves to excluded type " + excluded_name + "\n"
+      )
+    return "".join(parts)
 
   def processFinalizeClass(self):
     output = ""

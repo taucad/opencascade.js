@@ -65,6 +65,29 @@ def _check_generator_hash_and_clean():
   if count > 0:
     print(f"  Removed {count} stale generated files.")
 
+  # Also purge orphaned `.cpp.o` files in `compiled-bindings/`. Without this,
+  # a generator-code change that renames a binding (e.g. R1 promoting nested
+  # `TopoView_FaceOps` → `BRepGraph_TopoView_FaceOps`) leaves the previous
+  # object file behind. The link step then folds both into the same wasm and
+  # Embind's `class_<…>("TopoView")` registration from the orphan collides
+  # with the new `class_<BRepGraph::TopoView>("BRepGraph_TopoView")` one,
+  # surfacing as runtime `Cannot call X due to unbound types` when the
+  # second registration's TypeID for an inner class never lands.
+  compiled_root = os.path.join(os.path.dirname(target.rstrip("/")), "compiled-bindings")
+  if os.path.isdir(compiled_root):
+    obj_count = 0
+    for dirpath, _dirnames, filenames in os.walk(compiled_root):
+      bindings_dirpath = dirpath.replace(compiled_root, target, 1)
+      for fname in filenames:
+        if not fname.endswith(".cpp.o"):
+          continue
+        source_cpp = os.path.join(bindings_dirpath, fname[:-2])  # strip ".o"
+        if not os.path.exists(source_cpp):
+          os.remove(os.path.join(dirpath, fname))
+          obj_count += 1
+    if obj_count > 0:
+      print(f"  Removed {obj_count} orphaned compiled-binding object files.")
+
   os.makedirs(os.path.dirname(GENERATOR_HASH_FILE), exist_ok=True)
   with open(GENERATOR_HASH_FILE, "w") as f:
     f.write(current_hash)
@@ -329,6 +352,16 @@ def processTemplate(child):
     if templateArgType.spelling == "":
       raise SkipException("Template argument type is empty for parameter \"" + templateArgName.spelling + "\" of template typedef \"" + child.spelling + "\" (no value supplied and no resolvable default).")
     templateArgs[templateArgName.spelling] = templateArgType
+
+  # Audit R2 — augment with `type-parameter-0-N` keys derived from the
+  # ordinal positions so downstream resolvers can substitute either the
+  # source-name spelling (`TheItemType`) or libclang's canonical
+  # synthetic spelling (`type-parameter-0-0`) without an extra rewrite.
+  # This propagates through every inherited-method walk because the
+  # binder threads `templateArgs` straight into `processClass` /
+  # `processMethodOrProperty`.
+  from ocjs_bindgen.ast.template_args import augment_template_args_with_canonical
+  templateArgs = augment_template_args_with_canonical(templateArgs, templateClass)
 
   return [templateClass, templateArgs]
 
