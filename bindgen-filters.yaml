@@ -103,6 +103,56 @@ exclude:
     # matching `.constructor<…>` declaration, and these have no exposed value
     # constructor either. Expose `MathRoot_*` higher-level results only.
     - MathRoot_MultipleGetValueFn
+    # OCCT LDOM (XML DOM) internal allocator-block struct: `LDOM_SBuffer`
+    # owns a singly-linked list of fixed-size buffer chunks, each chunk
+    # represented by `LDOM_SBuffer::LDOM_StringElem`. The struct uses
+    # `DEFINE_NCOLLECTION_ALLOC` which wires an `operator new` overload
+    # taking a `Handle(NCollection_BaseAllocator)` reference — Embind
+    # cannot bind a class without a default-constructible value
+    # constructor matching that signature, and the struct is only used
+    # internally as a list-node by `LDOM_SBuffer::operator<<`. The
+    # public LDOM API surface (`LDOM_OSStream`, `LDOM_SBuffer`) is
+    # already bound directly; the inner allocator block is implementation
+    # detail and excluded structurally here (R1's recursive class walker
+    # discovered it as a nested class once R1.b started encoding nested
+    # JS-public names instead of dropping them).
+    - LDOM_SBuffer_LDOM_StringElem
+    # OCCT V8 BRepGraph::EditorView mutation Ops — every `*Ops` inner
+    # class on `EditorView` takes a `BRepGraph_MutGuard&` value by
+    # reference (and several methods consume it by value), but
+    # `BRepGraph_MutGuard` has an explicitly deleted copy constructor
+    # (`BRepGraph_MutGuard.hxx` L128) so Embind cannot generate the
+    # marshalling layer. The mutation API is exposed end-to-end through
+    # the runtime via `BRepGraph_Editor_*` higher-level helpers; these
+    # raw-Ops bindings would only surface internal scaffolding even if
+    # they compiled. R1's recursive walker discovered them as nested
+    # classes, so list them here so the YAML link manifest never
+    # references them and the .cpp generator skips them.
+    - BRepGraph_EditorView_CoEdgeOps
+    - BRepGraph_EditorView_CompSolidOps
+    - BRepGraph_EditorView_CompoundOps
+    - BRepGraph_EditorView_EdgeOps
+    - BRepGraph_EditorView_FaceOps
+    - BRepGraph_EditorView_GenOps
+    - BRepGraph_EditorView_OccurrenceOps
+    - BRepGraph_EditorView_ProductOps
+    - BRepGraph_EditorView_RepOps
+    - BRepGraph_EditorView_ShellOps
+    - BRepGraph_EditorView_SolidOps
+    - BRepGraph_EditorView_VertexOps
+    - BRepGraph_EditorView_WireOps
+    # OCCT V8 Message_Messenger::StreamBuffer — RAII wrapper around an
+    # `std::ostream` reference; deleted copy/assignment, no default
+    # constructor. Embind cannot bind it. The public messenger API is
+    # exposed via `Message_Messenger::Send` overloads that take strings,
+    # not StreamBuffer instances.
+    - Message_Messenger_StreamBuffer
+    # OCCT V8 BRepGProp_Gauss::Inertia — internal struct returned by the
+    # legacy Gauss-quadrature solver; uses a `const&` reference member
+    # so the implicit default constructor is deleted. The public
+    # property-of-shape API (`BRepGProp_Vinert`, etc.) does not surface
+    # `Inertia` directly.
+    - BRepGProp_Gauss_Inertia
     # Misc compilation errors
     - DsgPrs_RadiusPresentation
     - Standard_Dump
