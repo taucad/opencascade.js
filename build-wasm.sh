@@ -116,82 +116,28 @@ _resolve_symlink_target() {
 }
 
 _ensure_doxygen() {
-  local version commit tag
-  version=$("$OCJS_PYTHON" -c "import json; d=json.load(open('$SCRIPT_DIR/DEPS.json'))['dependencies']['doxygen']; print(d['version'])" 2>/dev/null || echo "")
-  commit=$("$OCJS_PYTHON" -c "import json; d=json.load(open('$SCRIPT_DIR/DEPS.json'))['dependencies']['doxygen']; print(d['commit'])" 2>/dev/null || echo "")
-  tag=$("$OCJS_PYTHON" -c "import json; d=json.load(open('$SCRIPT_DIR/DEPS.json'))['dependencies']['doxygen']; print(d['release_tag'])" 2>/dev/null || echo "")
-  local doxygen_bin="$SCRIPT_DIR/tools/doxygen/bin/doxygen"
-  local stamp_file="$SCRIPT_DIR/tools/doxygen/.commit"
-
-  if [ -x "$doxygen_bin" ] && [ -f "$stamp_file" ]; then
-    local installed_commit
-    installed_commit=$(cat "$stamp_file" 2>/dev/null || echo "")
-    if [ "$installed_commit" = "$commit" ]; then
-      return 0
-    fi
-    echo "  Doxygen commit mismatch ($installed_commit != $commit), re-downloading..."
-  fi
-
-  echo "  Downloading Doxygen $version..."
-  local os_name arch asset_name
-  os_name="$(uname -s)"
-  arch="$(uname -m)"
-  case "$os_name" in
-    Darwin)
-      case "$arch" in
-        arm64) asset_name="doxygen-${version}-mac-arm.zip" ;;
-        *)     asset_name="doxygen-${version}-mac-intel.zip" ;;
-      esac
-      ;;
-    Linux)
-      asset_name="doxygen-${version}.linux.bin.tar.gz"
-      ;;
-    *)
-      echo "  WARNING: Unsupported OS '$os_name' for Doxygen auto-download. Install doxygen manually." >&2
-      return 1
-      ;;
-  esac
-
-  local url="https://github.com/doxygen/doxygen/releases/download/${tag}/${asset_name}"
-  local tmp_dir
-  tmp_dir="$(mktemp -d)"
-
-  mkdir -p "$SCRIPT_DIR/tools"
-  rm -rf "$SCRIPT_DIR/tools/doxygen"
-
-  if ! curl -fsSL "$url" -o "$tmp_dir/$asset_name"; then
-    echo "  WARNING: Failed to download Doxygen from $url" >&2
-    rm -rf "$tmp_dir"
+  # System-only check. The pinned-tarball download path was removed because:
+  #   - The doxygen GitHub release only ships an x86_64 Linux tarball.
+  #   - On arm64 Linux (Docker Desktop on Apple Silicon, GitHub Actions
+  #     ubuntu-24.04-arm, etc.) the binary fails to execute, then
+  #     extract-docs.py silently fell back to system doxygen anyway —
+  #     producing host-vs-container JSDoc divergence with no diagnostic.
+  # The OCCT XML extraction is stable across Doxygen 1.9.x through 1.16.x,
+  # so we accept whatever the system provides. See R6 in
+  # docs/research/ocjs-r21-method-reachability-parity-report.md.
+  if ! command -v doxygen >/dev/null 2>&1; then
+    cat >&2 <<'EOF'
+ERROR: doxygen not installed.
+  Linux  : apt-get install -y doxygen     (Ubuntu 22.04 ships 1.9.1+, 24.04 ships 1.10.x)
+  macOS  : brew install doxygen           (Homebrew ships 1.14.x)
+  Other  : https://www.doxygen.nl/manual/install.html
+This project no longer ships a pinned doxygen binary because upstream does
+not publish arm64-linux releases. The generated JSDoc is functionally
+identical across doxygen 1.9.x through 1.16.x for the OCCT corpus.
+EOF
     return 1
   fi
-
-  case "$asset_name" in
-    *.zip)
-      unzip -q "$tmp_dir/$asset_name" -d "$tmp_dir/extracted"
-      local inner_dir
-      inner_dir="$(ls -d "$tmp_dir/extracted"/Doxygen.app/Contents/Resources 2>/dev/null || ls -d "$tmp_dir/extracted"/doxygen-* 2>/dev/null || echo "$tmp_dir/extracted")"
-      mkdir -p "$SCRIPT_DIR/tools/doxygen/bin"
-      cp "$inner_dir/doxygen" "$SCRIPT_DIR/tools/doxygen/bin/doxygen" 2>/dev/null || \
-        find "$tmp_dir/extracted" -name "doxygen" -type f -exec cp {} "$SCRIPT_DIR/tools/doxygen/bin/doxygen" \;
-      chmod +x "$SCRIPT_DIR/tools/doxygen/bin/doxygen"
-      ;;
-    *.tar.gz)
-      tar xzf "$tmp_dir/$asset_name" -C "$tmp_dir"
-      local extracted_dir
-      extracted_dir="$(ls -d "$tmp_dir"/doxygen-* 2>/dev/null | head -1)"
-      mv "$extracted_dir" "$SCRIPT_DIR/tools/doxygen"
-      ;;
-  esac
-
-  rm -rf "$tmp_dir"
-
-  if [ -x "$doxygen_bin" ]; then
-    echo "$commit" > "$stamp_file"
-    echo "  Doxygen $version ($commit) installed at $doxygen_bin"
-  else
-    echo "  WARNING: Doxygen binary not found after extraction" >&2
-    return 1
-  fi
+  echo "  Using system Doxygen $(doxygen --version 2>/dev/null | awk '{print $1}')"
 }
 
 if [ "${1:-}" = "clean-generated" ]; then
@@ -241,7 +187,7 @@ if [ -z "${EMSDK:-}" ] || [ ! -d "${EMSDK:-}" ]; then
   elif [ -d "$SCRIPT_DIR/../assimpjs/emsdk" ]; then
     export EMSDK="$(cd "$SCRIPT_DIR/../assimpjs/emsdk" && pwd)"
   else
-    echo "ERROR: EMSDK not found. Run scripts/setup-deps.sh or set EMSDK=" >&2
+    echo "ERROR: EMSDK not found. Run scripts/clone-deps.sh or set EMSDK=" >&2
     exit 1
   fi
 fi
@@ -251,7 +197,7 @@ source "$EMSDK/emsdk_env.sh" 2>/dev/null
 # See docs/research/occt-v8-final-migration-stocktake.md (Python Toolchain Reshaping).
 export OCJS_PYTHON="$SCRIPT_DIR/.venv/bin/python"
 if [ ! -x "$OCJS_PYTHON" ]; then
-  echo "ERROR: $OCJS_PYTHON not found. Run scripts/setup-deps.sh first." >&2
+  echo "ERROR: $OCJS_PYTHON not found. Run scripts/clone-deps.sh first." >&2
   exit 1
 fi
 
@@ -307,6 +253,12 @@ for (( _i=0; _i<${#_prescan_args[@]}; _i++ )); do
     break
   fi
 done
+
+# Default named configuration — matches what `project.json:link` used to inject
+# before Nx env overrides were removed, and what the shipped @taucad/opencascade.js
+# tarball is built with. Override by exporting OCJS_CONFIG=<name> or passing
+# --config <name>.
+export OCJS_CONFIG="${OCJS_CONFIG:-O3-wasm-exc-simd}"
 
 if [ -n "${OCJS_CONFIG:-}" ]; then
   _CONFIG_FILE="$SCRIPT_DIR/build-configs/configurations.json"
@@ -487,12 +439,6 @@ step_sources() {
   echo ""
 }
 
-step_sources_legacy() {
-  echo "═══ Compiling OCCT sources (legacy Python) ═══"
-  "$OCJS_PYTHON" src/compileSources.py "$THREADING"
-  echo ""
-}
-
 step_sources_cmake() {
   local cmake_build_dir="$OCJS_ROOT/build/occt-cmake"
   local lib_dir="$cmake_build_dir/lin32/clang/lib"
@@ -648,16 +594,18 @@ step_apply_patches() {
   fi
 
   if [ "$OCJS_PATCH_DUMP" = "true" ]; then
+    echo "  Applying using-statement / V8 bugfix patches..."
+    "$OCJS_PYTHON" src/patches/patch_using_statements.py
     echo "  Applying Standard_Dump stub patch..."
     "$OCJS_PYTHON" src/patches/patch_standard_dump.py
     if [ "${OCJS_PATCH_STEPCAF:-true}" = "true" ]; then
       echo "  Applying noexcept destructors patch (7 classes)..."
-      OCCT_ROOT="$OCJS_ROOT/deps/OCCT" "$OCJS_PYTHON" src/patches/patch_noexcept_destructors.py
+      "$OCJS_PYTHON" src/patches/patch_noexcept_destructors.py
       echo "  Applying STEPCAFControl_Controller DynamicType patch..."
-      OCCT_ROOT="$OCJS_ROOT/deps/OCCT" "$OCJS_PYTHON" src/patches/patch_stepcaf_dyntype.py
+      "$OCJS_PYTHON" src/patches/patch_stepcaf_dyntype.py
     fi
     echo "  Applying BRepGraph_VersionStamp wasm32 size_t guard..."
-    OCCT_ROOT="$OCJS_ROOT/deps/OCCT" "$OCJS_PYTHON" src/patches/patch_brepgraph_versionstamp.py
+    "$OCJS_PYTHON" src/patches/patch_brepgraph_versionstamp.py
     echo "  All patches applied."
   else
     echo "  OCJS_PATCH_DUMP=false — no patches to apply (clean OCCT tree)."
@@ -760,7 +708,7 @@ while [ $# -gt 0 ]; do
       export OCJS_CONFIG="$1"
       shift
       ;;
-    pch|docs|generate|bindings|sources|sources-legacy|apply-patches|patch-embind)
+    pch|docs|generate|bindings|sources|apply-patches|patch-embind)
       COMMANDS+=("$1")
       shift
       ;;
@@ -808,7 +756,6 @@ for cmd in "${COMMANDS[@]}"; do
     generate)  step_generate ;;
     bindings)  validate_build_flags && step_bindings ;;
     sources)   step_sources ;;
-    sources-legacy) step_sources_legacy ;;
     dts)       step_dts "$YAML_CONFIG" ;;
     link)      validate_build_flags && step_link "$YAML_CONFIG" ;;
     validate)
@@ -823,11 +770,14 @@ v = Validator(schema)
 if v.validate(config, schema):
     normalized = v.normalized(config)
     bindings = normalized['mainBuild']['bindings']
+    name = normalized['mainBuild']['name']
+    flags = normalized['mainBuild'].get('emccFlags', [])
     print(f'  Config valid: {len(bindings)} bindings')
-    print(f'  Build name: {normalized["mainBuild"]["name"]}')
-    print(f'  emccFlags: {len(normalized["mainBuild"].get("emccFlags", []))} flags')
-    has_exc = any('-fexceptions' in f or '-fwasm-exceptions' in f for f in normalized['mainBuild'].get('emccFlags', []))
-    print(f'  Exceptions: {"yes" if has_exc else "no"}')
+    print(f'  Build name: {name}')
+    print(f'  emccFlags: {len(flags)} flags')
+    has_exc = any('-fexceptions' in f or '-fwasm-exceptions' in f for f in flags)
+    has_exc_str = 'yes' if has_exc else 'no'
+    print(f'  Exceptions: {has_exc_str}')
 else:
     print(f'  INVALID: {v.errors}', file=sys.stderr)
     sys.exit(1)

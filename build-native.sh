@@ -33,7 +33,7 @@ mkdir -p build/{bindings,sources,dist}
 
 # Step 1: Apply OCCT patches
 echo "=== Step 1: Applying patches ==="
-python3 src/applyPatches.py
+python3 src/patches/patch_using_statements.py
 
 # Step 2: Build flat includes + PCH (25x compilation speedup)
 echo "=== Step 2: Building flat includes + precompiled header ==="
@@ -52,9 +52,9 @@ python3 -m ocjs_bindgen --config bindgen-filters.yaml
 echo "=== Step 4: Compiling bindings ==="
 python3 src/compileBindings.py single-threaded
 
-# Step 5: Compile OCCT sources (uses flat includes)
-echo "=== Step 5: Compiling OCCT sources ==="
-python3 src/compileSources.py single-threaded
+# Step 5: Compile OCCT sources via CMake (replaces legacy src/compileSources.py)
+echo "=== Step 5: Compiling OCCT sources (CMake) ==="
+./build-wasm.sh sources
 
 echo ""
 echo "=== Build complete ==="
