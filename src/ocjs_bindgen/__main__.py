@@ -54,8 +54,8 @@ def main():
     filters.install(config)
 
     # `src/` still hosts `filter/` and other shell-script-callable helpers
-    # (`compileBindings.py`, `compileSources.py`, `applyPatches.py`,
-    # `extract-docs.py`, `provenance.py`) that PR 3.4 will migrate into
+    # (`compileBindings.py`, `extract-docs.py`, `provenance.py`,
+    # `patches/patch_*.py`) that PR 3.4 will migrate into
     # `ocjs_bindgen/`. Keeping `src/` on `sys.path` lets `from filter.X import Y`
     # imports inside the bindgen continue to resolve.
     src_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

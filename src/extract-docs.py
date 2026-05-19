@@ -15,6 +15,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 from xml.etree import ElementTree as ET
@@ -621,12 +622,30 @@ def _process_compound_xml(xml_path: str, docs: dict):
 
 
 def run_doxygen(ocjs_root: str, occt_root: str):
-    """Run Doxygen to produce XML output."""
-    doxyfile = os.path.join(ocjs_root, "src", "occt-docs.doxyfile")
-    doxygen_bin = os.path.join(ocjs_root, "tools", "doxygen", "bin", "doxygen")
+    """Run Doxygen to produce XML output.
 
-    if not os.path.isfile(doxygen_bin):
+    Prefers system `doxygen` (apt/Homebrew). The repo-local pinned binary at
+    `tools/doxygen/bin/doxygen` is only used as a fallback when the system
+    binary is missing AND the pinned binary is both present AND executable.
+
+    Rationale: the pinned download path in build-wasm.sh used to fetch an
+    x86_64-only Linux tarball — fine on amd64 hosts, but on arm64 Linux
+    (Docker Desktop on Apple Silicon, GitHub Actions ubuntu-24.04-arm,
+    Raspberry Pi CI) the binary failed to execute and this function
+    silently fell back to system doxygen anyway. The legacy code only
+    checked `isfile` (not `os.access(X_OK)`), so a present-but-unexecutable
+    pinned binary blocked the system fallback. See R6 in
+    docs/research/ocjs-r21-method-reachability-parity-report.md.
+    """
+    doxyfile = os.path.join(ocjs_root, "src", "occt-docs.doxyfile")
+    pinned = os.path.join(ocjs_root, "tools", "doxygen", "bin", "doxygen")
+
+    if shutil.which("doxygen"):
         doxygen_bin = "doxygen"
+    elif os.path.isfile(pinned) and os.access(pinned, os.X_OK):
+        doxygen_bin = pinned
+    else:
+        doxygen_bin = "doxygen"  # let subprocess raise so the user sees the missing-binary error
 
     env = os.environ.copy()
     env["OCCT_ROOT"] = occt_root

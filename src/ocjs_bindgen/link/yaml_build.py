@@ -22,6 +22,131 @@ except ImportError:
 
 _yaml_config_hash = ""
 
+# Strict-types gate (R2.2) — when `OCJS_STRICT_TYPES=1` (default in the Docker
+# image, opt-in on host builds) the link step refuses to ship a `.d.ts` that
+# contains the silent failure modes produced when a reachable class is excluded
+# from the build: a rewritten `: unknown` (the link-time post-processor
+# detected an undeclared reference and substituted `unknown`) OR an
+# `unbound_reference` diagnostic collected during codegen. Both signal that
+# the YAML scope is missing a class some bound class's method signature
+# references — typically a NCollection the R2 filter dropped because its R1
+# source_classes tag didn't intersect the YAML scope, but in fact reachable
+# through a method param/return on an in-scope class. The action is always
+# the same: fix `_compute_yaml_class_scope` to include the reachable class.
+#
+# Tunable so that diagnostic non-shipping builds can opt out cleanly.
+_STRICT_TYPES_REWRITE_BUDGET = 0
+# Tokens used to detect `: unknown;` / `: unknown)` / `<unknown,...>` rewrites
+# without false-positives on `Record<string, unknown>` (which appears verbatim
+# in the hand-written `init(options?: ...)` signature and is NOT a rewrite).
+_UNKNOWN_TOKEN_RE = re.compile(
+  r"(?<![A-Za-z0-9_])unknown(?![A-Za-z0-9_])"
+)
+_RECORD_STRING_UNKNOWN_LITERAL = "Record<string, unknown>"
+
+
+def _count_unknown_tokens(source: str) -> int:
+  """Return the number of bare `unknown` identifier tokens in `source`,
+  excluding the hand-written `Record<string, unknown>` init signature which
+  contributes a known constant baseline of one occurrence per build."""
+  hits = len(_UNKNOWN_TOKEN_RE.findall(source))
+  # Subtract the literal that's emitted unconditionally by the init signature
+  # template so a clean build reports zero rewrites instead of two.
+  hits -= source.count(_RECORD_STRING_UNKNOWN_LITERAL)
+  return max(0, hits)
+
+
+def _enforce_strict_types_gate(
+  *,
+  typescriptDefinitionOutput: str,
+  rewrites_to_unknown: int,
+  diagnostics,
+) -> None:
+  """Fail-loud guard against silently broken .d.ts output.
+
+  Runs after `_replace_undeclared_with_unknown` has finished its pass. When
+  `OCJS_STRICT_TYPES=1` (Docker default), any rewrite-to-unknown or any
+  unbound_reference diagnostic raises a self-contained, path-agnostic,
+  actionable `RuntimeError` so the build fails before a poisoned artifact
+  ships to consumers. The error message names the exact source of the bug
+  (R2 filter under-reaching) and the exact file/function to fix.
+  """
+  if os.environ.get("OCJS_STRICT_TYPES") != "1":
+    return
+  unbound = diagnostics.get("unbound_reference") if diagnostics else None
+  unbound = unbound or {}
+  if rewrites_to_unknown <= _STRICT_TYPES_REWRITE_BUDGET and not unbound:
+    return
+
+  # Print a triage summary BEFORE raising so the engineer doesn't need to
+  # re-run with OCJS_STRICT_TYPES=0 just to see what failed. Top 20 unbound
+  # references by occurrence count, then a budget overrun line.
+  print("\n=== OCJS_STRICT_TYPES gate failure summary ===", flush=True)
+  print(
+    f"  rewrites to 'unknown': {rewrites_to_unknown} "
+    f"(budget: {_STRICT_TYPES_REWRITE_BUDGET})",
+    flush=True,
+  )
+  print(f"  unbound class references: {len(unbound)} unique", flush=True)
+  if unbound:
+    print("  Top offenders (type spelling -> count):", flush=True)
+    for type_info, count in sorted(unbound.items(), key=lambda x: -x[1])[:20]:
+      print(f"    {type_info} ({count}x)", flush=True)
+    if len(unbound) > 20:
+      print(f"    ... and {len(unbound) - 20} more", flush=True)
+  # Sample up to 10 lines that contain a freshly-rewritten `: unknown` so
+  # the engineer can grep for them in the output. We can't reliably tell
+  # which `: unknown` lines are new vs original after the rewrite is done,
+  # so we list ALL `: unknown` occurrences as candidates — the budget
+  # already filtered out the always-zero clean case.
+  if rewrites_to_unknown > _STRICT_TYPES_REWRITE_BUDGET:
+    candidates = []
+    for line in typescriptDefinitionOutput.splitlines():
+      if _UNKNOWN_TOKEN_RE.search(line) and _RECORD_STRING_UNKNOWN_LITERAL not in line:
+        candidates.append(line.strip())
+        if len(candidates) >= 10:
+          break
+    if candidates:
+      print("  Sample lines with `unknown` rewrites:", flush=True)
+      for c in candidates:
+        print(f"    {c}", flush=True)
+
+  raise RuntimeError(
+    "Strict-types gate (OCJS_STRICT_TYPES=1) refused to ship the .d.ts: "
+    f"detected {rewrites_to_unknown} method signatures whose types were "
+    f"rewritten to bare 'unknown', and {len(unbound)} unbound class "
+    "references collected during link-time codegen. This is the silent "
+    "failure mode where the R2 NCollection link-time filter excludes a "
+    "class that is genuinely reachable through an in-scope class's method "
+    "signature, and the d.ts post-processor neutralises the dangling "
+    "reference to keep TS valid — leaving consumers with TypeScript that "
+    "compiles cleanly but crashes at runtime.\n"
+    "\n"
+    "Action: extend `_compute_yaml_class_scope` in "
+    "ocjs_bindgen.link.yaml_build to include every class referenced by an "
+    "in-scope class's method signatures, then re-run. The most common cause "
+    "is a NCollection mangled name (e.g. NCollection_HArray1_gp_Pnt) "
+    "appearing in the d.ts of an in-scope class but missing from the YAML "
+    "scope's method-signature lift pass; the existing _NCOLLECTION_TOKEN_RE "
+    "lift covers NCollection_ types but other reachable class families may "
+    "need the same treatment. Set OCJS_STRICT_TYPES=0 to bypass for "
+    "diagnostic non-shipping builds only — DO NOT ship the resulting "
+    "artifacts to consumers."
+  )
+
+
+# Identifier-bounded regex used by `_compute_yaml_class_scope` to lift NCollection
+# mentions out of in-scope class fragments' TypeScript signatures. Token must
+# start with `NCollection_` on a word boundary and contain only word characters;
+# matches stop at template angle brackets, parentheses, whitespace, or
+# punctuation. The trailing `\b` allows the existing mangled spellings like
+# `NCollection_DataMap_TCollection_AsciiString_TCollection_AsciiString` to be
+# captured wholesale, including the auto-discovered nested forms
+# (`NCollection_Array1_NCollection_Vec3_float`) — both shapes appear verbatim
+# in the d.ts fragments and both are valid manifest mangled_name values that
+# the R2 filter must keep when reachable through a method signature.
+_NCOLLECTION_TOKEN_RE = re.compile(r"\bNCollection_[A-Za-z0-9_]+\b")
+
 # PR 2.6 — link rewriter pipeline lives in ocjs_bindgen.link.rewrite.
 # Re-export the legacy entry point so the merge driver below keeps its
 # original call shape; the implementation is now a composable
@@ -172,35 +297,192 @@ def verifyBindings(bindings, libraryBasePath) -> bool:
     if strict:
       raise Exception(f"{len(missing)} requested bindings missing. Set OCJS_STRICT_VERIFY=0 to proceed with available bindings.")
 
-def _load_auto_discovered_symbols(build_dir):
-  """Load auto-discovered NCollection symbols from the manifest written by the generate step."""
+# R2 — `_auto_symbols` is now a per-build set computed inside `main()` from
+# the intersection of the global manifest with the consumer YAML's reachable
+# class scope (R1 source tagging + ancestor lift + custom sentinel). The
+# module-level binding remains as the default `shouldProcessSymbol` reads
+# from until `main()` overrides it; an empty default ensures the legacy
+# "include every auto-discovered NCollection" behaviour is *not* available
+# unless `main()` runs.
+_auto_symbols: set = set()
+
+
+def _load_full_manifest_symbols(build_dir) -> set:
+  """Return EVERY mangled name in `ncollection-manifest.json`, unfiltered.
+
+  Used only by the stale-fragment cleanup in `main()` — a fragment whose
+  stem matches any entry in the global manifest is non-stale across runs
+  (even if it's not in the current YAML's reachable set). The per-YAML
+  link-time filter (`_filter_auto_symbols_by_scope`) is a separate
+  concern; the cleanup uses this broader test so cross-YAML cache reuse
+  of auto-discovered NCollection fragments stays correct.
+  """
   manifest_path = os.path.join(build_dir, "ncollection-manifest.json")
   if os.path.isfile(manifest_path):
     with open(manifest_path) as f:
       return set(json.load(f).get("symbols", []))
   return set()
 
-_auto_symbols = _load_auto_discovered_symbols(BUILD_DIR)
 
-# Embind registers C++ classes by typeid. OCCT exposes several `using` aliases that
-# name the same template specialization (e.g. BRepGraph_ReverseIterator::ParentsOf<
-# BRepGraph_FaceId> is both BRepGraph_FacesOfEdge and BRepGraph_FacesOfWire). Linking
-# more than one binding object for those aliases registers the same type twice and
-# fails at module init with "Cannot register type ... twice". See
-# BRepGraph_ReverseIterator.hxx — keep the YAML-canonical symbol per family and skip
-# the rest even when they appear in ncollection-manifest.json.
-_EMBIND_OCTYPE_ALIAS_TYPENAME_SKIPS = frozenset({
-  "BRepGraph_FacesOfWire",
-  "BRepGraph_WiresOfEdge",
-  "BRepGraph_CompoundsOfFace",
-  "BRepGraph_CompoundsOfShell",
-  "BRepGraph_CompoundsOfSolid",
-  "BRepGraph_CompoundsOfCompound",
-})
+# R3 — kept in sync with `discover.CUSTOM_CODE_SOURCE_TAG`. Duplicated as
+# a literal here to avoid forcing the link driver to import from discover
+# (which would transitively pull libclang into every link).
+_CUSTOM_CODE_SOURCE_TAG = "__custom__"
 
+
+def _compute_yaml_class_scope(buildConfig, libraryBasePath) -> set:
+  """Return the set of class names reachable from the consumer YAML.
+
+  Scope =
+    - mainBuild.bindings ∪ extraBuilds.bindings (the symbols the consumer
+      explicitly requests),
+    - the ancestor chains serialised in each matching `*.d.ts.json`
+      fragment (so a YAML that binds `BRepBuilderAPI_MakeEdge` automatically
+      brings in `BRepBuilderAPI_MakeShape` and `BRepBuilderAPI_Command` —
+      classes whose NCollection-touching methods are inherited and therefore
+      reachable from JS),
+    - every custom-code class compiled into `build/bindings/myMain.h/`
+      (these classes are linked into the bundle by the additionalCppCode
+      pipeline, so any NCollection they reference is reachable),
+    - the `__custom__` sentinel (R3) so future discoveries tagged with
+      `CUSTOM_CODE_SOURCE_TAG` survive unconditionally.
+
+  The link-time filter (`_filter_auto_symbols_by_scope`) keeps a manifest
+  entry iff at least one of its `source_classes` is in this set.
+  """
+  scope: set = set()
+  for build_block in [buildConfig["mainBuild"], *buildConfig.get("extraBuilds", [])]:
+    scope.update(b["symbol"] for b in build_block["bindings"])
+
+  bindings_root = os.path.join(libraryBasePath, "bindings")
+  # Ancestor lift — walk every `.d.ts.json` fragment and, if its stem name is
+  # in scope, union its serialised `ancestors` chains into scope. We scan the
+  # whole tree once (O(|fragments|)) rather than per-symbol because the
+  # bindings tree has no symbol→path index.
+  #
+  # Method-signature lift (R2.1) — in the same pass, scan each in-scope
+  # fragment's TS payload for `NCollection_*` mentions and union them into
+  # scope. This catches the failure mode where an in-scope class has a
+  # method returning or taking an NCollection whose R1 `source_classes` tag
+  # does NOT include the in-scope class (the typedef-alias-origin is some
+  # other OCCT class like `TColgp_HArray1OfPnt`), which the source-only
+  # intersection in `_filter_auto_symbols_by_scope` would otherwise drop —
+  # silently downgrading the method's TS signature to `: number` / `: unknown`.
+  # The token regex is identifier-bounded so embedded NCollection mentions
+  # inside parameter spellings (e.g. `Handle_NCollection_...`) are caught.
+  scope_at_start = frozenset(scope)
+  if os.path.isdir(bindings_root):
+    for dirpath, _dirnames, filenames in os.walk(bindings_root):
+      for fname in filenames:
+        if not fname.endswith(".d.ts.json"):
+          continue
+        stem = fname[:-len(".d.ts.json")]
+        if stem not in scope_at_start:
+          continue
+        try:
+          with open(os.path.join(dirpath, fname)) as f:
+            frag = json.load(f)
+        except Exception:
+          continue
+        for ancestor_chain in (frag.get("ancestors") or {}).values():
+          if isinstance(ancestor_chain, list):
+            scope.update(ancestor_chain)
+        dts_payload = frag.get(".d.ts", "") or ""
+        if "NCollection_" in dts_payload:
+          scope.update(_NCOLLECTION_TOKEN_RE.findall(dts_payload))
+
+  # Custom-code classes — every `build/bindings/myMain.h/*.d.ts.json` was
+  # produced by the consumer's `additionalCppCode` pipeline OR by the
+  # auto-NCollection bind generator (cross-YAML cache reuse). Only the
+  # former are consumer-defined classes whose methods can reference
+  # NCollections; skip `NCollection_*` stems to keep scope semantically
+  # tight (R2 source intersections never match an NCollection name —
+  # source_classes are always OCCT class names — so the prefix-skip is
+  # purely cosmetic but stops misleading "|scope|=…" log inflation).
+  custom_root = os.path.join(bindings_root, "myMain.h")
+  if os.path.isdir(custom_root):
+    for fname in os.listdir(custom_root):
+      if not fname.endswith(".d.ts.json"):
+        continue
+      stem = fname[:-len(".d.ts.json")]
+      if stem.startswith("NCollection_"):
+        continue
+      scope.add(stem)
+
+  scope.add(_CUSTOM_CODE_SOURCE_TAG)
+  return scope
+
+
+def _filter_auto_symbols_by_scope(manifest_path: str, yaml_scope: set) -> set:
+  """Return the manifest-entry subset whose `source_classes` intersect
+  `yaml_scope`, plus the transitive closure over nested
+  ``NCollection<NCollection<…>>`` references in `args`.
+
+  Fail-loud if any manifest declaration is missing the R1 `source_classes`
+  field — there is no backwards-compat fallback (per audit's
+  "no shortcuts on unreleased APIs" principle); the only valid response is
+  to regenerate the manifest via `nx run ocjs:generate`.
+  """
+  if not os.path.isfile(manifest_path):
+    return set()
+  with open(manifest_path) as f:
+    manifest = json.load(f)
+  decls = manifest.get("declarations", [])
+  missing_src = [d["mangled_name"] for d in decls if "source_classes" not in d]
+  if missing_src:
+    raise RuntimeError(
+      f"ncollection-manifest.json is missing R1 'source_classes' on "
+      f"{len(missing_src)} entries (first: {missing_src[0]}). "
+      f"Regenerate via `nx run ocjs:generate` to pick up the new schema."
+    )
+  kept: set = set()
+  for d in decls:
+    # Keep-condition 1 — the entry's R1 source-class tag (where the
+    # typedef alias is defined, e.g. `TColgp_HArray1OfPnt`) intersects
+    # the YAML's reachable-class scope. Catches consumers that bind the
+    # alias-origin class explicitly.
+    if set(d["source_classes"]) & yaml_scope:
+      kept.add(d["mangled_name"])
+      continue
+    # Keep-condition 2 (R2.1 — method-signature reachability) — the
+    # entry's mangled name is itself in scope because an in-scope class's
+    # method signature mentions it. This catches the failure mode where a
+    # NCollection is reachable through a return/param type but whose R1
+    # source_classes never name the in-scope class (e.g. `Poly_Triangulation`
+    # exposes `MapNodeArray(): NCollection_HArray1_gp_Pnt` but the latter's
+    # source_classes is `[TColgp_HArray1OfPnt]`). `_compute_yaml_class_scope`
+    # lifts these mentions into `yaml_scope` via `_NCOLLECTION_TOKEN_RE` so
+    # the intersection here resolves correctly without re-parsing C++.
+    if d["mangled_name"] in yaml_scope:
+      kept.add(d["mangled_name"])
+  # Transitive closure: NCollection<…NCollection_X…> is kept iff every
+  # nested NCollection arg is itself kept. The args field stores raw
+  # template-arg spellings; nested NCollections appear with the
+  # `NCollection_` mangled prefix as their argument text only when the
+  # outer NCollection is templated on another mangled alias — most of
+  # the time args reference primitive OCCT classes, so this loop
+  # typically runs once and exits.
+  changed = True
+  while changed:
+    changed = False
+    for d in decls:
+      if d["mangled_name"] in kept:
+        continue
+      nested = {a for a in d["args"] if a.startswith("NCollection_")}
+      if nested and nested.issubset(kept):
+        kept.add(d["mangled_name"])
+        changed = True
+  return kept
+
+# R6 (post-R1 cleanup) — The historical `_EMBIND_OCTYPE_ALIAS_TYPENAME_SKIPS`
+# guard list existed to block alias-typedef NCollections (BRepGraph_FacesOfWire,
+# BRepGraph_WiresOfEdge, BRepGraph_Compounds*) from being registered twice
+# in Embind. Once R5's `_dedupe_by_canonical_args` in `discover.py` started
+# collapsing every alias form to its canonical (container, canonical-args)
+# key, those names stopped appearing as `mangled_name` entries in the
+# manifest entirely — verified empirically against `build/ncollection-manifest.json`.
+# The constant and its `shouldProcessSymbol` branch were dead code; removed.
 def shouldProcessSymbol(symbol: str, bindings) -> bool:
-  if symbol in _EMBIND_OCTYPE_ALIAS_TYPENAME_SKIPS:
-    return False
   if len(bindings) == 0:
     return True
   if symbol in _auto_symbols:
@@ -501,11 +783,16 @@ def main():
   buildConfig = v.normalized(buildConfig)
 
   if not args.dts_only:
+    # Stale-fragment cleanup uses the FULL manifest, not the per-YAML
+    # filtered set — auto-discovered NCollection fragments must survive
+    # cross-YAML cache reuse even if a given consumer YAML doesn't link
+    # them. Per-YAML filtering happens later in `runBuild` via R2.
+    full_manifest_symbols = _load_full_manifest_symbols(BUILD_DIR)
     custom_dir = libraryBasePath + "/bindings/myMain.h"
     if os.path.isdir(custom_dir):
       for f in os.listdir(custom_dir):
         stem = f.split(".")[0]
-        if stem not in _auto_symbols:
+        if stem not in full_manifest_symbols:
           os.remove(os.path.join(custom_dir, f))
 
     additionalCppCode = buildConfig["additionalCppCode"]
@@ -518,6 +805,16 @@ def main():
       with open(resolved, "r") as f:
         additionalCppCode += "\n" + f.read()
 
+    # R2 — the global `_auto_symbols` default is empty; custom-code
+    # generation needs the FULL manifest set as `known_exports` so the
+    # generator can resolve cross-references to NCollection types that
+    # the consumer's custom code uses (whether or not the link filter
+    # ultimately keeps them — anything actually used at compile/link
+    # time will be tagged by R1 from an OCCT source class that's in
+    # YAML scope).
+    global _auto_symbols
+    full_set = _load_full_manifest_symbols(BUILD_DIR)
+
     print("Generating custom code bindings...", flush=True)
     known_exports = {
       b["symbol"]
@@ -525,7 +822,7 @@ def main():
         buildConfig["mainBuild"]["bindings"],
         *(x["bindings"] for x in buildConfig["extraBuilds"]),
       )
-    } | _auto_symbols
+    } | full_set
     generateCustomCodeBindings(additionalCppCode, known_exports=known_exports)
     print("Compiling custom code bindings...", flush=True)
     compileCustomCodeBindings({
@@ -537,6 +834,22 @@ def main():
     for extraBuild in buildConfig["extraBuilds"]:
       verifyBindings(extraBuild, libraryBasePath)
     print("All bindings verified.", flush=True)
+
+    # R2 — compute YAML reachability scope AFTER custom-code generation
+    # (so `build/bindings/myMain.h/*.d.ts.json` fragments exist and the
+    # scope picks up custom-class names), then narrow the auto-discovered
+    # NCollection set to entries whose source_classes intersect it. The
+    # narrowed set is consumed by `shouldProcessSymbol` inside `runBuild`.
+    yaml_scope = _compute_yaml_class_scope(buildConfig, libraryBasePath)
+    manifest_path = os.path.join(BUILD_DIR, "ncollection-manifest.json")
+    _auto_symbols = _filter_auto_symbols_by_scope(manifest_path, yaml_scope)
+    print(
+      f"NCollection link filter (R2): kept {len(_auto_symbols)} / "
+      f"{len(full_set)} auto-discovered entries "
+      f"(dropped {len(full_set) - len(_auto_symbols)} unreachable from YAML scope "
+      f"|scope|={len(yaml_scope)})",
+      flush=True,
+    )
 
     runBuild(buildConfig["mainBuild"], libraryBasePath)
     for extraBuild in buildConfig["extraBuilds"]:
@@ -719,10 +1032,19 @@ def main():
     declared_names.update(
       re.findall(r"^export\s+(?:declare\s+)?interface\s+([A-Za-z_][A-Za-z0-9_]*)", typescriptDefinitionOutput, re.MULTILINE)
     )
+    pre_rewrite_unknown_count = _count_unknown_tokens(typescriptDefinitionOutput)
     typescriptDefinitionOutput = _replace_undeclared_with_unknown(
       typescriptDefinitionOutput,
       declared_names=declared_names,
       ancestor_chains=ancestorChains,
+    )
+    post_rewrite_unknown_count = _count_unknown_tokens(typescriptDefinitionOutput)
+    rewrites_to_unknown = max(0, post_rewrite_unknown_count - pre_rewrite_unknown_count)
+
+    _enforce_strict_types_gate(
+      typescriptDefinitionOutput=typescriptDefinitionOutput,
+      rewrites_to_unknown=rewrites_to_unknown,
+      diagnostics=DIAGNOSTICS,
     )
 
     typescriptDefinitionsFile = open(os.getcwd() + "/" + os.path.splitext(buildConfig["mainBuild"]["name"])[0] + ".d.ts", "w")
