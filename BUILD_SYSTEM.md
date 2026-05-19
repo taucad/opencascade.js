@@ -202,13 +202,15 @@ docker run -e OCJS_CONFIG=default \
 
 ```bash
 cd repos/opencascade.js
-./scripts/setup-deps.sh
+./scripts/clone-deps.sh
 ./build-wasm.sh --config default full path/to/consumer.yml
 ```
 
 ## Self-Contained Dependencies
 
-Run `scripts/setup-deps.sh` to clone all dependencies into `deps/`:
+Run `scripts/clone-deps.sh` to clone all dependencies into `deps/` (pass
+`--dest <dir>` to target a different location, e.g. `--dest ..` for the
+legacy sibling layout):
 
 - `deps/emsdk/` — Emscripten SDK (version from `DEPS.json`)
 - `deps/OCCT/` — OpenCASCADE Technology (pinned commit)
@@ -227,7 +229,7 @@ The script is idempotent and validates pinned commits when `OCJS_STRICT_DEPS=1`.
 | `build-cache.py compute-key`         | Nx content-hash based caching                             |
 | `cache-list` / `cache-gc`            | `npx nx reset` to clear all caches                        |
 | `step_compile_all()`                 | Nx `dependsOn` task graph                                 |
-| `../assimpjs/emsdk`                  | `deps/emsdk/` (via `setup-deps.sh`)                       |
+| `../assimpjs/emsdk`                  | `deps/emsdk/` (via `clone-deps.sh`)                       |
 | Flag stripping in `buildFromYaml.py` | Fill-not-strip (consumer flags verbatim)                  |
 | `OCJS_BIGINT` env var appendage      | Consumer specifies `-sWASM_BIGINT` directly in emccFlags  |
 | `OCJS_EVAL_CTORS` env var appendage  | Consumer specifies `-sEVAL_CTORS=N` directly in emccFlags |
@@ -237,7 +239,7 @@ The script is idempotent and validates pinned commits when `OCJS_STRICT_DEPS=1`.
 ### Stale dependencies
 
 ```bash
-rm -rf deps/ && ./scripts/setup-deps.sh
+rm -rf deps/ && ./scripts/clone-deps.sh
 ```
 
 ### Unexpected cache miss
