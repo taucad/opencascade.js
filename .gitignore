@@ -23,7 +23,7 @@ build-configs/provenance.json
 docs-site/data/*.json
 /nx-build-*.log
 
-# Project-local Python (scripts/setup-deps.sh)
+# Project-local Python (scripts/clone-deps.sh)
 /.venv/
 
 # Self-contained dependencies (Phase 2)
