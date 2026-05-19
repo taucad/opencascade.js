@@ -459,7 +459,7 @@ def main():
         default=None,
         help="Path to OCCT source checkout (default: deps/OCCT relative to OCJS root — "
              "the same tree the build pipeline compiles, kept in sync via "
-             "scripts/setup-deps.sh and DEPS.json)",
+             "scripts/clone-deps.sh and DEPS.json)",
     )
     parser.add_argument(
         "--filters",

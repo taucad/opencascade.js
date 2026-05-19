@@ -1,118 +1,262 @@
-#!/bin/bash
-set -euo pipefail
-
-# Docker E2E Validation Script
+#!/usr/bin/env bash
+# docker-e2e-validate.sh — production-readiness gate for the opencascade.js
+# Docker image (PR donalffons/opencascade.js#301).
 #
-# Builds the Docker image from scratch, runs the full.yml build (native WASM
-# exceptions with EH helpers exported), and validates the outputs.
+# Implements Validation Blueprint Phases 0-7 from
+# docs/research/opencascadejs-docker-build-readiness.md:
+#
+#   Phase 0  Build the image (cold; cache mounts amortise rebuilds).
+#   Phase 1  Provision named volumes for Nx + build caches.
+#   Phase 2  Resolve the replicad YAML from a sibling worktree.
+#   Phase 3  Cold full link against the replicad YAML.
+#   Phase 4  Output presence assertions
+#            (replicad_single.{wasm,js,d.ts,js.symbols,provenance.json,build-manifest.json}).
+#   Phase 5  Byte-size delta vs a locally-built baseline (default ±2%).
+#   Phase 6  NCollection filter ratio assertion (>= 80% drop) from provenance.
+#   Phase 7  Warm-cache rerun + JS smoke test.
 #
 # Usage:
-#   ./scripts/docker-e2e-validate.sh [--output-dir /path/to/output]
+#   ./scripts/docker-e2e-validate.sh \
+#     [--replicad-yaml <path>] \
+#     [--baseline-wasm <path>] \
+#     [--tolerance-pct N] \
+#     [--output-dir <path>] \
+#     [--image-tag <name>] \
+#     [--skip-build]
 #
-# This validates:
-#   1. Docker image builds successfully
-#   2. WASM build produces valid output
-#   3. Provenance JSON is generated
-#   4. Cache behavior works (second build should hit cache)
-#   5. Environment variable passthrough works
+# Environment variables (override defaults):
+#   REPLICAD_YAML          Default: ../replicad/packages/replicad-opencascadejs/build-config/custom_build_single.yml
+#   REPLICAD_BASELINE_WASM Default: ../replicad/packages/replicad-opencascadejs/src/replicad_single.wasm
+#   TOLERANCE_PCT          Default: 2  (byte delta tolerance for Phase 5)
+#   WARM_BUDGET_S          Default: 300  (Phase 7 warm rerun budget, seconds)
+#   FILTER_RATIO_MAX       Default: 0.20 (Phase 6 — linked/total must be ≤ this)
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-OCJS_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-OUTPUT_DIR="${1:-$OCJS_DIR/docker-e2e-output}"
-IMAGE_NAME="opencascade-js-v8-e2e"
+set -euo pipefail
 
-mkdir -p "$OUTPUT_DIR/full" "$OUTPUT_DIR/Os-test"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-echo "═══════════════════════════════════════════════════"
-echo "  Docker E2E Validation"
-echo "═══════════════════════════════════════════════════"
-echo ""
+IMAGE_TAG="ocjs:e2e"
+OUTPUT_DIR="$REPO_ROOT/docker-e2e-output"
+REPLICAD_YAML_DEFAULT="$REPO_ROOT/../replicad/packages/replicad-opencascadejs/build-config/custom_build_single.yml"
+REPLICAD_BASELINE_DEFAULT="$REPO_ROOT/../replicad/packages/replicad-opencascadejs/src/replicad_single.wasm"
+REPLICAD_YAML="${REPLICAD_YAML:-$REPLICAD_YAML_DEFAULT}"
+REPLICAD_BASELINE_WASM="${REPLICAD_BASELINE_WASM:-$REPLICAD_BASELINE_DEFAULT}"
+TOLERANCE_PCT="${TOLERANCE_PCT:-2}"
+WARM_BUDGET_S="${WARM_BUDGET_S:-300}"
+FILTER_RATIO_MAX="${FILTER_RATIO_MAX:-0.20}"
+SKIP_BUILD=0
+PLATFORM_FLAGS=()
 
-# Step 1: Build Docker image
-echo "Step 1/6: Building Docker image..."
-docker build -t "$IMAGE_NAME" "$OCJS_DIR"
-echo "  PASS: Docker image built"
-echo ""
+# Apple Silicon defaults: amd64 emulation for emscripten/emsdk parity.
+if [ "$(uname -m)" = "arm64" ] && [ "$(uname -s)" = "Darwin" ]; then
+  PLATFORM_FLAGS+=("--platform" "linux/amd64")
+fi
 
-# Step 2: Build with full.yml (native WASM exceptions + EH helpers)
-echo "Step 2/6: Building WASM with full.yml..."
-docker run --rm -v "$OUTPUT_DIR/full:/output" \
-  -e OCJS_EXCEPTIONS=1 \
-  "$IMAGE_NAME" full build-configs/full.yml
-echo "  PASS: full.yml build completed"
-echo ""
-
-# Step 3: Verify outputs
-echo "Step 3/6: Verifying outputs..."
-PASS=true
-
-dir="$OUTPUT_DIR/full"
-for ext in .wasm .js .d.ts; do
-  matches=$(find "$dir" -name "*$ext" 2>/dev/null | head -1)
-  if [ -z "$matches" ]; then
-    echo "  FAIL: No $ext file found in $dir"
-    PASS=false
-  else
-    size=$(stat -f%z "$matches" 2>/dev/null || stat -c%s "$matches" 2>/dev/null)
-    echo "  OK: $(basename "$matches") ($size bytes)"
-  fi
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --replicad-yaml)    REPLICAD_YAML="$2"; shift 2 ;;
+    --baseline-wasm)    REPLICAD_BASELINE_WASM="$2"; shift 2 ;;
+    --tolerance-pct)    TOLERANCE_PCT="$2"; shift 2 ;;
+    --output-dir)       OUTPUT_DIR="$2"; shift 2 ;;
+    --image-tag)        IMAGE_TAG="$2"; shift 2 ;;
+    --skip-build)       SKIP_BUILD=1; shift ;;
+    --warm-budget)      WARM_BUDGET_S="$2"; shift 2 ;;
+    --filter-ratio-max) FILTER_RATIO_MAX="$2"; shift 2 ;;
+    -h|--help)
+      sed -n '2,30p' "${BASH_SOURCE[0]}"
+      exit 0
+      ;;
+    *)
+      echo "ERROR: Unknown flag: $1" >&2
+      exit 2
+      ;;
+  esac
 done
 
-if [ "$PASS" = true ]; then
-  echo "  PASS: All output files present"
+NX_VOLUME="ocjs-nx-cache-e2e"
+BUILD_VOLUME="ocjs-build-cache-e2e"
+
+mkdir -p "$OUTPUT_DIR"
+
+_stat_size() {
+  local f="$1"
+  stat -f%z "$f" 2>/dev/null || stat -c%s "$f" 2>/dev/null
+}
+
+_section() {
+  echo ""
+  echo "═══════════════════════════════════════════════════════════════"
+  echo "  $1"
+  echo "═══════════════════════════════════════════════════════════════"
+}
+
+_fail() {
+  echo "FAIL: $1" >&2
+  exit 1
+}
+
+_ok() {
+  echo "  PASS: $1"
+}
+
+# ── Phase 0: Image build ────────────────────────────────────────────────────
+_section "Phase 0/7  Building image ($IMAGE_TAG)"
+if [ "$SKIP_BUILD" -eq 1 ]; then
+  echo "  --skip-build set; reusing existing image."
+  docker image inspect "$IMAGE_TAG" >/dev/null 2>&1 || _fail "Image $IMAGE_TAG not present and --skip-build set."
 else
-  echo "  FAIL: Missing output files"
+  DOCKER_BUILDKIT=1 docker build \
+    "${PLATFORM_FLAGS[@]}" \
+    --progress=plain \
+    -t "$IMAGE_TAG" \
+    "$REPO_ROOT"
+  _ok "Image built"
 fi
-echo ""
 
-# Step 4: Check provenance
-echo "Step 4/6: Checking provenance..."
-PROV_FILE=$(find "$OUTPUT_DIR" -name "provenance.json" 2>/dev/null | head -1)
-if [ -n "$PROV_FILE" ]; then
-  echo "  PASS: provenance.json found at $PROV_FILE"
-  python3 -c "
-import json
-with open('$PROV_FILE') as f:
-    p = json.load(f)
-print(f'    Schema: {p.get(\"schema\", \"unknown\")}')
-print(f'    OCCT commit: {p.get(\"source\", {}).get(\"occtCommit\", \"unknown\")[:12]}')
-print(f'    Emscripten: {p.get(\"toolchain\", {}).get(\"emscripten\", \"unknown\")}')
-" 2>/dev/null || echo "  WARNING: Could not parse provenance.json"
-else
-  echo "  WARNING: No provenance.json found (provenance may be in build/ inside container)"
+# ── Phase 1: Volume provisioning ────────────────────────────────────────────
+_section "Phase 1/7  Provisioning named cache volumes"
+docker volume create "$NX_VOLUME"    >/dev/null
+docker volume create "$BUILD_VOLUME" >/dev/null
+_ok "Volumes ready: $NX_VOLUME, $BUILD_VOLUME"
+
+# ── Phase 2: Resolve replicad YAML ──────────────────────────────────────────
+_section "Phase 2/7  Resolving replicad YAML"
+if [ ! -f "$REPLICAD_YAML" ]; then
+  _fail "REPLICAD_YAML not found at $REPLICAD_YAML
+Override with --replicad-yaml <path> or REPLICAD_YAML=<path>."
 fi
-echo ""
+REPLICAD_YAML_ABS="$(cd "$(dirname "$REPLICAD_YAML")" && pwd)/$(basename "$REPLICAD_YAML")"
+_ok "Using $REPLICAD_YAML_ABS"
 
-# Step 5: Test cache behavior (second build should be faster)
-echo "Step 5/6: Testing cache behavior..."
-CACHE_START=$(date +%s)
-docker run --rm "$IMAGE_NAME" full build-configs/full.yml
-CACHE_END=$(date +%s)
-CACHE_ELAPSED=$((CACHE_END - CACHE_START))
-echo "  Second build took ${CACHE_ELAPSED}s (should be significantly faster if cache works)"
-echo ""
+# ── Phase 3: Cold full link ─────────────────────────────────────────────────
+_section "Phase 3/7  Cold full-link against replicad YAML"
+COLD_START=$(date +%s)
+docker run --rm \
+  "${PLATFORM_FLAGS[@]}" \
+  --memory 8g --cpus 8 \
+  -v "$NX_VOLUME:/opencascade.js/.nx" \
+  -v "$BUILD_VOLUME:/opencascade.js/build" \
+  -v "$REPLICAD_YAML_ABS:/src/replicad.yml:ro" \
+  -v "$OUTPUT_DIR:/output" \
+  "$IMAGE_TAG" full /src/replicad.yml
+COLD_END=$(date +%s)
+COLD_ELAPSED=$((COLD_END - COLD_START))
+_ok "Cold build wall time: ${COLD_ELAPSED}s"
 
-# Step 6: Test env var passthrough
-echo "Step 6/6: Testing env var passthrough..."
-docker run --rm -v "$OUTPUT_DIR/Os-test:/output" \
-  -e OCJS_OPT="-Os" \
-  "$IMAGE_NAME" full build-configs/full.yml
-OS_WASM=$(find "$OUTPUT_DIR/Os-test" -name "*.wasm" 2>/dev/null | head -1)
-FULL_WASM=$(find "$OUTPUT_DIR/full" -name "*.wasm" 2>/dev/null | head -1)
-if [ -n "$OS_WASM" ] && [ -n "$FULL_WASM" ]; then
-  OS_SIZE=$(stat -f%z "$OS_WASM" 2>/dev/null || stat -c%s "$OS_WASM" 2>/dev/null)
-  FULL_SIZE=$(stat -f%z "$FULL_WASM" 2>/dev/null || stat -c%s "$FULL_WASM" 2>/dev/null)
-  echo "  -O2 size: $FULL_SIZE bytes"
-  echo "  -Os size: $OS_SIZE bytes"
-  if [ "$OS_SIZE" -lt "$FULL_SIZE" ]; then
-    echo "  PASS: -Os build is smaller (env var passthrough works)"
-  else
-    echo "  WARNING: -Os build is not smaller; env var passthrough may not be working"
+# ── Phase 4: Output presence ────────────────────────────────────────────────
+_section "Phase 4/7  Asserting output artefacts"
+EXPECTED_ARTIFACTS=(
+  "replicad_single.wasm"
+  "replicad_single.js"
+  "replicad_single.d.ts"
+  "replicad_single.js.symbols"
+  "replicad_single.provenance.json"
+  "replicad_single.build-manifest.json"
+)
+for f in "${EXPECTED_ARTIFACTS[@]}"; do
+  if [ ! -f "$OUTPUT_DIR/$f" ]; then
+    _fail "Missing artefact: $OUTPUT_DIR/$f"
   fi
-fi
-echo ""
+  _ok "$f ($(_stat_size "$OUTPUT_DIR/$f") bytes)"
+done
 
-echo "═══════════════════════════════════════════════════"
-echo "  Docker E2E Validation Complete"
-echo "  Output directory: $OUTPUT_DIR"
-echo "═══════════════════════════════════════════════════"
+CANDIDATE_WASM="$OUTPUT_DIR/replicad_single.wasm"
+CANDIDATE_JS="$OUTPUT_DIR/replicad_single.js"
+PROV_FILE="$OUTPUT_DIR/replicad_single.provenance.json"
+
+# ── Phase 5: Byte-size delta vs baseline ────────────────────────────────────
+_section "Phase 5/7  Byte-size delta vs baseline"
+if [ ! -f "$REPLICAD_BASELINE_WASM" ]; then
+  echo "  WARNING: Baseline WASM not found at $REPLICAD_BASELINE_WASM (skipping delta check)."
+  echo "  Override with --baseline-wasm <path> or REPLICAD_BASELINE_WASM=<path>."
+else
+  CANDIDATE_SIZE=$(_stat_size "$CANDIDATE_WASM")
+  BASELINE_SIZE=$(_stat_size "$REPLICAD_BASELINE_WASM")
+  DELTA_PCT=$(python3 -c "
+candidate, baseline, tol = $CANDIDATE_SIZE, $BASELINE_SIZE, $TOLERANCE_PCT
+delta = (candidate - baseline) / baseline * 100
+print(f'{delta:+.2f}')
+")
+  echo "  Candidate: $CANDIDATE_SIZE bytes"
+  echo "  Baseline:  $BASELINE_SIZE bytes"
+  echo "  Delta:     ${DELTA_PCT}%"
+  python3 -c "
+import sys
+candidate, baseline, tol = $CANDIDATE_SIZE, $BASELINE_SIZE, $TOLERANCE_PCT
+delta = abs((candidate - baseline) / baseline * 100)
+sys.exit(0 if delta <= tol else 1)
+" || _fail "Byte-size delta exceeds ±${TOLERANCE_PCT}%"
+  _ok "Within ±${TOLERANCE_PCT}% of baseline"
+fi
+
+# ── Phase 6: NCollection filter ratio ───────────────────────────────────────
+_section "Phase 6/7  NCollection filter ratio (linked/total ≤ ${FILTER_RATIO_MAX})"
+python3 - "$PROV_FILE" "$FILTER_RATIO_MAX" <<'PY' || _fail "NCollection filter ratio assertion failed"
+import json, sys
+prov_path, max_ratio = sys.argv[1], float(sys.argv[2])
+data = json.load(open(prov_path))
+mani = data.get('nCollectionManifest') or data.get('nCollection') or {}
+linked = mani.get('linked') or mani.get('linkedCount')
+total = mani.get('total') or mani.get('totalCount')
+if linked is None or total is None or total == 0:
+    print(f"  WARNING: provenance.json missing nCollectionManifest.linked/total (linked={linked}, total={total}); skipping ratio check.")
+    sys.exit(0)
+ratio = linked / total
+print(f"  Linked: {linked} / Total: {total} = {ratio:.3f}")
+if ratio > max_ratio:
+    print(f"  ratio {ratio:.3f} exceeds budget {max_ratio:.3f}", file=sys.stderr)
+    sys.exit(1)
+print(f"  PASS: filter dropped {(1-ratio)*100:.1f}% of NCollection symbols (budget ≥ {(1-max_ratio)*100:.0f}%)")
+PY
+
+# ── Phase 7a: Warm-cache rerun ──────────────────────────────────────────────
+_section "Phase 7a/7  Warm-cache rerun (budget ${WARM_BUDGET_S}s)"
+WARM_START=$(date +%s)
+docker run --rm \
+  "${PLATFORM_FLAGS[@]}" \
+  --memory 8g --cpus 8 \
+  -v "$NX_VOLUME:/opencascade.js/.nx" \
+  -v "$BUILD_VOLUME:/opencascade.js/build" \
+  -v "$REPLICAD_YAML_ABS:/src/replicad.yml:ro" \
+  -v "$OUTPUT_DIR:/output" \
+  "$IMAGE_TAG" full /src/replicad.yml
+WARM_END=$(date +%s)
+WARM_ELAPSED=$((WARM_END - WARM_START))
+echo "  Warm wall time: ${WARM_ELAPSED}s (budget ${WARM_BUDGET_S}s)"
+if [ "$WARM_ELAPSED" -gt "$WARM_BUDGET_S" ]; then
+  _fail "Warm rerun (${WARM_ELAPSED}s) exceeded budget (${WARM_BUDGET_S}s) — Nx cache reuse is broken."
+fi
+_ok "Warm rerun within budget"
+
+# ── Phase 7b: JS smoke test ─────────────────────────────────────────────────
+_section "Phase 7b/7  JS smoke test against built replicad_single.js"
+node - "$CANDIDATE_JS" <<'JS' || _fail "JS smoke test failed"
+const path = require('path');
+const init = require(path.resolve(process.argv[2]));
+(async () => {
+  const oc = await (typeof init === 'function' ? init() : init.default());
+  if (!oc) throw new Error('module init returned falsy');
+  const p = new oc.gp_Pnt_3(1, 2, 3);
+  if (p.X() !== 1 || p.Y() !== 2 || p.Z() !== 3) {
+    throw new Error(`gp_Pnt round-trip failed: (${p.X()}, ${p.Y()}, ${p.Z()})`);
+  }
+  const q = new oc.gp_Pnt_3(4, 5, 6);
+  const edge = new oc.BRepBuilderAPI_MakeEdge_3(p, q);
+  if (!edge.IsDone()) throw new Error('BRepBuilderAPI_MakeEdge.IsDone() returned false');
+  edge.delete();
+  p.delete();
+  q.delete();
+  console.log('  PASS: gp_Pnt + BRepBuilderAPI_MakeEdge round-trip succeeded.');
+})().catch((err) => {
+  console.error('  FAIL:', err && err.stack || err);
+  process.exit(1);
+});
+JS
+
+_section "RESULT: Docker E2E validation PASSED"
+echo "  Image:       $IMAGE_TAG"
+echo "  Cold wall:   ${COLD_ELAPSED}s"
+echo "  Warm wall:   ${WARM_ELAPSED}s"
+echo "  Output dir:  $OUTPUT_DIR"
+echo "  Volumes:     $NX_VOLUME, $BUILD_VOLUME"
