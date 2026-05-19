@@ -312,6 +312,79 @@ exclude:
     - V3d
     - STEPCAFControl_GDTProperty
 
+    # R1 — WASM-meaningless OSD / Standard / Plugin / Message / Quantity
+    # See docs/research/ocjs-bindings-wasm-applicability-audit.md
+    - prefix: OSD_SIG
+    - prefix: OSD_Exception_
+    - OSD_Signal
+    - OSD_SignalMode
+    # NOTE: OSD_Thread, OSD_ThreadPool, OSD_Parallel are intentionally NOT excluded.
+    # They are reserved for a future THREADING=multi-threaded build per the
+    # Multi-threading reserve section of
+    # docs/research/ocjs-bindings-wasm-applicability-audit.md
+    - OSD_SharedLibrary
+    - OSD_LoadMode
+    - Plugin
+    - Plugin_Failure
+    - OSD_Host
+    - OSD_Process
+    - OSD_Disk
+    - OSD_OEMType
+    - OSD_SysType
+    - OSD_WhoAmI
+    - OSD_Environment
+    - OSD_PerfMeter
+    - OSD_MemInfo
+    - OSD_Chronometer
+    - OSD_Timer
+    - OSD_CachedFileSystem
+    - OSD_Directory
+    - OSD_DirectoryIterator
+    - OSD_Error
+    - OSD_Exception
+    - OSD_FileIterator
+    - OSD_FileSystem
+    - OSD_FileSystemSelector
+    - OSD_FromWhere
+    - OSD_KindFile
+    - OSD_LocalFileSystem
+    - OSD_LockType
+    - OSD_OSDError
+    - OSD_OpenMode
+    - OSD_SingleProtection
+    # NOTE: Standard_Mutex (+ nested Sentry/Sentry_1/Sentry_2) and Standard_Condition
+    # are intentionally NOT excluded — reserved for the multi-threaded build.
+    # See docs/research/ocjs-bindings-wasm-applicability-audit.md#multi-threading-reserve
+    - Standard_LicenseError
+    - Standard_LicenseNotFound
+    - Standard_AbortiveTransaction
+    - Standard_ImmutableObject
+    - Standard_MMgrOpt
+    - Standard_MMgrRoot
+    - Message_PrinterSystemLog
+    - Message_ConsoleColor
+    - Quantity_Date
+    - Quantity_DateDefinitionError
+    - Quantity_Period
+    - Quantity_PeriodDefinitionError
+
+    # R2 — Dead format (VRML) orphan class. Packages handled via exclude.packages.
+    - DEVRML_ConfigurationNode
+
+    # R4 — DE format-config scaffolds (DE_Provider / DE_Wrapper already excluded)
+    - prefix: DEBREP_
+    - prefix: DEGLTF_
+    - prefix: DEIGES_
+    - prefix: DEOBJ_
+    - prefix: DEPLY_
+    - prefix: DESTEP_
+    - prefix: DEXCAF_
+    - DE_ConfigurationContext
+    - DE_ConfigurationNode
+    - DE_ShapeFixConfigurationNode
+    - DE_ShapeFixParameters
+    - DE_ValidationUtils
+
   methods:
     FairCurve_Batten: [Dump]
     FairCurve_MinimalVariation: [Dump]
@@ -693,6 +766,13 @@ exclude:
     - AppDef
     - GeomPlate
     - ProjLib
+
+    ## R2 — Dead format (VRML — superseded by glTF / no consumer)
+    ## See docs/research/ocjs-bindings-wasm-applicability-audit.md
+    - Vrml
+    - VrmlAPI
+    - VrmlConverter
+    - VrmlData
 
   # Semantic rules that remain in code (not configurable):
   # - Methods with void*, istream/ostream params (type-based)
