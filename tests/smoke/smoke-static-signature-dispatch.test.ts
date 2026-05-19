@@ -1,5 +1,5 @@
 /**
- * Smoke tests: Static method signature dispatch.
+ * Smoke tests: Static method signature dispatch under input-passthrough RBV.
  *
  * Validates that static methods with same-arity overloads dispatch correctly
  * via the JS signature table. A bug in _embind_register_class_class_function
@@ -9,14 +9,19 @@
  * properly cleaning up the stale entry and may block overload resolution.
  *
  * Regression target: BRep_Tool.PolygonOnTriangulation has a 3-arg
- * select_overload (Edge, Triangulation, Location) and a 3-arg RBV
- * optional_override (Edge, Location, int). The dispatch must route
- * to the correct overload based on argument types.
+ * select_overload (Edge, Triangulation, Location) returning a Handle, plus a
+ * 2-arg Approach G Handle-elision overload (Edge, Location) returning a
+ * `{P, T, L}` container. Under Approach G the non-const `Handle<T>&` output
+ * positions are elided from the JS-facing arg list (the C++ lambda declares
+ * stack-local null Handles instead — see
+ * `docs/research/ocjs-rbv-handle-output-param-elision.md`). The dispatch must
+ * route to the correct overload based on argument count and types.
  *
  * Patterns tested:
- * - BRep_Tool.PolygonOnTriangulation 3-arg type-based dispatch
- * - BRep_Tool.Curve 3-arg RBV static method dispatch
- * - BRepTools.UVBounds 1-arg static method with value_object return
+ * - BRep_Tool.PolygonOnTriangulation dispatch across the 3-arg non-RBV
+ *   handle-returning overload and the 2-arg Approach G Handle-elision overload
+ * - BRep_Tool.Curve static method with input-passthrough RBV
+ * - BRep_Tool.Triangulation input-passthrough RBV container unwrapping
  */
 import { describe, it, expect, beforeAll } from 'vitest';
 import { initOC, getOC, wasmExists } from './helpers.js';
@@ -24,6 +29,12 @@ import { initOC, getOC, wasmExists } from './helpers.js';
 describe.skipIf(!wasmExists)('Smoke: static method signature dispatch', () => {
   beforeAll(async () => { await initOC(); });
 
+  /**
+   * Returns an owning `TopoDS_Shape` for the caller to bind with `using`.
+   * `shape` is forwarded via `return` (tau-lint return-flow escape); do not
+   * declare it with `using` inside the helper — that would dispose before the
+   * caller runs. `box` is scoped with `using` so it is released after meshing.
+   */
   function makeTriangulatedBox() {
     const oc = getOC();
     using box = new oc.BRepPrimAPI_MakeBox(10, 20, 30);
@@ -34,10 +45,10 @@ describe.skipIf(!wasmExists)('Smoke: static method signature dispatch', () => {
     return shape;
   }
 
-  describe('BRep_Tool.PolygonOnTriangulation — 3-arg type dispatch', () => {
+  describe('BRep_Tool.PolygonOnTriangulation — overload dispatch', () => {
     it('should dispatch (Edge, Triangulation, Location) to the handle-returning overload', () => {
       const oc = getOC();
-      const shape = makeTriangulatedBox();
+      using shape = makeTriangulatedBox();
 
       using faceExplorer = new oc.TopExp_Explorer(
         shape,
@@ -45,10 +56,14 @@ describe.skipIf(!wasmExists)('Smoke: static method signature dispatch', () => {
         oc.TopAbs_ShapeEnum.TopAbs_SHAPE,
       );
       expect(faceExplorer.More()).toBe(true);
-      const face = oc.TopoDS.Face(faceExplorer.Current());
+      using faceExplorerCurrent = faceExplorer.Current();
+      using face = oc.TopoDS.Face(faceExplorerCurrent);
 
       using loc = new oc.TopLoc_Location();
-      const tri = oc.BRep_Tool.Triangulation(face, loc, 0);
+      // Triangulation returns the Poly_Triangulation handle directly under
+      // R1/R2 — TopLoc_Location is a class output mutated in place, the
+      // Handle return is surfaced natively (no envelope).
+      using tri = oc.BRep_Tool.Triangulation(face, loc, 0);
       expect(tri.isNull()).toBe(false);
 
       using edgeExplorer = new oc.TopExp_Explorer(
@@ -57,15 +72,16 @@ describe.skipIf(!wasmExists)('Smoke: static method signature dispatch', () => {
         oc.TopAbs_ShapeEnum.TopAbs_SHAPE,
       );
       expect(edgeExplorer.More()).toBe(true);
-      const edge = oc.TopoDS.Edge(edgeExplorer.Current());
+      using edgeExplorerCurrent = edgeExplorer.Current();
+      using edge = oc.TopoDS.Edge(edgeExplorerCurrent);
 
-      const polyOnTri = oc.BRep_Tool.PolygonOnTriangulation(edge, tri, loc);
+      using polyOnTri = oc.BRep_Tool.PolygonOnTriangulation(edge, tri, loc);
       expect(typeof polyOnTri.isNull).toBe('function');
     });
 
-    it('should dispatch (Edge, Location) to the {P, T} RBV overload', () => {
+    it('should dispatch (Edge, Location) to the {P, T, L} Approach G elision overload', () => {
       const oc = getOC();
-      const shape = makeTriangulatedBox();
+      using shape = makeTriangulatedBox();
 
       using edgeExplorer = new oc.TopExp_Explorer(
         shape,
@@ -73,10 +89,15 @@ describe.skipIf(!wasmExists)('Smoke: static method signature dispatch', () => {
         oc.TopAbs_ShapeEnum.TopAbs_SHAPE,
       );
       expect(edgeExplorer.More()).toBe(true);
-      const edge = oc.TopoDS.Edge(edgeExplorer.Current());
+      using edgeExplorerCurrent2 = edgeExplorer.Current();
+      using edge = oc.TopoDS.Edge(edgeExplorerCurrent2);
       using loc = new oc.TopLoc_Location();
 
-      const result = oc.BRep_Tool.PolygonOnTriangulation(edge, loc);
+      // Approach G: the `P` and `T` Handle outputs are elided from the JS-side
+      // arg list — the C++ lambda declares stack-local null Handles and
+      // surfaces them as container fields. Caller passes only (Edge, Location)
+      // and reads the freshly-assigned wrappers from the container.
+      using result = oc.BRep_Tool.PolygonOnTriangulation(edge, loc);
       expect(result).toEqual(expect.objectContaining({
         P: expect.anything(),
         T: expect.anything(),
@@ -84,20 +105,22 @@ describe.skipIf(!wasmExists)('Smoke: static method signature dispatch', () => {
     });
   });
 
-  describe('BRep_Tool.Curve — static method with RBV {First, Last}', () => {
-    it('should return {Curve, First, Last} from edge curve extraction', () => {
+  describe('BRep_Tool.Curve — static method with input-passthrough RBV {First, Last}', () => {
+    it('should return {result, theLocation, First, Last} from edge curve extraction', () => {
       const oc = getOC();
       using box = new oc.BRepPrimAPI_MakeBox(10, 10, 10);
+      using boxShape = box.Shape();
       using explorer = new oc.TopExp_Explorer(
-        box.Shape(),
+        boxShape,
         oc.TopAbs_ShapeEnum.TopAbs_EDGE,
         oc.TopAbs_ShapeEnum.TopAbs_SHAPE,
       );
       expect(explorer.More()).toBe(true);
-      const edge = oc.TopoDS.Edge(explorer.Current());
+      using explorerCurrent = explorer.Current();
+      using edge = oc.TopoDS.Edge(explorerCurrent);
 
       using loc = new oc.TopLoc_Location();
-      const curveResult = oc.BRep_Tool.Curve(edge, loc);
+      using curveResult = oc.BRep_Tool.Curve(edge, loc, 0, 0);
 
       expect(curveResult).toEqual(expect.objectContaining({
         First: expect.any(Number),

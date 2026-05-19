@@ -2,14 +2,9 @@
  * Smoke tests: Unified return-by-value for output parameters.
  *
  * Validates that C++ methods with non-const reference output parameters
- * (Handle<T>& and primitive T&) return structured objects instead of
- * requiring caller-allocated mutable arguments.
- *
- * Covers:
- * - Handle<T>& output params on const methods (stripped from signature)
- * - Primitive T& output params on const methods (stripped from signature)
- * - Static methods with primitive T& (stripped from signature, returned in struct)
- * - Methods with non-void return + output params
+ * return structured objects instead of requiring caller-allocated mutable
+ * arguments. See `docs/research/ocjs-rbv-test-corpus-contract-drift.md`
+ * for the S0/S1/S2 return-shape contract (Handle outputs use Approach G elision).
  */
 import { describe, it, expect, beforeAll } from 'vitest';
 import { initOC, getOC, wasmExists } from './helpers.js';
@@ -35,15 +30,13 @@ describe.skipIf(!wasmExists)('Smoke: Output parameter return-by-value', () => {
       const nSegments = intersector.NbSegments();
 
       if (nSegments > 0) {
-        const result = intersector.Segment(1);
+        using result = intersector.Segment(1);
         expect(result).toEqual(expect.objectContaining({
           Curve1: expect.anything(),
           Curve2: expect.anything(),
         }));
         expect(typeof result.Curve1.delete).toBe('function');
         expect(typeof result.Curve2.delete).toBe('function');
-        result.Curve1.delete();
-        result.Curve2.delete();
       }
     });
 
@@ -64,16 +57,14 @@ describe.skipIf(!wasmExists)('Smoke: Output parameter return-by-value', () => {
       const nSegments = intersector.NbSegments();
 
       if (nSegments > 0) {
-        const { Curve1, Curve2 } = intersector.Segment(1);
+        using disposable = intersector.Segment(1);
+        const { Curve1, Curve2 } = disposable;
 
         expect(typeof Curve1.FirstParameter).toBe('function');
         expect(typeof Curve2.FirstParameter).toBe('function');
 
         const fp1 = Curve1.FirstParameter();
         expect(typeof fp1).toBe('number');
-
-        Curve1.delete();
-        Curve2.delete();
       }
     });
   });
@@ -82,10 +73,12 @@ describe.skipIf(!wasmExists)('Smoke: Output parameter return-by-value', () => {
     it('should return U1, U2, V1, V2 from Geom_Surface.Bounds', () => {
       const oc = getOC();
 
-      using ax3 = new oc.gp_Ax3(new oc.gp_Pnt(), new oc.gp_Dir(0, 0, 1));
+      using gpPnt = new oc.gp_Pnt();
+      using gpDir = new oc.gp_Dir(0, 0, 1);
+      using ax3 = new oc.gp_Ax3(gpPnt, gpDir);
       using sphere = new oc.Geom_SphericalSurface(ax3, 10.0);
 
-      const bounds = sphere.Bounds();
+      const bounds = sphere.Bounds(0, 0, 0, 0);
       expect(bounds).toEqual(expect.objectContaining({
         U1: expect.any(Number),
         U2: expect.any(Number),
@@ -98,14 +91,16 @@ describe.skipIf(!wasmExists)('Smoke: Output parameter return-by-value', () => {
     it('should return U and V from GeomAPI_ProjectPointOnSurf.LowerDistanceParameters', () => {
       const oc = getOC();
 
-      using ax3 = new oc.gp_Ax3(new oc.gp_Pnt(), new oc.gp_Dir(0, 0, 1));
+      using gpPnt2 = new oc.gp_Pnt();
+      using gpDir2 = new oc.gp_Dir(0, 0, 1);
+      using ax3 = new oc.gp_Ax3(gpPnt2, gpDir2);
       using sphere = new oc.Geom_SphericalSurface(ax3, 10.0);
       using point = new oc.gp_Pnt(10, 0, 0);
 
       using projector = new oc.GeomAPI_ProjectPointOnSurf(point, sphere);
       expect(projector.NbPoints()).toBeGreaterThan(0);
 
-      const params = projector.LowerDistanceParameters();
+      const params = projector.LowerDistanceParameters(0, 0);
       expect(params).toEqual(expect.objectContaining({
         U: expect.any(Number),
         V: expect.any(Number),
@@ -118,14 +113,15 @@ describe.skipIf(!wasmExists)('Smoke: Output parameter return-by-value', () => {
       const oc = getOC();
 
       using box = new oc.BRepPrimAPI_MakeBox(10, 20, 30);
-      const shape = box.Shape();
+      using shape = box.Shape();
 
       using explorer = new oc.TopExp_Explorer(shape, oc.TopAbs_ShapeEnum.TopAbs_FACE);
       expect(explorer.More()).toBe(true);
 
-      const face = oc.TopoDS.Face(explorer.Current());
+      using explorerCurrent = explorer.Current();
+      using face = oc.TopoDS.Face(explorerCurrent);
 
-      const result = oc.BRepTools.UVBounds(face);
+      const result = oc.BRepTools.UVBounds(face, 0, 0, 0, 0);
       expect(result).toEqual(expect.objectContaining({
         UMin: expect.any(Number),
         UMax: expect.any(Number),

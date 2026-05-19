@@ -30,15 +30,17 @@ describe.skipIf(!wasmExists)('Smoke: value_object registration independence', ()
     it('should return {UMin, UMax, VMin, VMax} with valid numeric bounds', () => {
       const oc = getOC();
       using box = new oc.BRepPrimAPI_MakeBox(10, 20, 30);
+      using boxShape = box.Shape();
       using explorer = new oc.TopExp_Explorer(
-        box.Shape(),
+        boxShape,
         oc.TopAbs_ShapeEnum.TopAbs_FACE,
         oc.TopAbs_ShapeEnum.TopAbs_SHAPE,
       );
       expect(explorer.More()).toBe(true);
-      const face = oc.TopoDS.Face(explorer.Current());
+      using explorerCurrent = explorer.Current();
+      using face = oc.TopoDS.Face(explorerCurrent);
 
-      const result = oc.BRepTools.UVBounds(face);
+      const result = oc.BRepTools.UVBounds(face, 0, 0, 0, 0);
 
       expect(result).toEqual(expect.objectContaining({
         UMin: expect.any(Number),
@@ -53,15 +55,17 @@ describe.skipIf(!wasmExists)('Smoke: value_object registration independence', ()
     it('should return UV bounds for a cylindrical face', () => {
       const oc = getOC();
       using cylinder = new oc.BRepPrimAPI_MakeCylinder(5, 20);
+      using cylinderShape = cylinder.Shape();
       using explorer = new oc.TopExp_Explorer(
-        cylinder.Shape(),
+        cylinderShape,
         oc.TopAbs_ShapeEnum.TopAbs_FACE,
         oc.TopAbs_ShapeEnum.TopAbs_SHAPE,
       );
       expect(explorer.More()).toBe(true);
-      const face = oc.TopoDS.Face(explorer.Current());
+      using explorerCurrent2 = explorer.Current();
+      using face = oc.TopoDS.Face(explorerCurrent2);
 
-      const result = oc.BRepTools.UVBounds(face);
+      const result = oc.BRepTools.UVBounds(face, 0, 0, 0, 0);
       expect(typeof result.UMin).toBe('number');
       expect(typeof result.UMax).toBe('number');
       expect(typeof result.VMin).toBe('number');
@@ -75,15 +79,17 @@ describe.skipIf(!wasmExists)('Smoke: value_object registration independence', ()
     it('should return {First, Last} from edge parameter range', () => {
       const oc = getOC();
       using box = new oc.BRepPrimAPI_MakeBox(10, 10, 10);
+      using boxShape2 = box.Shape();
       using explorer = new oc.TopExp_Explorer(
-        box.Shape(),
+        boxShape2,
         oc.TopAbs_ShapeEnum.TopAbs_EDGE,
         oc.TopAbs_ShapeEnum.TopAbs_SHAPE,
       );
       expect(explorer.More()).toBe(true);
-      const edge = oc.TopoDS.Edge(explorer.Current());
+      using explorerCurrent3 = explorer.Current();
+      using edge = oc.TopoDS.Edge(explorerCurrent3);
 
-      const range = oc.BRep_Tool.Range(edge);
+      const range = oc.BRep_Tool.Range(edge, 0, 0);
 
       expect(range).toEqual(expect.objectContaining({
         First: expect.any(Number),
@@ -98,19 +104,23 @@ describe.skipIf(!wasmExists)('Smoke: value_object registration independence', ()
       const oc = getOC();
 
       using box = new oc.BRepPrimAPI_MakeBox(10, 20, 30);
+      using boxShape3 = box.Shape();
       using faceExplorer = new oc.TopExp_Explorer(
-        box.Shape(),
+        boxShape3,
         oc.TopAbs_ShapeEnum.TopAbs_FACE,
         oc.TopAbs_ShapeEnum.TopAbs_SHAPE,
       );
       expect(faceExplorer.More()).toBe(true);
-      const face = oc.TopoDS.Face(faceExplorer.Current());
+      using faceExplorerCurrent = faceExplorer.Current();
+      using face = oc.TopoDS.Face(faceExplorerCurrent);
 
-      const brepBounds = oc.BRepTools.UVBounds(face);
+      const brepBounds = oc.BRepTools.UVBounds(face, 0, 0, 0, 0);
 
-      using ax3 = new oc.gp_Ax3(new oc.gp_Pnt(), new oc.gp_Dir(0, 0, 1));
+      using gpPnt = new oc.gp_Pnt();
+      using gpDir = new oc.gp_Dir(0, 0, 1);
+      using ax3 = new oc.gp_Ax3(gpPnt, gpDir);
       using sphere = new oc.Geom_SphericalSurface(ax3, 10.0);
-      const geomBounds = sphere.Bounds();
+      const geomBounds = sphere.Bounds(0, 0, 0, 0);
 
       expect(Object.keys(brepBounds).sort()).toEqual(['UMax', 'UMin', 'VMax', 'VMin']);
       expect(Object.keys(geomBounds).sort()).toEqual(['U1', 'U2', 'V1', 'V2']);

@@ -38,34 +38,38 @@ describe.skipIf(!wasmExists)('Smoke: Law-governed sweeps', () => {
     using p1 = new oc.gp_Pnt(0, 0, 0);
     using p2 = new oc.gp_Pnt(0, 0, 30);
     using spineEdge = new oc.BRepBuilderAPI_MakeEdge(p1, p2);
-    using spineWire = new oc.BRepBuilderAPI_MakeWire(spineEdge.Edge());
+    using disposable = spineEdge.Edge();
+    using spineWire = new oc.BRepBuilderAPI_MakeWire(disposable);
 
     using axOrigin = new oc.gp_Pnt(0, 0, 0);
     using axDir = new oc.gp_Dir(0, 0, 1);
     using ax = new oc.gp_Ax2(axOrigin, axDir);
     using circle = new oc.Geom_Circle(ax, 5);
     using profileEdge = new oc.BRepBuilderAPI_MakeEdge(circle);
-    using profileWire = new oc.BRepBuilderAPI_MakeWire(profileEdge.Edge());
+    using disposable2 = profileEdge.Edge();
+    using profileWire = new oc.BRepBuilderAPI_MakeWire(disposable2);
 
-    using pipeShell = new oc.BRepOffsetAPI_MakePipeShell(spineWire.Wire());
+    using disposable3 = spineWire.Wire();
+    using pipeShell = new oc.BRepOffsetAPI_MakePipeShell(disposable3);
 
     using law = new oc.Law_Linear();
     law.Set(0, 1, 1, 0.5);
 
-    pipeShell.SetLaw(profileWire.Wire(), law, false, false);
+    using disposable4 = profileWire.Wire();
+    pipeShell.SetLaw(disposable4, law, false, false);
 
     using progress = new oc.Message_ProgressRange();
     pipeShell.Build(progress);
     pipeShell.MakeSolid();
 
-    const shape = pipeShell.Shape();
+    using shape = pipeShell.Shape();
     expect(shape.IsNull()).toBe(false);
 
-    using bbox = new oc.Bnd_Box();
-    oc.BRepBndLib.Add(shape, bbox, false);
+    using inBbox = new oc.Bnd_Box();
+    oc.BRepBndLib.Add(shape, inBbox, false);
 
-    const widthAtBase = bbox.GetXMax() - bbox.GetXMin();
+    const widthAtBase = inBbox.GetXMax() - inBbox.GetXMin();
     expect(widthAtBase).toBeGreaterThan(4);
-    expect(bbox.GetZMax()).toBeCloseTo(30, 0);
+    expect(inBbox.GetZMax()).toBeCloseTo(30, 0);
   });
 });

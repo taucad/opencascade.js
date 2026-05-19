@@ -9,14 +9,16 @@ describe.skipIf(!wasmExists)('Smoke: Transforms', () => {
     const oc = getOC();
     using box = new oc.BRepPrimAPI_MakeBox(10, 10, 10);
     using trsf = new oc.gp_Trsf();
-    trsf.SetTranslation(new oc.gp_Vec(5, 0, 0));
+    using gpVec = new oc.gp_Vec(5, 0, 0);
+    trsf.SetTranslation(gpVec);
+    using boxShape = box.Shape();
     using transform = new oc.BRepBuilderAPI_Transform(
-      box.Shape(),
+      boxShape,
       trsf,
       false,
       false,
     );
-    const shape = transform.Shape();
+    using shape = transform.Shape();
     expect(shape.IsNull()).toBe(false);
 
     await expectShapeGeometry(shape, {
@@ -29,18 +31,21 @@ describe.skipIf(!wasmExists)('Smoke: Transforms', () => {
     const oc = getOC();
     using box = new oc.BRepPrimAPI_MakeBox(10, 10, 10);
     using trsf = new oc.gp_Trsf();
+    using gpPnt = new oc.gp_Pnt();
+    using gpDir = new oc.gp_Dir(0, 0, 1);
     using axis = new oc.gp_Ax1(
-      new oc.gp_Pnt(),
-      new oc.gp_Dir(0, 0, 1),
+      gpPnt,
+      gpDir,
     );
     trsf.SetRotation(axis, Math.PI / 4);
+    using boxShape2 = box.Shape();
     using transform = new oc.BRepBuilderAPI_Transform(
-      box.Shape(),
+      boxShape2,
       trsf,
       false,
       false,
     );
-    const shape = transform.Shape();
+    using shape = transform.Shape();
     expect(shape.IsNull()).toBe(false);
 
     const diag = 10 * Math.SQRT2;
@@ -53,14 +58,16 @@ describe.skipIf(!wasmExists)('Smoke: Transforms', () => {
     const oc = getOC();
     using box = new oc.BRepPrimAPI_MakeBox(10, 10, 10);
     using trsf = new oc.gp_Trsf();
-    trsf.SetScale(new oc.gp_Pnt(), 2);
+    using gpPnt2 = new oc.gp_Pnt();
+    trsf.SetScale(gpPnt2, 2);
+    using boxShape3 = box.Shape();
     using transform = new oc.BRepBuilderAPI_Transform(
-      box.Shape(),
+      boxShape3,
       trsf,
       false,
       false,
     );
-    const shape = transform.Shape();
+    using shape = transform.Shape();
     expect(shape.IsNull()).toBe(false);
 
     await expectShapeGeometry(shape, {

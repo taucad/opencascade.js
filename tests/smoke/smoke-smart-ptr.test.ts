@@ -6,7 +6,9 @@ describe.skipIf(!wasmExists)('Smoke: Smart pointer unified API', () => {
 
   it('should have isNull() on constructor-created Transient object', () => {
     const oc = getOC();
-    using ax2 = new oc.gp_Ax2(new oc.gp_Pnt(), new oc.gp_Dir(0, 0, 1));
+    using gpPnt = new oc.gp_Pnt();
+    using gpDir = new oc.gp_Dir(0, 0, 1);
+    using ax2 = new oc.gp_Ax2(gpPnt, gpDir);
     using circle = new oc.Geom_Circle(ax2, 5.0);
 
     expect(typeof circle.isNull).toBe('function');
@@ -15,7 +17,9 @@ describe.skipIf(!wasmExists)('Smoke: Smart pointer unified API', () => {
 
   it('should have nullify() on constructor-created Transient object', () => {
     const oc = getOC();
-    using ax2 = new oc.gp_Ax2(new oc.gp_Pnt(), new oc.gp_Dir(0, 0, 1));
+    using gpPnt2 = new oc.gp_Pnt();
+    using gpDir2 = new oc.gp_Dir(0, 0, 1);
+    using ax2 = new oc.gp_Ax2(gpPnt2, gpDir2);
     using circle = new oc.Geom_Circle(ax2, 5.0);
 
     expect(typeof circle.nullify).toBe('function');
@@ -23,7 +27,9 @@ describe.skipIf(!wasmExists)('Smoke: Smart pointer unified API', () => {
 
   it('should return true for isNull() after nullify() roundtrip', () => {
     const oc = getOC();
-    using ax2 = new oc.gp_Ax2(new oc.gp_Pnt(), new oc.gp_Dir(0, 0, 1));
+    using gpPnt3 = new oc.gp_Pnt();
+    using gpDir3 = new oc.gp_Dir(0, 0, 1);
+    using ax2 = new oc.gp_Ax2(gpPnt3, gpDir3);
     using circle = new oc.Geom_Circle(ax2, 5.0);
 
     expect(circle.isNull()).toBe(false);
@@ -33,7 +39,9 @@ describe.skipIf(!wasmExists)('Smoke: Smart pointer unified API', () => {
 
   it('should inherit handle methods on deep hierarchy (Geom_Circle: 3 levels)', () => {
     const oc = getOC();
-    using ax2 = new oc.gp_Ax2(new oc.gp_Pnt(), new oc.gp_Dir(0, 0, 1));
+    using gpPnt4 = new oc.gp_Pnt();
+    using gpDir4 = new oc.gp_Dir(0, 0, 1);
+    using ax2 = new oc.gp_Ax2(gpPnt4, gpDir4);
     using circle = new oc.Geom_Circle(ax2, 10.0);
 
     expect(circle.isNull()).toBe(false);
@@ -42,7 +50,9 @@ describe.skipIf(!wasmExists)('Smoke: Smart pointer unified API', () => {
 
   it('should inherit isNull from Standard_Transient for Geom_Line', () => {
     const oc = getOC();
-    using ax1 = new oc.gp_Ax1(new oc.gp_Pnt(), new oc.gp_Dir(1, 0, 0));
+    using gpPnt5 = new oc.gp_Pnt();
+    using gpDir5 = new oc.gp_Dir(1, 0, 0);
+    using ax1 = new oc.gp_Ax1(gpPnt5, gpDir5);
     using line = new oc.Geom_Line(ax1);
 
     expect(typeof line.isNull).toBe('function');
@@ -61,7 +71,9 @@ describe.skipIf(!wasmExists)('Smoke: Smart pointer unified API', () => {
     if (!isExceptionsEnabled()) ctx.skip();
 
     const oc = getOC();
-    using ax2 = new oc.gp_Ax2(new oc.gp_Pnt(), new oc.gp_Dir(0, 0, 1));
+    using gpPnt6 = new oc.gp_Pnt();
+    using gpDir6 = new oc.gp_Dir(0, 0, 1);
+    using ax2 = new oc.gp_Ax2(gpPnt6, gpDir6);
     using circle = new oc.Geom_Circle(ax2, 5.0);
 
     circle.nullify();

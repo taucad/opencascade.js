@@ -5,27 +5,29 @@
  * canonicalize to template types (e.g., NCollection_DataMap<...>).
  * Fix 2's AST-based template arg resolution handles these automatically.
  *
- * Behaviour after the codegen post-pass:
- * - ParameterMap resolves to NCollection_DataMap_TCollection_AsciiString_TCollection_AsciiString.
- *   That alias is auto-discovered but not actually bound (no Embind class_), so the
- *   build-time `_replace_undeclared_with_unknown` post-pass rewrites the reference to
- *   the structural fallback `unknown` (no value at runtime, sound at type-level).
+ * Behaviour after audit R8.1's regen pass:
+ * - ParameterMap resolves to
+ *   NCollection_DataMap_TCollection_AsciiString_TCollection_AsciiString. The
+ *   underlying class is now auto-discovered AND bound (the alias was upgraded
+ *   from a structural fallback to a real Embind class during R5 + R8.1 work),
+ *   so accessors return the concrete class rather than `unknown`. The original
+ *   assertions targeted the pre-binding `unknown` shape; they have been
+ *   tightened to assert the concrete class now that it is exported.
  * - OperationsFlags resolves to std::bitset<18> which has no STL mapping and
  *   stays as `any` until a dedicated STL handler is added.
- *
- * Once NCollection_DataMap<AsciiString,AsciiString> is added to the build config
- * the parameter assertions can be tightened to `.not.toBeAny().not.toBeUnknown()`.
  */
 import { expectTypeOf, it, describe } from 'vitest';
 import type {
   IGESControl_Writer,
+  NCollection_DataMap_TCollection_AsciiString_TCollection_AsciiString,
   STEPCAFControl_Writer,
   XSControl_Reader,
 } from '../build-configs/opencascade_full';
 
 describe('Class-scoped using-alias resolution in data exchange classes', () => {
-  it('IGESControl_Writer.GetShapeFixParameters() resolves to `unknown` (unbound NCollection)', () => {
-    expectTypeOf<IGESControl_Writer['GetShapeFixParameters']>().returns.toBeUnknown();
+  it('IGESControl_Writer.GetShapeFixParameters() returns concrete DataMap class (R8.1 unblocked)', () => {
+    expectTypeOf<IGESControl_Writer['GetShapeFixParameters']>()
+      .returns.toEqualTypeOf<NCollection_DataMap_TCollection_AsciiString_TCollection_AsciiString>();
   });
 
   it('IGESControl_Writer.SetShapeProcessFlags() param is std::bitset<18> (no STL handler)', () => {
@@ -36,11 +38,13 @@ describe('Class-scoped using-alias resolution in data exchange classes', () => {
     expectTypeOf<IGESControl_Writer['GetShapeProcessFlags']>().returns.toBeAny();
   });
 
-  it('STEPCAFControl_Writer.GetShapeFixParameters() resolves to `unknown` (unbound NCollection)', () => {
-    expectTypeOf<STEPCAFControl_Writer['GetShapeFixParameters']>().returns.toBeUnknown();
+  it('STEPCAFControl_Writer.GetShapeFixParameters() returns concrete DataMap class (R8.1 unblocked)', () => {
+    expectTypeOf<STEPCAFControl_Writer['GetShapeFixParameters']>()
+      .returns.toEqualTypeOf<NCollection_DataMap_TCollection_AsciiString_TCollection_AsciiString>();
   });
 
-  it('XSControl_Reader.GetShapeFixParameters() resolves to `unknown` (unbound NCollection)', () => {
-    expectTypeOf<XSControl_Reader['GetShapeFixParameters']>().returns.toBeUnknown();
+  it('XSControl_Reader.GetShapeFixParameters() returns concrete DataMap class (R8.1 unblocked)', () => {
+    expectTypeOf<XSControl_Reader['GetShapeFixParameters']>()
+      .returns.toEqualTypeOf<NCollection_DataMap_TCollection_AsciiString_TCollection_AsciiString>();
   });
 });

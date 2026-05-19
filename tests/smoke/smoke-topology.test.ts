@@ -7,7 +7,7 @@ describe.skipIf(!wasmExists)('Smoke: Topology', () => {
   it('should count 6 faces, 24 edges, and 8 vertices on box with TopExp_Explorer', () => {
     const oc = getOC();
     using box = new oc.BRepPrimAPI_MakeBox(10, 10, 10);
-    const shape = box.Shape();
+    using shape = box.Shape();
 
     let faceCount = 0;
     using faceExplorer = new oc.TopExp_Explorer(
@@ -48,17 +48,17 @@ describe.skipIf(!wasmExists)('Smoke: Topology', () => {
     const oc = getOC();
     using box = new oc.BRepPrimAPI_MakeBox(10, 10, 10);
     using builder = new oc.BRep_Builder();
-    using compound = new oc.TopoDS_Compound();
-    builder.MakeCompound(compound);
-    builder.Add(compound, box.Shape());
-    const shape = compound;
-    expect(shape.IsNull()).toBe(false);
+    using inCompound = new oc.TopoDS_Compound();
+    builder.MakeCompound(inCompound);
+    using boxShape = box.Shape();
+    builder.Add(inCompound, boxShape);
+    expect(inCompound.IsNull()).toBe(false);
   });
 
   it('should convert explorer Current to Face/Edge/Vertex with TopoDS cast functions', () => {
     const oc = getOC();
     using box = new oc.BRepPrimAPI_MakeBox(10, 10, 10);
-    const shape = box.Shape();
+    using shape = box.Shape();
 
     using faceExplorer = new oc.TopExp_Explorer(
       shape,
@@ -66,7 +66,8 @@ describe.skipIf(!wasmExists)('Smoke: Topology', () => {
       oc.TopAbs_ShapeEnum.TopAbs_SHAPE,
     );
     expect(faceExplorer.More()).toBe(true);
-    const face = oc.TopoDS.Face(faceExplorer.Current());
+    using faceExplorerCurrent = faceExplorer.Current();
+    using face = oc.TopoDS.Face(faceExplorerCurrent);
 
     using edgeExplorer = new oc.TopExp_Explorer(
       shape,
@@ -74,7 +75,8 @@ describe.skipIf(!wasmExists)('Smoke: Topology', () => {
       oc.TopAbs_ShapeEnum.TopAbs_SHAPE,
     );
     expect(edgeExplorer.More()).toBe(true);
-    const edge = oc.TopoDS.Edge(edgeExplorer.Current());
+    using edgeExplorerCurrent = edgeExplorer.Current();
+    using edge = oc.TopoDS.Edge(edgeExplorerCurrent);
 
     using vertexExplorer = new oc.TopExp_Explorer(
       shape,
@@ -82,6 +84,7 @@ describe.skipIf(!wasmExists)('Smoke: Topology', () => {
       oc.TopAbs_ShapeEnum.TopAbs_SHAPE,
     );
     expect(vertexExplorer.More()).toBe(true);
-    const vertex = oc.TopoDS.Vertex(vertexExplorer.Current());
+    using vertexExplorerCurrent = vertexExplorer.Current();
+    using vertex = oc.TopoDS.Vertex(vertexExplorerCurrent);
   });
 });

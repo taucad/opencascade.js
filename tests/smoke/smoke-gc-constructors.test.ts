@@ -22,10 +22,12 @@ describe.skipIf(!wasmExists)('Smoke: GC constructors', () => {
     using curve = arcMaker.Value();
 
     using edge = new oc.BRepBuilderAPI_MakeEdge(curve);
-    using wire = new oc.BRepBuilderAPI_MakeWire(edge.Edge());
+    using disposable = edge.Edge();
+    using wire = new oc.BRepBuilderAPI_MakeWire(disposable);
 
+    using disposable2 = wire.Wire();
     using explorer = new oc.TopExp_Explorer(
-      wire.Wire(),
+      disposable2,
       oc.TopAbs_ShapeEnum.TopAbs_EDGE,
       oc.TopAbs_ShapeEnum.TopAbs_SHAPE,
     );
@@ -46,15 +48,17 @@ describe.skipIf(!wasmExists)('Smoke: GC constructors', () => {
 
     using edge = new oc.BRepBuilderAPI_MakeEdge(curve);
 
+    using disposable3 = edge.Edge();
     using vExplorer = new oc.TopExp_Explorer(
-      edge.Edge(),
+      disposable3,
       oc.TopAbs_ShapeEnum.TopAbs_VERTEX,
       oc.TopAbs_ShapeEnum.TopAbs_SHAPE,
     );
 
     const vertices: Array<{ x: number; y: number; z: number }> = [];
     while (vExplorer.More()) {
-      const vertex = oc.TopoDS.Vertex(vExplorer.Current());
+      using vExplorerCurrent = vExplorer.Current();
+      using vertex = oc.TopoDS.Vertex(vExplorerCurrent);
       using pnt = oc.BRep_Tool.Pnt(vertex);
       vertices.push({ x: pnt.X(), y: pnt.Y(), z: pnt.Z() });
       vExplorer.Next();

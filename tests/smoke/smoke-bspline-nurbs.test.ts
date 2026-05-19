@@ -18,11 +18,16 @@ describe.skipIf(!wasmExists)('Smoke: BSpline and NURBS', () => {
   it('should approximate a curve through control points with GeomAPI_PointsToBSpline', () => {
     const oc = getOC();
     using points = new oc.NCollection_Array1_gp_Pnt(1, 5);
-    points.SetValue(1, new oc.gp_Pnt(0, 0, 0));
-    points.SetValue(2, new oc.gp_Pnt(5, 5, 0));
-    points.SetValue(3, new oc.gp_Pnt(10, 0, 0));
-    points.SetValue(4, new oc.gp_Pnt(15, -5, 0));
-    points.SetValue(5, new oc.gp_Pnt(20, 0, 0));
+    using gpPnt = new oc.gp_Pnt(0, 0, 0);
+    points.SetValue(1, gpPnt);
+    using gpPnt2 = new oc.gp_Pnt(5, 5, 0);
+    points.SetValue(2, gpPnt2);
+    using gpPnt3 = new oc.gp_Pnt(10, 0, 0);
+    points.SetValue(3, gpPnt3);
+    using gpPnt4 = new oc.gp_Pnt(15, -5, 0);
+    points.SetValue(4, gpPnt4);
+    using gpPnt5 = new oc.gp_Pnt(20, 0, 0);
+    points.SetValue(5, gpPnt5);
 
     using approx = new oc.GeomAPI_PointsToBSpline(
       points,
@@ -34,15 +39,15 @@ describe.skipIf(!wasmExists)('Smoke: BSpline and NURBS', () => {
 
     expect(approx.IsDone()).toBe(true);
 
-    const curve = approx.Curve();
+    using curve = approx.Curve();
     expect(curve.Degree()).toBe(3);
     expect(curve.NbPoles()).toBe(4);
 
-    const startPt = curve.StartPoint();
+    using startPt = curve.StartPoint();
     expect(startPt.X()).toBe(0);
     expect(startPt.Y()).toBe(0);
 
-    const endPt = curve.EndPoint();
+    using endPt = curve.EndPoint();
     expect(endPt.X()).toBe(20);
     expect(endPt.Y()).toBe(0);
   });
@@ -51,10 +56,14 @@ describe.skipIf(!wasmExists)('Smoke: BSpline and NURBS', () => {
 
     const oc = getOC();
     using points = new oc.NCollection_Array1_gp_Pnt(1, 4);
-    points.SetValue(1, new oc.gp_Pnt(0, 0, 0));
-    points.SetValue(2, new oc.gp_Pnt(10, 10, 0));
-    points.SetValue(3, new oc.gp_Pnt(20, 0, 0));
-    points.SetValue(4, new oc.gp_Pnt(30, 10, 0));
+    using gpPnt6 = new oc.gp_Pnt(0, 0, 0);
+    points.SetValue(1, gpPnt6);
+    using gpPnt7 = new oc.gp_Pnt(10, 10, 0);
+    points.SetValue(2, gpPnt7);
+    using gpPnt8 = new oc.gp_Pnt(20, 0, 0);
+    points.SetValue(3, gpPnt8);
+    using gpPnt9 = new oc.gp_Pnt(30, 10, 0);
+    points.SetValue(4, gpPnt9);
 
     using approx = new oc.GeomAPI_PointsToBSpline(
       points,
@@ -65,13 +74,13 @@ describe.skipIf(!wasmExists)('Smoke: BSpline and NURBS', () => {
     );
     expect(approx.IsDone()).toBe(true);
 
-    const curve = approx.Curve();
+    using curve = approx.Curve();
 
-    const startPt = curve.StartPoint();
+    using startPt = curve.StartPoint();
     expect(startPt.X()).toBe(0);
     expect(startPt.Y()).toBe(0);
 
-    const endPt = curve.EndPoint();
+    using endPt = curve.EndPoint();
     expect(endPt.X()).toBe(30);
     expect(endPt.Y()).toBe(10);
   });
@@ -79,10 +88,14 @@ describe.skipIf(!wasmExists)('Smoke: BSpline and NURBS', () => {
   it('should build BSpline curve into an edge and wire', () => {
     const oc = getOC();
     using points = new oc.NCollection_Array1_gp_Pnt(1, 4);
-    points.SetValue(1, new oc.gp_Pnt(0, 0, 0));
-    points.SetValue(2, new oc.gp_Pnt(10, 15, 0));
-    points.SetValue(3, new oc.gp_Pnt(20, -5, 0));
-    points.SetValue(4, new oc.gp_Pnt(30, 10, 0));
+    using gpPnt10 = new oc.gp_Pnt(0, 0, 0);
+    points.SetValue(1, gpPnt10);
+    using gpPnt11 = new oc.gp_Pnt(10, 15, 0);
+    points.SetValue(2, gpPnt11);
+    using gpPnt12 = new oc.gp_Pnt(20, -5, 0);
+    points.SetValue(3, gpPnt12);
+    using gpPnt13 = new oc.gp_Pnt(30, 10, 0);
+    points.SetValue(4, gpPnt13);
 
     using approx = new oc.GeomAPI_PointsToBSpline(
       points,
@@ -93,24 +106,29 @@ describe.skipIf(!wasmExists)('Smoke: BSpline and NURBS', () => {
     );
     expect(approx.IsDone()).toBe(true);
 
-    const curve = approx.Curve();
+    using curve = approx.Curve();
     using edge = new oc.BRepBuilderAPI_MakeEdge(curve);
     expect(edge.IsDone()).toBe(true);
 
-    using wire = new oc.BRepBuilderAPI_MakeWire(edge.Edge());
+    using disposable = edge.Edge();
+    using wire = new oc.BRepBuilderAPI_MakeWire(disposable);
     expect(wire.IsDone()).toBe(true);
 
-    const wireShape = wire.Wire();
+    using wireShape = wire.Wire();
     expect(wireShape.IsNull()).toBe(false);
   });
 
   it('should create a cubic Bezier from 4 poles with Geom_BezierCurve', () => {
     const oc = getOC();
     using poles = new oc.NCollection_Array1_gp_Pnt(1, 4);
-    poles.SetValue(1, new oc.gp_Pnt(0, 0, 0));
-    poles.SetValue(2, new oc.gp_Pnt(5, 15, 0));
-    poles.SetValue(3, new oc.gp_Pnt(15, 15, 0));
-    poles.SetValue(4, new oc.gp_Pnt(20, 0, 0));
+    using gpPnt14 = new oc.gp_Pnt(0, 0, 0);
+    poles.SetValue(1, gpPnt14);
+    using gpPnt15 = new oc.gp_Pnt(5, 15, 0);
+    poles.SetValue(2, gpPnt15);
+    using gpPnt16 = new oc.gp_Pnt(15, 15, 0);
+    poles.SetValue(3, gpPnt16);
+    using gpPnt17 = new oc.gp_Pnt(20, 0, 0);
+    poles.SetValue(4, gpPnt17);
 
     using bezier = new oc.Geom_BezierCurve(poles);
 
@@ -119,25 +137,29 @@ describe.skipIf(!wasmExists)('Smoke: BSpline and NURBS', () => {
     expect(bezier.IsClosed()).toBe(false);
     expect(bezier.IsRational()).toBe(false);
 
-    const startPt = bezier.StartPoint();
+    using startPt = bezier.StartPoint();
     expect(startPt.X()).toBe(0);
     expect(startPt.Y()).toBe(0);
 
-    const endPt = bezier.EndPoint();
+    using endPt = bezier.EndPoint();
     expect(endPt.X()).toBe(20);
     expect(endPt.Y()).toBe(0);
 
-    const midPt = bezier.EvalD0(0.5);
+    using midPt = bezier.EvalD0(0.5);
     expect(midPt.Y()).toBe(11.25);
   });
 
   it('should produce valid geometry when extruding BSpline curve into a surface', async () => {
     const oc = getOC();
     using points = new oc.NCollection_Array1_gp_Pnt(1, 4);
-    points.SetValue(1, new oc.gp_Pnt(0, 0, 0));
-    points.SetValue(2, new oc.gp_Pnt(10, 5, 0));
-    points.SetValue(3, new oc.gp_Pnt(20, -5, 0));
-    points.SetValue(4, new oc.gp_Pnt(30, 0, 0));
+    using gpPnt18 = new oc.gp_Pnt(0, 0, 0);
+    points.SetValue(1, gpPnt18);
+    using gpPnt19 = new oc.gp_Pnt(10, 5, 0);
+    points.SetValue(2, gpPnt19);
+    using gpPnt20 = new oc.gp_Pnt(20, -5, 0);
+    points.SetValue(3, gpPnt20);
+    using gpPnt21 = new oc.gp_Pnt(30, 0, 0);
+    points.SetValue(4, gpPnt21);
 
     using approx = new oc.GeomAPI_PointsToBSpline(
       points,
@@ -146,18 +168,21 @@ describe.skipIf(!wasmExists)('Smoke: BSpline and NURBS', () => {
       oc.GeomAbs_Shape.GeomAbs_C2,
       1e-3,
     );
-    const curve = approx.Curve();
+    using curve = approx.Curve();
     using edge = new oc.BRepBuilderAPI_MakeEdge(curve);
-    using wire = new oc.BRepBuilderAPI_MakeWire(edge.Edge());
+    using disposable2 = edge.Edge();
+    using wire = new oc.BRepBuilderAPI_MakeWire(disposable2);
 
+    using disposable3 = wire.Wire();
+    using gpVec = new oc.gp_Vec(0, 0, 10);
     using prism = new oc.BRepPrimAPI_MakePrism(
-      wire.Wire(),
-      new oc.gp_Vec(0, 0, 10),
+      disposable3,
+      gpVec,
       false,
       true,
     );
 
-    const shape = prism.Shape();
+    using shape = prism.Shape();
     expect(shape.IsNull()).toBe(false);
 
     await expectShapeGeometry(shape, {

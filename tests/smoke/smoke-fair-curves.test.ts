@@ -5,7 +5,12 @@
  * valid BSpline curves with correct geometric properties. The Compute
  * method uses auto-generated return-by-value with enum output param
  * stripping — the FairCurve_AnalysisCode& param is stripped from the
- * JS signature and returned as a property of the result struct.
+ * JS signature and returned in the envelope as `Code`, alongside the
+ * native bool return surfaced as `returnValue` (R4 of
+ * docs/research/ocjs-rbv-return-shape-revisit.md).
+ *
+ * Geom2d_Curve.D0 is a void-returning class-output method under R1/R2 —
+ * the gp_Pnt2d parameter is mutated in place and no envelope is produced.
  */
 import { describe, it, expect, beforeAll } from 'vitest';
 import { initOC, getOC, wasmExists } from './helpers.js';
@@ -21,11 +26,11 @@ describe.skipIf(!wasmExists)('Smoke: Fair curves', () => {
       using p2 = new oc.gp_Pnt2d(10, 5);
       using batten = new oc.FairCurve_Batten(p1, p2, 2.0, 1);
 
-      const result = batten.Compute(50, 1e-3);
+      const result = batten.Compute(oc.FairCurve_AnalysisCode.FairCurve_OK, 50, 1e-3);
 
-      expect(result.result).toBe(true);
+      expect(result.returnValue).toBe(true);
 
-      const curve = batten.Curve();
+      using curve = batten.Curve();
       expect(curve.Degree()).toBeGreaterThanOrEqual(2);
       expect(curve.NbPoles()).toBeGreaterThanOrEqual(2);
       expect(curve.NbKnots()).toBeGreaterThanOrEqual(2);
@@ -42,9 +47,9 @@ describe.skipIf(!wasmExists)('Smoke: Fair curves', () => {
       batten.SetAngle1(0.5);
       batten.SetAngle2(-0.5);
 
-      const result = batten.Compute(50, 1e-3);
+      const result = batten.Compute(oc.FairCurve_AnalysisCode.FairCurve_OK, 50, 1e-3);
 
-      expect(result.result).toBe(true);
+      expect(result.returnValue).toBe(true);
       expect(result.Code).toBe(oc.FairCurve_AnalysisCode.FairCurve_OK);
     });
 
@@ -54,18 +59,18 @@ describe.skipIf(!wasmExists)('Smoke: Fair curves', () => {
       using p2 = new oc.gp_Pnt2d(10, 5);
       using batten = new oc.FairCurve_Batten(p1, p2, 2.0, 1);
 
-      batten.Compute(50, 1e-3);
+      batten.Compute(oc.FairCurve_AnalysisCode.FairCurve_OK, 50, 1e-3);
 
-      const curve = batten.Curve();
-      using startPt = new oc.gp_Pnt2d(0, 0);
-      using endPt = new oc.gp_Pnt2d(0, 0);
-      curve.D0(curve.FirstParameter(), startPt);
-      curve.D0(curve.LastParameter(), endPt);
+      using curve = batten.Curve();
+      using inStartPt = new oc.gp_Pnt2d(0, 0);
+      using inEndPt = new oc.gp_Pnt2d(0, 0);
+      curve.D0(curve.FirstParameter(), inStartPt);
+      curve.D0(curve.LastParameter(), inEndPt);
 
-      expect(startPt.X()).toBeCloseTo(0, 1);
-      expect(startPt.Y()).toBeCloseTo(0, 1);
-      expect(endPt.X()).toBeCloseTo(10, 1);
-      expect(endPt.Y()).toBeCloseTo(5, 1);
+      expect(inStartPt.X()).toBeCloseTo(0, 1);
+      expect(inStartPt.Y()).toBeCloseTo(0, 1);
+      expect(inEndPt.X()).toBeCloseTo(10, 1);
+      expect(inEndPt.Y()).toBeCloseTo(5, 1);
     });
 
   });
@@ -77,11 +82,11 @@ describe.skipIf(!wasmExists)('Smoke: Fair curves', () => {
       using p2 = new oc.gp_Pnt2d(10, 5);
       using mv = new oc.FairCurve_MinimalVariation(p1, p2, 2.0, 1);
 
-      const result = mv.Compute(50, 1e-3);
+      const result = mv.Compute(oc.FairCurve_AnalysisCode.FairCurve_OK, 50, 1e-3);
 
-      expect(result.result).toBe(true);
+      expect(result.returnValue).toBe(true);
 
-      const curve = mv.Curve();
+      using curve = mv.Curve();
       expect(curve.Degree()).toBeGreaterThanOrEqual(2);
       expect(curve.NbPoles()).toBeGreaterThanOrEqual(2);
       expect(curve.NbKnots()).toBeGreaterThanOrEqual(2);
@@ -98,9 +103,9 @@ describe.skipIf(!wasmExists)('Smoke: Fair curves', () => {
       mv.SetAngle1(0.5);
       mv.SetAngle2(-0.5);
 
-      const result = mv.Compute(100, 1e-6);
+      const result = mv.Compute(oc.FairCurve_AnalysisCode.FairCurve_OK, 100, 1e-6);
 
-      expect(result.result).toBe(true);
+      expect(result.returnValue).toBe(true);
       expect(result.Code).toBe(oc.FairCurve_AnalysisCode.FairCurve_OK);
     });
 
@@ -110,18 +115,18 @@ describe.skipIf(!wasmExists)('Smoke: Fair curves', () => {
       using p2 = new oc.gp_Pnt2d(10, 5);
       using mv = new oc.FairCurve_MinimalVariation(p1, p2, 2.0, 1);
 
-      mv.Compute(50, 1e-3);
+      mv.Compute(oc.FairCurve_AnalysisCode.FairCurve_OK, 50, 1e-3);
 
-      const curve = mv.Curve();
-      using startPt = new oc.gp_Pnt2d(0, 0);
-      using endPt = new oc.gp_Pnt2d(0, 0);
-      curve.D0(curve.FirstParameter(), startPt);
-      curve.D0(curve.LastParameter(), endPt);
+      using curve = mv.Curve();
+      using inStartPt = new oc.gp_Pnt2d(0, 0);
+      using inEndPt = new oc.gp_Pnt2d(0, 0);
+      curve.D0(curve.FirstParameter(), inStartPt);
+      curve.D0(curve.LastParameter(), inEndPt);
 
-      expect(startPt.X()).toBeCloseTo(0, 1);
-      expect(startPt.Y()).toBeCloseTo(0, 1);
-      expect(endPt.X()).toBeCloseTo(10, 1);
-      expect(endPt.Y()).toBeCloseTo(5, 1);
+      expect(inStartPt.X()).toBeCloseTo(0, 1);
+      expect(inStartPt.Y()).toBeCloseTo(0, 1);
+      expect(inEndPt.X()).toBeCloseTo(10, 1);
+      expect(inEndPt.Y()).toBeCloseTo(5, 1);
     });
 
     it('should invoke the overridden Compute via virtual dispatch', () => {
@@ -131,10 +136,10 @@ describe.skipIf(!wasmExists)('Smoke: Fair curves', () => {
       using mv = new oc.FairCurve_MinimalVariation(p1, p2, 2.0, 1);
       mv.SetPhysicalRatio(0.5);
 
-      const result = mv.Compute(50, 1e-3);
+      const result = mv.Compute(oc.FairCurve_AnalysisCode.FairCurve_OK, 50, 1e-3);
 
-      expect(result.result).toBe(true);
-      const curve = mv.Curve();
+      expect(result.returnValue).toBe(true);
+      using curve = mv.Curve();
       expect(curve.NbPoles()).toBeGreaterThanOrEqual(2);
     });
   });
@@ -150,25 +155,25 @@ describe.skipIf(!wasmExists)('Smoke: Fair curves', () => {
       batten.SetConstraintOrder2(2);
       batten.SetAngle1(0.5);
       batten.SetAngle2(-0.5);
-      batten.Compute(50, 1e-3);
-      const battenCurve = batten.Curve();
+      batten.Compute(oc.FairCurve_AnalysisCode.FairCurve_OK, 50, 1e-3);
+      using battenCurve = batten.Curve();
 
       using mv = new oc.FairCurve_MinimalVariation(p1, p2, 3.0);
       mv.SetConstraintOrder1(2);
       mv.SetConstraintOrder2(2);
       mv.SetAngle1(0.5);
       mv.SetAngle2(-0.5);
-      mv.Compute(100, 1e-6);
-      const mvCurve = mv.Curve();
+      mv.Compute(oc.FairCurve_AnalysisCode.FairCurve_OK, 100, 1e-6);
+      using mvCurve = mv.Curve();
 
-      using battenMidPt = new oc.gp_Pnt2d(0, 0);
-      using mvMidPt = new oc.gp_Pnt2d(0, 0);
+      using inBattenMidPt = new oc.gp_Pnt2d(0, 0);
+      using inMvMidPt = new oc.gp_Pnt2d(0, 0);
       const bMidParam = (battenCurve.FirstParameter() + battenCurve.LastParameter()) / 2;
       const mvMidParam = (mvCurve.FirstParameter() + mvCurve.LastParameter()) / 2;
-      battenCurve.D0(bMidParam, battenMidPt);
-      mvCurve.D0(mvMidParam, mvMidPt);
+      battenCurve.D0(bMidParam, inBattenMidPt);
+      mvCurve.D0(mvMidParam, inMvMidPt);
 
-      const yDifference = Math.abs(battenMidPt.Y() - mvMidPt.Y());
+      const yDifference = Math.abs(inBattenMidPt.Y() - inMvMidPt.Y());
       expect(yDifference).toBeGreaterThan(0.01);
     });
   });

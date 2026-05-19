@@ -20,22 +20,26 @@ describe.skipIf(!wasmExists)('Smoke: Sweep and loft', () => {
     using p1 = new oc.gp_Pnt(0, 0, 0);
     using p2 = new oc.gp_Pnt(0, 0, 30);
     using spineEdge = new oc.BRepBuilderAPI_MakeEdge(p1, p2);
-    using spineWire = new oc.BRepBuilderAPI_MakeWire(spineEdge.Edge());
+    using disposable = spineEdge.Edge();
+    using spineWire = new oc.BRepBuilderAPI_MakeWire(disposable);
 
     using axOrigin = new oc.gp_Pnt(0, 0, 0);
     using axDir = new oc.gp_Dir(0, 0, 1);
     using ax = new oc.gp_Ax2(axOrigin, axDir);
     using circle = new oc.Geom_Circle(ax, 5);
     using profileEdge = new oc.BRepBuilderAPI_MakeEdge(circle);
-    using profileWire = new oc.BRepBuilderAPI_MakeWire(profileEdge.Edge());
+    using disposable2 = profileEdge.Edge();
+    using profileWire = new oc.BRepBuilderAPI_MakeWire(disposable2);
 
-    using pipeShell = new oc.BRepOffsetAPI_MakePipeShell(spineWire.Wire());
-    pipeShell.Add(profileWire.Wire(), false, false);
+    using disposable3 = spineWire.Wire();
+    using pipeShell = new oc.BRepOffsetAPI_MakePipeShell(disposable3);
+    using disposable4 = profileWire.Wire();
+    pipeShell.Add(disposable4, false, false);
     using progress = new oc.Message_ProgressRange();
     pipeShell.Build(progress);
     pipeShell.MakeSolid();
 
-    const shape = pipeShell.Shape();
+    using shape = pipeShell.Shape();
     expect(shape.IsNull()).toBe(false);
 
     await expectShapeGeometry(shape, {
@@ -62,13 +66,15 @@ describe.skipIf(!wasmExists)('Smoke: Sweep and loft', () => {
       using ax = new oc.gp_Ax2(center, dir);
       using circle = new oc.Geom_Circle(ax, radius);
       using edge = new oc.BRepBuilderAPI_MakeEdge(circle);
-      using wireMaker = new oc.BRepBuilderAPI_MakeWire(edge.Edge());
-      loft.AddWire(wireMaker.Wire());
+      using disposable5 = edge.Edge();
+      using wireMaker = new oc.BRepBuilderAPI_MakeWire(disposable5);
+      using disposable6 = wireMaker.Wire();
+      loft.AddWire(disposable6);
     }
 
     loft.CheckCompatibility(false);
 
-    const shape = loft.Shape();
+    using shape = loft.Shape();
     expect(shape.IsNull()).toBe(false);
 
     await expectShapeGeometry(shape, {
@@ -89,10 +95,10 @@ describe.skipIf(!wasmExists)('Smoke: Sweep and loft', () => {
     using em2 = new oc.BRepBuilderAPI_MakeEdge(p2, p3);
     using em3 = new oc.BRepBuilderAPI_MakeEdge(p3, p4);
     using em4 = new oc.BRepBuilderAPI_MakeEdge(p4, p1);
-    const e1 = em1.Edge();
-    const e2 = em2.Edge();
-    const e3 = em3.Edge();
-    const e4 = em4.Edge();
+    using e1 = em1.Edge();
+    using e2 = em2.Edge();
+    using e3 = em3.Edge();
+    using e4 = em4.Edge();
 
     using filling = new oc.BRepOffsetAPI_MakeFilling(
       3, // Degree
@@ -116,7 +122,7 @@ describe.skipIf(!wasmExists)('Smoke: Sweep and loft', () => {
     filling.Build(progress);
     expect(filling.IsDone()).toBe(true);
 
-    const shape = filling.Shape();
+    using shape = filling.Shape();
     expect(shape.IsNull()).toBe(false);
   });
 
@@ -127,22 +133,23 @@ describe.skipIf(!wasmExists)('Smoke: Sweep and loft', () => {
     using p3 = new oc.gp_Pnt(10, 5, 0);
     using p4 = new oc.gp_Pnt(-10, 5, 0);
     using rectPoly = new oc.BRepBuilderAPI_MakePolygon(p1, p2, p3, p4, true);
-    const rectWire = rectPoly.Wire();
+    using rectWire = rectPoly.Wire();
 
     using axCenter = new oc.gp_Pnt(0, 0, 20);
     using axDir = new oc.gp_Dir(0, 0, 1);
     using ax = new oc.gp_Ax2(axCenter, axDir);
     using circle = new oc.Geom_Circle(ax, 8);
     using circEdge = new oc.BRepBuilderAPI_MakeEdge(circle);
-    using circWireMaker = new oc.BRepBuilderAPI_MakeWire(circEdge.Edge());
-    const circWire = circWireMaker.Wire();
+    using disposable7 = circEdge.Edge();
+    using circWireMaker = new oc.BRepBuilderAPI_MakeWire(disposable7);
+    using circWire = circWireMaker.Wire();
 
     using loft = new oc.BRepOffsetAPI_ThruSections(true, false, 1e-6);
     loft.AddWire(rectWire);
     loft.AddWire(circWire);
     loft.CheckCompatibility(false);
 
-    const shape = loft.Shape();
+    using shape = loft.Shape();
     expect(shape.IsNull()).toBe(false);
 
     await expectShapeGeometry(shape, {

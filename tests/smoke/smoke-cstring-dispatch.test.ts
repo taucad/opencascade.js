@@ -96,10 +96,11 @@ describe.skipIf(!wasmExists)('Smoke: CString dispatch and handling', () => {
     it('should accept JS string path for BRepTools.Write (CString binding)', () => {
       const oc = getOC();
       using box = new oc.BRepPrimAPI_MakeBox(10, 20, 30);
-      const shape = box.Shape();
+      using shape = box.Shape();
 
       const filePath = '/tmp/_cstring_test.brep';
-      const result = oc.BRepTools.Write(shape, filePath, new oc.Message_ProgressRange());
+      using messageProgressrange = new oc.Message_ProgressRange();
+      const result = oc.BRepTools.Write(shape, filePath, messageProgressrange);
       expect(result).toBe(true);
 
       const data = oc.FS.readFile(filePath) as Uint8Array;

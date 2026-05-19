@@ -15,12 +15,14 @@ describe.skipIf(!wasmExists)('Smoke: Boolean options', () => {
     using origin = new oc.gp_Pnt(10, 0, 0);
     using box2 = new oc.BRepPrimAPI_MakeBox(origin, 10, 10, 10);
 
-    using fuse = new oc.BRepAlgoAPI_Fuse(box1.Shape(), box2.Shape());
+    using box1Shape = box1.Shape();
+    using box2Shape = box2.Shape();
+    using fuse = new oc.BRepAlgoAPI_Fuse(box1Shape, box2Shape);
     fuse.SetGlue(oc.BOPAlgo_GlueEnum.BOPAlgo_GlueFull);
     using progress = new oc.Message_ProgressRange();
     fuse.Build(progress);
 
-    const shape = fuse.Shape();
+    using shape = fuse.Shape();
     expect(shape.IsNull()).toBe(false);
 
     using explorer = new oc.TopExp_Explorer(
@@ -39,7 +41,9 @@ describe.skipIf(!wasmExists)('Smoke: Boolean options', () => {
     using box1 = new oc.BRepPrimAPI_MakeBox(10, 10, 10);
     using box2 = new oc.BRepPrimAPI_MakeBox(5, 5, 5);
 
-    using fuse = new oc.BRepAlgoAPI_Fuse(box1.Shape(), box2.Shape());
+    using box1Shape2 = box1.Shape();
+    using box2Shape2 = box2.Shape();
+    using fuse = new oc.BRepAlgoAPI_Fuse(box1Shape2, box2Shape2);
     fuse.SetGlue(oc.BOPAlgo_GlueEnum.BOPAlgo_GlueShift);
 
     expect(fuse.Glue()).toBe(oc.BOPAlgo_GlueEnum.BOPAlgo_GlueShift);

@@ -39,3 +39,37 @@ export function isExceptionsEnabled(): boolean {
   if (!_oc) return false;
   return _oc.OCJS.exceptionsEnabled();
 }
+
+/**
+ * Build a BRepGraph populated from a default `BRepPrimAPI_MakeBox` so the
+ * BRepGraph smoke groups don't repeat the box+ingest setup. The caller
+ * gets back the graph and the `BRepGraph_Builder.Add` result envelope.
+ *
+ * Lifetime — the graph is returned to the caller; wrap it in `using` at
+ * the call site so the test's natural scope cleans up. The intermediate
+ * `MakeBox` and `Shape` are disposed inside this helper since callers
+ * never need them again after `Add` has captured the topology.
+ */
+export type BoxGraphFixture = {
+  readonly graph: InstanceType<OpenCascadeInstance['BRepGraph']>;
+  readonly addResult: ReturnType<OpenCascadeInstance['BRepGraph_Builder']['Add']>;
+};
+
+export function buildBoxGraph(
+  size: { dx: number; dy: number; dz: number } = { dx: 10, dy: 10, dz: 10 },
+): BoxGraphFixture {
+  const oc = getOC();
+  const graph = new oc.BRepGraph();
+  const box = new oc.BRepPrimAPI_MakeBox(size.dx, size.dy, size.dz);
+  try {
+    const shape = box.Shape();
+    try {
+      const addResult = oc.BRepGraph_Builder.Add(graph, shape);
+      return { graph, addResult };
+    } finally {
+      shape.delete();
+    }
+  } finally {
+    box.delete();
+  }
+}

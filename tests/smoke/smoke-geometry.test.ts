@@ -22,17 +22,19 @@ describe.skipIf(!wasmExists)('Smoke: Geometry', () => {
 
   it('should produce valid face from Geom_Circle through MakeEdge, MakeWire, MakeFace pipeline', () => {
     const oc = getOC();
+    using gpPnt = new oc.gp_Pnt();
+    using gpDir = new oc.gp_Dir(0, 0, 1);
     using axis = new oc.gp_Ax2(
-      new oc.gp_Pnt(),
-      new oc.gp_Dir(0, 0, 1),
+      gpPnt,
+      gpDir,
     );
     using circle = new oc.Geom_Circle(axis, 5);
     using makeEdge = new oc.BRepBuilderAPI_MakeEdge(circle);
-    const edge = makeEdge.Edge();
+    using edge = makeEdge.Edge();
     using makeWire = new oc.BRepBuilderAPI_MakeWire(edge);
-    const wire = makeWire.Wire();
+    using wire = makeWire.Wire();
     using makeFace = new oc.BRepBuilderAPI_MakeFace(wire, false);
-    const shape = makeFace.Shape();
+    using shape = makeFace.Shape();
     expect(shape.IsNull()).toBe(false);
   });
 });

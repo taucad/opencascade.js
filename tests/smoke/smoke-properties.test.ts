@@ -17,15 +17,15 @@ describe.skipIf(!wasmExists)('Smoke: Geometric properties', () => {
   it('should compute volume of a 10x20x30 box with BRepGProp', () => {
     const oc = getOC();
     using box = new oc.BRepPrimAPI_MakeBox(10, 20, 30);
-    const shape = box.Shape();
+    using shape = box.Shape();
 
-    using props = new oc.GProp_GProps();
-    oc.BRepGProp.VolumeProperties(shape, props, false, false, false);
+    using inProps = new oc.GProp_GProps();
+    oc.BRepGProp.VolumeProperties(shape, inProps, false, false, false);
 
-    const volume = props.Mass();
+    const volume = inProps.Mass();
     expect(volume).toBe(6000);
 
-    const center = props.CentreOfMass();
+    using center = inProps.CentreOfMass();
     expect(center.X()).toBe(5);
     expect(center.Y()).toBe(10);
     expect(center.Z()).toBe(15);
@@ -34,14 +34,14 @@ describe.skipIf(!wasmExists)('Smoke: Geometric properties', () => {
   it('should compute surface area of a 10x20x30 box with BRepGProp', () => {
     const oc = getOC();
     using box = new oc.BRepPrimAPI_MakeBox(10, 20, 30);
-    const shape = box.Shape();
+    using shape = box.Shape();
 
-    using props = new oc.GProp_GProps();
-    oc.BRepGProp.SurfaceProperties(shape, props, false, false);
+    using inProps = new oc.GProp_GProps();
+    oc.BRepGProp.SurfaceProperties(shape, inProps, false, false);
 
-    const area = props.Mass();
+    const area = inProps.Mass();
     const expected = 2 * (10 * 20 + 20 * 30 + 10 * 30);
-    expect(area).toBe(2200);
+    expect(area).toBe(expected);
   });
 
   it('should compute volume of a sphere with BRepGProp', () => {
@@ -49,16 +49,16 @@ describe.skipIf(!wasmExists)('Smoke: Geometric properties', () => {
     const radius = 10;
 
     using sphere = new oc.BRepPrimAPI_MakeSphere(radius);
-    const shape = sphere.Shape();
+    using shape = sphere.Shape();
 
-    using props = new oc.GProp_GProps();
-    oc.BRepGProp.VolumeProperties(shape, props, false, false, false);
+    using inProps = new oc.GProp_GProps();
+    oc.BRepGProp.VolumeProperties(shape, inProps, false, false, false);
 
-    const volume = props.Mass();
+    const volume = inProps.Mass();
     const expectedVolume = (4 / 3) * Math.PI * radius ** 3;
     expect(volume).toBeCloseTo(expectedVolume, 0);
 
-    const center = props.CentreOfMass();
+    using center = inProps.CentreOfMass();
     expect(center.X()).toBeCloseTo(0, 10);
     expect(center.Y()).toBeCloseTo(0, 10);
     expect(center.Z()).toBeCloseTo(0, 10);
@@ -70,29 +70,30 @@ describe.skipIf(!wasmExists)('Smoke: Geometric properties', () => {
     using p2 = new oc.gp_Pnt(10, 0, 0);
     using edge = new oc.BRepBuilderAPI_MakeEdge(p1, p2);
 
-    using props = new oc.GProp_GProps();
-    oc.BRepGProp.LinearProperties(edge.Shape(), props, false, false);
+    using inProps = new oc.GProp_GProps();
+    using edgeShape = edge.Shape();
+    oc.BRepGProp.LinearProperties(edgeShape, inProps, false, false);
 
-    const length = props.Mass();
+    const length = inProps.Mass();
     expect(length).toBe(10);
   });
 
   it('should compute bounding box for a box shape with Bnd_Box', () => {
     const oc = getOC();
     using box = new oc.BRepPrimAPI_MakeBox(10, 20, 30);
-    const shape = box.Shape();
+    using shape = box.Shape();
 
-    using bndBox = new oc.Bnd_Box();
-    oc.BRepBndLib.Add(shape, bndBox, false);
+    using inBndBox = new oc.Bnd_Box();
+    oc.BRepBndLib.Add(shape, inBndBox, false);
 
-    expect(bndBox.IsVoid()).toBe(false);
+    expect(inBndBox.IsVoid()).toBe(false);
 
-    const xMin = bndBox.GetXMin();
-    const yMin = bndBox.GetYMin();
-    const zMin = bndBox.GetZMin();
-    const xMax = bndBox.GetXMax();
-    const yMax = bndBox.GetYMax();
-    const zMax = bndBox.GetZMax();
+    const xMin = inBndBox.GetXMin();
+    const yMin = inBndBox.GetYMin();
+    const zMin = inBndBox.GetZMin();
+    const xMax = inBndBox.GetXMax();
+    const yMax = inBndBox.GetYMax();
+    const zMax = inBndBox.GetZMax();
 
     expect(xMin).toBeCloseTo(0, 5);
     expect(yMin).toBeCloseTo(0, 5);
@@ -105,22 +106,22 @@ describe.skipIf(!wasmExists)('Smoke: Geometric properties', () => {
   it('should check point containment with Bnd_Box', () => {
     const oc = getOC();
     using box = new oc.BRepPrimAPI_MakeBox(10, 10, 10);
-    const shape = box.Shape();
+    using shape = box.Shape();
 
-    using bndBox = new oc.Bnd_Box();
-    oc.BRepBndLib.Add(shape, bndBox, false);
+    using inBndBox = new oc.Bnd_Box();
+    oc.BRepBndLib.Add(shape, inBndBox, false);
 
     using inside = new oc.gp_Pnt(5, 5, 5);
     using outside = new oc.gp_Pnt(15, 15, 15);
 
-    expect(bndBox.IsOut(inside)).toBe(false);
-    expect(bndBox.IsOut(outside)).toBe(true);
+    expect(inBndBox.IsOut(inside)).toBe(false);
+    expect(inBndBox.IsOut(outside)).toBe(true);
   });
 
   it('should validate box dimensions in GLB export via gltf-transform', async () => {
     const oc = getOC();
     using box = new oc.BRepPrimAPI_MakeBox(25, 15, 10);
-    const shape = box.Shape();
+    using shape = box.Shape();
 
     await expectShapeGeometry(shape, {
       size: [25, 15, 10],
@@ -132,7 +133,7 @@ describe.skipIf(!wasmExists)('Smoke: Geometric properties', () => {
   it('should validate sphere dimensions in GLB export via gltf-transform', async () => {
     const oc = getOC();
     using sphere = new oc.BRepPrimAPI_MakeSphere(8);
-    const shape = sphere.Shape();
+    using shape = sphere.Shape();
 
     await expectShapeGeometry(shape, {
       size: [16, 16, 16],
@@ -144,7 +145,7 @@ describe.skipIf(!wasmExists)('Smoke: Geometric properties', () => {
   it('should validate cylinder dimensions in GLB export via gltf-transform', async () => {
     const oc = getOC();
     using cyl = new oc.BRepPrimAPI_MakeCylinder(5, 20);
-    const shape = cyl.Shape();
+    using shape = cyl.Shape();
 
     await expectShapeGeometry(shape, {
       size: [10, 10, 20],
@@ -160,14 +161,14 @@ describe.skipIf(!wasmExists)('Smoke: Geometric properties', () => {
     using ax = new oc.gp_Ax2d(origin, dir);
     using circle = new oc.Geom2d_Circle(ax, radius, true);
 
-    using box2d = new oc.Bnd_Box2d();
+    using inBox2d = new oc.Bnd_Box2d();
 
-    oc.BndLib_Add2dCurve.Add(circle, 0, 2 * Math.PI, 0, box2d);
+    oc.BndLib_Add2dCurve.Add(circle, 0, 2 * Math.PI, 0, inBox2d);
 
-    expect(box2d.IsVoid()).toBe(false);
+    expect(inBox2d.IsVoid()).toBe(false);
 
-    const width = box2d.GetXMax() - box2d.GetXMin();
-    const height = box2d.GetYMax() - box2d.GetYMin();
+    const width = inBox2d.GetXMax() - inBox2d.GetXMin();
+    const height = inBox2d.GetYMax() - inBox2d.GetYMin();
 
     expect(width).toBeCloseTo(2 * radius, 0);
     expect(height).toBeCloseTo(2 * radius, 0);

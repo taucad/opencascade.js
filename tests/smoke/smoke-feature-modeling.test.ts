@@ -13,7 +13,7 @@ describe.skipIf(!wasmExists)('Smoke: Feature modeling', () => {
   it('should create a boss on a box face that increases the shape bounding box height', async () => {
     const oc = getOC();
     using box = new oc.BRepPrimAPI_MakeBox(10, 10, 10);
-    const boxShape = box.Shape();
+    using boxShape = box.Shape();
 
     using faceExplorer = new oc.TopExp_Explorer(
       boxShape,
@@ -21,11 +21,13 @@ describe.skipIf(!wasmExists)('Smoke: Feature modeling', () => {
       oc.TopAbs_ShapeEnum.TopAbs_SHAPE,
     );
 
+    // eslint-disable-next-line tau-lint/require-using-on-disposable -- topFace ownership is transferred across loop iterations; explicit `.delete()` + reassignment manages disposal manually.
     let topFace = faceExplorer.Current();
     let maxZ = -Infinity;
 
     while (faceExplorer.More()) {
-      const face = oc.TopoDS.Face(faceExplorer.Current());
+      using faceExplorerCurrent = faceExplorer.Current();
+      using face = oc.TopoDS.Face(faceExplorerCurrent);
       using adaptor = new oc.BRepAdaptor_Surface(face);
 
       if (adaptor.GetType() === oc.GeomAbs_SurfaceType.GeomAbs_Plane) {
@@ -37,13 +39,16 @@ describe.skipIf(!wasmExists)('Smoke: Feature modeling', () => {
         using pnt = adaptor.Value(uMid, vMid);
         if (pnt.Z() > maxZ) {
           maxZ = pnt.Z();
+          topFace.delete();
+          // eslint-disable-next-line tau-lint/require-using-on-disposable -- see prior comment: ownership is transferred across loop iterations.
           topFace = faceExplorer.Current();
         }
       }
       faceExplorer.Next();
     }
 
-    const skFace = oc.TopoDS.Face(topFace);
+    using disposeTopFace = topFace;
+    using skFace = oc.TopoDS.Face(disposeTopFace);
 
     using profilePt1 = new oc.gp_Pnt(2, 2, 10);
     using profilePt2 = new oc.gp_Pnt(8, 2, 10);
@@ -53,12 +58,13 @@ describe.skipIf(!wasmExists)('Smoke: Feature modeling', () => {
     using profilePoly = new oc.BRepBuilderAPI_MakePolygon(
       profilePt1, profilePt2, profilePt3, profilePt4, true,
     );
-    const profileWire = profilePoly.Wire();
+    using profileWire = profilePoly.Wire();
     using profileFace = new oc.BRepBuilderAPI_MakeFace(profileWire, true);
 
+    using disposable = profileFace.Face();
     using dprism = new oc.BRepFeat_MakeDPrism(
       boxShape,
-      profileFace.Face(),
+      disposable,
       skFace,
       0,
       1,
@@ -66,7 +72,7 @@ describe.skipIf(!wasmExists)('Smoke: Feature modeling', () => {
     );
     dprism.Perform(5);
 
-    const result = dprism.Shape();
+    using result = dprism.Shape();
     expect(result.IsNull()).toBe(false);
 
     await expectShapeGeometry(result, {

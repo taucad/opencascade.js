@@ -23,10 +23,12 @@ describe.skipIf(!wasmExists)('Smoke: cross-class RBV value_object returns', () =
   describe('Geom_Surface.Bounds — primitive T& output (4 numbers)', () => {
     it('should return {U1, U2, V1, V2} from Geom_SphericalSurface', () => {
       const oc = getOC();
-      using ax3 = new oc.gp_Ax3(new oc.gp_Pnt(), new oc.gp_Dir(0, 0, 1));
+      using gpPnt = new oc.gp_Pnt();
+      using gpDir = new oc.gp_Dir(0, 0, 1);
+      using ax3 = new oc.gp_Ax3(gpPnt, gpDir);
       using sphere = new oc.Geom_SphericalSurface(ax3, 10.0);
 
-      const bounds = sphere.Bounds();
+      const bounds = sphere.Bounds(0, 0, 0, 0);
       expect(bounds).toEqual(expect.objectContaining({
         U1: expect.any(Number),
         U2: expect.any(Number),
@@ -38,10 +40,12 @@ describe.skipIf(!wasmExists)('Smoke: cross-class RBV value_object returns', () =
 
     it('should return {U1, U2, V1, V2} from Geom_CylindricalSurface', () => {
       const oc = getOC();
-      using ax3 = new oc.gp_Ax3(new oc.gp_Pnt(), new oc.gp_Dir(0, 0, 1));
+      using gpPnt2 = new oc.gp_Pnt();
+      using gpDir2 = new oc.gp_Dir(0, 0, 1);
+      using ax3 = new oc.gp_Ax3(gpPnt2, gpDir2);
       using cylinder = new oc.Geom_CylindricalSurface(ax3, 5.0);
 
-      const bounds = cylinder.Bounds();
+      const bounds = cylinder.Bounds(0, 0, 0, 0);
       expect(bounds).toEqual(expect.objectContaining({
         U1: expect.any(Number),
         U2: expect.any(Number),
@@ -56,15 +60,17 @@ describe.skipIf(!wasmExists)('Smoke: cross-class RBV value_object returns', () =
     it('should return {UMin, UMax, VMin, VMax} from a box face', () => {
       const oc = getOC();
       using box = new oc.BRepPrimAPI_MakeBox(10, 20, 30);
+      using boxShape = box.Shape();
       using explorer = new oc.TopExp_Explorer(
-        box.Shape(),
+        boxShape,
         oc.TopAbs_ShapeEnum.TopAbs_FACE,
         oc.TopAbs_ShapeEnum.TopAbs_SHAPE,
       );
       expect(explorer.More()).toBe(true);
-      const face = oc.TopoDS.Face(explorer.Current());
+      using explorerCurrent = explorer.Current();
+      using face = oc.TopoDS.Face(explorerCurrent);
 
-      const result = oc.BRepTools.UVBounds(face);
+      const result = oc.BRepTools.UVBounds(face, 0, 0, 0, 0);
       expect(result).toEqual(expect.objectContaining({
         UMin: expect.any(Number),
         UMax: expect.any(Number),
@@ -79,14 +85,16 @@ describe.skipIf(!wasmExists)('Smoke: cross-class RBV value_object returns', () =
   describe('GeomAPI_ProjectPointOnSurf — output params from projection', () => {
     it('should return {U, V} from LowerDistanceParameters', () => {
       const oc = getOC();
-      using ax3 = new oc.gp_Ax3(new oc.gp_Pnt(), new oc.gp_Dir(0, 0, 1));
+      using gpPnt3 = new oc.gp_Pnt();
+      using gpDir3 = new oc.gp_Dir(0, 0, 1);
+      using ax3 = new oc.gp_Ax3(gpPnt3, gpDir3);
       using sphere = new oc.Geom_SphericalSurface(ax3, 10.0);
       using point = new oc.gp_Pnt(10, 0, 0);
 
       using projector = new oc.GeomAPI_ProjectPointOnSurf(point, sphere);
       expect(projector.NbPoints()).toBeGreaterThan(0);
 
-      const params = projector.LowerDistanceParameters();
+      const params = projector.LowerDistanceParameters(0, 0);
       expect(params).toEqual(expect.objectContaining({
         U: expect.any(Number),
         V: expect.any(Number),
@@ -98,16 +106,18 @@ describe.skipIf(!wasmExists)('Smoke: cross-class RBV value_object returns', () =
     it('should return bounds matching the same field shape as Geom_Surface.Bounds', () => {
       const oc = getOC();
       using box = new oc.BRepPrimAPI_MakeBox(10, 20, 30);
+      using boxShape2 = box.Shape();
       using explorer = new oc.TopExp_Explorer(
-        box.Shape(),
+        boxShape2,
         oc.TopAbs_ShapeEnum.TopAbs_FACE,
         oc.TopAbs_ShapeEnum.TopAbs_SHAPE,
       );
       expect(explorer.More()).toBe(true);
-      const face = oc.TopoDS.Face(explorer.Current());
+      using explorerCurrent2 = explorer.Current();
+      using face = oc.TopoDS.Face(explorerCurrent2);
 
       using gpropFace = new oc.BRepGProp_Face(face);
-      const bounds = gpropFace.Bounds();
+      const bounds = gpropFace.Bounds(0, 0, 0, 0);
       expect(bounds).toEqual(expect.objectContaining({
         U1: expect.any(Number),
         U2: expect.any(Number),
@@ -126,7 +136,8 @@ describe.skipIf(!wasmExists)('Smoke: cross-class RBV value_object returns', () =
       using dir1 = new oc.gp_Dir2d(1, 0);
       using dir2 = new oc.gp_Dir2d(0, 1);
       using ax1 = new oc.gp_Ax2d(center, dir1);
-      using ax2 = new oc.gp_Ax2d(new oc.gp_Pnt2d(5, 5), dir2);
+      using gpPnt2d = new oc.gp_Pnt2d(5, 5);
+      using ax2 = new oc.gp_Ax2d(gpPnt2d, dir2);
 
       using circle = new oc.Geom2d_Circle(ax1, 10.0, true);
       using line = new oc.Geom2d_Line(ax2);
@@ -134,11 +145,10 @@ describe.skipIf(!wasmExists)('Smoke: cross-class RBV value_object returns', () =
       using inter = new oc.Geom2dAPI_InterCurveCurve(circle, line);
       const nSeg = inter.NbSegments();
       if (nSeg > 0) {
-        const { Curve1, Curve2 } = inter.Segment(1);
+        using disposable = inter.Segment(1);
+        const { Curve1, Curve2 } = disposable;
         expect(typeof Curve1.delete).toBe('function');
         expect(typeof Curve2.delete).toBe('function');
-        Curve1.delete();
-        Curve2.delete();
       }
     });
   });
@@ -147,19 +157,23 @@ describe.skipIf(!wasmExists)('Smoke: cross-class RBV value_object returns', () =
     it('should produce structurally identical returns from different classes', () => {
       const oc = getOC();
 
-      using ax3 = new oc.gp_Ax3(new oc.gp_Pnt(), new oc.gp_Dir(0, 0, 1));
+      using gpPnt4 = new oc.gp_Pnt();
+      using gpDir4 = new oc.gp_Dir(0, 0, 1);
+      using ax3 = new oc.gp_Ax3(gpPnt4, gpDir4);
       using sphere = new oc.Geom_SphericalSurface(ax3, 10.0);
-      const geomBounds = sphere.Bounds();
+      const geomBounds = sphere.Bounds(0, 0, 0, 0);
 
       using box = new oc.BRepPrimAPI_MakeBox(10, 20, 30);
+      using boxShape3 = box.Shape();
       using explorer = new oc.TopExp_Explorer(
-        box.Shape(),
+        boxShape3,
         oc.TopAbs_ShapeEnum.TopAbs_FACE,
         oc.TopAbs_ShapeEnum.TopAbs_SHAPE,
       );
-      const face = oc.TopoDS.Face(explorer.Current());
+      using explorerCurrent3 = explorer.Current();
+      using face = oc.TopoDS.Face(explorerCurrent3);
       using gpropFace = new oc.BRepGProp_Face(face);
-      const gpropBounds = gpropFace.Bounds();
+      const gpropBounds = gpropFace.Bounds(0, 0, 0, 0);
 
       const geomKeys = Object.keys(geomBounds).sort();
       const gpropKeys = Object.keys(gpropBounds).sort();

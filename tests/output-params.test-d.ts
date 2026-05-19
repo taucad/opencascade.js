@@ -1,24 +1,110 @@
 /**
- * Type-level tests for unified return-by-value output parameters.
+ * Type-level contract tests for OCJS cross-boundary return shapes under the
+ * minimal-transformation contract (R1–R5 of
+ * docs/research/ocjs-rbv-return-shape-revisit.md).
  *
- * Validates that TypeScript declarations correctly reflect the new approach:
- * - Handle<T>& output params on const methods are stripped and returned in object
- * - Primitive T& output params on const methods are stripped and returned in object
- * - Primitive T& on static/non-const methods are kept in signature AND returned
- * - Non-void return methods include original return as `result` in return object
+ * - S0: direct value_object return (unaffected by R1–R5).
+ * - S1: primitive-only envelope (renamed C++-return field → `returnValue`).
+ * - S2: val::object envelope with `[Symbol.dispose]` (Handle / mixed cases).
+ * - S3 (new): class-only methods collapse to a plain native (or `void`)
+ *   return — class refs are mutated in place, never mirrored.
+ *
+ * @see docs/research/ocjs-rbv-return-shape-revisit.md
  */
 import { expectTypeOf, it, describe } from 'vitest';
 import type {
+  BRepGProp,
+  BRepGraph_Builder,
+  BRepTools,
+  GProp_GProps,
   Geom2dAPI_InterCurveCurve,
   Geom2d_Curve,
   GeomAPI_ProjectPointOnSurf,
+  Geom_Curve,
   Geom_Surface,
-  Bnd_Box,
-  BRepTools,
+  Quantity_Color,
+  TDF_Label,
   TopoDS_Face,
+  TopoDS_Shape,
+  XCAFDoc_ClippingPlaneTool,
+  XCAFDoc_ColorTool,
 } from '../build-configs/opencascade_full';
 
-describe('Handle<T>& output params (const method — stripped)', () => {
+describe('Shape S0 — direct value_object return (BRepGraph_Builder.Add)', () => {
+  it('returns the OCCT struct directly with named fields', () => {
+    type AddReturn = ReturnType<(typeof BRepGraph_Builder)['Add']>;
+
+    expectTypeOf<AddReturn>().toHaveProperty('TopologyRoot');
+    expectTypeOf<AddReturn>().toHaveProperty('Ok');
+    expectTypeOf<AddReturn['Ok']>().toEqualTypeOf<boolean>();
+  });
+
+  it('does not wrap in an RBV envelope (no result / returnValue field, no Symbol.dispose)', () => {
+    type AddReturn = ReturnType<(typeof BRepGraph_Builder)['Add']>;
+
+    expectTypeOf<AddReturn>().not.toHaveProperty('result');
+    expectTypeOf<AddReturn>().not.toHaveProperty('returnValue');
+    expectTypeOf<AddReturn>().not.toHaveProperty(Symbol.dispose);
+  });
+});
+
+describe('Shape S1 — value_object envelope (primitive T& outputs)', () => {
+  it('should return object with U1, U2, V1, V2 from Geom_Surface.Bounds', () => {
+    type BoundsReturn = ReturnType<Geom_Surface['Bounds']>;
+
+    expectTypeOf<BoundsReturn>().toHaveProperty('U1');
+    expectTypeOf<BoundsReturn>().toHaveProperty('U2');
+    expectTypeOf<BoundsReturn>().toHaveProperty('V1');
+    expectTypeOf<BoundsReturn>().toHaveProperty('V2');
+  });
+
+  it('should require all four output slots for Bounds (no zero-arg shortcut)', () => {
+    expectTypeOf<Geom_Surface['Bounds']>().toBeCallableWith(0, 0, 0, 0);
+  });
+
+  it('should not carry Symbol.dispose on Bounds return (primitives only, void native return)', () => {
+    type BoundsReturn = ReturnType<Geom_Surface['Bounds']>;
+
+    expectTypeOf<BoundsReturn>().not.toHaveProperty(Symbol.dispose);
+    // Bounds has a void C++ return, so no envelope field is named.
+    expectTypeOf<BoundsReturn>().not.toHaveProperty('returnValue');
+  });
+
+  it('should return object with U, V from GeomAPI_ProjectPointOnSurf.LowerDistanceParameters', () => {
+    type LdpReturn = ReturnType<GeomAPI_ProjectPointOnSurf['LowerDistanceParameters']>;
+
+    expectTypeOf<LdpReturn>().toHaveProperty('U');
+    expectTypeOf<LdpReturn>().toHaveProperty('V');
+  });
+
+  it('should require both output slots for LowerDistanceParameters (no zero-arg shortcut)', () => {
+    expectTypeOf<GeomAPI_ProjectPointOnSurf['LowerDistanceParameters']>().toBeCallableWith(0, 0);
+  });
+
+  it('should return object with UMin, UMax, VMin, VMax from BRepTools.UVBounds', () => {
+    type UvBoundsReturn = ReturnType<(typeof BRepTools)['UVBounds']>;
+
+    expectTypeOf<UvBoundsReturn>().toHaveProperty('UMin');
+    expectTypeOf<UvBoundsReturn>().toHaveProperty('UMax');
+    expectTypeOf<UvBoundsReturn>().toHaveProperty('VMin');
+    expectTypeOf<UvBoundsReturn>().toHaveProperty('VMax');
+  });
+
+  it('should keep F and every output slot in the 5-arg UVBounds overload', () => {
+    type UvBoundsOverloads = (typeof BRepTools)['UVBounds'];
+    type FirstOverload = Extract<
+      UvBoundsOverloads,
+      (F: TopoDS_Face, UMin: number, UMax: number, VMin: number, VMax: number) => unknown
+    >;
+    expectTypeOf<FirstOverload>().not.toBeNever();
+  });
+
+  it('should not return void from UVBounds', () => {
+    expectTypeOf<ReturnType<(typeof BRepTools)['UVBounds']>>().not.toBeVoid();
+  });
+});
+
+describe('Shape S2 — val::object envelope (Handle<T> outputs, Approach G elision)', () => {
   it('should return object with Curve1 and Curve2 from Segment', () => {
     type SegmentReturn = ReturnType<Geom2dAPI_InterCurveCurve['Segment']>;
 
@@ -29,60 +115,73 @@ describe('Handle<T>& output params (const method — stripped)', () => {
     expectTypeOf<SegmentReturn['Curve2']>().toMatchTypeOf<Geom2d_Curve>();
   });
 
-  it('should accept only Index parameter for Segment', () => {
-    expectTypeOf<Geom2dAPI_InterCurveCurve['Segment']>()
-      .parameters.toEqualTypeOf<[Index: number]>();
+  it('should expose only Index on Segment (Handle outputs elided from JS arity)', () => {
+    expectTypeOf<Geom2dAPI_InterCurveCurve['Segment']>().toBeCallableWith(1);
+    expectTypeOf<Geom2dAPI_InterCurveCurve['Segment']>().parameters.toEqualTypeOf<[Index: number]>();
+  });
+
+  it('should attach Symbol.dispose to the Segment return envelope', () => {
+    type SegmentReturn = ReturnType<Geom2dAPI_InterCurveCurve['Segment']>;
+
+    expectTypeOf<SegmentReturn>().toHaveProperty(Symbol.dispose);
   });
 
   it('should not return void from Segment', () => {
     expectTypeOf<ReturnType<Geom2dAPI_InterCurveCurve['Segment']>>().not.toBeVoid();
   });
-});
 
-describe('Primitive T& output params (const method — stripped)', () => {
-  it('should return object with U1, U2, V1, V2 from Geom_Surface.Bounds', () => {
-    type BoundsReturn = ReturnType<Geom_Surface['Bounds']>;
+  it('should rename the C++-return field to returnValue (no legacy `result`)', () => {
+    // Pick a mixed-output method where the envelope must carry both the
+    // native return and a Handle field — GetClippingPlane is the canonical
+    // example from the research doc.
+    type Tool = XCAFDoc_ClippingPlaneTool;
+    type R = ReturnType<Tool['GetClippingPlane']>;
 
-    expectTypeOf<BoundsReturn>().toHaveProperty('U1');
-    expectTypeOf<BoundsReturn>().toHaveProperty('U2');
-    expectTypeOf<BoundsReturn>().toHaveProperty('V1');
-    expectTypeOf<BoundsReturn>().toHaveProperty('V2');
-  });
-
-  it('should accept no parameters for Bounds (all stripped)', () => {
-    expectTypeOf<Geom_Surface['Bounds']>().parameters.toEqualTypeOf<[]>();
-  });
-
-  it('should return object with U, V from GeomAPI_ProjectPointOnSurf.LowerDistanceParameters', () => {
-    type LDPReturn = ReturnType<GeomAPI_ProjectPointOnSurf['LowerDistanceParameters']>;
-
-    expectTypeOf<LDPReturn>().toHaveProperty('U');
-    expectTypeOf<LDPReturn>().toHaveProperty('V');
-  });
-
-  it('should accept no parameters for LowerDistanceParameters (all stripped)', () => {
-    expectTypeOf<GeomAPI_ProjectPointOnSurf['LowerDistanceParameters']>()
-      .parameters.toEqualTypeOf<[]>();
+    expectTypeOf<R>().toHaveProperty('returnValue');
+    expectTypeOf<R>().not.toHaveProperty('result');
+    expectTypeOf<R['returnValue']>().toEqualTypeOf<boolean>();
+    expectTypeOf<R>().toHaveProperty('theName');
+    expectTypeOf<R>().toHaveProperty('theCapping');
+    expectTypeOf<R['theCapping']>().toEqualTypeOf<boolean>();
+    expectTypeOf<R>().toHaveProperty(Symbol.dispose);
   });
 });
 
-describe('Static/non-const primitive T& (kept in signature AND returned)', () => {
-  it('should return object with UMin, UMax, VMin, VMax from BRepTools.UVBounds', () => {
-    type UVBoundsReturn = ReturnType<(typeof BRepTools)['UVBounds']>;
-
-    expectTypeOf<UVBoundsReturn>().toHaveProperty('UMin');
-    expectTypeOf<UVBoundsReturn>().toHaveProperty('UMax');
-    expectTypeOf<UVBoundsReturn>().toHaveProperty('VMin');
-    expectTypeOf<UVBoundsReturn>().toHaveProperty('VMax');
+describe('Shape S3 — class-only methods collapse to native return', () => {
+  it('Geom_Curve.D1 returns void (class refs mutated in place)', () => {
+    expectTypeOf<ReturnType<Geom_Curve['D1']>>().toEqualTypeOf<void>();
   });
 
-  it('should keep F and output params in UVBounds signature (first overload)', () => {
-    type UVBoundsOverloads = (typeof BRepTools)['UVBounds'];
-    type FirstOverload = Extract<UVBoundsOverloads, (F: TopoDS_Face, UMin: number, UMax: number, VMin: number, VMax: number) => unknown>;
-    expectTypeOf<FirstOverload>().not.toBeNever();
+  it('Geom_Curve.D0 returns void', () => {
+    expectTypeOf<ReturnType<Geom_Curve['D0']>>().toEqualTypeOf<void>();
   });
 
-  it('should not return void from UVBounds', () => {
-    expectTypeOf<ReturnType<(typeof BRepTools)['UVBounds']>>().not.toBeVoid();
+  it('BRepGProp.VolumeProperties exposes a non-void native return when present', () => {
+    // The 6-arg overload has `Eps: number` and returns a `number` (mass).
+    type Overloads = (typeof BRepGProp)['VolumeProperties'];
+    type WithEps = Extract<
+      Overloads,
+      (
+        S: TopoDS_Shape,
+        VProps: GProp_GProps,
+        Eps: number,
+        OnlyClosed: boolean,
+        SkipShared: boolean,
+      ) => number
+    >;
+    expectTypeOf<WithEps>().not.toBeNever();
+  });
+
+  it('XCAFDoc_ColorTool.GetColor returns boolean (no envelope)', () => {
+    type Overloads = (typeof XCAFDoc_ColorTool)['GetColor'];
+    type Two = Extract<Overloads, (lab: TDF_Label, col: Quantity_Color) => boolean>;
+    expectTypeOf<Two>().not.toBeNever();
+  });
+
+  it('class-only returns are not envelopes (no returnValue, no Symbol.dispose)', () => {
+    type D1Return = ReturnType<Geom_Curve['D1']>;
+    expectTypeOf<D1Return>().not.toHaveProperty('result');
+    expectTypeOf<D1Return>().not.toHaveProperty('returnValue');
+    expectTypeOf<D1Return>().not.toHaveProperty(Symbol.dispose);
   });
 });

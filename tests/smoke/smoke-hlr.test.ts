@@ -13,7 +13,7 @@ describe.skipIf(!wasmExists)('Smoke: Hidden line removal', () => {
   it('should project a box to 2D and extract visible outline edges', () => {
     const oc = getOC();
     using box = new oc.BRepPrimAPI_MakeBox(10, 10, 10);
-    const shape = box.Shape();
+    using shape = box.Shape();
 
     using origin = new oc.gp_Pnt(50, 50, 50);
     using dir = new oc.gp_Dir(-1, -1, -1);
@@ -27,8 +27,8 @@ describe.skipIf(!wasmExists)('Smoke: Hidden line removal', () => {
     algo.Update();
 
     using hlrToShape = new oc.HLRBRep_HLRToShape(algo);
-    const vCompound = hlrToShape.VCompound();
-    const outlineV = hlrToShape.OutLineVCompound();
+    using vCompound = hlrToShape.VCompound();
+    using outlineV = hlrToShape.OutLineVCompound();
 
     let totalEdges = 0;
     for (const compound of [vCompound, outlineV]) {
@@ -56,13 +56,14 @@ describe.skipIf(!wasmExists)('Smoke: Hidden line removal', () => {
     using projector = new oc.HLRAlgo_Projector(ax2);
 
     using algo = new oc.HLRBRep_Algo();
-    algo.Add(box.Shape(), 0);
+    using boxShape = box.Shape();
+    algo.Add(boxShape, 0);
     algo.Projector(projector);
     algo.Update();
 
     using hlrToShape = new oc.HLRBRep_HLRToShape(algo);
-    const vCompound = hlrToShape.VCompound();
-    const hCompound = hlrToShape.HCompound();
+    using vCompound = hlrToShape.VCompound();
+    using hCompound = hlrToShape.HCompound();
 
     const countEdges = (compound: ReturnType<typeof hlrToShape.VCompound>) => {
       if (compound.IsNull()) return 0;

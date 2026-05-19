@@ -32,7 +32,7 @@ describe.skipIf(!wasmExists)('Smoke: Intersection segment parameters', () => {
 
     expect(nSeg).toBe(1);
 
-    const seg = intersector.Segment(1);
+    using seg = intersector.Segment(1);
     using Curve1 = seg.Curve1;
     using Curve2 = seg.Curve2;
 
@@ -68,7 +68,7 @@ describe.skipIf(!wasmExists)('Smoke: Intersection segment parameters', () => {
     const nSeg = intersector.NbSegments();
 
     if (nSeg > 0) {
-      const seg = intersector.Segment(1);
+      using seg = intersector.Segment(1);
       using Curve1 = seg.Curve1;
       using Curve2 = seg.Curve2;
 
@@ -99,7 +99,8 @@ describe.skipIf(!wasmExists)('Smoke: Intersection segment parameters', () => {
     const mkLine = (x1: number, y1: number, x2: number, y2: number) => {
       using p1 = mkPt(x1, y1);
       using p2 = mkPt(x2, y2);
-      const edge = new oc.BRepBuilderAPI_MakeEdge2d(p1, p2).Edge();
+      using bRepBuilderAPIMakeedge2d = new oc.BRepBuilderAPI_MakeEdge2d(p1, p2);
+      using edge = bRepBuilderAPIMakeedge2d.Edge();
       return edge;
     };
 
@@ -132,7 +133,7 @@ describe.skipIf(!wasmExists)('Smoke: Intersection segment parameters', () => {
 
       if (nSeg > 0) {
         for (let i = 1; i <= nSeg; i++) {
-          const iseg = intersector.Segment(i);
+          using iseg = intersector.Segment(i);
           using Curve1 = iseg.Curve1;
           using Curve2 = iseg.Curve2;
           const fp = Curve1.FirstParameter();
@@ -162,7 +163,7 @@ describe.skipIf(!wasmExists)('Smoke: Intersection segment parameters', () => {
     const nSeg = intersector.NbSegments();
 
     if (nSeg > 0) {
-      const seg = intersector.Segment(1);
+      using seg = intersector.Segment(1);
       using Curve1 = seg.Curve1;
       using Curve2 = seg.Curve2;
 
@@ -201,7 +202,7 @@ describe.skipIf(!wasmExists)('Smoke: Intersection segment parameters', () => {
     const nSeg = intersector.NbSegments();
 
     for (let i = 1; i <= nSeg; i++) {
-      const iseg = intersector.Segment(i);
+      using iseg = intersector.Segment(i);
       using Curve1 = iseg.Curve1;
       using Curve2 = iseg.Curve2;
 
@@ -242,7 +243,7 @@ describe.skipIf(!wasmExists)('Smoke: Intersection segment parameters', () => {
 
     expect(nSeg).toBeGreaterThan(0);
 
-    const seg = intersector.Segment(1);
+    using seg = intersector.Segment(1);
     using Curve1 = seg.Curve1;
     using Curve2 = seg.Curve2;
 
@@ -281,11 +282,10 @@ describe.skipIf(!wasmExists)('Smoke: Intersection segment parameters', () => {
     using line2 = new oc.Geom2d_Line(ax2);
     using seg2 = new oc.Geom2d_TrimmedCurve(line2, -3.0, 3.0, true, true);
 
-    const intersector = new oc.Geom2dAPI_InterCurveCurve(seg1, seg2, 1e-9);
-    const iseg = intersector.Segment(1);
+    using intersector = new oc.Geom2dAPI_InterCurveCurve(seg1, seg2, 1e-9);
+    using iseg = intersector.Segment(1);
     using Curve1 = iseg.Curve1;
     using Curve2 = iseg.Curve2;
-    intersector.delete();
 
     const fp = Curve1.FirstParameter();
     const lp = Curve1.LastParameter();

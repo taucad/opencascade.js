@@ -25,22 +25,24 @@ describe.skipIf(!wasmExists)('Smoke: same-arity multi-arg dispatch', () => {
       using p2 = new oc.gp_Pnt(10, 0, 0);
       using edge = new oc.BRepBuilderAPI_MakeEdge(p1, p2);
       expect(edge.IsDone()).toBe(true);
-      expect(edge.Edge().IsNull()).toBe(false);
+      using disposable = edge.Edge();
+      expect(disposable.IsNull()).toBe(false);
     });
 
     it('should dispatch (TopoDS_Vertex, TopoDS_Vertex) correctly', () => {
       const oc = getOC();
       using builder = new oc.BRep_Builder();
-      using v1 = new oc.TopoDS_Vertex();
-      using v2 = new oc.TopoDS_Vertex();
+      using inV1 = new oc.TopoDS_Vertex();
+      using inV2 = new oc.TopoDS_Vertex();
       using p1 = new oc.gp_Pnt(0, 0, 0);
       using p2 = new oc.gp_Pnt(10, 0, 0);
-      builder.MakeVertex(v1, p1, 1e-6);
-      builder.MakeVertex(v2, p2, 1e-6);
+      builder.MakeVertex(inV1, p1, 1e-6);
+      builder.MakeVertex(inV2, p2, 1e-6);
 
-      using edge = new oc.BRepBuilderAPI_MakeEdge(v1, v2);
+      using edge = new oc.BRepBuilderAPI_MakeEdge(inV1, inV2);
       expect(edge.IsDone()).toBe(true);
-      expect(edge.Edge().IsNull()).toBe(false);
+      using disposable4 = edge.Edge();
+      expect(disposable4.IsNull()).toBe(false);
     });
   });
 
@@ -94,8 +96,10 @@ describe.skipIf(!wasmExists)('Smoke: same-arity multi-arg dispatch', () => {
       using builder = new oc.BRep_Builder();
       using v1 = new oc.TopoDS_Vertex();
       using v2 = new oc.TopoDS_Vertex();
-      builder.MakeVertex(v1, new oc.gp_Pnt(2, 0, 0), 1e-6);
-      builder.MakeVertex(v2, new oc.gp_Pnt(8, 0, 0), 1e-6);
+      using gpPnt = new oc.gp_Pnt(2, 0, 0);
+      builder.MakeVertex(v1, gpPnt, 1e-6);
+      using gpPnt2 = new oc.gp_Pnt(8, 0, 0);
+      builder.MakeVertex(v2, gpPnt2, 1e-6);
 
       using edge = new oc.BRepBuilderAPI_MakeEdge(lin, v1, v2);
       expect(edge.IsDone()).toBe(true);
@@ -105,7 +109,9 @@ describe.skipIf(!wasmExists)('Smoke: same-arity multi-arg dispatch', () => {
   describe('GC_MakeSegment — 3-arg mixed dispatch', () => {
     it('should dispatch (gp_Lin, number, number) — parametric', () => {
       const oc = getOC();
-      using lin = new oc.gp_Lin(new oc.gp_Pnt(0, 0, 0), new oc.gp_Dir(1, 0, 0));
+      using gpPnt3 = new oc.gp_Pnt(0, 0, 0);
+      using gpDir = new oc.gp_Dir(1, 0, 0);
+      using lin = new oc.gp_Lin(gpPnt3, gpDir);
       using seg = new oc.GC_MakeSegment(lin, 0, 10);
       expect(seg.IsDone()).toBe(true);
       using curve = seg.Value();
@@ -114,7 +120,9 @@ describe.skipIf(!wasmExists)('Smoke: same-arity multi-arg dispatch', () => {
 
     it('should dispatch (gp_Lin, gp_Pnt, gp_Pnt) — point endpoints', () => {
       const oc = getOC();
-      using lin = new oc.gp_Lin(new oc.gp_Pnt(0, 0, 0), new oc.gp_Dir(1, 0, 0));
+      using gpPnt4 = new oc.gp_Pnt(0, 0, 0);
+      using gpDir2 = new oc.gp_Dir(1, 0, 0);
+      using lin = new oc.gp_Lin(gpPnt4, gpDir2);
       using p1 = new oc.gp_Pnt(2, 0, 0);
       using p2 = new oc.gp_Pnt(8, 0, 0);
       using seg = new oc.GC_MakeSegment(lin, p1, p2);
@@ -123,7 +131,9 @@ describe.skipIf(!wasmExists)('Smoke: same-arity multi-arg dispatch', () => {
 
     it('should dispatch (gp_Lin, gp_Pnt, number) — point + param', () => {
       const oc = getOC();
-      using lin = new oc.gp_Lin(new oc.gp_Pnt(0, 0, 0), new oc.gp_Dir(1, 0, 0));
+      using gpPnt5 = new oc.gp_Pnt(0, 0, 0);
+      using gpDir3 = new oc.gp_Dir(1, 0, 0);
+      using lin = new oc.gp_Lin(gpPnt5, gpDir3);
       using p = new oc.gp_Pnt(2, 0, 0);
       using seg = new oc.GC_MakeSegment(lin, p, 8);
       expect(seg.IsDone()).toBe(true);

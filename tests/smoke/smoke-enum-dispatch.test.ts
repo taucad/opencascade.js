@@ -45,7 +45,9 @@ describe.skipIf(!wasmExists)('Smoke: IntPatch Enum Dispatch', () => {
   describe('IntPatch_GLine (gp_Lin geometry)', () => {
     it('should construct with IntSurf_TypeTrans parameters', () => {
       const oc = getOC();
-      using line = new oc.gp_Lin(new oc.gp_Pnt(0, 0, 0), new oc.gp_Dir(1, 0, 0));
+      using gpPnt = new oc.gp_Pnt(0, 0, 0);
+      using gpDir = new oc.gp_Dir(1, 0, 0);
+      using line = new oc.gp_Lin(gpPnt, gpDir);
       using gline = new oc.IntPatch_GLine(
         line,
         false,
@@ -59,7 +61,9 @@ describe.skipIf(!wasmExists)('Smoke: IntPatch Enum Dispatch', () => {
 
     it('should construct with IntSurf_Situation parameters', () => {
       const oc = getOC();
-      using line = new oc.gp_Lin(new oc.gp_Pnt(0, 0, 0), new oc.gp_Dir(1, 0, 0));
+      using gpPnt2 = new oc.gp_Pnt(0, 0, 0);
+      using gpDir2 = new oc.gp_Dir(1, 0, 0);
+      using line = new oc.gp_Lin(gpPnt2, gpDir2);
       using gline = new oc.IntPatch_GLine(
         line,
         false,

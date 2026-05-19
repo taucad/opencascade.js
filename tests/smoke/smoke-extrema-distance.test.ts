@@ -16,26 +16,30 @@ describe.skipIf(!wasmExists)('Smoke: Extrema and distance', () => {
   it('should compute distance between two separated boxes with BRepExtrema_DistShapeShape', () => {
     const oc = getOC();
     using box1 = new oc.BRepPrimAPI_MakeBox(10, 10, 10);
+    using gpPnt = new oc.gp_Pnt(20, 0, 0);
     using box2Maker = new oc.BRepPrimAPI_MakeBox(
-      new oc.gp_Pnt(20, 0, 0),
+      gpPnt,
       10,
       10,
       10,
     );
 
+    using box1Shape = box1.Shape();
+    using box2MakerShape = box2Maker.Shape();
+    using messageProgressrange = new oc.Message_ProgressRange();
     using dist = new oc.BRepExtrema_DistShapeShape(
-      box1.Shape(),
-      box2Maker.Shape(),
+      box1Shape,
+      box2MakerShape,
       oc.Extrema_ExtFlag.Extrema_ExtFlag_MIN,
       oc.Extrema_ExtAlgo.Extrema_ExtAlgo_Grad,
-      new oc.Message_ProgressRange(),
+      messageProgressrange,
     );
 
     expect(dist.IsDone()).toBe(true);
     expect(dist.Value()).toBe(10);
 
-    const pt1 = dist.PointOnShape1(1);
-    const pt2 = dist.PointOnShape2(1);
+    using pt1 = dist.PointOnShape1(1);
+    using pt2 = dist.PointOnShape2(1);
     expect(pt1.X()).toBe(10);
     expect(pt2.X()).toBe(20);
   });
@@ -45,12 +49,15 @@ describe.skipIf(!wasmExists)('Smoke: Extrema and distance', () => {
     using box1 = new oc.BRepPrimAPI_MakeBox(10, 10, 10);
     using box2 = new oc.BRepPrimAPI_MakeBox(10, 10, 10);
 
+    using box1Shape2 = box1.Shape();
+    using box2Shape = box2.Shape();
+    using messageProgressrange2 = new oc.Message_ProgressRange();
     using dist = new oc.BRepExtrema_DistShapeShape(
-      box1.Shape(),
-      box2.Shape(),
+      box1Shape2,
+      box2Shape,
       oc.Extrema_ExtFlag.Extrema_ExtFlag_MIN,
       oc.Extrema_ExtAlgo.Extrema_ExtAlgo_Grad,
-      new oc.Message_ProgressRange(),
+      messageProgressrange2,
     );
 
     expect(dist.IsDone()).toBe(true);
@@ -60,17 +67,21 @@ describe.skipIf(!wasmExists)('Smoke: Extrema and distance', () => {
   it('should compute distance between box and sphere with BRepExtrema_DistShapeShape', () => {
     const oc = getOC();
     using box = new oc.BRepPrimAPI_MakeBox(10, 10, 10);
+    using gpPnt2 = new oc.gp_Pnt(30, 5, 5);
     using sphere = new oc.BRepPrimAPI_MakeSphere(
-      new oc.gp_Pnt(30, 5, 5),
+      gpPnt2,
       5,
     );
 
+    using boxShape = box.Shape();
+    using sphereShape = sphere.Shape();
+    using messageProgressrange3 = new oc.Message_ProgressRange();
     using dist = new oc.BRepExtrema_DistShapeShape(
-      box.Shape(),
-      sphere.Shape(),
+      boxShape,
+      sphereShape,
       oc.Extrema_ExtFlag.Extrema_ExtFlag_MIN,
       oc.Extrema_ExtAlgo.Extrema_ExtAlgo_Grad,
-      new oc.Message_ProgressRange(),
+      messageProgressrange3,
     );
 
     expect(dist.IsDone()).toBe(true);
@@ -80,21 +91,24 @@ describe.skipIf(!wasmExists)('Smoke: Extrema and distance', () => {
   it('should compute distance between two separated bounding boxes with Bnd_Box', () => {
     const oc = getOC();
     using box1 = new oc.BRepPrimAPI_MakeBox(10, 10, 10);
+    using gpPnt3 = new oc.gp_Pnt(20, 0, 0);
     using box2 = new oc.BRepPrimAPI_MakeBox(
-      new oc.gp_Pnt(20, 0, 0),
+      gpPnt3,
       10,
       10,
       10,
     );
 
-    using bnd1 = new oc.Bnd_Box();
-    using bnd2 = new oc.Bnd_Box();
-    oc.BRepBndLib.Add(box1.Shape(), bnd1, false);
-    oc.BRepBndLib.Add(box2.Shape(), bnd2, false);
+    using inBnd1 = new oc.Bnd_Box();
+    using inBnd2 = new oc.Bnd_Box();
+    using box1Shape3 = box1.Shape();
+    oc.BRepBndLib.Add(box1Shape3, inBnd1, false);
+    using box2Shape2 = box2.Shape();
+    oc.BRepBndLib.Add(box2Shape2, inBnd2, false);
 
-    const distance = bnd1.Distance(bnd2);
+    const distance = inBnd1.Distance(inBnd2);
     expect(distance).toBeCloseTo(10, 5);
 
-    expect(bnd1.IsOut(bnd2)).toBe(true);
+    expect(inBnd1.IsOut(inBnd2)).toBe(true);
   });
 });

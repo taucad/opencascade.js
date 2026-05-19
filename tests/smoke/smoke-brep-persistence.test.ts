@@ -7,18 +7,18 @@ describe.skipIf(!wasmExists)('Smoke: BRepTools Write/Read round-trip', () => {
   it('should write box to FS and read back', () => {
     const oc = getOC();
     using box = new oc.BRepPrimAPI_MakeBox(10, 20, 30);
-    const shape = box.Shape();
+    using shape = box.Shape();
     const brepPath = '/test.brep';
-    const progress = new oc.Message_ProgressRange();
+    using progress = new oc.Message_ProgressRange();
 
     const writeOk = oc.BRepTools.Write(shape, brepPath, progress);
     expect(writeOk).toBe(true);
 
-    const readShape = new oc.TopoDS_Shape();
+    using inReadShape = new oc.TopoDS_Shape();
     using builder = new oc.BRep_Builder();
-    const readOk = oc.BRepTools.Read(readShape, brepPath, builder, progress);
+    const readOk = oc.BRepTools.Read(inReadShape, brepPath, builder, progress);
     oc.FS.unlink(brepPath);
     expect(readOk).toBe(true);
-    expect(readShape.IsNull()).toBe(false);
+    expect(inReadShape.IsNull()).toBe(false);
   });
 });

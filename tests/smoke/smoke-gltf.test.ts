@@ -7,20 +7,26 @@ describe.skipIf(!wasmExists)('Smoke: RWGltf_CafWriter GLB export', () => {
   it('should export box to GLB via XCAF document', () => {
     const oc = getOC();
     using box = new oc.BRepPrimAPI_MakeBox(10, 20, 30);
-    const shape = box.Shape();
+    using shape = box.Shape();
 
-    using doc = new oc.TDocStd_Document(new oc.TCollection_ExtendedString());
-    const shapeTool = oc.XCAFDoc_DocumentTool.ShapeTool(doc.Main());
-    const newShape = shapeTool.NewShape();
+    using tCollectionExtendedstring = new oc.TCollection_ExtendedString();
+    using doc = new oc.TDocStd_Document(tCollectionExtendedstring);
+    using disposable = doc.Main();
+    using shapeTool = oc.XCAFDoc_DocumentTool.ShapeTool(disposable);
+    using newShape = shapeTool.NewShape();
     shapeTool.SetShape(newShape, shape);
-    new oc.BRepMesh_IncrementalMesh(shape, 0.1, false, 0.1, false);
+    using bRepMeshIncrementalmesh = new oc.BRepMesh_IncrementalMesh(shape, 0.1, false, 0.1, false);
+    bRepMeshIncrementalmesh;
 
     const glbPath = '/test.glb';
+    using tCollectionAsciistring = new oc.TCollection_AsciiString(glbPath);
     using cafWriter = new oc.RWGltf_CafWriter(
-      new oc.TCollection_AsciiString(glbPath),
+      tCollectionAsciistring,
       true,
     );
-    cafWriter.Perform(doc, new oc.TColStd_IndexedDataMapOfStringString(), new oc.Message_ProgressRange());
+    using tColStdIndexeddatamapofstringstring = new oc.TColStd_IndexedDataMapOfStringString();
+    using messageProgressrange = new oc.Message_ProgressRange();
+    cafWriter.Perform(doc, tColStdIndexeddatamapofstringstring, messageProgressrange);
 
     const stat = oc.FS.stat(glbPath);
     expect(stat.size).toBeGreaterThan(0);

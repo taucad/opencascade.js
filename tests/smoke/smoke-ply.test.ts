@@ -7,22 +7,28 @@ describe.skipIf(!wasmExists)('Smoke: RWPly_CafWriter PLY export', () => {
   it('should export box to PLY via XCAF document with correct geometry', () => {
     const oc = getOC();
     using box = new oc.BRepPrimAPI_MakeBox(10, 20, 30);
-    const shape = box.Shape();
+    using shape = box.Shape();
 
-    using doc = new oc.TDocStd_Document(new oc.TCollection_ExtendedString());
-    const shapeTool = oc.XCAFDoc_DocumentTool.ShapeTool(doc.Main());
-    const newShape = shapeTool.NewShape();
+    using tCollectionExtendedstring = new oc.TCollection_ExtendedString();
+    using doc = new oc.TDocStd_Document(tCollectionExtendedstring);
+    using disposable = doc.Main();
+    using shapeTool = oc.XCAFDoc_DocumentTool.ShapeTool(disposable);
+    using newShape = shapeTool.NewShape();
     shapeTool.SetShape(newShape, shape);
-    new oc.BRepMesh_IncrementalMesh(shape, 0.1, false, 0.1, false);
+    using bRepMeshIncrementalmesh = new oc.BRepMesh_IncrementalMesh(shape, 0.1, false, 0.1, false);
+    bRepMeshIncrementalmesh;
 
     const plyPath = '/test.ply';
+    using tCollectionAsciistring = new oc.TCollection_AsciiString(plyPath);
     using cafWriter = new oc.RWPly_CafWriter(
-      new oc.TCollection_AsciiString(plyPath),
+      tCollectionAsciistring,
     );
+    using tColStdIndexeddatamapofstringstring = new oc.TColStd_IndexedDataMapOfStringString();
+    using messageProgressrange = new oc.Message_ProgressRange();
     cafWriter.Perform(
       doc,
-      new oc.TColStd_IndexedDataMapOfStringString(),
-      new oc.Message_ProgressRange(),
+      tColStdIndexeddatamapofstringstring,
+      messageProgressrange,
     );
 
     const fileData = oc.FS.readFile(plyPath, { encoding: 'utf8' }) as string;

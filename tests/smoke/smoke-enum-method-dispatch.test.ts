@@ -24,39 +24,48 @@ describe.skipIf(!wasmExists)('Smoke: enum dispatch in same-arity method overload
   describe('XCAFDoc_ColorTool.SetColor with Quantity_ColorRGBA', () => {
     it('should dispatch SetColor(TDF_Label, Quantity_ColorRGBA, XCAFDoc_ColorType)', () => {
       const oc = getOC();
-      using doc = new oc.TDocStd_Document(new oc.TCollection_ExtendedString());
-      const shapeTool = oc.XCAFDoc_DocumentTool.ShapeTool(doc.Main());
-      const colorTool = oc.XCAFDoc_DocumentTool.ColorTool(doc.Main());
+      using tCollectionExtendedstring = new oc.TCollection_ExtendedString();
+      using doc = new oc.TDocStd_Document(tCollectionExtendedstring);
+      using disposable = doc.Main();
+      using shapeTool = oc.XCAFDoc_DocumentTool.ShapeTool(disposable);
+      using disposable2 = doc.Main();
+      using colorTool = oc.XCAFDoc_DocumentTool.ColorTool(disposable2);
 
       using box = new oc.BRepPrimAPI_MakeBox(10, 10, 10);
-      const label = shapeTool.NewShape();
-      shapeTool.SetShape(label, box.Shape());
+      using label = shapeTool.NewShape();
+      using boxShape = box.Shape();
+      shapeTool.SetShape(label, boxShape);
 
       using colorRGBA = new oc.Quantity_ColorRGBA(0.8, 0.2, 0.2, 1.0);
       colorTool.SetColor(label, colorRGBA, oc.XCAFDoc_ColorType.XCAFDoc_ColorSurf);
 
-      using retrievedColor = new oc.Quantity_ColorRGBA();
+      using inRetrievedColor = new oc.Quantity_ColorRGBA();
       const hasColor = oc.XCAFDoc_ColorTool.GetColor(
         label,
         oc.XCAFDoc_ColorType.XCAFDoc_ColorSurf,
-        retrievedColor,
+        inRetrievedColor,
       );
       expect(hasColor).toBe(true);
     });
 
     it('should dispatch SetColor(TopoDS_Shape, Quantity_ColorRGBA, XCAFDoc_ColorType)', () => {
       const oc = getOC();
-      using doc = new oc.TDocStd_Document(new oc.TCollection_ExtendedString());
-      const shapeTool = oc.XCAFDoc_DocumentTool.ShapeTool(doc.Main());
-      const colorTool = oc.XCAFDoc_DocumentTool.ColorTool(doc.Main());
+      using tCollectionExtendedstring2 = new oc.TCollection_ExtendedString();
+      using doc = new oc.TDocStd_Document(tCollectionExtendedstring2);
+      using disposable3 = doc.Main();
+      using shapeTool = oc.XCAFDoc_DocumentTool.ShapeTool(disposable3);
+      using disposable4 = doc.Main();
+      using colorTool = oc.XCAFDoc_DocumentTool.ColorTool(disposable4);
 
       using box = new oc.BRepPrimAPI_MakeBox(10, 10, 10);
-      const label = shapeTool.NewShape();
-      shapeTool.SetShape(label, box.Shape());
+      using label = shapeTool.NewShape();
+      using boxShape2 = box.Shape();
+      shapeTool.SetShape(label, boxShape2);
 
       using colorRGBA = new oc.Quantity_ColorRGBA(0.2, 0.8, 0.2, 0.5);
+      using boxShape3 = box.Shape();
       const result = colorTool.SetColor(
-        box.Shape(),
+        boxShape3,
         colorRGBA,
         oc.XCAFDoc_ColorType.XCAFDoc_ColorSurf,
       );
@@ -67,13 +76,17 @@ describe.skipIf(!wasmExists)('Smoke: enum dispatch in same-arity method overload
   describe('XCAFDoc_ColorTool.SetColor with Quantity_Color', () => {
     it('should dispatch SetColor(TDF_Label, Quantity_Color, XCAFDoc_ColorType)', () => {
       const oc = getOC();
-      using doc = new oc.TDocStd_Document(new oc.TCollection_ExtendedString());
-      const shapeTool = oc.XCAFDoc_DocumentTool.ShapeTool(doc.Main());
-      const colorTool = oc.XCAFDoc_DocumentTool.ColorTool(doc.Main());
+      using tCollectionExtendedstring3 = new oc.TCollection_ExtendedString();
+      using doc = new oc.TDocStd_Document(tCollectionExtendedstring3);
+      using disposable5 = doc.Main();
+      using shapeTool = oc.XCAFDoc_DocumentTool.ShapeTool(disposable5);
+      using disposable6 = doc.Main();
+      using colorTool = oc.XCAFDoc_DocumentTool.ColorTool(disposable6);
 
       using box = new oc.BRepPrimAPI_MakeBox(10, 10, 10);
-      const label = shapeTool.NewShape();
-      shapeTool.SetShape(label, box.Shape());
+      using label = shapeTool.NewShape();
+      using boxShape4 = box.Shape();
+      shapeTool.SetShape(label, boxShape4);
 
       using color = new oc.Quantity_Color(
         1, 0, 0,
@@ -81,11 +94,11 @@ describe.skipIf(!wasmExists)('Smoke: enum dispatch in same-arity method overload
       );
       colorTool.SetColor(label, color, oc.XCAFDoc_ColorType.XCAFDoc_ColorSurf);
 
-      using retrievedColor = new oc.Quantity_Color();
+      using inRetrievedColor = new oc.Quantity_Color();
       const hasColor = oc.XCAFDoc_ColorTool.GetColor(
         label,
         oc.XCAFDoc_ColorType.XCAFDoc_ColorSurf,
-        retrievedColor,
+        inRetrievedColor,
       );
       expect(hasColor).toBe(true);
     });

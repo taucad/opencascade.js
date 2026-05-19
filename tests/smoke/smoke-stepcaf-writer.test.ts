@@ -18,23 +18,28 @@ describe.skipIf(!wasmExists)('Smoke: STEPCAFControl_Writer', () => {
 
   it('should export colored shapes to STEP and produce a file with correct root count', () => {
     const oc = getOC();
-    using doc = new oc.TDocStd_Document(new oc.TCollection_ExtendedString());
+    using tCollectionExtendedstring = new oc.TCollection_ExtendedString();
+    using doc = new oc.TDocStd_Document(tCollectionExtendedstring);
     using mainLabel = doc.Main();
     using shapeTool = oc.XCAFDoc_DocumentTool.ShapeTool(mainLabel);
     using colorTool = oc.XCAFDoc_DocumentTool.ColorTool(mainLabel);
 
     using box1 = new oc.BRepPrimAPI_MakeBox(10, 10, 10);
     using label1 = shapeTool.NewShape();
-    shapeTool.SetShape(label1, box1.Shape());
+    using box1Shape = box1.Shape();
+    shapeTool.SetShape(label1, box1Shape);
 
     using box2 = new oc.BRepPrimAPI_MakeBox(5, 5, 5);
     using label2 = shapeTool.NewShape();
-    shapeTool.SetShape(label2, box2.Shape());
+    using box2Shape = box2.Shape();
+    shapeTool.SetShape(label2, box2Shape);
 
     using red = new oc.Quantity_Color(1, 0, 0, oc.Quantity_TypeOfColor.Quantity_TOC_RGB);
     using blue = new oc.Quantity_Color(0, 0, 1, oc.Quantity_TypeOfColor.Quantity_TOC_RGB);
-    colorTool.SetColor(box1.Shape(), red, oc.XCAFDoc_ColorType.XCAFDoc_ColorGen);
-    colorTool.SetColor(box2.Shape(), blue, oc.XCAFDoc_ColorType.XCAFDoc_ColorGen);
+    using box1Shape2 = box1.Shape();
+    colorTool.SetColor(box1Shape2, red, oc.XCAFDoc_ColorType.XCAFDoc_ColorGen);
+    using box2Shape2 = box2.Shape();
+    colorTool.SetColor(box2Shape2, blue, oc.XCAFDoc_ColorType.XCAFDoc_ColorGen);
 
     using writer = new oc.STEPCAFControl_Writer();
     using progress = new oc.Message_ProgressRange();
@@ -62,13 +67,15 @@ describe.skipIf(!wasmExists)('Smoke: STEPCAFControl_Writer', () => {
 
   it('should round-trip shape geometry through STEP write and read back', () => {
     const oc = getOC();
-    using doc = new oc.TDocStd_Document(new oc.TCollection_ExtendedString());
+    using tCollectionExtendedstring2 = new oc.TCollection_ExtendedString();
+    using doc = new oc.TDocStd_Document(tCollectionExtendedstring2);
     using mainLabel = doc.Main();
     using shapeTool = oc.XCAFDoc_DocumentTool.ShapeTool(mainLabel);
 
     using sphere = new oc.BRepPrimAPI_MakeSphere(15);
     using label = shapeTool.NewShape();
-    shapeTool.SetShape(label, sphere.Shape());
+    using sphereShape = sphere.Shape();
+    shapeTool.SetShape(label, sphereShape);
 
     using writer = new oc.STEPCAFControl_Writer();
     using progress = new oc.Message_ProgressRange();

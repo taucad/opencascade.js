@@ -12,19 +12,21 @@ describe.skipIf(!wasmExists)('Smoke: Document framework', () => {
 
   it('should store and retrieve a named label with matching string via TDataStd_Name', () => {
     const oc = getOC();
-    using doc = new oc.TDocStd_Document(new oc.TCollection_ExtendedString());
+    using tCollectionExtendedstring = new oc.TCollection_ExtendedString();
+    using doc = new oc.TDocStd_Document(tCollectionExtendedstring);
     using mainLabel = doc.Main();
 
     using nameStr = new oc.TCollection_ExtendedString('TestPart', false);
     using nameAttr = oc.TDataStd_Name.Set(mainLabel, nameStr);
 
-    const retrieved = nameAttr.Get();
+    using retrieved = nameAttr.Get();
     expect(retrieved.IsEqual(nameStr)).toBe(true);
   });
 
   it('should create child labels under Main with incrementing tag numbers', () => {
     const oc = getOC();
-    using doc = new oc.TDocStd_Document(new oc.TCollection_ExtendedString());
+    using tCollectionExtendedstring2 = new oc.TCollection_ExtendedString();
+    using doc = new oc.TDocStd_Document(tCollectionExtendedstring2);
     using mainLabel = doc.Main();
 
     using child1 = mainLabel.FindChild(1, true);

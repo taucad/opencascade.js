@@ -13,14 +13,16 @@ describe.skipIf(!wasmExists)('Smoke: Adaptors', () => {
     const oc = getOC();
     using box = new oc.BRepPrimAPI_MakeBox(10, 10, 10);
 
+    using boxShape = box.Shape();
     using explorer = new oc.TopExp_Explorer(
-      box.Shape(),
+      boxShape,
       oc.TopAbs_ShapeEnum.TopAbs_FACE,
       oc.TopAbs_ShapeEnum.TopAbs_SHAPE,
     );
     expect(explorer.More()).toBe(true);
 
-    const face = oc.TopoDS.Face(explorer.Current());
+    using explorerCurrent = explorer.Current();
+    using face = oc.TopoDS.Face(explorerCurrent);
     using adaptor = new oc.BRepAdaptor_Surface(face);
 
     expect(adaptor.GetType()).toBe(oc.GeomAbs_SurfaceType.GeomAbs_Plane);
@@ -34,7 +36,8 @@ describe.skipIf(!wasmExists)('Smoke: Adaptors', () => {
     using p4 = new oc.gp_Pnt(0, 10, 0);
     using poly = new oc.BRepBuilderAPI_MakePolygon(p1, p2, p3, p4, true);
 
-    using compCurve = new oc.BRepAdaptor_CompCurve(poly.Wire());
+    using disposable = poly.Wire();
+    using compCurve = new oc.BRepAdaptor_CompCurve(disposable);
 
     const first = compCurve.FirstParameter();
     const last = compCurve.LastParameter();
@@ -48,15 +51,17 @@ describe.skipIf(!wasmExists)('Smoke: Adaptors', () => {
     const oc = getOC();
     using cyl = new oc.BRepPrimAPI_MakeCylinder(5, 20);
 
+    using cylShape = cyl.Shape();
     using explorer = new oc.TopExp_Explorer(
-      cyl.Shape(),
+      cylShape,
       oc.TopAbs_ShapeEnum.TopAbs_FACE,
       oc.TopAbs_ShapeEnum.TopAbs_SHAPE,
     );
 
     let foundCylinder = false;
     while (explorer.More()) {
-      const face = oc.TopoDS.Face(explorer.Current());
+      using explorerCurrent2 = explorer.Current();
+      using face = oc.TopoDS.Face(explorerCurrent2);
       using adaptor = new oc.BRepAdaptor_Surface(face);
       if (adaptor.GetType() === oc.GeomAbs_SurfaceType.GeomAbs_Cylinder) {
         foundCylinder = true;

@@ -8,7 +8,7 @@ describe.skipIf(!wasmExists)('Smoke: Fillets and chamfers', () => {
   it('should preserve box dimensions after filleting one edge', async () => {
     const oc = getOC();
     using box = new oc.BRepPrimAPI_MakeBox(10, 10, 10);
-    const boxShape = box.Shape();
+    using boxShape = box.Shape();
     using fillet = new oc.BRepFilletAPI_MakeFillet(
       boxShape,
       oc.ChFi3d_FilletShape.ChFi3d_Rational,
@@ -19,11 +19,13 @@ describe.skipIf(!wasmExists)('Smoke: Fillets and chamfers', () => {
       oc.TopAbs_ShapeEnum.TopAbs_SHAPE,
     );
     if (explorer.More()) {
-      const edge = oc.TopoDS.Edge(explorer.Current());
+      using explorerCurrent = explorer.Current();
+      using edge = oc.TopoDS.Edge(explorerCurrent);
       fillet.Add(2, edge);
     }
-    fillet.Build(new oc.Message_ProgressRange());
-    const shape = fillet.Shape();
+    using messageProgressrange = new oc.Message_ProgressRange();
+    fillet.Build(messageProgressrange);
+    using shape = fillet.Shape();
     expect(shape.IsNull()).toBe(false);
 
     await expectShapeGeometry(shape, {
@@ -35,7 +37,7 @@ describe.skipIf(!wasmExists)('Smoke: Fillets and chamfers', () => {
   it('should preserve box dimensions after chamfering one edge', async () => {
     const oc = getOC();
     using box = new oc.BRepPrimAPI_MakeBox(10, 10, 10);
-    const boxShape = box.Shape();
+    using boxShape = box.Shape();
     using chamfer = new oc.BRepFilletAPI_MakeChamfer(boxShape);
     using explorer = new oc.TopExp_Explorer(
       boxShape,
@@ -43,11 +45,13 @@ describe.skipIf(!wasmExists)('Smoke: Fillets and chamfers', () => {
       oc.TopAbs_ShapeEnum.TopAbs_SHAPE,
     );
     if (explorer.More()) {
-      const edge = oc.TopoDS.Edge(explorer.Current());
+      using explorerCurrent2 = explorer.Current();
+      using edge = oc.TopoDS.Edge(explorerCurrent2);
       chamfer.Add(2, edge);
     }
-    chamfer.Build(new oc.Message_ProgressRange());
-    const shape = chamfer.Shape();
+    using messageProgressrange2 = new oc.Message_ProgressRange();
+    chamfer.Build(messageProgressrange2);
+    using shape = chamfer.Shape();
     expect(shape.IsNull()).toBe(false);
 
     await expectShapeGeometry(shape, {
@@ -59,7 +63,7 @@ describe.skipIf(!wasmExists)('Smoke: Fillets and chamfers', () => {
   it('should produce a rounded box with same dimensions when filleting all edges', async () => {
     const oc = getOC();
     using box = new oc.BRepPrimAPI_MakeBox(20, 20, 20);
-    const boxShape = box.Shape();
+    using boxShape = box.Shape();
     using fillet = new oc.BRepFilletAPI_MakeFillet(
       boxShape,
       oc.ChFi3d_FilletShape.ChFi3d_Rational,
@@ -71,12 +75,14 @@ describe.skipIf(!wasmExists)('Smoke: Fillets and chamfers', () => {
       oc.TopAbs_ShapeEnum.TopAbs_SHAPE,
     );
     while (explorer.More()) {
-      const edge = oc.TopoDS.Edge(explorer.Current());
+      using explorerCurrent3 = explorer.Current();
+      using edge = oc.TopoDS.Edge(explorerCurrent3);
       fillet.Add(3, edge);
       explorer.Next();
     }
-    fillet.Build(new oc.Message_ProgressRange());
-    const shape = fillet.Shape();
+    using messageProgressrange3 = new oc.Message_ProgressRange();
+    fillet.Build(messageProgressrange3);
+    using shape = fillet.Shape();
 
     await expectShapeGeometry(shape, {
       size: [20, 20, 20],

@@ -1,41 +1,42 @@
 /**
- * Smoke tests: Output parameter stripping from public API.
+ * Smoke tests: Output parameter input-passthrough (legacy "stripping" tests).
  *
- * Validates that primitive output parameters (double&, int&) used purely as
- * return channels in optional_override bindings are stripped from the caller-
- * facing signature. The C++ lambda takes these by value, so the JS-side value
- * is never read — it's pure ceremony. The result struct already returns the
- * computed values.
+ * Under Input-Passthrough RBV the primitive/enum/handle output params remain
+ * in the JS signature as REQUIRED inputs (per Option C of the F3 audit — see
+ * `docs/research/ocjs-rbv-blueprint-p0-p1-stocktake.md` §F3). The C++ binding
+ * forwards the caller's value through to OCCT and returns it back via the
+ * structured `val::object` / `value_object` container; callers supply
+ * placeholder zeros for pure-out slots and the result is read from the
+ * returned container.
  *
- * These tests document the DESIRED API shape. They are expected to fail until
- * bindings.py's shouldStripParam is updated to strip primitive output params
- * unconditionally (not just for const methods).
- *
- * Patterns tested:
- * - BRepTools.UVBounds(face) — 4 primitive output params stripped
- * - BRep_Tool.Range(edge) — 2 primitive output params stripped
- * - BRep_Tool.Curve(edge, loc) — 2 primitive output params stripped
- * - BRep_Tool.Curve(edge) — 2 primitive output params stripped
+ * Patterns covered:
+ * - BRepTools.UVBounds(face, 0, 0, 0, 0) — caller passes placeholder UMin/UMax/VMin/VMax
+ * - BRepTools.UVBounds(face, edge, 0, 0, 0, 0) — same with edge variant
+ * - BRep_Tool.Range(edge, 0, 0) — caller passes placeholder First/Last
+ * - BRep_Tool.Curve(edge, loc, 0, 0) — caller passes placeholder First/Last
+ * - BRep_Tool.Curve(edge, 0, 0) — caller passes placeholder First/Last
  */
 import { describe, it, expect, beforeAll } from 'vitest';
 import { initOC, getOC, wasmExists } from './helpers.js';
 
-describe.skipIf(!wasmExists)('Smoke: output parameter stripping', () => {
+describe.skipIf(!wasmExists)('Smoke: output parameter input-passthrough (Option C — placeholder inputs)', () => {
   beforeAll(async () => { await initOC(); });
 
-  describe('BRepTools.UVBounds — should not require output param placeholders', () => {
-    it('should return {UMin, UMax, VMin, VMax} from face without extra args', () => {
+  describe('BRepTools.UVBounds — placeholder-input call site returns container', () => {
+    it('returns {UMin, UMax, VMin, VMax} from face with placeholder zeros', () => {
       const oc = getOC();
       using box = new oc.BRepPrimAPI_MakeBox(10, 20, 30);
+      using boxShape = box.Shape();
       using explorer = new oc.TopExp_Explorer(
-        box.Shape(),
+        boxShape,
         oc.TopAbs_ShapeEnum.TopAbs_FACE,
         oc.TopAbs_ShapeEnum.TopAbs_SHAPE,
       );
       expect(explorer.More()).toBe(true);
-      const face = oc.TopoDS.Face(explorer.Current());
+      using explorerCurrent = explorer.Current();
+      using face = oc.TopoDS.Face(explorerCurrent);
 
-      const result = oc.BRepTools.UVBounds(face);
+      const result = oc.BRepTools.UVBounds(face, 0, 0, 0, 0);
 
       expect(result).toEqual(expect.objectContaining({
         UMin: expect.any(Number),
@@ -47,26 +48,29 @@ describe.skipIf(!wasmExists)('Smoke: output parameter stripping', () => {
       expect(result.VMax).toBeGreaterThanOrEqual(result.VMin);
     });
 
-    it('should return {UMin, UMax, VMin, VMax} from face+wire without extra args', () => {
+    it('returns {UMin, UMax, VMin, VMax} from face+edge with placeholder zeros', () => {
       const oc = getOC();
       using box = new oc.BRepPrimAPI_MakeBox(10, 20, 30);
+      using boxShape = box.Shape();
       using faceExplorer = new oc.TopExp_Explorer(
-        box.Shape(),
+        boxShape,
         oc.TopAbs_ShapeEnum.TopAbs_FACE,
         oc.TopAbs_ShapeEnum.TopAbs_SHAPE,
       );
       expect(faceExplorer.More()).toBe(true);
-      const face = oc.TopoDS.Face(faceExplorer.Current());
+      using faceExplorerCurrent = faceExplorer.Current();
+      using face = oc.TopoDS.Face(faceExplorerCurrent);
 
-      using wireExplorer = new oc.TopExp_Explorer(
+      using edgeExplorer = new oc.TopExp_Explorer(
         face,
-        oc.TopAbs_ShapeEnum.TopAbs_WIRE,
+        oc.TopAbs_ShapeEnum.TopAbs_EDGE,
         oc.TopAbs_ShapeEnum.TopAbs_SHAPE,
       );
-      expect(wireExplorer.More()).toBe(true);
-      const wire = oc.TopoDS.Wire(wireExplorer.Current());
+      expect(edgeExplorer.More()).toBe(true);
+      using edgeExplorerCurrent = edgeExplorer.Current();
+      using edge = oc.TopoDS.Edge(edgeExplorerCurrent);
 
-      const result = oc.BRepTools.UVBounds(face, wire);
+      const result = oc.BRepTools.UVBounds(face, edge, 0, 0, 0, 0);
 
       expect(result).toEqual(expect.objectContaining({
         UMin: expect.any(Number),
@@ -77,19 +81,21 @@ describe.skipIf(!wasmExists)('Smoke: output parameter stripping', () => {
     });
   });
 
-  describe('BRep_Tool.Range — should not require output param placeholders', () => {
-    it('should return {First, Last} from edge without extra args', () => {
+  describe('BRep_Tool.Range — placeholder-input call site returns container', () => {
+    it('returns {First, Last} from edge with placeholder zeros', () => {
       const oc = getOC();
       using box = new oc.BRepPrimAPI_MakeBox(10, 10, 10);
+      using boxShape = box.Shape();
       using explorer = new oc.TopExp_Explorer(
-        box.Shape(),
+        boxShape,
         oc.TopAbs_ShapeEnum.TopAbs_EDGE,
         oc.TopAbs_ShapeEnum.TopAbs_SHAPE,
       );
       expect(explorer.More()).toBe(true);
-      const edge = oc.TopoDS.Edge(explorer.Current());
+      using explorerCurrent = explorer.Current();
+      using edge = oc.TopoDS.Edge(explorerCurrent);
 
-      const range = oc.BRep_Tool.Range(edge);
+      const range = oc.BRep_Tool.Range(edge, 0, 0);
 
       expect(range).toEqual(expect.objectContaining({
         First: expect.any(Number),
@@ -99,20 +105,22 @@ describe.skipIf(!wasmExists)('Smoke: output parameter stripping', () => {
     });
   });
 
-  describe('BRep_Tool.Curve — should not require output param placeholders', () => {
-    it('should return {result, First, Last} from (edge, location) without extra args', () => {
+  describe('BRep_Tool.Curve — placeholder-input call site returns container', () => {
+    it('returns {result, First, Last} from (edge, location, 0, 0)', () => {
       const oc = getOC();
       using box = new oc.BRepPrimAPI_MakeBox(10, 10, 10);
+      using boxShape = box.Shape();
       using explorer = new oc.TopExp_Explorer(
-        box.Shape(),
+        boxShape,
         oc.TopAbs_ShapeEnum.TopAbs_EDGE,
         oc.TopAbs_ShapeEnum.TopAbs_SHAPE,
       );
       expect(explorer.More()).toBe(true);
-      const edge = oc.TopoDS.Edge(explorer.Current());
+      using explorerCurrent = explorer.Current();
+      using edge = oc.TopoDS.Edge(explorerCurrent);
 
       using loc = new oc.TopLoc_Location();
-      const curveResult = oc.BRep_Tool.Curve(edge, loc);
+      using curveResult = oc.BRep_Tool.Curve(edge, loc, 0, 0);
 
       expect(curveResult).toEqual(expect.objectContaining({
         First: expect.any(Number),
@@ -121,18 +129,20 @@ describe.skipIf(!wasmExists)('Smoke: output parameter stripping', () => {
       expect(curveResult.Last).toBeGreaterThan(curveResult.First);
     });
 
-    it('should return {result, First, Last} from (edge) without extra args', () => {
+    it('returns {result, First, Last} from (edge, 0, 0)', () => {
       const oc = getOC();
       using box = new oc.BRepPrimAPI_MakeBox(10, 10, 10);
+      using boxShape = box.Shape();
       using explorer = new oc.TopExp_Explorer(
-        box.Shape(),
+        boxShape,
         oc.TopAbs_ShapeEnum.TopAbs_EDGE,
         oc.TopAbs_ShapeEnum.TopAbs_SHAPE,
       );
       expect(explorer.More()).toBe(true);
-      const edge = oc.TopoDS.Edge(explorer.Current());
+      using explorerCurrent = explorer.Current();
+      using edge = oc.TopoDS.Edge(explorerCurrent);
 
-      const curveResult = oc.BRep_Tool.Curve(edge);
+      using curveResult = oc.BRep_Tool.Curve(edge, 0, 0);
 
       expect(curveResult).toEqual(expect.objectContaining({
         First: expect.any(Number),

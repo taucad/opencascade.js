@@ -30,15 +30,18 @@ describe.skipIf(!wasmExists)('Smoke: ShapeUpgrade', () => {
     using origin = new oc.gp_Pnt(10, 0, 0);
     using box2 = new oc.BRepPrimAPI_MakeBox(origin, 10, 10, 10);
 
-    using fuse = new oc.BRepAlgoAPI_Fuse(box1.Shape(), box2.Shape(), new oc.Message_ProgressRange());
-    const fusedShape = fuse.Shape();
+    using box1Shape = box1.Shape();
+    using box2Shape = box2.Shape();
+    using messageProgressrange = new oc.Message_ProgressRange();
+    using fuse = new oc.BRepAlgoAPI_Fuse(box1Shape, box2Shape, messageProgressrange);
+    using fusedShape = fuse.Shape();
 
     const facesBefore = countFaces(fusedShape);
     expect(facesBefore).toBeGreaterThanOrEqual(10);
 
     using unifier = new oc.ShapeUpgrade_UnifySameDomain(fusedShape, true, true, false);
     unifier.Build();
-    const unifiedShape = unifier.Shape();
+    using unifiedShape = unifier.Shape();
 
     const facesAfter = countFaces(unifiedShape);
     expect(facesAfter).toBeLessThan(facesBefore);
@@ -51,12 +54,17 @@ describe.skipIf(!wasmExists)('Smoke: ShapeUpgrade', () => {
     using origin = new oc.gp_Pnt(10, 0, 0);
     using box2 = new oc.BRepPrimAPI_MakeBox(origin, 10, 10, 10);
 
-    using fuse = new oc.BRepAlgoAPI_Fuse(box1.Shape(), box2.Shape(), new oc.Message_ProgressRange());
+    using box1Shape2 = box1.Shape();
+    using box2Shape2 = box2.Shape();
+    using messageProgressrange2 = new oc.Message_ProgressRange();
+    using fuse = new oc.BRepAlgoAPI_Fuse(box1Shape2, box2Shape2, messageProgressrange2);
 
-    using unifier = new oc.ShapeUpgrade_UnifySameDomain(fuse.Shape(), true, true, false);
+    using fuseShape = fuse.Shape();
+    using unifier = new oc.ShapeUpgrade_UnifySameDomain(fuseShape, true, true, false);
     unifier.Build();
 
-    await expectShapeGeometry(unifier.Shape(), {
+    using unifierShape = unifier.Shape();
+    await expectShapeGeometry(unifierShape, {
       size: [20, 10, 10],
       center: [10, 5, 5],
       tolerance: 1,

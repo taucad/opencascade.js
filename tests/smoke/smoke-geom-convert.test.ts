@@ -23,14 +23,14 @@ describe.skipIf(!wasmExists)('Smoke: Geometry conversion', () => {
 
     using curve3d = oc.GeomLib.To3d(ax2, line2d);
 
-    using p0 = new oc.gp_Pnt(0, 0, 0);
-    curve3d.D0(0, p0);
-    expect(Math.abs(p0.Z())).toBeLessThan(1e-10);
+    using inP0 = new oc.gp_Pnt(0, 0, 0);
+    curve3d.D0(0, inP0);
+    expect(Math.abs(inP0.Z())).toBeLessThan(1e-10);
 
-    using p1 = new oc.gp_Pnt(0, 0, 0);
-    curve3d.D0(5, p1);
-    expect(Math.abs(p1.Z())).toBeLessThan(1e-10);
-    expect(Math.abs(p1.X() - 5)).toBeLessThan(1e-6);
+    using inP1 = new oc.gp_Pnt(0, 0, 0);
+    curve3d.D0(5, inP1);
+    expect(Math.abs(inP1.Z())).toBeLessThan(1e-10);
+    expect(Math.abs(inP1.X() - 5)).toBeLessThan(1e-6);
   });
 
   it('should convert a Geom2d_Circle Value to a 2D point at the expected position', () => {

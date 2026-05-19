@@ -8,7 +8,7 @@ describe.skipIf(!wasmExists)('Smoke: BRep primitives', () => {
   it('should create a 10x20x30 box with correct dimensions', async () => {
     const oc = getOC();
     using box = new oc.BRepPrimAPI_MakeBox(10, 20, 30);
-    const shape = box.Shape();
+    using shape = box.Shape();
     expect(shape.IsNull()).toBe(false);
 
     await expectShapeGeometry(shape, {
@@ -20,7 +20,7 @@ describe.skipIf(!wasmExists)('Smoke: BRep primitives', () => {
   it('should create a cylinder with correct diameter and height', async () => {
     const oc = getOC();
     using cyl = new oc.BRepPrimAPI_MakeCylinder(5, 15);
-    const shape = cyl.Shape();
+    using shape = cyl.Shape();
     expect(shape.IsNull()).toBe(false);
 
     await expectShapeGeometry(shape, {
@@ -32,7 +32,7 @@ describe.skipIf(!wasmExists)('Smoke: BRep primitives', () => {
   it('should create a sphere with correct diameter', async () => {
     const oc = getOC();
     using sphere = new oc.BRepPrimAPI_MakeSphere(8);
-    const shape = sphere.Shape();
+    using shape = sphere.Shape();
     expect(shape.IsNull()).toBe(false);
 
     await expectShapeGeometry(shape, {
@@ -45,7 +45,7 @@ describe.skipIf(!wasmExists)('Smoke: BRep primitives', () => {
     const oc = getOC();
     using origin = new oc.gp_Pnt(1, 2, 3);
     using box = new oc.BRepPrimAPI_MakeBox(origin, 10, 20, 30);
-    const shape = box.Shape();
+    using shape = box.Shape();
     expect(shape.IsNull()).toBe(false);
 
     await expectShapeGeometry(shape, {
@@ -58,7 +58,7 @@ describe.skipIf(!wasmExists)('Smoke: BRep primitives', () => {
     const oc = getOC();
     using center = new oc.gp_Pnt(5, 5, 5);
     using sphere = new oc.BRepPrimAPI_MakeSphere(center, 12);
-    const shape = sphere.Shape();
+    using shape = sphere.Shape();
     expect(shape.IsNull()).toBe(false);
 
     await expectShapeGeometry(shape, {
@@ -70,7 +70,7 @@ describe.skipIf(!wasmExists)('Smoke: BRep primitives', () => {
   it('should create a cone with correct dimensions', async () => {
     const oc = getOC();
     using cone = new oc.BRepPrimAPI_MakeCone(10, 5, 20);
-    const shape = cone.Shape();
+    using shape = cone.Shape();
     expect(shape.IsNull()).toBe(false);
 
     await expectShapeGeometry(shape, {
@@ -82,7 +82,7 @@ describe.skipIf(!wasmExists)('Smoke: BRep primitives', () => {
   it('should create a torus with correct dimensions', async () => {
     const oc = getOC();
     using torus = new oc.BRepPrimAPI_MakeTorus(10, 3);
-    const shape = torus.Shape();
+    using shape = torus.Shape();
     expect(shape.IsNull()).toBe(false);
 
     await expectShapeGeometry(shape, {

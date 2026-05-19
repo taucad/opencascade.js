@@ -22,16 +22,22 @@ describe.skipIf(!wasmExists)('Smoke: Collections', () => {
     using list = new oc.NCollection_List_TopoDS_Shape();
     expect(list.Size()).toBe(0);
 
-    list.Append(box1.Shape());
-    list.Append(box2.Shape());
-    list.Append(box3.Shape());
+    using box1Shape = box1.Shape();
+    using disposable = list.Append(box1Shape);
+    disposable;
+    using box2Shape = box2.Shape();
+    using disposable2 = list.Append(box2Shape);
+    disposable2;
+    using box3Shape = box3.Shape();
+    using disposable3 = list.Append(box3Shape);
+    disposable3;
 
     expect(list.Size()).toBe(3);
 
-    const first = list.First();
+    using first = list.First();
     expect(first.IsNull()).toBe(false);
 
-    const last = list.Last();
+    using last = list.Last();
     expect(last.IsNull()).toBe(false);
   });
 
@@ -41,8 +47,12 @@ describe.skipIf(!wasmExists)('Smoke: Collections', () => {
     using box2 = new oc.BRepPrimAPI_MakeBox(10, 10, 10);
 
     using list = new oc.NCollection_List_TopoDS_Shape();
-    list.Append(box1.Shape());
-    list.Prepend(box2.Shape());
+    using box1Shape2 = box1.Shape();
+    using disposable4 = list.Append(box1Shape2);
+    disposable4;
+    using box2Shape2 = box2.Shape();
+    using disposable5 = list.Prepend(box2Shape2);
+    disposable5;
 
     expect(list.Size()).toBe(2);
 
@@ -56,7 +66,7 @@ describe.skipIf(!wasmExists)('Smoke: Collections', () => {
   it('should collect unique faces from a box with NCollection_IndexedMap_TopoDS_Shape_TopTools_ShapeMapHasher', () => {
     const oc = getOC();
     using box = new oc.BRepPrimAPI_MakeBox(10, 10, 10);
-    const shape = box.Shape();
+    using shape = box.Shape();
 
     using map = new oc.NCollection_IndexedMap_TopoDS_Shape_TopTools_ShapeMapHasher();
 
@@ -67,13 +77,14 @@ describe.skipIf(!wasmExists)('Smoke: Collections', () => {
     );
 
     while (explorer.More()) {
-      map.Add(explorer.Current());
+      using explorerCurrent = explorer.Current();
+      map.Add(explorerCurrent);
       explorer.Next();
     }
 
     expect(map.Size()).toBe(6);
 
-    const face1 = map.FindKey(1);
+    using face1 = map.FindKey(1);
     expect(face1.IsNull()).toBe(false);
 
     expect(map.Contains(face1)).toBe(true);
@@ -85,7 +96,7 @@ describe.skipIf(!wasmExists)('Smoke: Collections', () => {
   it('should collect unique edges from a box with NCollection_IndexedMap_TopoDS_Shape_TopTools_ShapeMapHasher', () => {
     const oc = getOC();
     using box = new oc.BRepPrimAPI_MakeBox(10, 10, 10);
-    const shape = box.Shape();
+    using shape = box.Shape();
 
     using edgeMap = new oc.NCollection_IndexedMap_TopoDS_Shape_TopTools_ShapeMapHasher();
 
@@ -96,7 +107,8 @@ describe.skipIf(!wasmExists)('Smoke: Collections', () => {
     );
 
     while (explorer.More()) {
-      edgeMap.Add(explorer.Current());
+      using explorerCurrent2 = explorer.Current();
+      edgeMap.Add(explorerCurrent2);
       explorer.Next();
     }
 
@@ -121,22 +133,22 @@ describe.skipIf(!wasmExists)('Smoke: Collections', () => {
       arr.SetValue(i + 1, pts[i]!);
     }
 
-    const retrieved = arr.Value(3);
+    using retrieved = arr.Value(3);
     expect(retrieved.X()).toBe(4);
     expect(retrieved.Y()).toBe(5);
     expect(retrieved.Z()).toBe(6);
 
-    const first = arr.First();
+    using first = arr.First();
     expect(first.X()).toBe(0);
 
-    const last = arr.Last();
+    using last = arr.Last();
     expect(last.X()).toBe(10);
   });
 
   it('should count unique topology elements of a cylinder with NCollection indexed map of shape', () => {
     const oc = getOC();
     using cyl = new oc.BRepPrimAPI_MakeCylinder(5, 10);
-    const shape = cyl.Shape();
+    using shape = cyl.Shape();
 
     using faceMap = new oc.NCollection_IndexedMap_TopoDS_Shape_TopTools_ShapeMapHasher();
     using edgeMap = new oc.NCollection_IndexedMap_TopoDS_Shape_TopTools_ShapeMapHasher();
@@ -144,19 +156,22 @@ describe.skipIf(!wasmExists)('Smoke: Collections', () => {
 
     using faceExp = new oc.TopExp_Explorer(shape, oc.TopAbs_ShapeEnum.TopAbs_FACE, oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
     while (faceExp.More()) {
-      faceMap.Add(faceExp.Current());
+      using faceExpCurrent = faceExp.Current();
+      faceMap.Add(faceExpCurrent);
       faceExp.Next();
     }
 
     using edgeExp = new oc.TopExp_Explorer(shape, oc.TopAbs_ShapeEnum.TopAbs_EDGE, oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
     while (edgeExp.More()) {
-      edgeMap.Add(edgeExp.Current());
+      using edgeExpCurrent = edgeExp.Current();
+      edgeMap.Add(edgeExpCurrent);
       edgeExp.Next();
     }
 
     using vertExp = new oc.TopExp_Explorer(shape, oc.TopAbs_ShapeEnum.TopAbs_VERTEX, oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
     while (vertExp.More()) {
-      vertexMap.Add(vertExp.Current());
+      using vertExpCurrent = vertExp.Current();
+      vertexMap.Add(vertExpCurrent);
       vertExp.Next();
     }
 
@@ -173,12 +188,20 @@ describe.skipIf(!wasmExists)('Smoke: Collections', () => {
 
     using list = new oc.NCollection_List_TopoDS_Shape();
 
-    list.Append(box1.Shape());
-    list.Append(box2.Shape());
-    list.Append(box3.Shape());
+    using box1Shape3 = box1.Shape();
+    using disposable6 = list.Append(box1Shape3);
+    disposable6;
+    using box2Shape3 = box2.Shape();
+    using disposable7 = list.Append(box2Shape3);
+    disposable7;
+    using box3Shape2 = box3.Shape();
+    using disposable8 = list.Append(box3Shape2);
+    disposable8;
 
     expect(list.Size()).toBe(3);
-    expect(list.First().IsNull()).toBe(false);
-    expect(list.Last().IsNull()).toBe(false);
+    using disposable9 = list.First();
+    expect(disposable9.IsNull()).toBe(false);
+    using disposable10 = list.Last();
+    expect(disposable10.IsNull()).toBe(false);
   });
 });

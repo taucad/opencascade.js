@@ -21,8 +21,10 @@ describe.skipIf(!wasmExists)('Smoke: overloaded constructors and methods', () =>
     using box2 = new oc.BRepPrimAPI_MakeBox(10, 20, 30);
     using origin = new oc.gp_Pnt(1, 2, 3);
     using box3 = new oc.BRepPrimAPI_MakeBox(origin, 10, 20, 30);
-    expect(box2.Shape().IsNull()).toBe(false);
-    expect(box3.Shape().IsNull()).toBe(false);
+    using box2Shape = box2.Shape();
+    expect(box2Shape.IsNull()).toBe(false);
+    using box3Shape = box3.Shape();
+    expect(box3Shape.IsNull()).toBe(false);
   });
 
   it('should support SetCoord overloads for gp_Pnt (index+value and x,y,z)', () => {
