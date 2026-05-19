@@ -26,12 +26,6 @@
       "docker_digest": "sha256:c89732ef63a56de5a96395c5a8c1c7904f7420131a045406e6fedc4cbe1cc198",
       "emsdk_version": "5.0.1",
       "description": "Emscripten SDK for compiling C++ to WebAssembly"
-    },
-    "doxygen": {
-      "version": "1.16.1",
-      "release_tag": "Release_1_16_1",
-      "commit": "669aeeefca743c148e2d935b3d3c69535c7491e6",
-      "description": "Documentation generator for C++ API doc extraction (XML output)"
     }
   }
 }
