@@ -1,5 +1,36 @@
+# Version control and editor metadata
+.git
+.github
+.gitignore
+.gitattributes
+.vscode
+.cursor
+.devcontainer
+
+# Nx / pnpm caches and workspace metadata
+.nx
+node_modules
+
+# Python venv and bytecode
+.venv
+**/__pycache__/
+*.pyc
+
+# Build outputs and host-side dependency checkouts
+deps/
+build/
 dist/
-node_modules/
-occt-src/
-**/.git
+docker-e2e-output/
+docs-site/
+website/
+tarballs/
+tmp/
+tools/
+
+# Legacy / pre-V8 directories (excluded so the build context stays minimal)
 test/
+occt-src/
+
+# Packaging artifacts and logs
+*.tgz
+*.log

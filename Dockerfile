@@ -1,86 +1,219 @@
 # opencascade.js — OCCT V8 WASM build image
 #
 # Build:
-#   docker build -t opencascade-js .
+#   DOCKER_BUILDKIT=1 docker build -t opencascade-js .
 #
 # Run (link with consumer YAML):
-#   docker run -v $(pwd)/my-config.yml:/src/config.yml \
+#   docker run --rm \
+#     -v $(pwd)/my-config.yml:/src/config.yml:ro \
 #     -v $(pwd)/output:/output \
 #     opencascade-js link /src/config.yml
 #
-# Run (full build with configuration):
-#   docker run -e OCJS_CONFIG=O3-maxperf \
-#     -v $(pwd)/my-config.yml:/src/config.yml \
+# Run (full build with named configuration):
+#   docker run --rm -e OCJS_CONFIG=O3-maxperf \
+#     -v $(pwd)/my-config.yml:/src/config.yml:ro \
 #     -v $(pwd)/output:/output \
 #     opencascade-js full /src/config.yml
 #
-# Environment variable overrides:
+# Persistent caching across runs (recommended for iterative work):
+#   docker volume create ocjs-nx-cache ocjs-build-cache
+#   docker run --rm \
+#     -v ocjs-nx-cache:/opencascade.js/.nx \
+#     -v ocjs-build-cache:/opencascade.js/build \
+#     -v $(pwd)/output:/output \
+#     opencascade-js full build-configs/full.yml
+#
+# Environment overrides:
 #   docker run -e OCJS_OPT="-Os" -e OCJS_EXCEPTIONS=1 ... opencascade-js full build-configs/full.yml
+#
+# Notes:
+#   - All dependency fetching (OCCT/rapidjson/freetype git clones, Python venv,
+#     LLVM 17 tarball) is delegated to scripts/clone-deps.sh — the exact same
+#     script the host build uses. The Dockerfile is a thin OS+toolchain layer
+#     on top of it. Adding a new dep means editing DEPS.json + clone-deps.sh;
+#     the Dockerfile picks it up free. No duplicated curl/git/sha256 logic.
+#   - emsdk is the only dep clone-deps.sh skips here: the base image already
+#     ships /emsdk with the `emsdk` launcher, and the script's §2 explicitly
+#     detects this via `[ -x $EMSDK_DIR/emsdk ]` (see line 98-101 there).
+#     A pre-symlink at /opencascade.js/deps/emsdk → /emsdk activates that path.
+#   - apt-installed Doxygen satisfies _ensure_doxygen at runtime (no GitHub download).
+#   - apply-patches + pch + generate are pre-baked into the image so consumers
+#     pay only the compile-bindings/compile-sources/link cost on first `docker run`.
+#   - Convenience top-level symlinks /occt /rapidjson /freetype /llvm-17 point
+#     into /opencascade.js/deps/ so the `ENV OCCT_ROOT=/occt` defaults below
+#     and any external bind-mount UX (`-v /my/occt:/occt`) keep working.
+#   - The entrypoint dispatches recognised subcommands through `npx nx run` so
+#     consumers benefit from Nx's content-addressed cache (warm runs ≤ 5 min).
+
+# syntax=docker/dockerfile:1.7
 
 FROM emscripten/emsdk:5.0.1@sha256:c89732ef63a56de5a96395c5a8c1c7904f7420131a045406e6fedc4cbe1cc198 AS base-image
 
-RUN \
+# ── OCI image metadata ──────────────────────────────────────────────────────
+# REVISION/VERSION are injected by CI (docker/metadata-action + github.sha);
+# SOURCE_URL defaults to the taucad fork and can be overridden for downstream
+# rebuilds. Labels follow the opencontainers.org spec so `docker inspect` and
+# GHCR's UI surface provenance, licensing, and source links automatically.
+ARG REVISION
+ARG VERSION
+ARG SOURCE_URL=https://github.com/taucad/opencascade.js
+LABEL org.opencontainers.image.title="opencascade.js" \
+      org.opencontainers.image.description="Emscripten build environment for OpenCASCADE.js (taucad fork, vendored LLVM 17 libclang)" \
+      org.opencontainers.image.source="${SOURCE_URL}" \
+      org.opencontainers.image.url="${SOURCE_URL}" \
+      org.opencontainers.image.revision="${REVISION}" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.licenses="LGPL-2.1-only" \
+      org.opencontainers.image.vendor="taucad"
+
+# ── System packages ─────────────────────────────────────────────────────────
+# Notes on what is intentionally NOT installed:
+#   - cmake: installed via the PyPI wheel `cmake==4.3.2` in the venv below.
+#     Keeps host (`brew install cmake@4`) and container on the same major.
+#   - python3/python3-pip/python3-venv: replaced by `uv python install 3.14.4`
+#     which downloads python-build-standalone — bit-identical interpreter
+#     lineage on macOS arm64 and Linux arm64. Foundation for R11 libclang
+#     parse-environment parity (see src/ocjs_bindgen/config/paths.py).
+RUN --mount=type=cache,target=/var/cache/apt,id=ocjs-apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt/lists,id=ocjs-apt-lists,sharing=locked \
   apt-get update -y && \
   apt-get install -y --no-install-recommends \
     bash \
     build-essential \
-    cmake \
+    ca-certificates \
     curl \
+    doxygen \
     git \
-    python3 \
-    python3-pip \
-    python3-setuptools && \
-  rm -rf /var/lib/apt/lists/*
+    gnupg \
+    jq \
+    libc6-dev \
+    unzip \
+    xz-utils
 
-COPY requirements.txt /tmp/requirements.txt
-RUN pip install --break-system-packages -r /tmp/requirements.txt && rm /tmp/requirements.txt
+# libc6-dev note: provides /usr/include/sys/types.h + friends (glibc userspace
+# headers) that `_get_host_libc_include()` in src/ocjs_bindgen/config/paths.py
+# routes libclang's parse pass at. Without this package, /usr/include has only
+# /usr/include/stdint.h (from linux-libc-dev that build-essential pulls in) and
+# OCCT headers transitively requesting <sys/types.h> fail to parse — the SAME
+# silent type-degradation cascade documented in
+# docs/research/ocjs-libclang-target-triple-mismatch-poc.md Phase 7, just
+# triggered by missing libc instead of mismatched libc++. On macOS Apple's SDK
+# bundles a complete libc by default; on Linux it is a separate package.
 
-# Clone dependencies at pinned commits (from DEPS.json)
-WORKDIR /rapidjson/
-RUN \
-  git clone https://github.com/Tencent/rapidjson.git . && \
-  git checkout 24b5e7a8b27f42fa16b96fc70aade9106cf7102f
+# ── Node.js 24 (NodeSource) ─────────────────────────────────────────────────
+RUN --mount=type=cache,target=/var/cache/apt,id=ocjs-apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt/lists,id=ocjs-apt-lists,sharing=locked \
+  curl -fsSL https://deb.nodesource.com/setup_24.x | bash - && \
+  apt-get install -y --no-install-recommends nodejs
 
-WORKDIR /freetype/
-RUN \
-  git clone https://github.com/freetype/freetype.git . && \
-  git checkout de8b92dd7ec634e9e2b25ef534c54a3537555c11
+# ── uv (Python toolchain manager) + Python 3.14.4 ───────────────────────────
+# uv installs python-build-standalone — same upstream CPython binary lineage
+# on macOS arm64 and Linux arm64 for a given release tag. Replaces both apt
+# python3* packages and pyenv. Host bootstrap is identical (see README).
+RUN curl -LsSf https://astral.sh/uv/install.sh | \
+      env UV_INSTALL_DIR=/usr/local/bin INSTALLER_NO_MODIFY_PATH=1 sh && \
+    uv python install 3.14.4
 
-WORKDIR /occt/
-RUN \
-  git clone https://github.com/Open-Cascade-SAS/OCCT.git . && \
-  git checkout 48ebca0f70a5e4b936548b695bc3583363898da4
+# Put /usr/local/bin (uv) ahead of emsdk's bundled Node 22 so `node`/`npm`
+# resolve to the NodeSource-installed v24. The venv path gets prepended
+# below after clone-deps.sh creates it.
+#
+# Emcc still uses its bundled Node 22 internally via the NODE_JS absolute
+# path in /emsdk/.emscripten — that's how emscripten orchestrates its own
+# toolchain and is independent of $PATH lookups. We only need Node 24 for
+# our project's `npx nx run …` / `npm ci` invocations, matching the host's
+# Node version (see .nvmrc and package.json:engines).
+ENV PATH="/opencascade.js/.venv/bin:/usr/local/bin:/usr/bin:/bin:${PATH}"
 
-# Copy the build system
+# ── Dependency fetch via the single host-tested script ──────────────────────
+# clone-deps.sh is the source of truth for every dep the build needs:
+#   §1 OCCT, rapidjson, freetype  → git clone + checkout at DEPS.json commits
+#   §2 emsdk                       → SKIPPED here, pre-symlinked below (the
+#                                    script's line 98-101 explicitly handles
+#                                    this Docker case — base image already
+#                                    ships /emsdk with the `emsdk` launcher)
+#   §3 Python .venv + pip install  → uv venv + uv pip install requirements.txt
+#   §4 LLVM 17 tarball             → curl + sha256 verify + tar -xJ
+# Host and container go through the same code path; sha256/commit drift
+# between them is impossible by construction. See clone-deps.sh.
 WORKDIR /opencascade.js/
+
+# Pre-create the venv with the pinned Python so /opencascade.js/.venv/bin/python3
+# lands on PATH BEFORE clone-deps.sh runs (its line 53 requires python3 to parse
+# DEPS.json). The script's §3 fast-paths past an already-created venv (line 121)
+# and still runs `uv pip install -r requirements.txt`, so this does NOT
+# re-duplicate the pip-install logic — it just bootstraps the python3 binary
+# the script needs to function. The base image intentionally has no system
+# python3 (see uv-only note above).
+RUN uv venv --python 3.14.4 /opencascade.js/.venv
+
+RUN mkdir -p /opencascade.js/deps && \
+    ln -s /emsdk /opencascade.js/deps/emsdk
+
+COPY DEPS.json requirements.txt /opencascade.js/
+COPY scripts/clone-deps.sh /opencascade.js/scripts/clone-deps.sh
+RUN bash scripts/clone-deps.sh --dest /opencascade.js/deps
+
+# Convenience top-level symlinks: preserve the long-standing /occt, /rapidjson,
+# /freetype, /llvm-17 paths so the `ENV OCCT_ROOT=/occt` defaults below (and
+# any external bind-mount UX like `-v /my/occt:/occt`) keep working. The real
+# bytes live under /opencascade.js/deps/<name>; these are just aliases.
+RUN ln -s /opencascade.js/deps/OCCT      /occt && \
+    ln -s /opencascade.js/deps/rapidjson /rapidjson && \
+    ln -s /opencascade.js/deps/freetype  /freetype && \
+    ln -s /opencascade.js/deps/llvm-17   /llvm-17
+
+# Install Nx CLI + project devDeps deterministically from package-lock.json
+COPY package.json package-lock.json nx.json project.json /opencascade.js/
+RUN --mount=type=cache,target=/root/.npm,id=ocjs-npm,sharing=locked \
+    npm ci --no-audit --no-fund
+
+# Copy the build system. DEPS.json + scripts/clone-deps.sh were copied above
+# (they are inputs to the dep-fetch RUN); this COPY refreshes scripts/ with
+# the remaining helpers (docker-entrypoint.sh, validate-build.py, etc.) and
+# brings in the rest of the build system.
 COPY src ./src
+COPY tsconfig.json* ./
 COPY build-configs ./build-configs
 COPY build-wasm.sh ./build-wasm.sh
 COPY scripts ./scripts
-COPY DEPS.json ./DEPS.json
 COPY bindgen-filters.yaml ./bindgen-filters.yaml
 RUN chmod +x build-wasm.sh scripts/*.sh
 
-# Set default environment
+# ── Default environment ─────────────────────────────────────────────────────
+# The named `default` configuration in build-configs/configurations.json drives
+# every build flag (-O3, SIMD, mimalloc, eval_ctors, closure, etc.) to match
+# the shipped @taucad/opencascade.js@3.0.0-beta tarball. Override with
+# `-e OCJS_CONFIG=<name>` (see build-configs/configurations.json for available
+# named configurations) or per-flag overrides (`-e OCJS_OPT=-Os`, etc.).
 ENV OCCT_ROOT=/occt
 ENV RAPIDJSON_ROOT=/rapidjson
 ENV FREETYPE_ROOT=/freetype
-ENV THREADING=single-threaded
-ENV OCJS_OPT=-O2
-ENV OCJS_LTO=0
-ENV OCJS_EXCEPTIONS=0
+ENV EMSDK=/emsdk
+ENV OCJS_CONFIG=default
+ENV OCJS_PATCH_DUMP=true
+ENV OCJS_PATCH_STEPCAF=true
 ENV OCJS_OUTPUT_DIR=/output
+# Fail-loud guardrail: refuses to ship a .d.ts containing silently rewritten
+# `unknown` method signatures or unbound class references. Catches the
+# silent-type-loss failure mode that produced the May-2026 replicad regression
+# where the R2 NCollection link-time filter excluded reachable types and the
+# d.ts post-processor neutralised the dangling refs. Consumers building from
+# this image should NEVER need to flip this off — set OCJS_STRICT_TYPES=0
+# only for diagnostic non-shipping builds. See
+# `ocjs_bindgen.link.yaml_build._enforce_strict_types_gate` for the policy.
+ENV OCJS_STRICT_TYPES=1
 
 RUN mkdir -p build/bindings build/sources /output
 
-# Apply patches and generate bindings (shared across all builds)
-RUN python3 src/applyPatches.py && \
-    python3 -c "\
-import sys; sys.path.insert(0, 'src'); \
-from ocjs_bindgen.config.paths import buildFlatIncludes, buildPch; \
-buildFlatIncludes(); \
-buildPch(threading='single-threaded')" && \
-    python3 -m ocjs_bindgen --config bindgen-filters.yaml
+# Pre-bake apply-patches + pch + generate via Nx. These targets depend only on
+# the pinned dep commits and the in-tree build system; their outputs (patched
+# OCCT tree, flat includes, PCH, generated .cpp / .d.ts.json fragments, and
+# the Nx cache itself) are baked into the final image so consumers skip
+# straight to compile-bindings/compile-sources/link on first `docker run`.
+RUN npx nx run ocjs:apply-patches && \
+    npx nx run ocjs:pch && \
+    npx nx run ocjs:generate
 
-ENTRYPOINT ["/opencascade.js/build-wasm.sh"]
+ENTRYPOINT ["/opencascade.js/scripts/docker-entrypoint.sh"]
 CMD ["full", "build-configs/full.yml"]

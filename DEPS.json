@@ -26,6 +26,25 @@
       "docker_digest": "sha256:c89732ef63a56de5a96395c5a8c1c7904f7420131a045406e6fedc4cbe1cc198",
       "emsdk_version": "5.0.1",
       "description": "Emscripten SDK for compiling C++ to WebAssembly"
+    },
+    "llvm17": {
+      "version": "17.0.6",
+      "description": "Vendored prebuilt LLVM 17 — parse-side libc++ + clang resource headers for libclang 18.1.1 (N-1 compat window per libc++ support policy). See docs/research/ocjs-libclang-target-triple-mismatch-poc.md.",
+      "base_url": "https://github.com/llvm/llvm-project/releases/download/llvmorg-17.0.6",
+      "platforms": {
+        "darwin-arm64": {
+          "filename": "clang+llvm-17.0.6-arm64-apple-darwin22.0.tar.xz",
+          "sha256": "1264eb3c2a4a6d5e9354c3e5dc5cb6c6481e678f6456f36d2e0e566e9400fcad"
+        },
+        "linux-x86_64": {
+          "filename": "clang+llvm-17.0.6-x86_64-linux-gnu-ubuntu-22.04.tar.xz",
+          "sha256": "884ee67d647d77e58740c1e645649e29ae9e8a6fe87c1376be0f3a30f3cc9ab3"
+        },
+        "linux-aarch64": {
+          "filename": "clang+llvm-17.0.6-aarch64-linux-gnu.tar.xz",
+          "sha256": "6dd62762285326f223f40b8e4f2864b5c372de3f7de0731cb7cd55ca5287b75a"
+        }
+      }
     }
   }
 }

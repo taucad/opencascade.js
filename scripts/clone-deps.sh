@@ -166,7 +166,98 @@ else
   "$VENV_DIR/bin/python" -m pip install --quiet -r "$REPO_ROOT/requirements.txt"
 fi
 
-# ── 4. Optional strict-commit gate ──────────────────────────────────────────
+# ── 4. Vendored LLVM 17 toolchain ───────────────────────────────────────────
+# Parse-side libc++/clang headers paired with pip libclang==18.1.1 (N-1 compat
+# window per libc++ support policy). Routes the discover pass through a stdlib
+# the bundled libclang can fully understand, sidestepping the libclang 18 ↔
+# emsdk clang 23 version skew that causes class-body parse failures.
+# See docs/research/ocjs-libclang-target-triple-mismatch-poc.md (Phase 7).
+
+LLVM17_DIR="$DEST_DIR/llvm-17"
+
+if [ ! -d "$LLVM17_DIR" ]; then
+  case "$(uname -s)-$(uname -m)" in
+    Darwin-arm64)  LLVM17_PLATFORM="darwin-arm64" ;;
+    Linux-x86_64)  LLVM17_PLATFORM="linux-x86_64" ;;
+    Linux-aarch64) LLVM17_PLATFORM="linux-aarch64" ;;
+    *)
+      cat >&2 <<EOF
+ERROR: Vendored LLVM 17 has no prebuilt tarball for $(uname -s)-$(uname -m).
+Supported platforms: darwin-arm64, linux-x86_64, linux-aarch64.
+
+Either add a sha256-pinned tarball for this platform to DEPS.json under
+dependencies.llvm17.platforms, or run the build on one of the supported
+host architectures.
+EOF
+      exit 1
+      ;;
+  esac
+
+  LLVM17_VERSION=$(read_dep llvm17 version)
+  LLVM17_BASE_URL=$(read_dep llvm17 base_url)
+  LLVM17_FILENAME="$(python3 -c "
+import json
+deps = json.load(open('$DEPS_FILE'))['dependencies']
+print(deps['llvm17']['platforms']['$LLVM17_PLATFORM']['filename'])
+")"
+  LLVM17_SHA256="$(python3 -c "
+import json
+deps = json.load(open('$DEPS_FILE'))['dependencies']
+print(deps['llvm17']['platforms']['$LLVM17_PLATFORM']['sha256'])
+")"
+
+  LLVM17_URL="$LLVM17_BASE_URL/$LLVM17_FILENAME"
+  LLVM17_TMP="$(mktemp -t llvm17.XXXXXX.tar.xz)"
+  trap 'rm -f "$LLVM17_TMP"' EXIT
+
+  echo "Downloading LLVM $LLVM17_VERSION ($LLVM17_PLATFORM, $LLVM17_FILENAME)..."
+  if ! curl -fsSL --retry 3 -o "$LLVM17_TMP" "$LLVM17_URL"; then
+    echo "ERROR: failed to download $LLVM17_URL" >&2
+    exit 1
+  fi
+
+  if command -v shasum >/dev/null 2>&1; then
+    ACTUAL_SHA="$(shasum -a 256 "$LLVM17_TMP" | awk '{print $1}')"
+  elif command -v sha256sum >/dev/null 2>&1; then
+    ACTUAL_SHA="$(sha256sum "$LLVM17_TMP" | awk '{print $1}')"
+  else
+    echo "ERROR: neither shasum nor sha256sum is available for verification" >&2
+    exit 1
+  fi
+
+  if [ "$ACTUAL_SHA" != "$LLVM17_SHA256" ]; then
+    cat >&2 <<EOF
+ERROR: LLVM 17 tarball sha256 mismatch.
+  url:      $LLVM17_URL
+  expected: $LLVM17_SHA256
+  actual:   $ACTUAL_SHA
+
+Refusing to extract a tarball whose bytes do not match the pinned hash in
+DEPS.json. If LLVM has legitimately republished the tarball, update the
+sha256 in DEPS.json after verifying the new bytes against an independent
+source (e.g. the LLVM release announcement).
+EOF
+    exit 1
+  fi
+
+  echo "Extracting LLVM $LLVM17_VERSION to $LLVM17_DIR..."
+  rm -rf "$LLVM17_DIR.tmp"
+  mkdir -p "$LLVM17_DIR.tmp"
+  if ! tar -xJf "$LLVM17_TMP" --strip-components=1 -C "$LLVM17_DIR.tmp"; then
+    echo "ERROR: failed to extract $LLVM17_TMP" >&2
+    rm -rf "$LLVM17_DIR.tmp"
+    exit 1
+  fi
+  mv "$LLVM17_DIR.tmp" "$LLVM17_DIR"
+
+  if [ "$(uname -s)" = "Darwin" ]; then
+    xattr -dr com.apple.quarantine "$LLVM17_DIR" 2>/dev/null || true
+  fi
+else
+  echo "LLVM 17 already vendored at $LLVM17_DIR"
+fi
+
+# ── 5. Optional strict-commit gate ──────────────────────────────────────────
 if [ "${OCJS_STRICT_DEPS:-0}" = "1" ]; then
   echo "Validating dependency commits..."
   "$VENV_DIR/bin/python" -c "

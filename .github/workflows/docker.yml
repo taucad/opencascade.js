@@ -1,0 +1,229 @@
+name: docker
+
+# Two responsibilities:
+#
+# 1. **Smoke** (every push/PR to main/master/occt-v8-*):
+#    Builds the in-tree Dockerfile and links `build-configs/link-filter-poc.yml`
+#    (22 symbols) to catch breakage in the Docker build flow without paying for
+#    a full 60-90 min cold link on every push.
+#
+# 2. **Publish** (annotated git tags matching `v*`):
+#    Builds multi-arch (linux/amd64 on ubuntu-latest, linux/arm64 on
+#    ubuntu-24.04-arm — native runners, no QEMU) and pushes a manifest list to
+#    `ghcr.io/taucad/opencascade.js`. Native runners avoid the libclang-under-
+#    QEMU segfault during `apply-patches` (see
+#    docs/research/ocjs-libclang-target-triple-mismatch-poc.md Phase 7).
+#
+# Cache strategy: BuildKit cache mounts (apt, npm, Nx, build/) are persisted
+# via the `docker/build-push-action@v6` GHA cache backend, scoped per platform
+# for the publish jobs so the two architectures don't poison each other.
+
+on:
+  push:
+    branches:
+      - main
+      - master
+      - 'occt-v8-*'
+    tags:
+      - 'v*'
+  pull_request:
+    branches:
+      - main
+      - master
+      - 'occt-v8-*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  REGISTRY_IMAGE: ghcr.io/taucad/opencascade.js
+
+jobs:
+  docker-smoke:
+    name: docker · build + link-filter-poc smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build image (cached via GHA backend)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          tags: ocjs:ci
+          load: true
+          cache-from: type=gha,scope=ocjs-docker
+          cache-to: type=gha,scope=ocjs-docker,mode=max
+          provenance: false
+          sbom: false
+
+      - name: Validate full.yml schema (no build)
+        run: |
+          docker run --rm ocjs:ci validate build-configs/full.yml
+
+      - name: Validate link-filter-poc.yml schema
+        run: |
+          docker run --rm ocjs:ci validate build-configs/link-filter-poc.yml
+
+      - name: Smoke-link link-filter-poc.yml (22 symbols)
+        run: |
+          mkdir -p "$PWD/smoke-output"
+          docker run --rm \
+            -e OCJS_CONFIG=O0-debug \
+            -v "$PWD/build-configs/link-filter-poc.yml:/src/config.yml:ro" \
+            -v "$PWD/smoke-output:/output" \
+            ocjs:ci full /src/config.yml
+
+      - name: Assert smoke artefacts present
+        run: |
+          set -euo pipefail
+          missing=0
+          for ext in wasm js d.ts js.symbols build-manifest.json provenance.json; do
+            f="$PWD/smoke-output/opencascade_linkfilter_poc.${ext}"
+            if [ ! -f "$f" ]; then
+              echo "::error::Missing $f"
+              missing=1
+            else
+              echo "::notice::$(basename "$f") ($(stat -c%s "$f") bytes)"
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then exit 1; fi
+
+      - name: Upload smoke artefacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: link-filter-poc-output
+          path: smoke-output/
+          if-no-files-found: warn
+          retention-days: 7
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Publish (tag push only) — native per-platform build + manifest merge.
+  # Pattern from https://docs.docker.com/build/ci/github-actions/multi-platform/
+  # ─────────────────────────────────────────────────────────────────────────
+  publish-platform:
+    name: docker · publish · ${{ matrix.platform }}
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            platform_pair: linux-amd64
+            runner: ubuntu-latest
+          - platform: linux/arm64
+            platform_pair: linux-arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute image metadata (labels only)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY_IMAGE }}
+
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            REVISION=${{ github.sha }}
+            VERSION=${{ steps.meta.outputs.version }}
+          outputs: type=image,name=${{ env.REGISTRY_IMAGE }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=ocjs-${{ matrix.platform_pair }}
+          cache-to: type=gha,scope=ocjs-${{ matrix.platform_pair }},mode=max
+          provenance: true
+          sbom: true
+
+      - name: Export digest
+        run: |
+          mkdir -p "${{ runner.temp }}/digests"
+          digest="${{ steps.build.outputs.digest }}"
+          touch "${{ runner.temp }}/digests/${digest#sha256:}"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{ matrix.platform_pair }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  publish-manifest:
+    name: docker · publish · merge manifest list
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: publish-platform
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Download digests
+        uses: actions/download-artifact@v4
+        with:
+          path: ${{ runner.temp }}/digests
+          pattern: digests-*
+          merge-multiple: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY_IMAGE }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix=sha-,format=short
+            type=raw,value=beta,enable=${{ contains(github.ref_name, '-beta.') }}
+
+      - name: Create manifest list and push
+        working-directory: ${{ runner.temp }}/digests
+        # SC2046: word splitting is intentional — both substitutions expand to
+        # multiple CLI args (`-t tag1 -t tag2 ...` and `image@sha256:a image@sha256:b`).
+        # This is the documented pattern from
+        # https://docs.docker.com/build/ci/github-actions/multi-platform/
+        run: |
+          # shellcheck disable=SC2046
+          docker buildx imagetools create \
+            $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(printf '${{ env.REGISTRY_IMAGE }}@sha256:%s ' *)
+
+      - name: Inspect image
+        run: |
+          docker buildx imagetools inspect "${{ env.REGISTRY_IMAGE }}:${{ steps.meta.outputs.version }}"

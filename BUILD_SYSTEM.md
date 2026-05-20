@@ -19,6 +19,126 @@ The central design principle: **compile-time configuration and link-time flags a
 - Passed **verbatim** to `emcc` at link time — no stripping, no filtering
 - Exactly the same API consumers have used since v7.6.2
 
+## Component Glossary
+
+A reference map of every moving part in the bindgen pipeline. Grouped by role so the layering is visible: how source code flows from OCCT headers, through a parser, through a code generator, into a compiler, into a linker, and out as a WebAssembly module.
+
+The whole pipeline can be read top-to-bottom as: **F generates C++ from E using B/C/G; D then compiles+links that C++ into H.**
+
+### A. Toolchain meta-installers
+
+These manage *other* toolchains. They are not compilers or libraries themselves.
+
+| name | role |
+| --- | --- |
+| **emsdk** (Emscripten SDK) | A Python-based meta-installer that downloads and version-locks the entire Emscripten toolchain (clang, `emcc`, libc++, sysroot, node, etc.) as a single bundle. We pin a specific emsdk release in `DEPS.json`; running `scripts/clone-deps.sh` installs it under `deps/emsdk/`. The bundle's exact clang/libc++ commits come from emsdk's manifest, not from us. |
+| **uv** (Astral) | Hermetic Python interpreter + venv manager. Reads `.python-version` and `requirements.txt` to install an exact CPython and an exact set of Python packages into `.venv/`. Has no role in C++ — it only sets up the Python that runs the bindgen scripts. |
+
+### B. The C++ frontend (what reads source code)
+
+Two distinct copies of clang are in play here. The distinction matters.
+
+| name | role |
+| --- | --- |
+| **clang** (the driver, from emsdk) | The `clang++` executable at `deps/emsdk/upstream/bin/clang`. Drives preprocessing → parsing → codegen → linking. Wrapped by `emcc` to inject wasm-specific defaults. Version is whatever emsdk's manifest pinned (currently ahead of any released LLVM). |
+| **libclang** (the Python binding) | The pip package `libclang` exposes ctypes bindings to a `libclang.{so,dylib}` — the C library form of the clang frontend. The bindgen's discover pass uses this to parse OCCT headers into an AST it can walk. **This is a separate clang from the driver above** and its version is independent. Pinned in `requirements.txt`. |
+| **clang resource directory** | A small directory of compiler-builtin headers (`stddef.h`, `stdint.h`, `arm_neon.h`, intrinsic shims) that ships *with* every clang at `lib/clang/<N>/include/`. Defines macros and types that depend on the compiler's own version (`__INT32_C`, `__builtin_ctzg`, etc.) and **must match the clang version reading them**. |
+
+> **Important pairing rule:** libclang and libc++ are released together from the LLVM monorepo and the LLVM project only supports pairings within ±1 major release (per the official libc++ compiler-support policy). The parse-side libclang version and the libc++ headers libclang reads must stay aligned. See "C. The C++ standard library" below.
+
+### C. The C++ standard library
+
+| name | role |
+| --- | --- |
+| **libc++** (a.k.a. **libcxx**) | LLVM's C++ standard library implementation — `std::vector`, `std::optional`, `<algorithm>`, etc. **At parse time only the headers matter**; the runtime is irrelevant to libclang. libc++ headers `#include` compiler intrinsics from the clang resource directory and assume a minimum clang version. The libc++ release that ships in `deps/emsdk/upstream/emscripten/system/lib/libcxx/include/` is whatever emsdk's vendored clang shipped with. |
+| **libc++abi** | Companion runtime to libc++ providing exception types, RTTI helpers, demanglers. Statically linked into the wasm at compile/link time. Not consumed during parse. |
+
+### D. The emscripten compile/link layer
+
+| name | role |
+| --- | --- |
+| **emcc** | Emscripten's `clang++` wrapper at `deps/emsdk/upstream/emscripten/emcc`. Adds `-target wasm32-unknown-emscripten`, points clang at the emscripten sysroot, calls `wasm-ld` at link time, then runs `wasm-opt`. Build scripts invoke `emcc`, not `clang` directly. |
+| **wasm-ld** (a.k.a. **lld**) | LLVM's WebAssembly linker. Takes `.o` files compiled by emcc and links them into a `.wasm` module. Performs dead-code elimination of unreferenced symbols — this is where the link-time NCollection filter operates. |
+| **binaryen / wasm-opt** | Post-link wasm bytecode optimiser. Shrinks and optimises the linked module. Invoked by `emcc` at `-O2` and above. |
+| **emscripten sysroot** | A faux POSIX environment for wasm builds (`inttypes.h`, `wchar.h`, pthread shims, OpenGL/EGL stubs, etc.) under `system/include/` and `cache/sysroot/include/`. Replaces the host OS's C library headers so wasm builds are OS-independent. |
+| **embind** | C++ template library shipped inside emscripten that generates the JS↔C++ glue from `EMSCRIPTEN_BINDINGS(name) { class_<X>(…); }` macro blocks. **This is the actual binding mechanism** — the bindgen emits embind code; embind expands at compile time to produce the JS shims. |
+
+### E. The OCCT source being wrapped
+
+| name | role |
+| --- | --- |
+| **OCCT** (OpenCASCADE Technology) | The CAD kernel we produce bindings for. ~13,000 C++ headers organised into "packages" (TKMath, TKGeomBase, TKBRep, etc.). Cloned to `deps/OCCT/` at the commit pinned in `DEPS.json`. |
+| **NCollection** | OCCT's home-grown template-based container library (`NCollection_Array1<T>`, `NCollection_HArray1<T>`, `NCollection_Sequence<T>`, `NCollection_DataMap<K,V>`, etc.). Used pervasively as parameter and return types. The bindgen enumerates the specific instantiations reachable from bound classes and produces concrete wrappers for each — without this enumeration step the generated `.d.ts` would lose its type fidelity. |
+| **Standard / Standard_Macro / Standard_Integer** | OCCT's foundational type system. `Standard_Integer = int`, `Standard_Real = double`, `Standard_EXPORT` = compiler visibility attribute, `Handle(T) = opencascade::handle<T>`. Every OCCT header transitively includes this; its successful parse is a precondition for any class body downstream to parse. |
+| **rapidjson** | Header-only JSON parser. OCCT uses it for glTF I/O. Pure headers, no compile required. Cloned to `deps/rapidjson/`. |
+| **FreeType** | Font rendering library. OCCT depends on it for text annotations and 3D text features. Compiled to wasm and statically linked. Cloned to `deps/freetype/`. |
+
+### F. The bindgen (`src/ocjs_bindgen/`)
+
+Our code. Generates embind C++ from OCCT headers, then drives `emcc` to compile+link the result.
+
+| component | role |
+| --- | --- |
+| **`config/paths.py`** | Resolves include paths for the libclang parse, including the libc++ headers libclang reads. Single source of truth for where headers come from. |
+| **`config/flags.py`** | Build-flag state machine consumed by the compile/link drivers. Implements the env-var precedence rules documented under [Flag Precedence](#flag-precedence). |
+| **`ast/parse.py`** | The single `libclang.Index.parse()` call site. Builds the giant `myMain.h` translation unit from all OCCT includes and hands it to libclang. |
+| **`discover.py`** | The NCollection enumeration pass. Walks bound class methods, extracts template instantiations from their parameter and return types, mangles them into manifest entries (e.g. `NCollection_HArray1<gp_Pnt>` → `NCollection_HArray1_gp_Pnt`). Writes `build/ncollection-manifest.json`. |
+| **`codegen/embind/`** | Generates the `EMSCRIPTEN_BINDINGS(name) { class_<X>("X").function("foo", &X::foo); }` C++ source files that `emcc` compiles. |
+| **`link/rewrite.py`** | Applies the link-time NCollection filter — restricts the wasm-ld link set to symbols actually reachable from the consumer's bound classes. |
+| **`filters/`** | Header-level and package-level exclusion rules (read from `bindgen-filters.yaml`). Drops OCCT packages that have no wasm meaning (OpenGL platform headers, OSD platform abstractions, etc.) before they reach the parse stage. |
+| **`docs/`** | Doxygen-comment extractor; folds OCCT's `/** … */` blocks into JSDoc on the generated `.d.ts`. |
+| **`build_drivers/`** | Subprocess wrappers around `emcc`, `wasm-ld`, `wasm-opt`, Closure Compiler, etc. The boundary between Python orchestration and shell processes. |
+
+### G. Per-build artifacts (regenerated each run)
+
+These are *not* source — they're intermediate files the pipeline produces and re-uses.
+
+| artifact | role |
+| --- | --- |
+| **`build/occt-includes/`** (the **flat include directory**) | A symlink farm aliasing every OCCT header by its bare basename, so `#include "Poly_Triangulation.hxx"` resolves without enumerating every OCCT subdirectory on `-I`. Built by `buildFlatIncludes()` in `paths.py`. |
+| **`build/pch.h`** + **`build/pch.h.pch`** (the **precompiled header**) | A single header that `#include`s every OCCT and embind header, then precompiled by emcc into a binary form. Every embind translation unit at compile time loads the PCH instead of re-parsing thousands of headers — gives a ~25× compilation speedup. Pure compile-side optimisation; does not affect the libclang discover pass. |
+| **`build/ncollection-manifest.json`** | Deduped list of `NCollection_*<T...>` instantiations the discover pass enumerated from the consumer's bound classes. Consumed by the link-time filter to retain only the symbols actually needed. |
+| **`build/occt-cmake/`** | OCCT object files produced by `emcmake cmake` build of OCCT itself. These get linked into the final wasm by `wasm-ld`. Cached per compile-config. |
+
+### H. Support tooling
+
+| name | role |
+| --- | --- |
+| **CMake** | Configures and drives OCCT's own C++ build (compiles OCCT's `.cxx` into object archives) before `emcc` links them into wasm. Run via `emcmake cmake` to inject `emcc` as the compiler. Pinned in `requirements.txt`. |
+| **Doxygen** | Parses OCCT's `/** … */` comments into XML; `extract-docs.py` folds that into the generated `.d.ts` JSDoc. Does not touch the wasm itself. Uses the system-installed `doxygen`. |
+| **Nx** | Workspace build orchestrator. Caches per-task outputs so re-running unchanged steps is a no-op. The host build pipeline goes through Nx targets. See [Caching Behavior](#caching-behavior). |
+| **Docker** | Alternative isolation: the same scripts run inside a Linux container with emsdk pre-installed. See [Consumer Workflows → Docker](#docker). |
+| **Node.js** | Runs the JS-side smoke tests and `npm pack` for distribution. Pinned via `.nvmrc`. Not in the parse or compile pipelines. |
+
+### Build outputs (what the pipeline produces)
+
+The output set per consumer YAML. Names come from the YAML's `mainBuild.name` (here illustrated as `my_build`).
+
+| artifact | role |
+| --- | --- |
+| **`my_build.wasm`** | The compiled WebAssembly module — OCCT geometry kernel, embind glue, all linked together. The thing browsers and Node load. |
+| **`my_build.js`** | JS wrapper emitted by `emcc` — module loader, exported function thunks, embind runtime. Imports the `.wasm` and exposes the JS API. |
+| **`my_build.d.ts`** | TypeScript declarations emitted by the bindgen's codegen. Type fidelity here depends on the discover pass having enumerated every reachable NCollection instantiation; gaps surface as `: number` or `: unknown` downgrades. |
+| **`my_build.js.symbols`** | Symbol table emitted by `wasm-ld`. Useful for diffing two builds to see which symbols were retained or dropped. |
+
+### How the components flow together
+
+A single end-to-end build, with each step labelled by which component does the work:
+
+1. **A** (`clone-deps.sh`) materialises **emsdk**, **OCCT**, **rapidjson**, **FreeType** under `deps/`.
+2. **A** (`uv`) creates `.venv/` and installs **F**'s Python dependencies (including the **B** `libclang` binding).
+3. **F** (`paths.py`, `buildFlatIncludes()`) builds **G** (the flat include directory).
+4. **F** (`paths.py`, `buildPch()`) calls **D** (`emcc`) to build **G** (the PCH).
+5. **F** (`ast/parse.py`) calls **B** (`libclang`) to parse **E** (OCCT headers via the flat include dir) using **C** (`libc++` headers).
+6. **F** (`discover.py`) walks the resulting AST and writes **G** (`ncollection-manifest.json`).
+7. **F** (`codegen/embind/`) generates embind C++ source.
+8. **D** (`emcc`) compiles the generated source + OCCT source into `.o` files, using the **G** PCH for speed.
+9. **D** (`wasm-ld`) links the `.o` set into a `.wasm`, with **F** (`link/rewrite.py`) applying the NCollection filter.
+10. **D** (`wasm-opt`) shrinks the linked wasm.
+11. The build outputs (`my_build.wasm`, `.js`, `.d.ts`, `.symbols`) land in the consumer's chosen output directory.
+
+The [Task Graph](#task-graph) below is the Nx-orchestrated version of steps 4–10 with the parallelism and caching annotations.
+
 ## Task Graph
 
 ```
