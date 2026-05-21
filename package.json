@@ -10,6 +10,14 @@
     "url": "git+https://github.com/taucad/opencascade.js.git"
   },
   "types": "dist/opencascade_full.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/opencascade_full.d.ts",
+      "default": "./dist/opencascade_full.js"
+    },
+    "./wasm": "./dist/opencascade_full.wasm",
+    "./package.json": "./package.json"
+  },
   "files": [
     "dist/opencascade_full.js",
     "dist/opencascade_full.wasm",
