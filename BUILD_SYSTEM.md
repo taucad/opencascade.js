@@ -155,26 +155,28 @@ All named compile-time configurations live in `build-configs/configurations.json
 
 ### Supported keys
 
-The **bare default** is what `build-wasm.sh` falls back to with no `--config` and no env var set. The **`default` config** column reflects what `configurations.json`'s `default` entry sets — and what every named config (`O3-wasm-exc-simd`, `O3-noLTO-simd`, `Os-noLTO-simd`) sets for these same flags.
+The **bare default** column is what `build-wasm.sh` would fall back to if you set neither an env var nor `--config`. The **`single-threaded` config** column is what `configurations.json`'s `single-threaded` entry sets — the production default that the published tarball is linked with and what `build-wasm.sh` selects when `OCJS_CONFIG` and `--config` are both unset (see the `OCJS_CONFIG="${OCJS_CONFIG:-single-threaded}"` fallback in `build-wasm.sh`). All four shipped configurations (`single-threaded`, `single-threaded-smallest`, `multi-threaded`, `debug`) ship with native WASM exceptions, `EVAL_CTORS=2`, and Closure on; they differ on opt level, threading, and wasm-opt budget.
 
-| Key                   | Description                                             | Bare default      | `default` config |
-| --------------------- | ------------------------------------------------------- | ----------------- | ---------------- |
-| `OCJS_OPT`            | Compile optimization level (`-O0`, `-O2`, `-O3`, `-Os`) | `-O2`             | `-O3`            |
-| `OCJS_LTO`            | Enable LTO at compile time (`0` or `1`)                 | `0`               | `0`              |
-| `OCJS_EXCEPTIONS`     | Enable native WASM exceptions (`0` or `1`)              | `0`               | `0` (`1` in `O3-wasm-exc-simd`) |
-| `OCJS_SIMD`           | Enable baseline SIMD (`-msimd128`, `0` or `1`)          | `0`               | `1`              |
-| `OCJS_RELAXED_SIMD`   | Enable Relaxed SIMD opcodes (requires `OCJS_SIMD=1`; Safari 26.x does not yet implement Relaxed SIMD) | `0`               | `0` |
-| `OCJS_BIGINT`         | Enable `-sWASM_BIGINT` for native i64↔BigInt           | `0`               | `1`              |
-| `THREADING`           | Threading mode (`single-threaded` or `multi-threaded`)  | `single-threaded` | `single-threaded` |
-| `OCJS_DEFINES`        | Comma-separated C preprocessor defines                  | _(empty)_         | `OCCT_NO_DUMP`   |
-| `OCJS_UNDEFINES`      | Comma-separated C preprocessor undefines                | _(empty)_         | `OCC_CONVERT_SIGNALS` |
-| `OCJS_WASM_OPT_LEVEL` | wasm-opt optimization level                             | `-O3`             | `-O4`            |
-| `OCJS_CLOSURE`        | Run Closure Compiler (`true` or `false`)                | `false`           | `true`           |
-| `OCJS_EVAL_CTORS`     | Enable Emscripten eval ctors (`true` or `false`)        | `false`           | `true`           |
-| `OCJS_EVAL_CTORS_LEVEL` | `-sEVAL_CTORS=N` level when `OCJS_EVAL_CTORS=true`    | `2`               | `2`              |
-| `OCJS_CONVERGE`       | Use `--converge` in wasm-opt (`true` or `false`)        | `false`           | `true`           |
-| `OCJS_PATCH_DUMP`     | Patch OCCT Standard_Dump.hxx (`true` or `false`)        | `false`           | `true`           |
-| `OCJS_EXTRA_CFLAGS`   | Extra compile flags appended to C/CXX                   | _(empty)_         | _(empty)_        |
+| Key                   | Description                                             | Bare default      | `single-threaded` config |
+| --------------------- | ------------------------------------------------------- | ----------------- | ------------------------ |
+| `OCJS_OPT`            | Compile optimization level (`-O0`, `-O2`, `-O3`, `-Os`) | `-O2`             | `-O3`                    |
+| `OCJS_LTO`            | Enable LTO at compile time (`0` or `1`)                 | `0`               | `0`                      |
+| `OCJS_EXCEPTIONS`     | Enable native WASM exceptions (`0` or `1`)              | `0`               | `1`                      |
+| `OCJS_EH_MODE`        | Exception handling mode (`wasm` or `js`)                | `wasm`            | `wasm`                   |
+| `OCJS_SIMD`           | Enable baseline SIMD (`-msimd128`, `0` or `1`)          | `0`               | `1`                      |
+| `OCJS_RELAXED_SIMD`   | Enable Relaxed SIMD opcodes (requires `OCJS_SIMD=1`; Safari 26.x does not yet implement Relaxed SIMD) | `0` | `0`           |
+| `OCJS_BIGINT`         | Enable `-sWASM_BIGINT` for native i64↔BigInt           | `0`               | `1`                      |
+| `THREADING`           | Threading mode (`single-threaded` or `multi-threaded`)  | `single-threaded` | `single-threaded`        |
+| `OCJS_DEFINES`        | Comma-separated C preprocessor defines                  | _(empty)_         | `OCCT_NO_DUMP`           |
+| `OCJS_UNDEFINES`      | Comma-separated C preprocessor undefines                | _(empty)_         | `OCC_CONVERT_SIGNALS`    |
+| `OCJS_WASM_OPT_LEVEL` | wasm-opt optimization level                             | `-O3`             | `-O4`                    |
+| `OCJS_CLOSURE`        | Run Closure Compiler (`true` or `false`)                | `false`           | `true`                   |
+| `OCJS_EVAL_CTORS`     | Enable Emscripten eval ctors (`true` or `false`)        | `false`           | `true`                   |
+| `OCJS_EVAL_CTORS_LEVEL` | `-sEVAL_CTORS=N` level when `OCJS_EVAL_CTORS=true`    | `2`               | `2`                      |
+| `OCJS_CONVERGE`       | Use `--converge` in wasm-opt (`true` or `false`)        | `false`           | `true`                   |
+| `OCJS_PATCH_DUMP`     | Patch OCCT Standard_Dump.hxx (`true` or `false`)        | `false`           | `true`                   |
+| `OCJS_MALLOC`         | Heap allocator (`dlmalloc` or `mimalloc`)               | `dlmalloc`        | `mimalloc`               |
+| `OCJS_EXTRA_CFLAGS`   | Extra compile flags appended to C/CXX                   | _(empty)_         | _(empty)_                |
 
 ### Adding a new configuration
 
@@ -276,35 +278,35 @@ NX_VERBOSE_LOGGING=true npx nx run ocjs:pch  # Verbose logging
 ### Full build with a named configuration
 
 ```bash
-./build-wasm.sh --config default full path/to/consumer.yml
+./build-wasm.sh --config single-threaded full path/to/consumer.yml
 ```
 
 ### Link only (reuses compile cache)
 
 ```bash
-./build-wasm.sh --config default link path/to/consumer.yml
+./build-wasm.sh --config single-threaded link path/to/consumer.yml
 ```
 
 ### Override a single flag from the config
 
 ```bash
-OCJS_WASM_OPT_LEVEL=-O4 ./build-wasm.sh --config default full consumer.yml
+OCJS_WASM_OPT_LEVEL=-O4 ./build-wasm.sh --config single-threaded full consumer.yml
 ```
 
 ### Using Nx directly
 
 ```bash
-OCJS_CONFIG=default OCJS_YAML=path/to/consumer.yml npx nx run ocjs:build
+OCJS_CONFIG=single-threaded OCJS_YAML=path/to/consumer.yml npx nx run ocjs:build
 ```
 
 ### Running individual targets
 
 ```bash
-OCJS_CONFIG=default npx nx run ocjs:pch
-OCJS_CONFIG=default npx nx run ocjs:generate
-OCJS_CONFIG=default npx nx run ocjs:compile-bindings
-OCJS_CONFIG=default npx nx run ocjs:compile-sources
-OCJS_CONFIG=default OCJS_YAML=consumer.yml npx nx run ocjs:link
+OCJS_CONFIG=single-threaded npx nx run ocjs:pch
+OCJS_CONFIG=single-threaded npx nx run ocjs:generate
+OCJS_CONFIG=single-threaded npx nx run ocjs:compile-bindings
+OCJS_CONFIG=single-threaded npx nx run ocjs:compile-sources
+OCJS_CONFIG=single-threaded OCJS_YAML=consumer.yml npx nx run ocjs:link
 ```
 
 ## Consumer Workflows
@@ -312,7 +314,7 @@ OCJS_CONFIG=default OCJS_YAML=consumer.yml npx nx run ocjs:link
 ### Docker
 
 ```bash
-docker run -e OCJS_CONFIG=default \
+docker run -e OCJS_CONFIG=single-threaded \
   -v $(pwd)/my-config.yml:/src/config.yml \
   -v $(pwd)/output:/output \
   opencascade-js link /src/config.yml
@@ -323,7 +325,7 @@ docker run -e OCJS_CONFIG=default \
 ```bash
 cd repos/opencascade.js
 ./scripts/clone-deps.sh
-./build-wasm.sh --config default full path/to/consumer.yml
+./build-wasm.sh --config single-threaded full path/to/consumer.yml
 ```
 
 ## Self-Contained Dependencies

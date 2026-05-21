@@ -15,7 +15,7 @@ set -euo pipefail
 #   ./build-wasm.sh bindings              # Compile bindings only
 #   ./build-wasm.sh sources               # Compile OCCT sources only
 #   ./build-wasm.sh full <yaml>           # Full pipeline: pch + generate + bindings + sources + link
-#   ./build-wasm.sh --config O3-maxperf full <yaml>  # Full pipeline with named configuration
+#   ./build-wasm.sh --config single-threaded full <yaml>     # Full pipeline with named configuration
 #
 # Environment overrides (all optional, sensible defaults provided):
 #   EMSDK              Path to emsdk (default: deps/emsdk/)
@@ -39,7 +39,7 @@ set -euo pipefail
 #   OCJS_OPT=-O0 OCJS_LTO=0 ./build-wasm.sh link custom_build.yml
 #
 #   # Use named configuration
-#   ./build-wasm.sh --config O3-maxperf full consumer.yml
+#   ./build-wasm.sh --config single-threaded full consumer.yml
 # ─────────────────────────────────────────────────────────────────────
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -83,13 +83,13 @@ Environment Variables:
 
 Examples:
   # Full build with a named configuration
-  ./build-wasm.sh --config O3-maxperf full build-configs/full.yml
+  ./build-wasm.sh --config single-threaded full build-configs/full.yml
 
   # Link only with consumer YAML (reuses compile cache)
-  ./build-wasm.sh --config O3-maxperf link path/to/consumer.yml
+  ./build-wasm.sh --config single-threaded link path/to/consumer.yml
 
   # Override a flag from the config
-  OCJS_WASM_OPT_LEVEL=-O4 ./build-wasm.sh --config O3-maxperf full consumer.yml
+  OCJS_WASM_OPT_LEVEL=-O4 ./build-wasm.sh --config single-threaded full consumer.yml
 
   # Raw env vars, no config (backward compat)
   OCJS_OPT=-O3 OCJS_LTO=0 ./build-wasm.sh full build-configs/full.yml
@@ -260,7 +260,7 @@ done
 # before Nx env overrides were removed, and what the shipped @taucad/opencascade.js
 # tarball is built with. Override by exporting OCJS_CONFIG=<name> or passing
 # --config <name>.
-export OCJS_CONFIG="${OCJS_CONFIG:-O3-wasm-exc-simd}"
+export OCJS_CONFIG="${OCJS_CONFIG:-single-threaded}"
 
 if [ -n "${OCJS_CONFIG:-}" ]; then
   _CONFIG_FILE="$SCRIPT_DIR/build-configs/configurations.json"

@@ -33,7 +33,7 @@
 	],
 
 	"remoteEnv": {
-		"OCJS_CONFIG": "O3-wasm-exc-simd"
+		"OCJS_CONFIG": "single-threaded"
 	}
 
 	// Uncomment when using a ptrace-based debugger like C++, Go, or Rust.

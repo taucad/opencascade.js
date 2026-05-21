@@ -395,7 +395,7 @@ def generate_yaml(classes, enums, typedefs, handle_classes: Set[str]) -> str:
         "        ;",
         "    }",
         "  emccFlags:",
-        # Native WASM exception handling (matches OCJS_CONFIG=O3-wasm-exc-simd
+        # Native WASM exception handling (matches OCJS_CONFIG=single-threaded
         # in nx.json which compiles every .o with -fwasm-exceptions). Without
         # these the link emits a wasm whose runtime imports a `Tag` that the
         # generated loader never sets up, so every Module() invocation fails
@@ -436,7 +436,7 @@ def generate_yaml(classes, enums, typedefs, handle_classes: Set[str]) -> str:
         # Constant-evaluate global ctors at link time; shrinks startup by
         # ~30% and reduces wasm size by avoiding redundant init blocks.
         "  - -sEVAL_CTORS=2",
-        # 128-bit SIMD instructions (matches OCJS_CONFIG=O3-wasm-exc-simd in
+        # 128-bit SIMD instructions (matches OCJS_CONFIG=single-threaded in
         # nx.json and the per-.o `-msimd128` set in compile-bindings).
         "  - -msimd128",
         # Optimization level. -O3 is the production target; debug builds

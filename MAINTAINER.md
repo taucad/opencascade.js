@@ -58,17 +58,18 @@ See [docs/reference/yaml-schema.md](docs/reference/yaml-schema.md) for the full 
 Named compile-time configurations live in [`build-configs/configurations.json`](build-configs/configurations.json). Apply one with `--config`:
 
 ```bash
-# Default — what the published tarball is built with: -O3, SIMD, BigInt, EVAL_CTORS, no exceptions
-./build-wasm.sh --config default full build-configs/full.yml
+# Production default — what the published tarball is built with: -O3, baseline SIMD,
+# BigInt, native WASM exceptions, EVAL_CTORS=2, Closure, converge, mimalloc.
+./build-wasm.sh --config single-threaded full build-configs/full.yml
 
-# With native WASM exceptions (decodable C++ exceptions end-to-end)
-./build-wasm.sh --config O3-wasm-exc-simd full build-configs/full.yml
+# Size-tuned variant: -Os compile + wasm-opt -O3, same feature set, smaller binary
+./build-wasm.sh --config single-threaded-smallest full build-configs/full.yml
 
-# Size-optimized (-Os) variant
-./build-wasm.sh --config Os-noLTO-simd full build-configs/full.yml
+# Threaded variant for SAB/COOP+COEP-isolated deployments
+./build-wasm.sh --config multi-threaded full build-configs/full.yml
 
-# Debug (fastest build, -O0, no SIMD)
-./build-wasm.sh --config O0-debug full build-configs/full.yml
+# Debug — fastest build, -O0 compile + wasm-opt -O0, SIMD off, converge off
+./build-wasm.sh --config debug full build-configs/full.yml
 ```
 
 Add your own entry to `configurations.json` to define a new configuration. See [BUILD_SYSTEM.md](BUILD_SYSTEM.md) for the full list of `OCJS_*` keys.
@@ -91,7 +92,7 @@ Two layers of "default" matter here. The **bare default** is what `build-wasm.sh
 | `OCJS_UNDEFINES`    | _(empty)_         | `OCC_CONVERT_SIGNALS`    | Comma-separated list of `-U` undefines.                                                                      |
 | `THREADING`         | `single-threaded` | `single-threaded`        | Threading mode (`single-threaded` or `multi-threaded`).                                                      |
 
-The bare-default column is only relevant if you invoke `build-wasm.sh` without `--config`. Any named configuration (including `default`) sets the rightmost column.
+The bare-default column is only relevant if you invoke `build-wasm.sh` without `--config` _and_ without `OCJS_CONFIG` — the script's own fallback selects the `single-threaded` configuration when both are unset, so in practice you always get the rightmost column unless you go out of your way to disable it.
 
 ## Customizing Your Build
 

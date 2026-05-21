@@ -5,7 +5,7 @@
     "nx:run-commands": {
       "options": {
         "env": {
-          "OCJS_CONFIG": "O3-wasm-exc-simd"
+          "OCJS_CONFIG": "single-threaded"
         }
       }
     }

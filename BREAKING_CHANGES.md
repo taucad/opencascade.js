@@ -17,7 +17,7 @@ Native WebAssembly exception handling is on by default in the published build. C
 | Safari        | 16.4    |
 | Node.js       | 22      |
 
-To run on older runtimes, build a custom variant from source with the `Os-noLTO-simd` or `O3-noLTO-simd` configuration (both have `OCJS_EXCEPTIONS=0`).
+To run on older runtimes, build a custom variant from source by overriding `OCJS_EXCEPTIONS=0` on top of any shipped configuration — every named configuration in `build-configs/configurations.json` enables native WASM exceptions by default in v3, so a non-exceptions build has to be opted out explicitly.
 
 ## Index
 
@@ -551,24 +551,22 @@ python3 src/buildFromYaml.py /path/to/your-config.yml
 
 ```bash
 docker run --rm -v "$(pwd):/src" ghcr.io/taucad/opencascade.js:beta \
-  --config default full /src/your-config.yml
+  --config single-threaded full /src/your-config.yml
 # or, on a host with the source tree:
-./build-wasm.sh --config default full build-configs/full.yml
-./build-wasm.sh --config Os-noLTO-simd full build-configs/full.yml
-./build-wasm.sh --config O3-wasm-exc-simd full build-configs/full.yml
-./build-wasm.sh --config O0-debug full build-configs/full.yml
+./build-wasm.sh --config single-threaded full build-configs/full.yml
+./build-wasm.sh --config single-threaded-smallest full build-configs/full.yml
+./build-wasm.sh --config multi-threaded full build-configs/full.yml
+./build-wasm.sh --config debug full build-configs/full.yml
 ```
 
-The six shipped configurations (full env-var matrix in [BUILD_SYSTEM.md](BUILD_SYSTEM.md)):
+The four shipped configurations (full env-var matrix in [BUILD_SYSTEM.md](BUILD_SYSTEM.md)) — every entry ships with native WASM exceptions, `EVAL_CTORS=2`, and Closure on; they differ only in optimisation level, threading, and wasm-opt budget:
 
-| Name                | Purpose                                                                                           |
-| ------------------- | ------------------------------------------------------------------------------------------------- |
-| `default`           | What the published tarball is built with: `-O3`, SIMD, BigInt, `EVAL_CTORS=2`, Closure, converge. |
-| `O3-wasm-exc-simd`  | Like `default` but with native WASM exceptions on.                                                |
-| `O3-noLTO-simd`     | Performance variant, no Closure, no converge — useful when iterating on the link step.            |
-| `Os-noLTO-simd`     | Size-optimised (`-Os`), still fast enough for browser delivery.                                   |
-| `O3-multi-threaded` | `-O3` + SIMD + native exceptions, threading on. For SAB-enabled deployments.                      |
-| `O0-debug`          | Fastest build, no SIMD, no exceptions — debug only.                                               |
+| Name                       | Purpose                                                                                                              |
+| -------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `single-threaded`          | What the published tarball is built with: `-O3`, baseline SIMD, BigInt, wasm-opt `-O4`, converge. Browser default.   |
+| `single-threaded-smallest` | Size-tuned variant: `-Os` compile + wasm-opt `-O3`. Same feature set, smaller binary at a ~5–10% runtime cost.       |
+| `multi-threaded`           | `-O3` + SIMD + native exceptions, threading on. For COOP/COEP-isolated, SAB-enabled deployments.                     |
+| `debug`                    | `-O0` compile + wasm-opt `-O0`, SIMD off, converge off. Fastest build for iteration — not for production.            |
 
 v2 had no named-configuration system — the YAML's `emccFlags` block was the only knob, and consumers hand-tuned per build. v3's `--config <name>` layers curated defaults on top of your YAML; add your own entry to `configurations.json` if none of the shipped profiles fit.
 
@@ -586,10 +584,10 @@ docker run --rm --entrypoint cat \
 
 # Edit my-config.yml to trim symbols, then build
 docker run --rm -v "$(pwd):/src" ghcr.io/taucad/opencascade.js:beta \
-  --config default full /src/my-config.yml
+  --config single-threaded full /src/my-config.yml
 ```
 
-To build a non-exceptions variant, pick a configuration that sets `OCJS_EXCEPTIONS=0` (`Os-noLTO-simd`, `O3-noLTO-simd`, `default`) and let the YAML's exception flags get overridden by the env, or copy `full.yml` and strip the EH lines.
+To build a non-exceptions variant, override `OCJS_EXCEPTIONS=0` on top of a shipped configuration (every named entry in `configurations.json` sets it to `1` by default in v3) so the env wins over the YAML's exception flags, or copy `full.yml` and strip the EH lines.
 
 See the [trim-symbols guide](docs/guides/trim-symbols.md) for the full extract-trim-build workflow.
 

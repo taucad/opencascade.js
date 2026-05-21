@@ -74,7 +74,7 @@ jobs:
         run: |
           mkdir -p "$PWD/smoke-output"
           docker run --rm \
-            -e OCJS_CONFIG=O0-debug \
+            -e OCJS_CONFIG=debug \
             -v "$PWD/build-configs/link-filter-poc.yml:/src/config.yml:ro" \
             -v "$PWD/smoke-output:/output" \
             ocjs:ci full /src/config.yml

@@ -1,36 +1,5 @@
 {
-  "default": {
-    "OCJS_OPT": "-O3",
-    "OCJS_LTO": "0",
-    "OCJS_EXCEPTIONS": "0",
-    "OCJS_SIMD": "1",
-    "THREADING": "single-threaded",
-    "OCJS_DEFINES": "OCCT_NO_DUMP",
-    "OCJS_UNDEFINES": "OCC_CONVERT_SIGNALS",
-    "OCJS_WASM_OPT_LEVEL": "-O4",
-    "OCJS_CLOSURE": "true",
-    "OCJS_EVAL_CTORS": "true",
-    "OCJS_EVAL_CTORS_LEVEL": "2",
-    "OCJS_CONVERGE": "true",
-    "OCJS_PATCH_DUMP": "true",
-    "OCJS_BIGINT": "1",
-    "OCJS_MALLOC": "mimalloc",
-    "BINARYEN_EXTRA_PASSES": ""
-  },
-  "O0-debug": {
-    "OCJS_OPT": "-O0",
-    "OCJS_LTO": "0",
-    "OCJS_EXCEPTIONS": "0",
-    "THREADING": "single-threaded",
-    "OCJS_SIMD": "0",
-    "OCJS_WASM_OPT_LEVEL": "-O0",
-    "OCJS_CLOSURE": "false",
-    "OCJS_EVAL_CTORS": "false",
-    "OCJS_CONVERGE": "false",
-    "OCJS_PATCH_DUMP": "false",
-    "BINARYEN_EXTRA_PASSES": ""
-  },
-  "O3-wasm-exc-simd": {
+  "single-threaded": {
     "OCJS_OPT": "-O3",
     "OCJS_LTO": "0",
     "OCJS_EXCEPTIONS": "1",
@@ -49,28 +18,11 @@
     "OCJS_MALLOC": "mimalloc",
     "BINARYEN_EXTRA_PASSES": ""
   },
-  "O3-noLTO-simd": {
-    "OCJS_OPT": "-O3",
-    "OCJS_LTO": "0",
-    "OCJS_EXCEPTIONS": "0",
-    "OCJS_SIMD": "1",
-    "THREADING": "single-threaded",
-    "OCJS_DEFINES": "OCCT_NO_DUMP",
-    "OCJS_UNDEFINES": "OCC_CONVERT_SIGNALS",
-    "OCJS_WASM_OPT_LEVEL": "-O4",
-    "OCJS_CLOSURE": "false",
-    "OCJS_EVAL_CTORS": "false",
-    "OCJS_EVAL_CTORS_LEVEL": "2",
-    "OCJS_CONVERGE": "false",
-    "OCJS_PATCH_DUMP": "true",
-    "OCJS_BIGINT": "1",
-    "OCJS_MALLOC": "mimalloc",
-    "BINARYEN_EXTRA_PASSES": ""
-  },
-  "Os-noLTO-simd": {
+  "single-threaded-smallest": {
     "OCJS_OPT": "-Os",
     "OCJS_LTO": "0",
-    "OCJS_EXCEPTIONS": "0",
+    "OCJS_EXCEPTIONS": "1",
+    "OCJS_EH_MODE": "wasm",
     "OCJS_SIMD": "1",
     "THREADING": "single-threaded",
     "OCJS_DEFINES": "OCCT_NO_DUMP",
@@ -83,6 +35,40 @@
     "OCJS_PATCH_DUMP": "true",
     "OCJS_BIGINT": "1",
     "OCJS_MALLOC": "mimalloc",
+    "BINARYEN_EXTRA_PASSES": ""
+  },
+  "multi-threaded": {
+    "OCJS_OPT": "-O3",
+    "OCJS_LTO": "0",
+    "OCJS_EXCEPTIONS": "1",
+    "OCJS_EH_MODE": "wasm",
+    "OCJS_SIMD": "1",
+    "THREADING": "multi-threaded",
+    "OCJS_DEFINES": "OCCT_NO_DUMP",
+    "OCJS_UNDEFINES": "OCC_CONVERT_SIGNALS",
+    "OCJS_WASM_OPT_LEVEL": "-O4",
+    "OCJS_CLOSURE": "true",
+    "OCJS_EVAL_CTORS": "true",
+    "OCJS_EVAL_CTORS_LEVEL": "2",
+    "OCJS_CONVERGE": "true",
+    "OCJS_PATCH_DUMP": "true",
+    "OCJS_BIGINT": "1",
+    "OCJS_MALLOC": "mimalloc",
+    "BINARYEN_EXTRA_PASSES": ""
+  },
+  "debug": {
+    "OCJS_OPT": "-O0",
+    "OCJS_LTO": "0",
+    "OCJS_EXCEPTIONS": "1",
+    "OCJS_EH_MODE": "wasm",
+    "OCJS_SIMD": "0",
+    "THREADING": "single-threaded",
+    "OCJS_WASM_OPT_LEVEL": "-O0",
+    "OCJS_CLOSURE": "true",
+    "OCJS_EVAL_CTORS": "true",
+    "OCJS_EVAL_CTORS_LEVEL": "2",
+    "OCJS_CONVERGE": "false",
+    "OCJS_PATCH_DUMP": "false",
     "BINARYEN_EXTRA_PASSES": ""
   }
 }
