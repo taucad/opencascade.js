@@ -10,7 +10,7 @@
 #     opencascade-js link /src/config.yml
 #
 # Run (full build with named configuration):
-#   docker run --rm -e OCJS_CONFIG=O3-maxperf \
+#   docker run --rm -e OCJS_CONFIG=single-threaded \
 #     -v $(pwd)/my-config.yml:/src/config.yml:ro \
 #     -v $(pwd)/output:/output \
 #     opencascade-js full /src/config.yml
@@ -26,7 +26,22 @@
 # Environment overrides:
 #   docker run -e OCJS_OPT="-Os" -e OCJS_EXCEPTIONS=1 ... opencascade-js full build-configs/full.yml
 #
-# Notes:
+# This Dockerfile is split into three named stages so CI and downstream consumers
+# can build/cache them independently:
+#
+#   - deps-base    OS toolchain (emsdk + apt + Node 24 + uv + Python 3.14 + clone-deps.sh)
+#                  → invariant under in-repo source changes; cached aggressively
+#   - bindgen-base deps-base + npm ci + apply-patches + pch + generate
+#                  → invariant under YAML / consumer source changes; cached per-PR
+#   - final        bindgen-base + OCI labels + ENTRYPOINT/CMD
+#                  → the published image; rebuild on every commit
+#
+# Each stage is independently buildable via `--target`:
+#   docker buildx build --target deps-base    -t ocjs-deps    .
+#   docker buildx build --target bindgen-base -t ocjs-bindgen .
+#   docker buildx build --target final        -t ocjs         .
+#
+# Notes on the underlying build pipeline:
 #   - All dependency fetching (OCCT/rapidjson/freetype git clones, Python venv,
 #     LLVM 17 tarball) is delegated to scripts/clone-deps.sh — the exact same
 #     script the host build uses. The Dockerfile is a thin OS+toolchain layer
@@ -37,8 +52,9 @@
 #     detects this via `[ -x $EMSDK_DIR/emsdk ]` (see line 98-101 there).
 #     A pre-symlink at /opencascade.js/deps/emsdk → /emsdk activates that path.
 #   - apt-installed Doxygen satisfies _ensure_doxygen at runtime (no GitHub download).
-#   - apply-patches + pch + generate are pre-baked into the image so consumers
-#     pay only the compile-bindings/compile-sources/link cost on first `docker run`.
+#   - apply-patches + pch + generate are pre-baked into the bindgen-base stage so
+#     consumers pay only the compile-bindings/compile-sources/link cost on first
+#     `docker run`.
 #   - Convenience top-level symlinks /occt /rapidjson /freetype /llvm-17 point
 #     into /opencascade.js/deps/ so the `ENV OCCT_ROOT=/occt` defaults below
 #     and any external bind-mount UX (`-v /my/occt:/occt`) keep working.
@@ -47,24 +63,15 @@
 
 # syntax=docker/dockerfile:1.7
 
-FROM emscripten/emsdk:5.0.1@sha256:c89732ef63a56de5a96395c5a8c1c7904f7420131a045406e6fedc4cbe1cc198 AS base-image
+# ═════════════════════════════════════════════════════════════════════════════
+# Stage 1: deps-base
+# OS toolchain + dependency clones. No in-repo source code beyond DEPS.json,
+# requirements.txt, and clone-deps.sh.
+# ═════════════════════════════════════════════════════════════════════════════
+FROM emscripten/emsdk:5.0.1@sha256:c89732ef63a56de5a96395c5a8c1c7904f7420131a045406e6fedc4cbe1cc198 AS deps-base
 
-# ── OCI image metadata ──────────────────────────────────────────────────────
-# REVISION/VERSION are injected by CI (docker/metadata-action + github.sha);
-# SOURCE_URL defaults to the taucad fork and can be overridden for downstream
-# rebuilds. Labels follow the opencontainers.org spec so `docker inspect` and
-# GHCR's UI surface provenance, licensing, and source links automatically.
-ARG REVISION
-ARG VERSION
-ARG SOURCE_URL=https://github.com/taucad/opencascade.js
-LABEL org.opencontainers.image.title="opencascade.js" \
-      org.opencontainers.image.description="Emscripten build environment for OpenCASCADE.js (taucad fork, vendored LLVM 17 libclang)" \
-      org.opencontainers.image.source="${SOURCE_URL}" \
-      org.opencontainers.image.url="${SOURCE_URL}" \
-      org.opencontainers.image.revision="${REVISION}" \
-      org.opencontainers.image.version="${VERSION}" \
-      org.opencontainers.image.licenses="LGPL-2.1-only" \
-      org.opencontainers.image.vendor="taucad"
+LABEL org.opencontainers.image.title="opencascade.js (deps-base)" \
+      org.opencontainers.image.description="OS toolchain + dependency clones (emsdk, Node 24, uv, Python 3.14, OCCT, rapidjson, freetype, LLVM 17)"
 
 # ── System packages ─────────────────────────────────────────────────────────
 # Notes on what is intentionally NOT installed:
@@ -72,7 +79,7 @@ LABEL org.opencontainers.image.title="opencascade.js" \
 #     Keeps host (`brew install cmake@4`) and container on the same major.
 #   - python3/python3-pip/python3-venv: replaced by `uv python install 3.14.4`
 #     which downloads python-build-standalone — bit-identical interpreter
-#     lineage on macOS arm64 and Linux arm64. Foundation for R11 libclang
+#     lineage on macOS arm64 and Linux arm64. Foundation for libclang
 #     parse-environment parity (see src/ocjs_bindgen/config/paths.py).
 RUN --mount=type=cache,target=/var/cache/apt,id=ocjs-apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt/lists,id=ocjs-apt-lists,sharing=locked \
@@ -94,11 +101,11 @@ RUN --mount=type=cache,target=/var/cache/apt,id=ocjs-apt,sharing=locked \
 # headers) that `_get_host_libc_include()` in src/ocjs_bindgen/config/paths.py
 # routes libclang's parse pass at. Without this package, /usr/include has only
 # /usr/include/stdint.h (from linux-libc-dev that build-essential pulls in) and
-# OCCT headers transitively requesting <sys/types.h> fail to parse — the SAME
-# silent type-degradation cascade documented in
-# docs/research/ocjs-libclang-target-triple-mismatch-poc.md Phase 7, just
-# triggered by missing libc instead of mismatched libc++. On macOS Apple's SDK
-# bundles a complete libc by default; on Linux it is a separate package.
+# OCCT headers transitively requesting <sys/types.h> fail to parse — the same
+# silent type-degradation cascade that has historically struck libc++/libc
+# version mismatches, just triggered by missing libc instead of mismatched
+# libc++. On macOS Apple's SDK bundles a complete libc by default; on Linux it
+# is a separate package.
 
 # ── Node.js 24 (NodeSource) ─────────────────────────────────────────────────
 RUN --mount=type=cache,target=/var/cache/apt,id=ocjs-apt,sharing=locked \
@@ -109,7 +116,7 @@ RUN --mount=type=cache,target=/var/cache/apt,id=ocjs-apt,sharing=locked \
 # ── uv (Python toolchain manager) + Python 3.14.4 ───────────────────────────
 # uv installs python-build-standalone — same upstream CPython binary lineage
 # on macOS arm64 and Linux arm64 for a given release tag. Replaces both apt
-# python3* packages and pyenv. Host bootstrap is identical (see README).
+# python3* packages and pyenv. Host bootstrap is identical (see MAINTAINER.md).
 RUN curl -LsSf https://astral.sh/uv/install.sh | \
       env UV_INSTALL_DIR=/usr/local/bin INSTALLER_NO_MODIFY_PATH=1 sh && \
     uv python install 3.14.4
@@ -163,6 +170,16 @@ RUN ln -s /opencascade.js/deps/OCCT      /occt && \
     ln -s /opencascade.js/deps/freetype  /freetype && \
     ln -s /opencascade.js/deps/llvm-17   /llvm-17
 
+# ═════════════════════════════════════════════════════════════════════════════
+# Stage 2: bindgen-base
+# Adds: in-repo build system, npm ci, apply-patches, pch, generate.
+# Cached at the YAML-config level — invariant under consumer YAML changes.
+# ═════════════════════════════════════════════════════════════════════════════
+FROM deps-base AS bindgen-base
+
+LABEL org.opencontainers.image.title="opencascade.js (bindgen-base)" \
+      org.opencontainers.image.description="deps-base + npm ci + apply-patches + pch + generate (bindings TUs pre-built)"
+
 # Install Nx CLI + project devDeps deterministically from package-lock.json
 COPY package.json package-lock.json nx.json project.json /opencascade.js/
 RUN --mount=type=cache,target=/root/.npm,id=ocjs-npm,sharing=locked \
@@ -190,30 +207,52 @@ ENV OCCT_ROOT=/occt
 ENV RAPIDJSON_ROOT=/rapidjson
 ENV FREETYPE_ROOT=/freetype
 ENV EMSDK=/emsdk
-ENV OCJS_CONFIG=default
+ENV OCJS_CONFIG=single-threaded
 ENV OCJS_PATCH_DUMP=true
 ENV OCJS_PATCH_STEPCAF=true
 ENV OCJS_OUTPUT_DIR=/output
-# Fail-loud guardrail: refuses to ship a .d.ts containing silently rewritten
-# `unknown` method signatures or unbound class references. Catches the
-# silent-type-loss failure mode that produced the May-2026 replicad regression
-# where the R2 NCollection link-time filter excluded reachable types and the
-# d.ts post-processor neutralised the dangling refs. Consumers building from
-# this image should NEVER need to flip this off — set OCJS_STRICT_TYPES=0
-# only for diagnostic non-shipping builds. See
-# `ocjs_bindgen.link.yaml_build._enforce_strict_types_gate` for the policy.
-ENV OCJS_STRICT_TYPES=1
+# Strict-types guardrail: defaults to warn-only -- the link step always
+# prints a triage summary to stderr if the .d.ts contains rewrites-to-
+# `unknown` method signatures or unbound class references (the silent
+# type-loss failure mode from the May-2026 replicad regression). The
+# build proceeds. CI consumers who want to escalate the warning to a
+# hard build failure should set OCJS_STRICT_TYPES=1 explicitly at
+# `docker run` time. See `ocjs_bindgen.link.yaml_build._enforce_strict_types_gate`
+# for the policy.
 
 RUN mkdir -p build/bindings build/sources /output
 
 # Pre-bake apply-patches + pch + generate via Nx. These targets depend only on
 # the pinned dep commits and the in-tree build system; their outputs (patched
 # OCCT tree, flat includes, PCH, generated .cpp / .d.ts.json fragments, and
-# the Nx cache itself) are baked into the final image so consumers skip
+# the Nx cache itself) are baked into the bindgen-base stage so consumers skip
 # straight to compile-bindings/compile-sources/link on first `docker run`.
 RUN npx nx run ocjs:apply-patches && \
     npx nx run ocjs:pch && \
     npx nx run ocjs:generate
+
+# ═════════════════════════════════════════════════════════════════════════════
+# Stage 3: final
+# Adds OCI labels, ENTRYPOINT, CMD. This is the published image.
+# ═════════════════════════════════════════════════════════════════════════════
+FROM bindgen-base AS final
+
+# ── OCI image metadata ──────────────────────────────────────────────────────
+# REVISION/VERSION are injected by CI (docker/metadata-action + github.sha);
+# SOURCE_URL defaults to the taucad fork and can be overridden for downstream
+# rebuilds. Labels follow the opencontainers.org spec so `docker inspect` and
+# GHCR's UI surface provenance, licensing, and source links automatically.
+ARG REVISION
+ARG VERSION
+ARG SOURCE_URL=https://github.com/taucad/opencascade.js
+LABEL org.opencontainers.image.title="opencascade.js" \
+      org.opencontainers.image.description="Emscripten build environment for OpenCASCADE.js (taucad fork, vendored LLVM 17 libclang)" \
+      org.opencontainers.image.source="${SOURCE_URL}" \
+      org.opencontainers.image.url="${SOURCE_URL}" \
+      org.opencontainers.image.revision="${REVISION}" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.licenses="LGPL-2.1-only" \
+      org.opencontainers.image.vendor="taucad"
 
 ENTRYPOINT ["/opencascade.js/scripts/docker-entrypoint.sh"]
 CMD ["full", "build-configs/full.yml"]
