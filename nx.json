@@ -1,15 +1,6 @@
 {
   "$schema": "./node_modules/nx/schemas/nx-schema.json",
   "nxCloudAccessToken": "",
-  "targetDefaults": {
-    "nx:run-commands": {
-      "options": {
-        "env": {
-          "OCJS_CONFIG": "single-threaded"
-        }
-      }
-    }
-  },
   "namedInputs": {
     "compileConfig": [
       "{projectRoot}/build-configs/configurations.json",

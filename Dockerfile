@@ -3,6 +3,10 @@
 # Build:
 #   DOCKER_BUILDKIT=1 docker build -t opencascade-js .
 #
+# Per-config warm-cache images (recommended for downstream consumers):
+#   docker build --build-arg OCJS_CONFIG_DEFAULT=single-threaded -t opencascade-js:single-threaded .
+#   docker build --build-arg OCJS_CONFIG_DEFAULT=multi-threaded  -t opencascade-js:multi-threaded  .
+#
 # Run (link with consumer YAML):
 #   docker run --rm \
 #     -v $(pwd)/my-config.yml:/src/config.yml:ro \
@@ -198,16 +202,24 @@ COPY bindgen-filters.yaml ./bindgen-filters.yaml
 RUN chmod +x build-wasm.sh scripts/*.sh
 
 # ── Default environment ─────────────────────────────────────────────────────
-# The named `default` configuration in build-configs/configurations.json drives
-# every build flag (-O3, SIMD, mimalloc, eval_ctors, closure, etc.) to match
-# the shipped @taucad/opencascade.js@3.0.0-beta tarball. Override with
-# `-e OCJS_CONFIG=<name>` (see build-configs/configurations.json for available
-# named configurations) or per-flag overrides (`-e OCJS_OPT=-Os`, etc.).
+# The named configuration in build-configs/configurations.json drives every
+# build flag (-O3, SIMD, mimalloc, eval_ctors, closure, threading, etc.).
+# Override at runtime with `-e OCJS_CONFIG=<name>` (see
+# build-configs/configurations.json for available named configurations) or
+# per-flag overrides (`-e OCJS_OPT=-Os`, etc.).
+#
+# OCJS_CONFIG_DEFAULT is the BUILD-TIME default that controls which config the
+# PCH stage pre-bakes for. Downstream consumers who want a warm cache for a
+# specific threading config can build with:
+#   docker build --build-arg OCJS_CONFIG_DEFAULT=multi-threaded -t ocjs:multi-threaded .
+# Runtime overrides still work, but a mismatched runtime `OCJS_CONFIG` will
+# invalidate the Nx pch cache and force a rebuild on first `docker run`.
+ARG OCJS_CONFIG_DEFAULT=single-threaded
 ENV OCCT_ROOT=/occt
 ENV RAPIDJSON_ROOT=/rapidjson
 ENV FREETYPE_ROOT=/freetype
 ENV EMSDK=/emsdk
-ENV OCJS_CONFIG=single-threaded
+ENV OCJS_CONFIG="${OCJS_CONFIG_DEFAULT}"
 ENV OCJS_PATCH_DUMP=true
 ENV OCJS_PATCH_STEPCAF=true
 ENV OCJS_OUTPUT_DIR=/output
