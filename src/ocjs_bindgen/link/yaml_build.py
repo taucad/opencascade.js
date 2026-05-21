@@ -4,6 +4,7 @@ import hashlib
 import os
 import re
 import subprocess
+import sys
 import json
 import time
 import multiprocessing
@@ -22,18 +23,22 @@ except ImportError:
 
 _yaml_config_hash = ""
 
-# Strict-types gate — when `OCJS_STRICT_TYPES=1` (default in the Docker
-# image, opt-in on host builds) the link step refuses to ship a `.d.ts` that
-# contains the silent failure modes produced when a reachable class is excluded
-# from the build: a rewritten `: unknown` (the link-time post-processor
-# detected an undeclared reference and substituted `unknown`) OR an
-# `unbound_reference` diagnostic collected during codegen. Both signal that
-# the YAML scope is missing a class some bound class's method signature
-# references — typically a NCollection the link-time filter dropped because
-# its source_classes tag didn't intersect the YAML scope, but in fact
-# reachable through a method param/return on an in-scope class. The action
-# is always the same: fix `_compute_yaml_class_scope` to include the
-# reachable class.
+# Strict-types gate — when the link-time `.d.ts` post-processor rewrites any
+# method signature to bare `unknown` (because a referenced class is reachable
+# from an in-scope class but missing from the YAML scope) or any
+# `unbound_reference` diagnostic was collected during codegen, the gate
+# always prints a triage summary to stderr so the operator sees the missing
+# types without having to flip an env var. When `OCJS_STRICT_TYPES=1`, the
+# gate additionally raises `RuntimeError` so CI can treat the artefact as
+# un-shippable. Default behaviour (unset, `=0`, or any other value) is
+# warn-only — the build proceeds, but the operator always learns what was
+# silently rewritten.
+#
+# Rationale: the previous Docker default of `=1` meant every consumer of
+# the published image passed `-e OCJS_STRICT_TYPES=0` to get a build at all
+# (the OCCT surface has ~1084 inherent rewrites). A guardrail everybody
+# disables stops being a guardrail; flipping the default keeps the warning
+# always-on while preserving fail-loud as an explicit CI opt-in.
 #
 # Tunable so that diagnostic non-shipping builds can opt out cleanly.
 _STRICT_TYPES_REWRITE_BUDGET = 0
@@ -63,39 +68,50 @@ def _enforce_strict_types_gate(
   rewrites_to_unknown: int,
   diagnostics,
 ) -> None:
-  """Fail-loud guard against silently broken .d.ts output.
+  """Strict-types warn-by-default gate.
 
-  Runs after `_replace_undeclared_with_unknown` has finished its pass. When
-  `OCJS_STRICT_TYPES=1` (Docker default), any rewrite-to-unknown or any
-  unbound_reference diagnostic raises a self-contained, path-agnostic,
-  actionable `RuntimeError` so the build fails before a poisoned artifact
-  ships to consumers. The error message names the exact source of the bug
-  (link-time NCollection filter under-reaching) and the exact file/function
-  to fix.
+  Runs after `_replace_undeclared_with_unknown` has finished its pass.
+  Always prints a triage summary to stderr when rewrites or unbound
+  references are detected, so the operator sees the failure mode every
+  build. When `OCJS_STRICT_TYPES=1`, additionally raises `RuntimeError`
+  with a self-contained, path-agnostic, actionable message so CI can
+  reject the artefact. Default (unset / `=0` / any other value) is
+  warn-only -- artefact ships, but the warning is unmissable.
   """
-  if os.environ.get("OCJS_STRICT_TYPES") != "1":
-    return
   unbound = diagnostics.get("unbound_reference") if diagnostics else None
   unbound = unbound or {}
   if rewrites_to_unknown <= _STRICT_TYPES_REWRITE_BUDGET and not unbound:
+    # Clean build -- silent in both warn and strict modes.
     return
 
-  # Print a triage summary BEFORE raising so the engineer doesn't need to
-  # re-run with OCJS_STRICT_TYPES=0 just to see what failed. Top 20 unbound
-  # references by occurrence count, then a budget overrun line.
-  print("\n=== OCJS_STRICT_TYPES gate failure summary ===", flush=True)
+  strict_mode = os.environ.get("OCJS_STRICT_TYPES") == "1"
+  header = (
+    "OCJS_STRICT_TYPES gate failure summary"
+    if strict_mode
+    else "OCJS_STRICT_TYPES WARNING: missing types in .d.ts"
+  )
+
+  # Triage summary -- always printed (warn mode) or printed-before-raise
+  # (strict mode). Routed to stderr so it's clearly a diagnostic separate
+  # from regular build progress output on stdout.
+  print(f"\n=== {header} ===", file=sys.stderr, flush=True)
   print(
     f"  rewrites to 'unknown': {rewrites_to_unknown} "
     f"(budget: {_STRICT_TYPES_REWRITE_BUDGET})",
+    file=sys.stderr,
     flush=True,
   )
-  print(f"  unbound class references: {len(unbound)} unique", flush=True)
+  print(
+    f"  unbound class references: {len(unbound)} unique",
+    file=sys.stderr,
+    flush=True,
+  )
   if unbound:
-    print("  Top offenders (type spelling -> count):", flush=True)
+    print("  Top offenders (type spelling -> count):", file=sys.stderr, flush=True)
     for type_info, count in sorted(unbound.items(), key=lambda x: -x[1])[:20]:
-      print(f"    {type_info} ({count}x)", flush=True)
+      print(f"    {type_info} ({count}x)", file=sys.stderr, flush=True)
     if len(unbound) > 20:
-      print(f"    ... and {len(unbound) - 20} more", flush=True)
+      print(f"    ... and {len(unbound) - 20} more", file=sys.stderr, flush=True)
   # Sample up to 10 lines that contain a freshly-rewritten `: unknown` so
   # the engineer can grep for them in the output. We can't reliably tell
   # which `: unknown` lines are new vs original after the rewrite is done,
@@ -109,9 +125,27 @@ def _enforce_strict_types_gate(
         if len(candidates) >= 10:
           break
     if candidates:
-      print("  Sample lines with `unknown` rewrites:", flush=True)
+      print("  Sample lines with `unknown` rewrites:", file=sys.stderr, flush=True)
       for c in candidates:
-        print(f"    {c}", flush=True)
+        print(f"    {c}", file=sys.stderr, flush=True)
+
+  if not strict_mode:
+    # Warn-only footer: same call-to-action as the strict-mode error, plus
+    # the OCJS_STRICT_TYPES=1 hint so CI consumers know how to escalate.
+    print(
+      "  This is a WARNING -- the build will continue. To escalate to a "
+      "build failure in CI, set OCJS_STRICT_TYPES=1.",
+      file=sys.stderr,
+      flush=True,
+    )
+    print(
+      "  Action: extend `_compute_yaml_class_scope` in "
+      "ocjs_bindgen.link.yaml_build to include every class referenced by an "
+      "in-scope class's method signatures.",
+      file=sys.stderr,
+      flush=True,
+    )
+    return
 
   raise RuntimeError(
     "Strict-types gate (OCJS_STRICT_TYPES=1) refused to ship the .d.ts: "
@@ -131,7 +165,8 @@ def _enforce_strict_types_gate(
     "appearing in the d.ts of an in-scope class but missing from the YAML "
     "scope's method-signature lift pass; the existing _NCOLLECTION_TOKEN_RE "
     "lift covers NCollection_ types but other reachable class families may "
-    "need the same treatment. Set OCJS_STRICT_TYPES=0 to bypass for "
+    "need the same treatment. Set OCJS_STRICT_TYPES=0 (or unset it, which "
+    "is the new default) to demote this failure to a warning for "
     "diagnostic non-shipping builds only — DO NOT ship the resulting "
     "artifacts to consumers."
   )
