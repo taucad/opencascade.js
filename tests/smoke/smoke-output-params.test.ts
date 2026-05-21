@@ -3,8 +3,8 @@
  *
  * Validates that C++ methods with non-const reference output parameters
  * return structured objects instead of requiring caller-allocated mutable
- * arguments. See `docs/research/ocjs-rbv-test-corpus-contract-drift.md`
- * for the S0/S1/S2 return-shape contract (Handle outputs use Approach G elision).
+ * arguments. Validates the S0/S1/S2 return-shape contract (Handle outputs
+ * use input elision — dropped from the JS-visible signature).
  */
 import { describe, it, expect, beforeAll } from 'vitest';
 import { initOC, getOC, wasmExists } from './helpers.js';

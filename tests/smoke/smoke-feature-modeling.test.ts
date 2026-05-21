@@ -21,7 +21,7 @@ describe.skipIf(!wasmExists)('Smoke: Feature modeling', () => {
       oc.TopAbs_ShapeEnum.TopAbs_SHAPE,
     );
 
-    // eslint-disable-next-line tau-lint/require-using-on-disposable -- topFace ownership is transferred across loop iterations; explicit `.delete()` + reassignment manages disposal manually.
+    // eslint-disable-next-line ocjs-lint/require-using-on-disposable -- topFace ownership is transferred across loop iterations; explicit `.delete()` + reassignment manages disposal manually.
     let topFace = faceExplorer.Current();
     let maxZ = -Infinity;
 
@@ -40,7 +40,7 @@ describe.skipIf(!wasmExists)('Smoke: Feature modeling', () => {
         if (pnt.Z() > maxZ) {
           maxZ = pnt.Z();
           topFace.delete();
-          // eslint-disable-next-line tau-lint/require-using-on-disposable -- see prior comment: ownership is transferred across loop iterations.
+          // eslint-disable-next-line ocjs-lint/require-using-on-disposable -- see prior comment: ownership is transferred across loop iterations.
           topFace = faceExplorer.Current();
         }
       }

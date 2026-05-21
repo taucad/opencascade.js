@@ -113,8 +113,8 @@ exclude:
     # internally as a list-node by `LDOM_SBuffer::operator<<`. The
     # public LDOM API surface (`LDOM_OSStream`, `LDOM_SBuffer`) is
     # already bound directly; the inner allocator block is implementation
-    # detail and excluded structurally here (R1's recursive class walker
-    # discovered it as a nested class once R1.b started encoding nested
+    # detail and excluded structurally here (the recursive class walker
+    # discovered it as a nested class once nested JS-public name encoding
     # JS-public names instead of dropping them).
     - LDOM_SBuffer_LDOM_StringElem
     # OCCT V8 BRepGraph::EditorView mutation Ops — every `*Ops` inner
@@ -125,7 +125,7 @@ exclude:
     # marshalling layer. The mutation API is exposed end-to-end through
     # the runtime via `BRepGraph_Editor_*` higher-level helpers; these
     # raw-Ops bindings would only surface internal scaffolding even if
-    # they compiled. R1's recursive walker discovered them as nested
+    # they compiled. The recursive walker discovered them as nested
     # classes, so list them here so the YAML link manifest never
     # references them and the .cpp generator skips them.
     - BRepGraph_EditorView_CoEdgeOps
@@ -204,7 +204,7 @@ exclude:
     # HLRBRep_CLProps removed: in OCCT V8 it is now a `using` alias for
     # GeomLProp_CLPropsBase<gp_Pnt2d, …, ToolAccess<HLRBRep_CLPropsATool>>;
     # the F1 template-alias fix in filterTypedefs.py + processTemplate makes
-    # it bindable. See docs/research/ocjs-removed-bindings-stocktake.md.
+    # it bindable.
     - HLRBRep_Intersector
     - BOPTest_Objects
     - BOPTest_DrawableShape
@@ -312,8 +312,7 @@ exclude:
     - V3d
     - STEPCAFControl_GDTProperty
 
-    # R1 — WASM-meaningless OSD / Standard / Plugin / Message / Quantity
-    # See docs/research/ocjs-bindings-wasm-applicability-audit.md
+    # WASM-meaningless OSD / Standard / Plugin / Message / Quantity
     - prefix: OSD_SIG
     - prefix: OSD_Exception_
     - OSD_Signal
@@ -321,7 +320,6 @@ exclude:
     # NOTE: OSD_Thread, OSD_ThreadPool, OSD_Parallel are intentionally NOT excluded.
     # They are reserved for a future THREADING=multi-threaded build per the
     # Multi-threading reserve section of
-    # docs/research/ocjs-bindings-wasm-applicability-audit.md
     - OSD_SharedLibrary
     - OSD_LoadMode
     - Plugin
@@ -354,7 +352,6 @@ exclude:
     - OSD_SingleProtection
     # NOTE: Standard_Mutex (+ nested Sentry/Sentry_1/Sentry_2) and Standard_Condition
     # are intentionally NOT excluded — reserved for the multi-threaded build.
-    # See docs/research/ocjs-bindings-wasm-applicability-audit.md#multi-threading-reserve
     - Standard_LicenseError
     - Standard_LicenseNotFound
     - Standard_AbortiveTransaction
@@ -368,10 +365,10 @@ exclude:
     - Quantity_Period
     - Quantity_PeriodDefinitionError
 
-    # R2 — Dead format (VRML) orphan class. Packages handled via exclude.packages.
+    # Dead format (VRML) orphan class. Packages handled via exclude.packages.
     - DEVRML_ConfigurationNode
 
-    # R4 — DE format-config scaffolds (DE_Provider / DE_Wrapper already excluded)
+    # DE format-config scaffolds (DE_Provider / DE_Wrapper already excluded)
     - prefix: DEBREP_
     - prefix: DEGLTF_
     - prefix: DEIGES_
@@ -534,7 +531,7 @@ exclude:
     - Interface_VectorOfFileParameter
     - Handle_StepKinematics_UnconstrainedPair
     - Handle_StepKinematics_UnconstrainedPairValue
-    -     OpenGl_ListOfStructure
+    - OpenGl_ListOfStructure
     - Graphic3d_Vec2
     - Graphic3d_Vec3
     # OCCT V8 declares `typedef NCollection_DynamicArray<gp_XYZ> VectorOfPoint;` in TWO different headers
@@ -565,7 +562,6 @@ exclude:
     # the bindings.py constructor codegen which emits `const const T* &`.
     # The class is HLR-internal (HLRBRep_Curve is not exposed to JS) so
     # excluding it costs no public surface; the codegen fix is tracked in
-    # docs/research/ocjs-removed-bindings-stocktake.md (codegen const-ptr
     # template-arg bug, F1 follow-up).
     - HLRBRep_CLProps
 
@@ -767,8 +763,7 @@ exclude:
     - GeomPlate
     - ProjLib
 
-    ## R2 — Dead format (VRML — superseded by glTF / no consumer)
-    ## See docs/research/ocjs-bindings-wasm-applicability-audit.md
+    ## Dead format (VRML — superseded by glTF / no consumer)
     - Vrml
     - VrmlAPI
     - VrmlConverter

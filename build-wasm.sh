@@ -123,8 +123,10 @@ _ensure_doxygen() {
   #     extract-docs.py silently fell back to system doxygen anyway —
   #     producing host-vs-container JSDoc divergence with no diagnostic.
   # The OCCT XML extraction is stable across Doxygen 1.9.x through 1.16.x,
-  # so we accept whatever the system provides. See R6 in
-  # docs/research/ocjs-r21-method-reachability-parity-report.md.
+  # so we accept whatever the system provides. On arm64, verify the binary is
+  # executable (not merely present on disk) before preferring the pinned copy —
+  # see extract-docs.py doxygen resolution logic.
+  # arm64 doxygen must be executable, not merely present on disk.
   if ! command -v doxygen >/dev/null 2>&1; then
     cat >&2 <<'EOF'
 ERROR: doxygen not installed.
@@ -194,7 +196,7 @@ fi
 source "$EMSDK/emsdk_env.sh" 2>/dev/null
 
 # Project-local Python venv is the canonical interpreter for every build script.
-# See docs/research/occt-v8-final-migration-stocktake.md (Python Toolchain Reshaping).
+# Python 3.14 project-local venv for bindgen (see pyproject.toml).
 export OCJS_PYTHON="$SCRIPT_DIR/.venv/bin/python"
 if [ ! -x "$OCJS_PYTHON" ]; then
   echo "ERROR: $OCJS_PYTHON not found. Run scripts/clone-deps.sh first." >&2

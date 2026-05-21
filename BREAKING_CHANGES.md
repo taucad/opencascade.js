@@ -141,14 +141,14 @@ Reference smoke tests: [`tests/smoke/smoke-output-params.test.ts`](tests/smoke/s
 | Non-`void` | Primitives / enums / elided Handles (with or without class outputs) | Envelope with `returnValue` for the C++ return + one named field per non-class output. Class outputs are NOT echoed. `Surface.Bounds(u1, u2, v1, v2): { U1: number; U2: number; V1: number; V2: number; [Symbol.dispose](): void }` |
 | `void`     | Primitives / enums / elided Handles (with or without class outputs) | Envelope with the same shape minus `returnValue`                                                                                                                                                                                    |
 
-**The six directives** (R1–R6 in [`docs/research/ocjs-rbv-return-shape-revisit.md`](../../docs/research/ocjs-rbv-return-shape-revisit.md)):
+**The six return-shape rules:**
 
-1. **R1 — Class outputs never mirror into the return envelope.** A method that previously surfaced `result.thePlane` after mutating `thePlane` now mutates the caller's `thePlane` in place and never echoes it back. The R1 regression is guarded by `tests/bindgen-output-shape.test.ts > no envelope mirrors a concrete class output as a non-return field`.
-2. **R2 — Class arguments are mutated in place.** Pass your own freshly-constructed `gp_Pnt` / `Bnd_Box` / `GProp_GProps` / `TopoDS_Shape` and read it back after the call. There is no second copy.
-3. **R3 — Native return values surface directly when no envelope is required.** A method whose only outputs are class-typed (or none at all) returns its native C++ value (or `void`) — not an `{ returnValue }` wrapper.
-4. **R4 — Envelopes only for primitives, elided Handles, and mixed cases.** The envelope exists when JS cannot otherwise see a primitive/Handle output, and only those non-class outputs become fields.
-5. **R5 — The C++ return value lives at `envelope.returnValue`.** Renamed from the prior `result` field so it never collides with any OCCT parameter named `result`.
-6. **R6 — JSDoc is explicit.** Class params that mutate in place get a `Mutated in place; read the updated value from this argument after the call.` suffix (appended to the upstream Doxygen description when present). Envelope fields get a multi-line `@returns A result object with fields:` block.
+1. **Class outputs never mirror into the return envelope.** A method that previously surfaced `result.thePlane` after mutating `thePlane` now mutates the caller's `thePlane` in place and never echoes it back. Regression: `tests/bindgen-output-shape.test.ts > no envelope mirrors a concrete class output as a non-return field`.
+2. **Class arguments are mutated in place.** Pass your own freshly-constructed `gp_Pnt` / `Bnd_Box` / `GProp_GProps` / `TopoDS_Shape` and read it back after the call. There is no second copy.
+3. **Native return values surface directly when no envelope is required.** A method whose only outputs are class-typed (or none at all) returns its native C++ value (or `void`) — not an `{ returnValue }` wrapper.
+4. **Envelopes only for primitives, elided Handles, and mixed cases.** The envelope exists when JS cannot otherwise see a primitive/Handle output, and only those non-class outputs become fields.
+5. **The C++ return value lives at `envelope.returnValue`.** Renamed from the prior `result` field so it never collides with any OCCT parameter named `result`.
+6. **JSDoc is explicit.** Class params that mutate in place get a `Mutated in place; read the updated value from this argument after the call.` suffix (appended to the upstream Doxygen description when present). Envelope fields get a multi-line `@returns A result object with fields:` block.
 
 **Placeholder conventions** (only relevant for envelope outputs — primitives and elided Handles):
 
@@ -181,7 +181,7 @@ BRepBndLib::Add(S, *B.as<Bnd_Box*>(emscripten::allow_raw_pointers()), useTriangu
 
 The `val::as<T*>(allow_raw_pointers())` + deref pattern is the only form that round-trips through embind without making a copy — `val::as<T&>()` falls back to `BindingType<T>` which copies by value and would silently lose mutations. The regression is locked down by `tests/bindgen-output-shape.test.ts > class outputs forward via *val::as<T*>(allow_raw_pointers())`.
 
-**`using` is still required for envelope returns** that own C++ resources (Handle fields). The custom oxlint rule [`tau-lint/require-using-on-disposable`](../../libs/oxlint/src/rules/require-using-on-disposable.js) enforces this workspace-wide. A class-output-only method returning `void` does **not** require `using` on the call site (there is nothing disposable to track).
+**`using` is still required for envelope returns** that own C++ resources (Handle fields). Lint rules that enforce `using` on disposable return values are recommended for large codebases. A class-output-only method returning `void` does **not** require `using` on the call site (there is nothing disposable to track).
 
 **Disposer idempotency** (relevant for try/finally migration paths): the envelope's `[Symbol.dispose]()` is one-shot per instance and alias-safe. Callers can invoke it manually inside try/finally **and** rely on `using` scope-exit to re-dispose without throwing `BindingError: <T> instance already deleted`.
 
@@ -198,7 +198,7 @@ The `val::as<T*>(allow_raw_pointers())` + deref pattern is the only form that ro
 
 Methods with non-const `Handle<T>&` output parameters no longer accept a JS-side placeholder for those positions. The codegen drops the Handle position from the JS-facing signature entirely; the C++ optional_override lambda declares a stack-local null Handle internally and forwards it into the call by reference. The resulting wrapper is surfaced as a container field disposed by the envelope's `[Symbol.dispose]`.
 
-Rationale: OCCT's contract guarantees that non-const `Handle<T>&` is output-only — C++ never reads the input. The prior placeholder was a gratuitous wrapper allocation (JS Embind wrapper + C++ smart_ptr) that doubled the dispose path and produced a "double dispose stutter" when the input variable was disposed alongside the container field aliasing it. See [`docs/research/ocjs-rbv-handle-output-param-elision.md`](../../docs/research/ocjs-rbv-handle-output-param-elision.md) for the empirical evidence (2.29× wall-clock speedup, half the JS wrapper allocations).
+Rationale: OCCT's contract guarantees that non-const `Handle<T>&` is output-only — C++ never reads the input. The prior placeholder was a gratuitous wrapper allocation (JS Embind wrapper + C++ smart_ptr) that doubled the dispose path and produced a "double dispose stutter" when the input variable was disposed alongside the container field aliasing it. Empirical benchmarks showed ~2.29× wall-clock speedup and half the JS wrapper allocations after elision.
 
 Reference smoke test: [`tests/smoke/smoke-handle-output-elision.test.ts`](tests/smoke/smoke-handle-output-elision.test.ts).
 
@@ -217,7 +217,7 @@ console.log(r.P, r.T);
 using r = oc.BRep_Tool.PolygonOnTriangulation(edge, loc);
 console.log(r.P, r.T); // freshly-assigned Handles owned by r's Symbol.dispose
 // loc (a class output) is mutated in place — read its updated value directly,
-// it is never echoed into r per the §B2 R1 rule.
+// it is never echoed into r per the §B2 class-in-place rule.
 ```
 
 Other affected signatures (full list materialises in `dist/opencascade_full.d.ts`):
@@ -235,7 +235,7 @@ Other affected signatures (full list materialises in `dist/opencascade_full.d.ts
 | ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Non-const `Handle<T>&` output (concrete or abstract class) | **Elided — caller passes nothing for this position. Read from `envelope.<fieldName>` (see [§B4](#b4--envelope-return-field-renamed-from-result-to-returnvalue) for the `returnValue` rename).** |
 
-Primitive and enum output positions retain the in-passthrough placeholder contract from [§B2](#b2--minimal-transformation--class-outputs-mutate-in-place-envelopes-only-when-js-truly-needs-them); concrete-class outputs mutate in place per the §B2 R1/R2 rules; only `Handle<T>&` outputs are elided.
+Primitive and enum output positions retain the in-passthrough placeholder contract from [§B2](#b2--minimal-transformation--class-outputs-mutate-in-place-envelopes-only-when-js-truly-needs-them); concrete-class outputs mutate in place; only `Handle<T>&` outputs are elided.
 
 **Action**:
 
@@ -280,7 +280,7 @@ The shipped `full.yml` build is linked with the helpers needed to decode excepti
 
 ### C2 — Catch / decode pattern (consumer-facing)
 
-A caught exception is now a `WebAssembly.Exception`, decodable via the runtime helpers. The pattern below is the same one used by [`tests/smoke/smoke-exceptions.test.ts`](tests/smoke/smoke-exceptions.test.ts) and Tau's runtime kernel formatter:
+A caught exception is now a `WebAssembly.Exception`, decodable via the runtime helpers. The pattern below is the same one used by [`tests/smoke/smoke-exceptions.test.ts`](tests/smoke/smoke-exceptions.test.ts):
 
 ```ts
 import init from 'opencascade.js';

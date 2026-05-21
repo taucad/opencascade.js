@@ -113,7 +113,7 @@ echo "Activating emsdk $EMSDK_VERSION..."
 "$EMSDK_DIR/emsdk" activate "$EMSDK_VERSION"
 
 # ── 3. Python virtualenv ────────────────────────────────────────────────────
-# Project-local venv pinned to 3.14 — see docs/research/occt-v8-final-migration-stocktake.md
+# Project-local venv pinned to 3.14 for OCCT V8 bindgen toolchain
 # (Python Toolchain Reshaping).
 VENV_DIR="$REPO_ROOT/.venv"
 REQUIRED_PYTHON_MINOR="3.14"
@@ -171,7 +171,7 @@ fi
 # window per libc++ support policy). Routes the discover pass through a stdlib
 # the bundled libclang can fully understand, sidestepping the libclang 18 ↔
 # emsdk clang 23 version skew that causes class-body parse failures.
-# See docs/research/ocjs-libclang-target-triple-mismatch-poc.md (Phase 7).
+# Vendored LLVM 17 libc++ required for libclang 18.1.1 parse pass.
 
 LLVM17_DIR="$DEST_DIR/llvm-17"
 

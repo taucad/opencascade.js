@@ -3,7 +3,7 @@
 # Docker image (PR donalffons/opencascade.js#301).
 #
 # Implements Validation Blueprint Phases 0-7 from
-# docs/research/opencascadejs-docker-build-readiness.md:
+# Docker E2E validation (image build, consumer link, wasm size, JS smoke):
 #
 #   Phase 0  Build the image (cold; cache mounts amortise rebuilds).
 #   Phase 1  Provision named volumes for Nx + build caches.

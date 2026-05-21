@@ -66,7 +66,7 @@ def _check_generator_hash_and_clean():
     print(f"  Removed {count} stale generated files.")
 
   # Also purge orphaned `.cpp.o` files in `compiled-bindings/`. Without this,
-  # a generator-code change that renames a binding (e.g. R1 promoting nested
+  # a generator-code change that renames a binding (e.g. promoting nested
   # `TopoView_FaceOps` → `BRepGraph_TopoView_FaceOps`) leaves the previous
   # object file behind. The link step then folds both into the same wasm and
   # Embind's `class_<…>("TopoView")` registration from the orphan collides
@@ -353,7 +353,7 @@ def processTemplate(child):
       raise SkipException("Template argument type is empty for parameter \"" + templateArgName.spelling + "\" of template typedef \"" + child.spelling + "\" (no value supplied and no resolvable default).")
     templateArgs[templateArgName.spelling] = templateArgType
 
-  # Audit R2 — augment with `type-parameter-0-N` keys derived from the
+  # Augment with `type-parameter-0-N` keys derived from the
   # ordinal positions so downstream resolvers can substitute either the
   # source-name spelling (`TheItemType`) or libclang's canonical
   # synthetic spelling (`type-parameter-0-0`) without an extra rewrite.

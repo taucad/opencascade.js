@@ -2,8 +2,7 @@
  * Smoke tests: Output parameter input-passthrough (legacy "stripping" tests).
  *
  * Under Input-Passthrough RBV the primitive/enum/handle output params remain
- * in the JS signature as REQUIRED inputs (per Option C of the F3 audit — see
- * `docs/research/ocjs-rbv-blueprint-p0-p1-stocktake.md` §F3). The C++ binding
+ * in the JS signature as REQUIRED inputs. The C++ binding
  * forwards the caller's value through to OCCT and returns it back via the
  * structured `val::object` / `value_object` container; callers supply
  * placeholder zeros for pure-out slots and the result is read from the

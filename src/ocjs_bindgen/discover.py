@@ -79,7 +79,7 @@ def _is_globally_accessible(arg_type, template_typedef_names=None):
     or typedef aliases only visible within non-global namespaces that the using
     declaration site cannot reach.
 
-    Audit R5 — lift the rejection when the enclosing class is itself a
+    Lifts the rejection when the enclosing class is itself a
     `tuInfo.templateTypedefs` instantiation. Such types acquire a global
     file-scope name through the alias (e.g.
     ``BRepGraph_ReverseIterator<FaceOfWireRefTraits>`` is reached via the
@@ -97,7 +97,7 @@ def _is_globally_accessible(arg_type, template_typedef_names=None):
         return True
 
     if parent.kind in (clang.cindex.CursorKind.CLASS_DECL, clang.cindex.CursorKind.STRUCT_DECL):
-        # R5 — admit when the enclosing class is a known template-typedef
+        # Admit when the enclosing class is a known template-typedef
         # instantiation (its alias is at file scope, so we can name it).
         if template_typedef_names is not None and parent.spelling in template_typedef_names:
             return True
@@ -108,11 +108,11 @@ def _is_globally_accessible(arg_type, template_typedef_names=None):
 def _scan_type_for_ncollection(clang_type, needed, template_typedef_names=None, source_class=None):
     """Check if a type is or contains an NCollection template instantiation.
 
-    `source_class` (R1) tags every discovered NCollection with the bound
-    class whose method/field signature contained it. The link step uses
-    these tags to compute per-YAML reachability — an NCollection whose
-    source class is not in the consumer YAML's scope is dropped at link
-    time. See `docs/research/ocjs-link-ncollection-overbinding-audit.md`.
+    `source_class` tags every discovered NCollection with the bound class
+    whose method/field signature contained it. The link step uses these
+    tags to compute per-YAML reachability — an NCollection whose source
+    class is not in the consumer YAML's scope is dropped at link time,
+    preventing per-YAML overbinding into unrelated OCCT packages.
     """
     t = clang_type
     if t.kind == clang.cindex.TypeKind.LVALUEREFERENCE:
@@ -166,11 +166,11 @@ def _scan_class_methods(class_cursor, needed, template_typedef_names=None, sourc
     V8's namespace-scoped result/config structs (e.g. `ExtremaPC::Result.Extrema`)
     rely on this path.
 
-    `source_override` (R1) lets the R5 template-typedef pass tag discoveries
-    with the typedef name (`BRepGraph_FacesOfEdge`) instead of the
-    underlying template class (`BRepGraph_ReverseIterator`) so the link
-    filter intersects against names a consumer YAML can actually bind.
-    Defaults to `class_cursor.spelling` for the primary discovery pass.
+    `source_override` lets the template-typedef pass tag discoveries with
+    the typedef name (`BRepGraph_FacesOfEdge`) instead of the underlying
+    template class (`BRepGraph_ReverseIterator`) so the link filter
+    intersects against names a consumer YAML can actually bind. Defaults
+    to `class_cursor.spelling` for the primary discovery pass.
     """
     source = source_override or (class_cursor.spelling or "<anon>")
     for child in class_cursor.get_children():
@@ -211,14 +211,14 @@ _BUILTIN_BIND_CONFLICTS = frozenset({
 
 
 def _scan_template_typedef_methods(tuInfo, template_typedef, needed, template_typedef_names, source_override=None):
-    """Audit R5 — discover NCollection types reachable through a template typedef.
+    """Discover NCollection types reachable through a template typedef.
 
     Resolves the typedef's template (e.g.
     ``BRepGraph_FacesOfEdge = BRepGraph_ReverseIterator<FaceOfWireRefTraits>``)
     via the same ``processTemplate`` codepath used by codegen, augments
-    the substitution map with R2 canonical keys, then scans the
-    underlying template class's method signatures with the substitution
-    applied. NCollection types that depend on the substituted parameters
+    the substitution map with canonical ``type-parameter-N-M`` keys, then
+    scans the underlying template class's method signatures with the
+    substitution applied. NCollection types that depend on the substituted parameters
     (e.g. ``NCollection_DynamicArray<typename TraitsT::ParentId>``)
     enter the manifest as concrete instantiations
     (``NCollection_DynamicArray<BRepGraphInc_FaceRef>``).
@@ -242,9 +242,9 @@ def _scan_template_typedef_methods(tuInfo, template_typedef, needed, template_ty
         return
     augmented_args = augment_template_args_with_canonical(templateArgs, templateClass)
 
-    # R1 — tag discoveries with the typedef name so the link filter
-    # intersects against names a consumer YAML can actually bind.
-    # R3 — explicit source_override (e.g. CUSTOM_CODE_SOURCE_TAG) wins.
+    # Tag discoveries with the typedef name so the link filter intersects
+    # against names a consumer YAML can actually bind. An explicit
+    # source_override (e.g. CUSTOM_CODE_SOURCE_TAG) wins.
     typedef_source = source_override or template_typedef.spelling or "<anon>"
     raw = set()
     _scan_class_methods(templateClass, raw, template_typedef_names, source_override=typedef_source)
@@ -298,26 +298,25 @@ def discover_ncollection_types(tuInfo, filter_classes_fn, source_override=None):
     """Scan bound class methods for NCollection template instantiations.
 
     Returns a set of (mangled_name, container, arg_spellings_tuple, sources_tuple)
-    quadruples (R1).
+    quadruples.
 
     Two passes:
       1. Direct scan of every bound class's methods (legacy behaviour).
-      2. Audit R5 — substitute template typedefs (``using BRepGraph_FacesOfEdge
+      2. Substitute template typedefs (``using BRepGraph_FacesOfEdge
          = BRepGraph_ReverseIterator<FaceOfWireRefTraits>;``) and rescan
          the underlying template class with the concrete substitution
          applied. This surfaces NCollection containers parameterised on
          the substituted Traits members
          (``NCollection_DynamicArray<BRepGraphInc_FaceRef>``).
 
-    R3 — ``source_override`` lets a caller force every discovery's
+    ``source_override`` lets a caller force every discovery's
     ``source_classes`` to a single sentinel name. Pass
     ``CUSTOM_CODE_SOURCE_TAG`` ("__custom__") when running discovery
     against a consumer's ``additionalCppCode`` / ``myMain.h`` so the
-    link-step reachability filter (R2) — which always seeds the YAML
-    scope with that sentinel — retains every custom-code NCollection
-    regardless of which OCCT classes the consumer YAML names. Without
-    an override, each discovery is tagged with its originating bound
-    class's spelling (the primary R1 behaviour).
+    link-step reachability filter — which always seeds the YAML scope
+    with that sentinel — retains every custom-code NCollection regardless
+    of which OCCT classes the consumer YAML names. Without an override,
+    each discovery is tagged with its originating bound class's spelling.
     """
     template_typedef_names = {td.spelling for td in tuInfo.templateTypedefs if td.spelling}
 
@@ -327,7 +326,7 @@ def discover_ncollection_types(tuInfo, filter_classes_fn, source_override=None):
             continue
         _scan_class_methods(child, needed, template_typedef_names, source_override=source_override)
 
-    # R5 second pass — substitute through every template typedef.
+    # Second pass — substitute through every template typedef.
     for template_typedef in tuInfo.templateTypedefs:
         _scan_template_typedef_methods(
             tuInfo,
@@ -346,14 +345,14 @@ def discover_ncollection_types(tuInfo, filter_classes_fn, source_override=None):
         if inner_container:
             inner_mangled = mangle_template_name(inner_container, list(arg_spellings))
             if inner_mangled and inner_mangled not in _BUILTIN_BIND_CONFLICTS:
-                # R1 — HArray-twin inherits the originating source class so
-                # the link filter applies symmetrically to both forms.
+                # HArray-twin inherits the originating source class so the
+                # link filter applies symmetrically to both forms.
                 augmented.add((inner_mangled, inner_container, arg_spellings, source_class))
 
-    # Audit R5 — canonical-args dedup.
+    # Canonical-args dedup.
     #
     # The first pass discovers `NCollection_DynamicArray<BRepGraph_SolidId>`
-    # (the alias-form), the R5 second pass discovers
+    # (the alias-form), the typedef-substitution pass discovers
     # `NCollection_DynamicArray<BRepGraph_NodeId::Typed<...::Kind::Solid>>`
     # (the substituted form). Both `using` declarations name the same
     # underlying C++ type, so a fragment is emitted for each and Embind's
@@ -374,10 +373,10 @@ def _build_typedef_alias_map(tuInfo):
     """Map every `using A = B;` template-typedef to its underlying spelling.
 
     Used by `_dedupe_by_canonical_args` to collapse manifest entries whose
-    args differ only in alias spelling — without this, R5's second pass
-    can produce a second NCollection<X> registration under a different
-    mangled name for the same C++ type X, triggering wasm-ld duplicate
-    symbol errors at link time.
+    args differ only in alias spelling — without this, the typedef-
+    substitution second pass can produce a second NCollection<X>
+    registration under a different mangled name for the same C++ type X,
+    triggering wasm-ld duplicate symbol errors at link time.
     """
     alias_map = {}
     for td in tuInfo.templateTypedefs:
@@ -420,11 +419,11 @@ def _dedupe_by_canonical_args(entries, tuInfo):
 
     Returns a `set` of `(mangled_name, container, arg_spellings, sources_tuple)`
     quadruples where each canonical (container, normalized-args) key appears
-    exactly once. R1 — the same canonical NCollection may be discovered from
+    exactly once. The same canonical NCollection may be discovered from
     multiple bound classes (e.g. `NCollection_Array1_TopoDS_Shape` reached
     from `TopoDS_Iterator`, `TopoDS_HShape`, …); we aggregate every source
     class into the winner's `sources_tuple` so the link-step reachability
-    filter (R2) keeps the entry as long as *any* of its source classes is in
+    filter keeps the entry as long as *any* of its source classes is in
     the consumer YAML scope. Preserves the first-seen entry per key —
     sorting the input by mangled name keeps the output deterministic
     across runs.
@@ -454,7 +453,7 @@ def generate_using_declarations(discovered):
         return ""
     lines = []
     for entry in discovered:
-        # R1 — entries are 4-tuples (mangled, container, args, sources).
+        # Entries are 4-tuples (mangled, container, args, sources).
         # `using` declarations only need the first three; sources are
         # consumed by `write_manifest` for the link-step filter.
         mangled_name, container, arg_spellings = entry[0], entry[1], entry[2]
@@ -466,10 +465,10 @@ def generate_using_declarations(discovered):
 def write_manifest(discovered, build_dir):
     """Write the NCollection manifest JSON for the link step.
 
-    R1 — every declaration carries `source_classes: list[str]` (sorted,
+    Every declaration carries `source_classes: list[str]` (sorted,
     deduped) listing the bound class names whose method/field signatures
-    caused the NCollection to be discovered. The link step (R2) reads this
-    to intersect against the consumer YAML's reachable class scope; entries
+    caused the NCollection to be discovered. The link step reads this to
+    intersect against the consumer YAML's reachable class scope; entries
     with empty intersection are dropped from the per-YAML link command.
     """
     manifest = {
@@ -477,7 +476,7 @@ def write_manifest(discovered, build_dir):
         "declarations": [],
     }
     for entry in sorted(discovered):
-        # Entries are 4-tuples after R1: (mangled, container, args, sources).
+        # Entries are 4-tuples: (mangled, container, args, sources).
         mangled, container, args, sources = entry
         manifest["declarations"].append({
             "mangled_name": mangled,

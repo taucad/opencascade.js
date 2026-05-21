@@ -407,8 +407,9 @@ def isOutputParam(arg_type):
   (char*&, etc.) which need C-string or val wrapping instead.
 
   The class branch enables input-passthrough RBV for user-defined class types
-  (gp_Pnt, gp_Vec, Bnd_Box, ...). See docs/research/ocjs-unified-rbv-blueprint.md
-  Architecture Blueprint.
+  (gp_Pnt, gp_Vec, Bnd_Box, ...): the caller supplies the instance, C++ mutates
+  it in place, and the JS-visible signature retains the parameter rather than
+  echoing it via the return envelope.
   """
   if arg_type.kind != clang.cindex.TypeKind.LVALUEREFERENCE:
     return False
@@ -469,23 +470,19 @@ def isRawPointerParam(arg_type):
 def shouldStripParam(arg_type, method):
   """Whether to remove the param from the JS-visible signature.
 
-  The R1-R6 minimal transformation (`docs/research/ocjs-rbv-return-shape-revisit.md`)
-  describes the full decision tree the codegen applies to each output param.
-  Strip-from-JS-signature is the right-most branch of that tree:
+  The codegen applies a three-way decision tree to each output param:
 
     - Primitive/enum output (input-passthrough): stays as JS arg; value copies
       in and an updated copy comes back via the envelope's named field.
     - Class output (`gp_Pnt&`, `Bnd_Box&`, ...): stays as JS arg; the caller
       supplies the instance and the C++ lambda mutates it in place via
-      `*<arg>.as<T*>(allow_raw_pointers())` (R1/R2 in the research doc).
-      It is NOT echoed in the envelope.
-    - Handle<T> output (Approach G — input elision): REMOVED from the
-      JS-visible surface. OCCT's contract guarantees non-const `Handle<T>&`
-      is output-only (never read by C++), so the caller's input is gratuitous.
-      The C++ codegen allocates a stack-local null Handle inside the
-      optional_override lambda instead; the resulting wrapper is surfaced as
-      a container field whose lifetime is owned by the envelope's
-      `[Symbol.dispose]`.
+      `*<arg>.as<T*>(allow_raw_pointers())`. It is NOT echoed in the envelope.
+    - Handle<T> output (input elision): REMOVED from the JS-visible surface.
+      OCCT's contract guarantees non-const `Handle<T>&` is output-only (never
+      read by C++), so the caller's input is gratuitous. The C++ codegen
+      allocates a stack-local null Handle inside the optional_override lambda
+      instead; the resulting wrapper is surfaced as a container field whose
+      lifetime is owned by the envelope's `[Symbol.dispose]`.
 
   Flipping this predicate to return True for `isHandleOutputParam` propagates
   the elision through every downstream arity, kept-name, and JSDoc path
@@ -493,10 +490,6 @@ def shouldStripParam(arg_type, method):
   4462). The C++ lambda emitter (`_emitOutputParamBinding`) does its own
   per-arg inspection and emits the stack-local declaration for Handle outputs
   and the `val::as<T*>` deref for class outputs.
-
-  Design refs:
-    - docs/research/ocjs-rbv-return-shape-revisit.md (R1-R6 decision tree)
-    - docs/research/ocjs-rbv-handle-output-param-elision.md (Approach G)
   """
   return isHandleOutputParam(arg_type)
 
@@ -505,10 +498,10 @@ def getClassTypeName(theClass, templateDecl = None):
 
 # `getClassJsPublicName` is intentionally NOT redefined here. The single
 # source of truth is `NameEncoder.js_public_name` in
-# `ocjs_bindgen.naming.encoder`, re-exported via `naming.ts`. R1.b of
-# `docs/research/ocjs-bindgen-unknown-coverage-audit.md` made the
-# encoder walk the full enclosing-class chain; carrying a one-level
-# duplicate here would silently shadow that fix.
+# `ocjs_bindgen.naming.encoder`, re-exported via `naming.ts`. The encoder
+# walks the full enclosing-class chain so nested types like
+# `Outer::Inner::Leaf` flatten to `Outer_Inner_Leaf`; carrying a one-level
+# duplicate here would silently shadow that and reintroduce dangling exports.
 
 def getEnumJsPublicName(theEnum):
   """JS-public enum name. Adds `Namespace_` prefix for namespace-scoped enums."""
@@ -1130,18 +1123,18 @@ class Bindings:
     (e.g. TheItemType) instead of type-parameter-0-0; templateArgs substitutes those too.
     Nested types are always qualified with their parent class scope.
 
-    Audit R8.1 fires immediately after `getTypedefedTemplateTypeAsString`
-    substitutes the template argument: when the resulting spelling is a
-    syntactic `opencascade::handle<X>` / `occ::handle<X>` / `Handle_X`
-    wrapper and `X` is a known TS export, return `X` directly. See
-    `docs/research/ocjs-bindgen-unknown-coverage-audit-v2.md` V2.1 addendum
-    "Where to next" — closes the residual handle-wrapped NCollection
-    accessor bucket left by R8.
+    The substituted-Handle peel runs immediately after
+    `getTypedefedTemplateTypeAsString` substitutes the template argument: when
+    the resulting spelling is a syntactic `opencascade::handle<X>` /
+    `occ::handle<X>` / `Handle_X` wrapper and `X` is a known TS export, return
+    `X` directly. Closes the handle-wrapped NCollection accessor bucket that
+    the original member-typedef resolution can't see through, because the
+    Handle wrapper only appears after string-level argument substitution.
     """
     resolved = self.getTypedefedTemplateTypeAsString(spelling, templateDecl, templateArgs)
 
-    # Audit R8.1 — peel substituted Handle wrappers at the string level.
-    # After template-arg substitution rewrites `TheItemType` to a syntactic
+    # Peel substituted Handle wrappers at the string level. After template-arg
+    # substitution rewrites `TheItemType` to a syntactic
     # `opencascade::handle<X>` / `occ::handle<X>` / `Handle_X`, recognise the
     # wrapper and return the inner exported class. Mirrors the contract of
     # `resolve_handle_recursive` one layer downstream where the AST has been
@@ -1149,8 +1142,8 @@ class Bindings:
     #
     # `resolveWithCanonicalFallback` is shared with `EmbindBindings`, whose
     # C++ generator has no TS-export concept. Gate on `_is_known_export_name`
-    # so R8.1 is a strict no-op for the Embind path; the TS resolver supplies
-    # the predicate and gets the peel behaviour.
+    # so the substituted-Handle peel is a strict no-op for the Embind path;
+    # only the TS resolver supplies the predicate and gets the peel behaviour.
     if hasattr(self, "_is_known_export_name"):
       from ocjs_bindgen.resolver.strategies import (
         resolve_handle_substituted_typedef,
@@ -1193,13 +1186,13 @@ class Bindings:
     return replace_template_args(string, templateArgs)
 
   def render_dropped_method_jsdoc(self, theClass, method, reasons):
-    """R3 transparency hook — render comment(s) for a dropped method.
+    """Dropped-method transparency hook — render comment(s) for a dropped method.
 
     Default implementation is a no-op; the Embind .cpp output stays
     binding-only. The TypescriptBindings subclass overrides to emit
     `// dropped: <position> resolves to excluded type <name>` lines so
     .d.ts consumers see why the method is missing rather than silently
-    losing the API surface (audit `Risks & Mitigations` row R3).
+    losing the API surface.
     """
     return ""
 
@@ -1217,7 +1210,7 @@ class Bindings:
     all_children = list(theClass.get_children())
     for method in all_children:
       if not filterMethodOrProperty(theClass, method):
-        # R3 transparency: when the method was dropped because a
+        # Dropped-method transparency: when the method was dropped because a
         # parameter/return resolves to an excluded class, the wrapped
         # filter recorded the reason in the side-table. The TS subclass
         # renders a `// dropped: ...` comment here so .d.ts consumers
@@ -2168,8 +2161,6 @@ class TypescriptBindings(Bindings):
       4. Leaf-only: if step 3 missed, test `_is_known_export_name(member)`.
       5. Container alias: consult `_CONTAINER_ALIASES` against `clean` and
          the underscore-flattened candidate.
-
-    Cross-references R2 + R3 in docs/research/monaco-intellisense-jsdoc-rendering.md.
     """
     return _ts_jsdoc_links.classify_link_target(self, target)
 
@@ -2183,8 +2174,6 @@ class TypescriptBindings(Bindings):
         Monaco's naive `displayPartsToString` collapses to a clean code span.
       - Else: emit `` `<target>` `` so Monaco shows themed inline code instead
         of the literal `{@link …}` artifact.
-
-    Cross-references R2 + R3 in docs/research/monaco-intellisense-jsdoc-rendering.md.
     """
     return _ts_jsdoc_links.normalize_link_tokens(self, text)
 
@@ -2216,16 +2205,13 @@ class TypescriptBindings(Bindings):
     text reads as themed inline code in Monaco; otherwise we degrade to
     ``@see `<target>` `` to keep the cross-reference rendered as code instead
     of a literal `{@link …}` artifact.
-
-    Cross-references R2 in docs/research/monaco-intellisense-jsdoc-rendering.md.
     """
     return _ts_jsdoc_renderer.emit_simplesect_tags(self, lines, indent_str, entry)
 
   # Suffix appended to @param descriptions for class outputs that mutate in
-  # place (R5 of docs/research/ocjs-rbv-return-shape-revisit.md). Generated
-  # JSDoc preserves upstream Doxygen prose and concatenates this with a single
-  # space so the IntelliSense tooltip carries both the OCCT description and
-  # the OCJS mechanic on the same line.
+  # place. Generated JSDoc preserves upstream Doxygen prose and concatenates
+  # this with a single space so the IntelliSense tooltip carries both the
+  # OCCT description and the OCJS mechanic on the same line.
   MUTATED_CLASS_PARAM_SUFFIX = "Mutated in place; read the updated value from this argument after the call."
 
   def _param_description(self, member, param_name):
@@ -2235,15 +2221,14 @@ class TypescriptBindings(Bindings):
     """Emit a JSDoc block from Doxygen-derived brief, detailed text, `@param`,
     `@returns`, and simplesect tags only.
 
-    Consumer-facing return-shape contract: see the read-site decision tree in
-    docs/research/ocjs-rbv-return-shape-revisit.md. When the dts signature
-    embeds an RBV envelope (`{ returnValue, …, [Symbol.dispose] }`), the
-    caller passes an `envelope_descriptor` so this method rewrites `@returns`
-    into the corresponding envelope-fields block. When a JS-visible class
-    output param is mutated in place, the caller passes its name in
-    `mutated_class_param_names` so this method appends `MUTATED_CLASS_PARAM_SUFFIX`
-    to the existing description (or synthesizes one when upstream Doxygen
-    omits the param).
+    Consumer-facing return-shape contract: when the dts signature embeds an
+    RBV envelope (`{ returnValue, …, [Symbol.dispose] }`), the caller passes
+    an `envelope_descriptor` so this method rewrites `@returns` into the
+    corresponding envelope-fields block. When a JS-visible class output param
+    is mutated in place, the caller passes its name in
+    `mutated_class_param_names` so this method appends
+    `MUTATED_CLASS_PARAM_SUFFIX` to the existing description (or synthesizes
+    one when upstream Doxygen omits the param).
     """
     return _ts_jsdoc_renderer.jsdoc(
       self, class_name, member_name=member_name, indent_str=indent_str,
@@ -2360,13 +2345,13 @@ class TypescriptBindings(Bindings):
     return output
 
   def render_dropped_method_jsdoc(self, theClass, method, reasons):
-    """R3 transparency hook (TS-side override).
+    """Dropped-method transparency hook (TS-side override).
 
-    Emits a `// dropped: ...` comment for each recorded R3 reason at the
-    spot the method *would* have been declared in the class body. The
-    method itself is NOT emitted — the goal is to keep the .d.ts free of
-    `unknown`-littered signatures pointing at types the runtime never
-    exposes, while preserving forensic visibility of the elision so
+    Emits a `// dropped: ...` comment for each recorded dropped-method
+    reason at the spot the method *would* have been declared in the class
+    body. The method itself is NOT emitted — the goal is to keep the .d.ts
+    free of `unknown`-littered signatures pointing at types the runtime
+    never exposes, while preserving forensic visibility of the elision so
     consumers can audit why an OCCT method is missing from the surface.
     """
     if not reasons:
@@ -2850,7 +2835,7 @@ class TypescriptBindings(Bindings):
 
   def _mutatedClassParamNames(self, method, allArgs, effective_names=None):
     """Names of the JS-visible class output params that this method mutates in
-    place (R1), preserving argument order. Used by `_jsdoc` to append the
+    place, preserving argument order. Used by `_jsdoc` to append the
     "Mutated in place..." suffix to each param's description and to synthesize
     a `@param` when upstream Doxygen omits it.
 
@@ -2964,22 +2949,21 @@ class TypescriptBindings(Bindings):
     """Build a TS inline object return type from output params, or None when
     the method should fall back to the native C++ return.
 
-    Per R1 of docs/research/ocjs-rbv-return-shape-revisit.md, concrete class
-    outputs (non-Handle, default-constructible) are mutated in place and do
-    NOT appear in the return envelope. Per R2, methods whose only output
+    Concrete class outputs (non-Handle, default-constructible) are mutated in
+    place and do NOT appear in the return envelope. Methods whose only output
     params are class refs collapse to a plain native return (or void).
 
     For overrides, mirrors the base class's output-param field names so the
     derived signature stays structurally assignable to the base (TS2416).
     """
-    # R1 filter: class outputs are mutated in place and not envelope fields.
+    # Class outputs are mutated in place and not envelope fields.
     outputArgs = [(i, a) for i, a in enumerate(allArgs)
                   if isOutputParam(a.type) and not isClassOutputParam(a.type)]
     ret_type = method.result_type
     if ret_type.spelling != "void" and ret_type.get_canonical().kind == clang.cindex.TypeKind.POINTER:
       return None
     if not outputArgs:
-      # R2: no envelope-bound outputs → native return path. Caller emits the
+      # No envelope-bound outputs → native return path. Caller emits the
       # raw C++ return type directly (`void` or the native return).
       return None
     needsDispose = self._containerNeedsDispose(outputArgs, method)
@@ -3071,9 +3055,10 @@ class TypescriptBindings(Bindings):
     rule and rationale (eliminates input-name vs envelope-field-name drift
     on virtual overrides where the base and derived use different spellings).
 
-    See `docs/research/ocjs-rbv-handle-output-param-elision.md` for the
-    decision record (Approach G); supersedes the earlier Option C from
-    `docs/research/ocjs-rbv-blueprint-p0-p1-stocktake.md` §F3.
+    The Handle-output elision strategy: non-const `Handle<T>&` params are
+    output-only by OCCT contract, so the codegen drops them from the JS
+    signature entirely and emits a stack-local null Handle inside the C++
+    lambda. The container surface owns lifetime via `[Symbol.dispose]`.
     """
     if effective_names is not None:
       keptArgs = [self.getTypescriptDefFromArgWithName(arg, effective_names[i], templateDecl, templateArgs)

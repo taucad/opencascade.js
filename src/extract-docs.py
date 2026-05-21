@@ -71,11 +71,10 @@ _BLOCK_CHILDREN = frozenset({
     "itemizedlist", "orderedlist", "programlisting", "verbatim", "preformatted",
 })
 
-# R5 — sentence-splitting for long prose blocks.
+# Sentence-splitting for long prose blocks.
 # Doxygen frequently produces multi-thousand-character paragraphs that render as
 # one unwieldy line in Monaco hovers. Splitting at ". (Capital)" boundaries
-# makes long prose scannable without altering its semantic content. Cross-references
-# R5 in docs/research/monaco-intellisense-jsdoc-rendering.md.
+# makes long prose scannable without altering its semantic content.
 _SENTENCE_SPLIT_RE = re.compile(r"(?<=\.)\s+(?=[A-Z])")
 _LONG_PROSE_THRESHOLD = 600
 _MIN_FRAGMENT_LEN = 200
@@ -91,8 +90,6 @@ def _split_long_sentences(text: str) -> str:
     `_MIN_FRAGMENT_LEN` are re-merged into the preceding line so the output
     doesn't fragment short technical sentences (statuses, equations, etc.) into
     visual confetti.
-
-    Cross-references R5 in docs/research/monaco-intellisense-jsdoc-rendering.md.
     """
     if not text or len(text) <= _LONG_PROSE_THRESHOLD:
         return text
@@ -342,8 +339,7 @@ def _brief_text(desc_element) -> str:
     in `bindings.py` splits on `\\n` to produce separate ` * ` lines). OCCT
     sometimes packs ~2k characters into a brief paragraph, so we route the
     rendered text through `_split_long_sentences` to keep Monaco hovers
-    scannable. Cross-references R5 in
-    docs/research/monaco-intellisense-jsdoc-rendering.md.
+    scannable.
     """
     return _split_long_sentences(_inline_text(desc_element))
 
@@ -634,8 +630,7 @@ def run_doxygen(ocjs_root: str, occt_root: str):
     Raspberry Pi CI) the binary failed to execute and this function
     silently fell back to system doxygen anyway. The legacy code only
     checked `isfile` (not `os.access(X_OK)`), so a present-but-unexecutable
-    pinned binary blocked the system fallback. See R6 in
-    docs/research/ocjs-r21-method-reachability-parity-report.md.
+    pinned binary blocked the system fallback.
     """
     doxyfile = os.path.join(ocjs_root, "src", "occt-docs.doxyfile")
     pinned = os.path.join(ocjs_root, "tools", "doxygen", "bin", "doxygen")

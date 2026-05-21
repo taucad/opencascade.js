@@ -93,7 +93,7 @@ def _setup_environment(occt_root: Path):
     user-named NCollection typedefs at link time (e.g.
     NCollection_DynamicArray<gp_XYZ> vs VectorOfPoint). A standalone
     de-duplication pass against `templateTypedefUnderlyingMultimap` is
-    tracked separately in docs/research/ocjs-non-graphics-coverage-blueprint.md
+    tracked separately in the non-graphics coverage inventory
     (Phase 5 — link-manifest dedup) and must land before this script can
     safely enumerate the full template-typedef surface.
     """
@@ -216,7 +216,7 @@ def enumerate_symbols(occt_root: Path, filter_path: Path):
     # or the resulting wasm will quietly omit them. Keep this list aligned
     # with the F1 fix in src/filter/filterTypedefs.py and
     # src/generateBindings.py::processTemplate.
-    # See docs/research/ocjs-removed-bindings-stocktake.md (Recipe R-P1).
+    # LProps template-typedef restoration (relaxed single-template-ref guard).
     _ALWAYS_INCLUDE_TEMPLATE_TYPEDEFS: Dict[str, str] = {
         "GeomLProp_SLProps":   "GeomLProp",
         "GeomLProp_CLProps":   "GeomLProp",

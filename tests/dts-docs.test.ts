@@ -238,9 +238,8 @@ describe('JSDoc documentation coverage', () => {
     it.skipIf(!sourceFile)(
       'should have distinct constructor JSDoc for gp_Pnt overloaded constructors',
       () => {
-        // Re-pinned from OSD_Disk → gp_Pnt after R1 filtering removed all
-        // OSD host-introspection classes (see
-        // docs/research/ocjs-bindings-wasm-applicability-audit.md R1).
+        // Re-pinned from OSD_Disk → gp_Pnt after nested-class filtering removed all
+        // OSD host-introspection classes from the bound surface.
         // gp_Pnt has 3 ctors with distinct JSDoc:
         //   "Creates a point with zero coordinates."
         //   "Creates a point from a XYZ object."
@@ -787,7 +786,7 @@ describe('JSDoc documentation coverage', () => {
     );
   });
 
-  describe('Detailed-section coverage — classes (R1)', () => {
+  describe('Detailed-section coverage — classes', () => {
     it.skipIf(!sourceFile)(
       'should append detailed bullet items after the brief for BRepPrimAPI_MakeBox',
       () => {
@@ -844,7 +843,7 @@ describe('JSDoc documentation coverage', () => {
     );
   });
 
-  describe('Detailed-section coverage — members (R2)', () => {
+  describe('Detailed-section coverage — members', () => {
     it.skipIf(!sourceFile)(
       'should emit member-level detailed prose for BRepPrim_GWedge constructor',
       () => {
@@ -906,7 +905,7 @@ describe('JSDoc documentation coverage', () => {
     );
   });
 
-  describe('Markdown structure preservation (R3)', () => {
+  describe('Markdown structure preservation', () => {
     function collectJSDocBodyLines(doc: string): string[] {
       // Strip leading "/**", trailing "*/", and per-line " * " prefix.
       const inner = doc
@@ -970,7 +969,7 @@ describe('JSDoc documentation coverage', () => {
         const cls = findClass(sourceFile!, 'Geom_BSplineCurve');
         expect(cls).toBeDefined();
         const doc = getJSDocText(cls!);
-        // After R2 normalization the alias-with-code form is required so Monaco
+        // After link-token normalization the alias-with-code form is required so Monaco
         // hovers show themed inline code instead of a literal {@link …} artifact.
         expect(doc).toMatch(/\{@link\s+Geom_BSplineCurve\s*\|\s*`Geom_BSplineCurve`\s*\}/);
         expect(doc).not.toMatch(/\{@link\s+Geom_BSplineCurve\s*\}/);
@@ -991,7 +990,7 @@ describe('JSDoc documentation coverage', () => {
     );
   });
 
-  describe('Simplesect → JSDoc tag mapping (R4)', () => {
+  describe('Simplesect → JSDoc tag mapping', () => {
     it.skipIf(!sourceFile)(
       'should emit @remarks **Note:** for member-level note simplesect (GC_MakeLine constructor)',
       () => {
@@ -1066,7 +1065,7 @@ describe('JSDoc documentation coverage', () => {
     );
   });
 
-  describe('JSDoc termination integrity (R5)', () => {
+  describe('JSDoc termination integrity', () => {
     it.skipIf(!sourceFile)(
       'should not leave any JSDoc body line dangling on a list opener phrase ("as follows:", "such as:", etc.)',
       () => {
@@ -1140,7 +1139,7 @@ describe('JSDoc documentation coverage', () => {
     it.skipIf(!sourceFile)(
       'should preserve bullet content for the original BRepPrimAPI_MakeBox truncation case (regression)',
       () => {
-        // Concrete regression target from docs/research/occt-jsdoc-doxygen-truncation.md.
+        // Concrete regression target: BRepPrimAPI_MakeBox class doc truncated at "for:" before bullet fix.
         // Before the fix, the BRepPrimAPI_MakeBox class doc ended at "for:" with
         // no bullets. After the fix, the four bullets describing the framework
         // must follow the brief in the same JSDoc block.
@@ -1268,13 +1267,12 @@ describe('JSDoc documentation coverage', () => {
     );
   });
 
-  // Cross-references docs/research/monaco-intellisense-jsdoc-rendering.md (R2 + R3).
   // Bare `{@link Foo}` tokens that don't resolve to an emitted TS export render as
   // literal artifacts in Monaco hovers (Monaco's `displayPartsToString` doesn't
   // dereference unresolved targets). For exported targets we keep the link and add
   // an inline-code alias so hovers show themed code; for non-exported targets and
   // for C++ scoped/templated names that don't resolve we degrade to inline code.
-  describe('Link token normalization (R2+R3)', () => {
+  describe('Link token normalization', () => {
     function isExportedTopLevel(name: string): boolean {
       if (!sourceFile) return false;
       let found = false;
@@ -1538,12 +1536,12 @@ describe('JSDoc documentation coverage', () => {
     );
   });
 
-  // Cross-references docs/research/monaco-intellisense-jsdoc-rendering.md (R4 RESCINDED).
-  // R4 originally injected a Markdown horizontal rule (`* ---`) between brief and
+  // Horizontal-rule separator between brief and detailed bodies (rolled back).
+  // Originally injected a Markdown horizontal rule (`* ---`) between brief and
   // detailed bodies. Monaco's hover stylesheet gives `<hr>` a `margin-bottom: -4px`
   // (editor.main.css:2940-2949), producing a 12px / 4px asymmetric gap that visibly
   // hugs the next paragraph. R4 has been rolled back; this guard prevents regression.
-  describe('No `* ---` separator (R4 rollback)', () => {
+  describe('No `* ---` separator (rollback guard)', () => {
     it.skipIf(!sourceFile)(
       'should not emit `* ---` JSDoc separators anywhere in the generated d.ts',
       () => {
@@ -1554,12 +1552,11 @@ describe('JSDoc documentation coverage', () => {
     );
   });
 
-  // Cross-references docs/research/monaco-intellisense-jsdoc-rendering.md (R5).
   // Doxygen produces multi-thousand-character paragraphs that render as one
   // unwieldy line in Monaco hovers. Splitting at sentence boundaries during
   // _render_para keeps the JSDoc structurally faithful while making the tooltip
   // scannable.
-  describe('Sentence-splitting long prose (R5)', () => {
+  describe('Sentence-splitting long prose', () => {
     function jsDocBodyLines(doc: string): string[] {
       const inner = doc.replace(/^\s*\/\*\*/, '').replace(/\*\/\s*$/, '');
       return inner.split('\n').map((l) => l.replace(/^\s*\*\s?/, ''));

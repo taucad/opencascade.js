@@ -13,8 +13,7 @@
  * 2-arg Approach G Handle-elision overload (Edge, Location) returning a
  * `{P, T, L}` container. Under Approach G the non-const `Handle<T>&` output
  * positions are elided from the JS-facing arg list (the C++ lambda declares
- * stack-local null Handles instead — see
- * `docs/research/ocjs-rbv-handle-output-param-elision.md`). The dispatch must
+ * stack-local null Handles instead). The dispatch must
  * route to the correct overload based on argument count and types.
  *
  * Patterns tested:
@@ -31,7 +30,7 @@ describe.skipIf(!wasmExists)('Smoke: static method signature dispatch', () => {
 
   /**
    * Returns an owning `TopoDS_Shape` for the caller to bind with `using`.
-   * `shape` is forwarded via `return` (tau-lint return-flow escape); do not
+   * `shape` is forwarded via `return` (return-flow escape for ownership transfer); do not
    * declare it with `using` inside the helper — that would dispose before the
    * caller runs. `box` is scoped with `using` so it is released after meshing.
    */

@@ -12,7 +12,7 @@ name: docker
 #    ubuntu-24.04-arm — native runners, no QEMU) and pushes a manifest list to
 #    `ghcr.io/taucad/opencascade.js`. Native runners avoid the libclang-under-
 #    QEMU segfault during `apply-patches` (see
-#    docs/research/ocjs-libclang-target-triple-mismatch-poc.md Phase 7).
+#    vendored LLVM 17 libc++ for libclang 18 parse pass).
 #
 # Cache strategy: BuildKit cache mounts (apt, npm, Nx, build/) are persisted
 # via the `docker/build-push-action@v6` GHA cache backend, scoped per platform

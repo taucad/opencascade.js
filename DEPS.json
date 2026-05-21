@@ -29,7 +29,7 @@
     },
     "llvm17": {
       "version": "17.0.6",
-      "description": "Vendored prebuilt LLVM 17 — parse-side libc++ + clang resource headers for libclang 18.1.1 (N-1 compat window per libc++ support policy). See docs/research/ocjs-libclang-target-triple-mismatch-poc.md.",
+      "description": "Vendored prebuilt LLVM 17 — parse-side libc++ + clang resource headers for libclang 18.1.1 (N-1 compat window per libc++ support policy).",
       "base_url": "https://github.com/llvm/llvm-project/releases/download/llvmorg-17.0.6",
       "platforms": {
         "darwin-arm64": {

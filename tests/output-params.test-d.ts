@@ -1,15 +1,13 @@
 /**
  * Type-level contract tests for OCJS cross-boundary return shapes under the
- * minimal-transformation contract (R1–R5 of
- * docs/research/ocjs-rbv-return-shape-revisit.md).
+ * minimal-transformation return-shape contract.
  *
- * - S0: direct value_object return (unaffected by R1–R5).
+ * - S0: direct value_object return (unaffected by the transformation).
  * - S1: primitive-only envelope (renamed C++-return field → `returnValue`).
  * - S2: val::object envelope with `[Symbol.dispose]` (Handle / mixed cases).
  * - S3 (new): class-only methods collapse to a plain native (or `void`)
  *   return — class refs are mutated in place, never mirrored.
  *
- * @see docs/research/ocjs-rbv-return-shape-revisit.md
  */
 import { expectTypeOf, it, describe } from 'vitest';
 import type {

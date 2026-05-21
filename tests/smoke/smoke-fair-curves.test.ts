@@ -6,10 +6,9 @@
  * method uses auto-generated return-by-value with enum output param
  * stripping — the FairCurve_AnalysisCode& param is stripped from the
  * JS signature and returned in the envelope as `Code`, alongside the
- * native bool return surfaced as `returnValue` (R4 of
- * docs/research/ocjs-rbv-return-shape-revisit.md).
+ * native bool return surfaced as `returnValue`.
  *
- * Geom2d_Curve.D0 is a void-returning class-output method under R1/R2 —
+ * Geom2d_Curve.D0 is a void-returning class-output method —
  * the gp_Pnt2d parameter is mutated in place and no envelope is produced.
  */
 import { describe, it, expect, beforeAll } from 'vitest';
