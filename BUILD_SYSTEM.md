@@ -339,20 +339,19 @@ legacy sibling layout):
 
 The script is idempotent and validates pinned commits when `OCJS_STRICT_DEPS=1`.
 
-## Migration from Old System
+## Migration from v2
 
-| Old                                  | New                                                       |
+v2 drove the source build through the Python entry point `src/buildFromYaml.py` (wrapped by the Docker image's `ENTRYPOINT`). v3 replaces that with a single shell wrapper, `build-wasm.sh`, sitting on top of Nx-managed bindgen / compile / link steps. Behaviours that consumers of a v2 custom build may need to adjust:
+
+| v2                                   | v3                                                        |
 | ------------------------------------ | --------------------------------------------------------- |
-| `--preset O3-maxperf`                | `--config default` (or any entry in `configurations.json`) |
-| `build-configs/presets/*.yml`        | `build-configs/configurations.json`                       |
-| `scripts/experiments/*.yml`          | Entries in `configurations.json` + separate consumer YAML |
-| `build-cache.py compute-key`         | Nx content-hash based caching                             |
-| `cache-list` / `cache-gc`            | `npx nx reset` to clear all caches                        |
-| `step_compile_all()`                 | Nx `dependsOn` task graph                                 |
-| `../assimpjs/emsdk`                  | `deps/emsdk/` (via `clone-deps.sh`)                       |
-| Flag stripping in `buildFromYaml.py` | Fill-not-strip (consumer flags verbatim)                  |
+| `src/buildFromYaml.py <yaml>`        | `./build-wasm.sh [--config <name>] <subcommand> <yaml>`   |
+| `../assimpjs/emsdk` (relative path)  | `deps/emsdk/` (cloned via `clone-deps.sh`)                |
+| Flag stripping in `buildFromYaml.py` | Fill-not-strip (consumer flags pass through verbatim)     |
 | `OCJS_BIGINT` env var appendage      | Consumer specifies `-sWASM_BIGINT` directly in emccFlags  |
 | `OCJS_EVAL_CTORS` env var appendage  | Consumer specifies `-sEVAL_CTORS=N` directly in emccFlags |
+
+Cache and task-graph mechanics (Nx content-hashing, `npx nx reset` for cleanup, the `dependsOn` task graph) are v3-only and have no v2 equivalent — they replace the implicit single-shot Python pipeline.
 
 ## Troubleshooting
 

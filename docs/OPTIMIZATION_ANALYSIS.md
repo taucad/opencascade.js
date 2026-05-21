@@ -175,7 +175,7 @@ When LLVM has visibility across all compilation units (via LTO bitcode), it aggr
 
 **The build pipeline is near the optimization ceiling for OCCT compiled to WASM.** The dual wasm-opt pipeline (`-O3` via emcc → `-O4` + `--traps-never-happen` + `--converge` standalone) is more aggressive than most production WASM builds.
 
-The largest theoretical gains (`-fno-rtti`: 3–5%, `-fno-exceptions`: 5–10%) are structurally blocked by OCCT's C++ design. LTO at compile time was empirically measured to cause **+21% binary bloat** due to LLVM cross-module inlining (see `docs/research/wasm-size-analysis-v762-vs-v8rc4.md`). The only actionable flag is wasm-opt `--fast-math` (~0.5–1.5% speed), which should be validated against the full test suite before adoption.
+The largest theoretical gains (`-fno-rtti`: 3–5%, `-fno-exceptions`: 5–10%) are structurally blocked by OCCT's C++ design. LTO at compile time was empirically measured to cause **+21% binary bloat** due to LLVM cross-module inlining (cross-module inlining pulls unrelated translation units into the final wasm). The only actionable flag is wasm-opt `--fast-math` (~0.5–1.5% speed), which should be validated against the full test suite before adoption.
 
 **The next frontier for runtime performance is not compiler flags but architectural:**
 

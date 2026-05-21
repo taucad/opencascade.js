@@ -1,6 +1,6 @@
 # Breaking Changes — `opencascade.js@3.0.0`
 
-This guide is for **package consumers** upgrading from `opencascade.js@1.1.x` → `3.0.0`.
+This guide is for **package consumers** upgrading from v2 (`opencascade.js@2.x`, last published as `2.0.0-beta.b5ff984`) → v3 (`opencascade.js@3.0.0`).
 
 It lists every consumer-visible breaking change with **Before / After** code samples. All `After` snippets are taken directly from runnable smoke tests in [`tests/smoke/`](tests/smoke/) or from the published [`dist/opencascade_full.d.ts`](dist/opencascade_full.d.ts).
 
@@ -35,7 +35,7 @@ To run on older runtimes, build a custom variant from source with the `Os-noLTO-
 
 ### A1 — `dist/` layout: single triple, no facade
 
-Upstream shipped a barrel module that lazily required one of several pre-built variants from `dist/`. v3 ships exactly one variant — `opencascade_full.{js,wasm,d.ts}` — and exports its loader as the package's default export. There is no facade module to choose between variants.
+v2 shipped a barrel module that lazily required one of several pre-built variants from `dist/`. v3 ships exactly one variant — `opencascade_full.{js,wasm,d.ts}` — and exports its loader as the package's default export. There is no facade module to choose between variants.
 
 **Before**
 
@@ -58,22 +58,23 @@ const oc = await initOpenCascade({ locateFile });
 
 The package is `"type": "module"`. CommonJS entry points are gone. The Emscripten loader still needs a `locateFile` callback so it can resolve `opencascade_full.wasm` from your bundler's output directory or your Node `node_modules` layout.
 
-The runnable reference for both Node and browser usage is [`tests/smoke/helpers.ts`](tests/smoke/helpers.ts):
+The wasm binary is exposed via a `wasm` subpath export — `@taucad/opencascade.js/wasm` — which is the only supported way to reach the binary from consumer code. The same identifier works under Vite's `?url` suffix, Node's `import.meta.resolve`, Bun, and Deno.
+
+For Node ESM consumers:
 
 ```ts
-import * as fs from 'node:fs';
-import * as path from 'node:path';
-import type { OpenCascadeInstance } from 'opencascade.js';
-import init from 'opencascade.js';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+import type { OpenCascadeInstance } from '@taucad/opencascade.js';
+import init from '@taucad/opencascade.js';
 
-const BUILD_DIR = path.dirname(new URL(import.meta.resolve('opencascade.js/dist/opencascade_full.wasm')).pathname);
-const WASM_PATH = path.join(BUILD_DIR, 'opencascade_full.wasm');
+const WASM_DIR = dirname(fileURLToPath(import.meta.resolve('@taucad/opencascade.js/wasm')));
 
 let _oc: OpenCascadeInstance | undefined;
 export async function initOC(): Promise<OpenCascadeInstance> {
   if (!_oc) {
     _oc = await init({
-      locateFile: (filename: string) => path.join(BUILD_DIR, filename),
+      locateFile: (filename: string) => join(WASM_DIR, filename),
     });
   }
   return _oc;
@@ -83,13 +84,13 @@ export async function initOC(): Promise<OpenCascadeInstance> {
 For a Vite / browser app, resolve the WASM URL through your bundler:
 
 ```ts
-import init from 'opencascade.js';
-import wasmUrl from 'opencascade.js/dist/opencascade_full.wasm?url';
+import init from '@taucad/opencascade.js';
+import wasmUrl from '@taucad/opencascade.js/wasm?url';
 
 const oc = await init({ locateFile: () => wasmUrl });
 ```
 
-**Action**: pass `locateFile` to every `init()` call; remove any CommonJS `require()` of the package.
+**Action**: pass `locateFile` to every `init()` call and remove any CommonJS `require()` of the package. Reach for the wasm binary through the `@taucad/opencascade.js/wasm` subpath export — `dist/*` deep paths are not part of the package's public surface.
 
 ---
 
@@ -97,7 +98,7 @@ const oc = await init({ locateFile: () => wasmUrl });
 
 ### B1 — Suffix-free overloads
 
-Upstream exposed each C++ overload as its own `_N`-suffixed subclass (`gp_Pnt_2`, `gp_Pnt_3`, …) and required the consumer to pick the right one. v3 collapses every uniquely-arity overload behind the bare symbol with a value-based dispatcher; the runtime picks the right C++ overload from your argument types.
+v2 exposed each C++ overload as its own `_N`-suffixed subclass (`gp_Pnt_2`, `gp_Pnt_3`, …) and required the consumer to pick the right one. v3 collapses every uniquely-arity overload behind the bare symbol with a value-based dispatcher; the runtime picks the right C++ overload from your argument types.
 
 Reference smoke test: [`tests/smoke/smoke-suffix-free.test.ts`](tests/smoke/smoke-suffix-free.test.ts).
 
@@ -123,11 +124,9 @@ For genuinely ambiguous cases that share an arity (e.g. two constructors that bo
 
 **Action**: search-and-replace `_N` overload subclass names with the bare symbol. Most call sites collapse cleanly; the few that don't surface as TypeScript errors with the correct alternative spelling visible in IntelliSense.
 
-### B2 — Minimal transformation — class outputs mutate in place; envelopes only when JS truly needs them
+### B2 — Output-parameter return shape: class outputs mutate in place; envelopes only when JS truly needs them
 
-> **Updated 2026-05-13 (v3.0-beta)** — supersedes the prior "Universal Input-Passthrough RBV / read from the container" contract. The intermediate "envelope mirrors every output" approach has been replaced with a minimal transformation that keeps JS signatures recognisable to OCCT users.
-
-The codegen now emits the narrowest JS shape that faithfully represents each C++ method. Class output parameters (`gp_Pnt&`, `Bnd_Box&`, `GProp_GProps&`, `TopoDS_Shape&`, etc.) **are no longer echoed** as fields on a return envelope — the caller's instance is mutated in place and read directly from the input variable. Envelopes are emitted only when JavaScript genuinely needs a multi-field return: primitives that mutate, elided `Handle<T>&` outputs, or a mix of both alongside a native C++ return value.
+v2 surfaced every C++ method as its raw embind binding: caller-allocated class outputs that mutated in place, `{ current: 0 }` wrappers for primitive `&` outputs, and `new oc.Handle_<T>()` wrappers for `Handle<T>&` outputs. v3 emits the narrowest JS shape that faithfully represents each C++ method. Class output parameters (`gp_Pnt&`, `Bnd_Box&`, `GProp_GProps&`, `TopoDS_Shape&`, etc.) keep their v2 mutate-in-place mechanic — the caller's instance is mutated and read directly from the input variable, never echoed as a field on a return envelope. Primitive and enum outputs no longer need `{ current: 0 }` wrappers: pass any value of the type and read the result from a structured envelope. `Handle<T>&` outputs are elided entirely from the JS signature (see [§B3](#b3--non-const-handlet-output-positions-elided-from-the-js-signature)) and surface as envelope fields. Envelopes are emitted only when JavaScript genuinely needs a multi-field return: primitive/enum outputs, elided `Handle<T>&` outputs, or a mix of both alongside a native C++ return value.
 
 Reference smoke tests: [`tests/smoke/smoke-output-params.test.ts`](tests/smoke/smoke-output-params.test.ts), [`tests/smoke/smoke-properties.test.ts`](tests/smoke/smoke-properties.test.ts), [`tests/smoke/smoke-output-params-disposal.test.ts`](tests/smoke/smoke-output-params-disposal.test.ts). Type-level contract: [`tests/output-params.test-d.ts`](tests/output-params.test-d.ts), [`tests/disposable-containers.test-d.ts`](tests/disposable-containers.test-d.ts). Bindgen-shape regression guard: [`tests/bindgen-output-shape.test.ts`](tests/bindgen-output-shape.test.ts).
 
@@ -143,12 +142,12 @@ Reference smoke tests: [`tests/smoke/smoke-output-params.test.ts`](tests/smoke/s
 
 **The six return-shape rules:**
 
-1. **Class outputs never mirror into the return envelope.** A method that previously surfaced `result.thePlane` after mutating `thePlane` now mutates the caller's `thePlane` in place and never echoes it back. Regression: `tests/bindgen-output-shape.test.ts > no envelope mirrors a concrete class output as a non-return field`.
+1. **Class outputs never mirror into the return envelope.** When a method declares a class output (`gp_Pln&`, `gp_Pnt&`, `Bnd_Box&`, …), the caller's instance is mutated and read directly; the envelope (if any) carries only non-class outputs. Regression: `tests/bindgen-output-shape.test.ts > no envelope mirrors a concrete class output as a non-return field`.
 2. **Class arguments are mutated in place.** Pass your own freshly-constructed `gp_Pnt` / `Bnd_Box` / `GProp_GProps` / `TopoDS_Shape` and read it back after the call. There is no second copy.
 3. **Native return values surface directly when no envelope is required.** A method whose only outputs are class-typed (or none at all) returns its native C++ value (or `void`) — not an `{ returnValue }` wrapper.
 4. **Envelopes only for primitives, elided Handles, and mixed cases.** The envelope exists when JS cannot otherwise see a primitive/Handle output, and only those non-class outputs become fields.
-5. **The C++ return value lives at `envelope.returnValue`.** Renamed from the prior `result` field so it never collides with any OCCT parameter named `result`.
-6. **JSDoc is explicit.** Class params that mutate in place get a `Mutated in place; read the updated value from this argument after the call.` suffix (appended to the upstream Doxygen description when present). Envelope fields get a multi-line `@returns A result object with fields:` block.
+5. **The C++ return value lives at `envelope.returnValue`.** The name is reserved to avoid collision with OCCT parameters literally named `result` (roughly a dozen public OCCT methods declare a parameter under that name), letting both the C++ return and an OCCT-named `result` parameter coexist in the same envelope without one shadowing the other.
+6. **JSDoc is explicit.** Class params that mutate in place get a `Mutated in place; read the updated value from this argument after the call.` suffix (appended to the OCCT Doxygen description when present). Envelope fields get a multi-line `@returns A result object with fields:` block.
 
 **Placeholder conventions** (only relevant for envelope outputs — primitives and elided Handles):
 
@@ -159,19 +158,19 @@ Reference smoke tests: [`tests/smoke/smoke-output-params.test.ts`](tests/smoke/s
 | Concrete class output (`gp_Pnt&`, `gp_Vec&`, `Bnd_Box&`, `GProp_GProps&`, `TopoDS_Shape&`) | **Mutated in place** — construct it, pass it, read it back from your input variable. No envelope field.                                                        |
 | `Handle<T>&` output (any class)                                                            | **Position elided from the JS signature** — see [§B3](#b3--non-const-handlet-output-positions-elided-from-the-js-signature). Read from `envelope.<FieldName>`. |
 
-**Migration table** (canonical cases):
+**Call-site migration table** (canonical cases — `_N` suffixes shown only where v2 emitted one; the exact suffix index varied by overload set):
 
-| Method                                                                                                    | Old (`result` envelope mirrors output)                                                                               | New (minimal transformation)                                                                                                                                                                                                                           |
-| --------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `Geom_Curve.D0` (class out, void return)                                                                  | `using r = curve.D0(u, pt); console.log(r.P)`                                                                        | `curve.D0(u, pt); console.log(pt.X(), pt.Y(), pt.Z())`                                                                                                                                                                                                 |
-| `Geom_Curve.D2` (3 class outs, void return)                                                               | `using r = curve.D2(u, p, v1, v2); console.log(r.P, r.V1, r.V2)`                                                     | `curve.D2(u, p, v1, v2); console.log(p.X(), v1.X(), v2.X())`                                                                                                                                                                                           |
-| `Geom_Surface.Bounds` (4 primitive outs, void return)                                                     | `using r = surface.Bounds(0, 0, 0, 0); console.log(r.U1, r.U2, r.V1, r.V2)`                                          | unchanged — envelope persists for primitive outs                                                                                                                                                                                                       |
-| `BRepGProp.VolumeProperties` (class out, native return)                                                   | `using r = BRepGProp.VolumeProperties(shape, props); console.log(r.VProps.Mass(), r.result)`                         | `using props = new oc.GProp_GProps(); const epsilon = BRepGProp.VolumeProperties(shape, props); console.log(props.Mass(), epsilon)`                                                                                                                    |
-| `BRepBndLib.Add` (class out, void return)                                                                 | `using r = BRepBndLib.Add(shape, box, useTri); console.log(r.B.IsVoid())`                                            | `BRepBndLib.Add(shape, box, useTri); console.log(box.IsVoid())`                                                                                                                                                                                        |
-| `BRep_Builder.MakeVertex` (class out, void return)                                                        | `using r = builder.MakeVertex(v, p, tol); console.log(r.V)`                                                          | `builder.MakeVertex(v, p, tol); console.log(v.IsNull())`                                                                                                                                                                                               |
-| `XCAFDoc_ColorTool.GetColor` (boolean return, class out)                                                  | `using r = colorTool.GetColor(label, type, color); console.log(r.result, r.<colorField>)`                            | `const hasColor = colorTool.GetColor(label, type, color); console.log(hasColor, color.Red(), color.Green(), color.Blue())`                                                                                                                             |
-| `BRep_Tool.Curve` (Handle return, 2 primitive outs, 1 class loc out)                                      | `using r = BRep_Tool.Curve(edge, loc, 0, 0); console.log(r.Curve, r.First, r.Last)`                                  | `using r = BRep_Tool.Curve(edge, loc, 0, 0); console.log(r.returnValue, r.First, r.Last)` — class `loc` is mutated in place, primitives remain enveloped, native Handle return now at `returnValue`                                                    |
-| `XCAFDoc_ClippingPlaneTool.GetClippingPlane` (boolean return, 1 class out, 1 Handle out, 1 primitive out) | `using r = tool.GetClippingPlane(label, plane, capping); console.log(r.result, r.thePlane, r.theName, r.theCapping)` | `using r = tool.GetClippingPlane(label, plane, capping); console.log(r.returnValue, plane.<…>, r.theName, r.theCapping)` — `plane` mutated in place; envelope holds boolean return as `returnValue`, the Handle output, and the primitive `theCapping` |
+| Method                                                                                                    | v2 (caller-allocated `{ current: 0 }` / Handle placeholders, `_N`-suffixed)                                                                                                                                              | v3 (minimal transformation)                                                                                                                                                                                                                            |
+| --------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `Geom_Curve.D0` (class out, void return)                                                                  | `const pt = new oc.gp_Pnt(); curve.D0(u, pt); console.log(pt.X(), pt.Y(), pt.Z())`                                                                                                                                       | `curve.D0(u, pt); console.log(pt.X(), pt.Y(), pt.Z())` — identical mechanic                                                                                                                                                                            |
+| `Geom_Curve.D2` (3 class outs, void return)                                                               | `curve.D2(u, p, v1, v2); console.log(p.X(), v1.X(), v2.X())` — caller allocates `p`, `v1`, `v2`                                                                                                                          | `curve.D2(u, p, v1, v2); console.log(p.X(), v1.X(), v2.X())` — identical mechanic                                                                                                                                                                      |
+| `Geom_Surface.Bounds` (4 primitive outs, void return)                                                     | `const u1 = { current: 0 }, u2 = { current: 0 }, v1 = { current: 0 }, v2v = { current: 0 }; surface.Bounds(u1, u2, v1, v2v); console.log(u1.current, u2.current, v1.current, v2v.current)`                               | `using r = surface.Bounds(0, 0, 0, 0); console.log(r.U1, r.U2, r.V1, r.V2)` — primitives ride the envelope; `{ current: 0 }` wrappers gone                                                                                                             |
+| `BRepGProp.VolumeProperties` (class out, native return)                                                   | `const props = new oc.GProp_GProps(); const epsilon = oc.BRepGProp.VolumeProperties(shape, props); console.log(props.Mass(), epsilon)`                                                                                  | `using props = new oc.GProp_GProps(); const epsilon = BRepGProp.VolumeProperties(shape, props); console.log(props.Mass(), epsilon)` — identical mechanic; `using` optional but recommended                                                            |
+| `BRepBndLib.Add` (class out, void return)                                                                 | `const box = new oc.Bnd_Box(); oc.BRepBndLib.Add(shape, box, useTri); console.log(box.IsVoid())`                                                                                                                         | `BRepBndLib.Add(shape, box, useTri); console.log(box.IsVoid())` — reuse the caller-allocated `box`                                                                                                                                                     |
+| `BRep_Builder.MakeVertex` (class out, void return)                                                        | `const v = new oc.TopoDS_Vertex(); builder.MakeVertex(v, p, tol); console.log(v.IsNull())`                                                                                                                               | `builder.MakeVertex(v, p, tol); console.log(v.IsNull())` — identical mechanic                                                                                                                                                                          |
+| `XCAFDoc_ColorTool.GetColor` (boolean return, class out)                                                  | `const color = new oc.Quantity_Color(); const hasColor = colorTool.GetColor_N(label, type, color); console.log(hasColor, color.Red(), color.Green(), color.Blue())`                                                      | `const hasColor = colorTool.GetColor(label, type, color); console.log(hasColor, color.Red(), color.Green(), color.Blue())` — class output stays caller-allocated; boolean return surfaces directly (no envelope: only output is a class)               |
+| `BRep_Tool.Curve` (Handle return, 2 primitive outs, 1 class `loc` out)                                    | `const first = { current: 0 }, last = { current: 0 }; const handle = oc.BRep_Tool.Curve_N(edge, loc, first, last); console.log(handle, first.current, last.current)` — class `loc` caller-allocated, mutated in place    | `using r = BRep_Tool.Curve(edge, loc, 0, 0); console.log(r.returnValue, r.First, r.Last)` — class `loc` still mutated in place; primitives ride the envelope; native Handle return at `r.returnValue`                                                  |
+| `XCAFDoc_ClippingPlaneTool.GetClippingPlane` (boolean return, 1 class out, 1 Handle out, 1 primitive out) | `const theName = new oc.Handle_TCollection_HAsciiString(); const theCapping = { current: false }; const hasPlane = tool.GetClippingPlane_N(label, plane, theName, theCapping); console.log(hasPlane, plane, theName, theCapping.current)` | `using r = tool.GetClippingPlane(label, plane, capping); console.log(r.returnValue, plane.<…>, r.theName, r.theCapping)` — `plane` mutated in place; Handle output elided ([§B3](#b3--non-const-handlet-output-positions-elided-from-the-js-signature)); envelope holds boolean return as `returnValue`, the Handle output, and the primitive `theCapping` |
 
 How the C++ layer mutates a JS-supplied class argument: the codegen accepts the slot as `::emscripten::val`, then dereferences a raw-pointer cast back into the registered class instance:
 
@@ -188,27 +187,28 @@ The `val::as<T*>(allow_raw_pointers())` + deref pattern is the only form that ro
 **Action**:
 
 1. Walk the decision tree above for each call site and determine the new return shape.
-2. For class output params: stop reading from a return envelope; read directly from the input variable after the call.
-3. For envelope returns: rename every `r.result` to `r.returnValue` (see [§B4](#b4--envelope-return-field-renamed-from-result-to-returnvalue)).
-4. Drop any `using` declaration on calls that now return `void` or a non-disposable native value; keep `using` for envelopes and class returns that own C++ resources.
+2. Class output params keep their v2 mechanic — caller-allocated, mutated in place, read back from your input variable. No code change beyond dropping any `_N` suffix on the method name.
+3. For primitive / enum `&` output params: drop the `{ current: 0 }` (or `{ current: false }`, etc.) wrappers — pass any value of the type and read the result from `envelope.<FieldName>` instead of `arg.current`.
+4. For `Handle<T>&` output params: stop allocating `new oc.Handle_<T>()` placeholders — drop the position from the call entirely and read the freshly-assigned Handle from `envelope.<FieldName>` (see [§B3](#b3--non-const-handlet-output-positions-elided-from-the-js-signature)).
+5. Where the C++ method has a native return value and the envelope appears, read it as `envelope.returnValue`.
+6. Adopt `using` on envelope returns and class returns that own C++ resources — v3 wires `[Symbol.dispose]()` into both. Calls that return `void` or a primitive don't need it.
 
 ### B3 — Non-const `Handle<T>&` output positions elided from the JS signature
 
-> **Updated 2026-05-13 (v3.0-beta)** — composes with the minimal-transformation decision tree in [§B2](#b2--minimal-transformation--class-outputs-mutate-in-place-envelopes-only-when-js-truly-needs-them). The Handle-output elision is the row that makes an envelope appear in the first place when there are no other non-class outputs.
+Methods with non-const `Handle<T>&` output parameters no longer accept a JS-side placeholder for those positions. v3 drops the Handle position from the JS-facing signature entirely; the C++ optional_override lambda declares a stack-local null Handle internally and forwards it into the call by reference. The resulting wrapper is surfaced as a field on the return envelope, disposed by the envelope's `[Symbol.dispose]`.
 
-Methods with non-const `Handle<T>&` output parameters no longer accept a JS-side placeholder for those positions. The codegen drops the Handle position from the JS-facing signature entirely; the C++ optional_override lambda declares a stack-local null Handle internally and forwards it into the call by reference. The resulting wrapper is surfaced as a container field disposed by the envelope's `[Symbol.dispose]`.
-
-Rationale: OCCT's contract guarantees that non-const `Handle<T>&` is output-only — C++ never reads the input. The prior placeholder was a gratuitous wrapper allocation (JS Embind wrapper + C++ smart_ptr) that doubled the dispose path and produced a "double dispose stutter" when the input variable was disposed alongside the container field aliasing it. Empirical benchmarks showed ~2.29× wall-clock speedup and half the JS wrapper allocations after elision.
+Rationale: OCCT's contract guarantees that non-const `Handle<T>&` is output-only — C++ never reads the input. v2 required callers to allocate a placeholder Handle wrapper (`new oc.Handle_<T>()`) for each such position; that allocation was write-only from C++'s perspective and pure overhead from JS's. v3 elides those positions, eliminating the JS Embind wrapper and C++ `smart_ptr` allocation per call. Empirical benchmarks show ~2.29× wall-clock speedup and half the JS wrapper allocations on affected call sites.
 
 Reference smoke test: [`tests/smoke/smoke-handle-output-elision.test.ts`](tests/smoke/smoke-handle-output-elision.test.ts).
 
-**Before** (under B2's universal Input-Passthrough RBV):
+**Before** (v2 — caller allocates a Handle placeholder for every `Handle<T>&` output position):
 
 ```ts
-using poly = new oc.Poly_PolygonOnTriangulation(0, false);
-using tri = new oc.Poly_Triangulation();
-using r = oc.BRep_Tool.PolygonOnTriangulation(edge, poly, tri, loc);
-console.log(r.P, r.T);
+const poly = new oc.Handle_Poly_PolygonOnTriangulation();
+const tri = new oc.Handle_Poly_Triangulation();
+oc.BRep_Tool.PolygonOnTriangulation(edge, poly, tri, loc);
+console.log(poly, tri); // populated in place by C++
+// loc (a class output) is mutated in place — read from your local `loc`.
 ```
 
 **After**:
@@ -222,49 +222,36 @@ console.log(r.P, r.T); // freshly-assigned Handles owned by r's Symbol.dispose
 
 Other affected signatures (full list materialises in `dist/opencascade_full.d.ts`):
 
-| Method                                                | Before (placeholder-style)                                                           | After (elided)                                               |
-| ----------------------------------------------------- | ------------------------------------------------------------------------------------ | ------------------------------------------------------------ |
-| `GeomInt_IntSS.BuildPCurves`                          | `BuildPCurves(f, l, Tol, S, C, /* placeholder */ null)`                              | `BuildPCurves(f, l, Tol, S, C)`                              |
-| `ShapeAnalysis_Edge.TreatRLine`                       | `TreatRLine(RL, S1, S2, /* placeholder */ null, null, null, tol)`                    | `TreatRLine(RL, S1, S2, tol)`                                |
-| `ShapeConstruct.JoinCurves` (and many `New*` methods) | `NewCurve(edge, loc, tol, /* placeholder */ null)`                                   | `NewCurve(edge, loc, tol)`                                   |
-| `HelixGeom_BuilderApproxCurve3d.ApprHelix`            | `ApprHelix(t1, t2, pitch, rStart, taper, isCW, tol, /* placeholder */ null, maxErr)` | `ApprHelix(t1, t2, pitch, rStart, taper, isCW, tol, maxErr)` |
+| Method                                                | v2 (caller allocates `new oc.Handle_<T>()` for each elided slot)                                                                                  | v3 (slot elided)                                             |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| `GeomInt_IntSS.BuildPCurves`                          | `BuildPCurves(f, l, Tol, S, C, new oc.Handle_Geom2d_Curve())`                                                                                     | `BuildPCurves(f, l, Tol, S, C)`                              |
+| `ShapeAnalysis_Edge.TreatRLine`                       | `TreatRLine(RL, S1, S2, new oc.Handle_Geom_Curve(), new oc.Handle_Geom2d_Curve(), new oc.Handle_Geom2d_Curve(), tol)`                             | `TreatRLine(RL, S1, S2, tol)`                                |
+| `ShapeConstruct.JoinCurves` (and many `New*` methods) | `NewCurve(edge, loc, tol, new oc.Handle_Geom_Curve())`                                                                                            | `NewCurve(edge, loc, tol)`                                   |
+| `HelixGeom_BuilderApproxCurve3d.ApprHelix`            | `ApprHelix(t1, t2, pitch, rStart, taper, isCW, tol, new oc.Handle_Geom_Curve(), maxErr)`                                                          | `ApprHelix(t1, t2, pitch, rStart, taper, isCW, tol, maxErr)` |
 
-**Placeholder table delta** (refines the `Handle<T>&` row in the [§B2 placeholder table](#b2--minimal-transformation--class-outputs-mutate-in-place-envelopes-only-when-js-truly-needs-them)):
-
-| Slot type                                                  | Placeholder                                                                                                                                                                                     |
-| ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Non-const `Handle<T>&` output (concrete or abstract class) | **Elided — caller passes nothing for this position. Read from `envelope.<fieldName>` (see [§B4](#b4--envelope-return-field-renamed-from-result-to-returnvalue) for the `returnValue` rename).** |
-
-Primitive and enum output positions retain the in-passthrough placeholder contract from [§B2](#b2--minimal-transformation--class-outputs-mutate-in-place-envelopes-only-when-js-truly-needs-them); concrete-class outputs mutate in place; only `Handle<T>&` outputs are elided.
+(The exact Handle wrapper class name varied by method; the shape — one allocation per `Handle<T>&` output slot — was uniform across v2.)
 
 **Action**:
 
 1. Drop every non-const `Handle<T>&` argument from your call sites; the position is no longer part of the JS signature.
-2. Continue to read every result field from the returned envelope (the field name and shape are unchanged).
-3. Stop allocating `new oc.Handle_*()` placeholders for output-only Handle slots — they were never used by C++ and now have no effect.
+2. Stop allocating `new oc.Handle_<T>()` placeholders for output-only Handle slots — C++ never read them, and v3 has no slot to put them in.
+3. Read the freshly-assigned Handle from `envelope.<FieldName>` on the returned envelope (in v2 you read it from the placeholder you passed in; v3 puts it on the envelope instead).
 
-### B4 — Envelope return field renamed from `result` to `returnValue`
+### B4 — Envelope return field naming: `envelope.returnValue`
 
-> **Updated 2026-05-13 (v3.0-beta)** — composes with the minimal-transformation decision tree in [§B2](#b2--minimal-transformation--class-outputs-mutate-in-place-envelopes-only-when-js-truly-needs-them).
+Inside every envelope return ([§B2](#b2--output-parameter-return-shape-class-outputs-mutate-in-place-envelopes-only-when-js-truly-needs-them) row 4 and 5), the field that surfaces the C++ method's native return value is `returnValue`. The name is reserved to avoid collision with OCCT parameters literally named `result` — roughly a dozen public OCCT methods declare a parameter under that name, so the envelope keeps `returnValue` exclusively for the C++ method's native return and surfaces an OCCT-named `result` parameter as `envelope.result` without one shadowing the other.
 
-Inside every envelope return ([§B2](#b2--minimal-transformation--class-outputs-mutate-in-place-envelopes-only-when-js-truly-needs-them) row 4 and 5), the field that surfaces the C++ method's native return value is now `returnValue` rather than `result`. The rename eliminates a long-standing collision with OCCT parameters named `result` (OCCT uses `result` as a parameter name in roughly a dozen public methods), letting both the C++ return and an OCCT-named `result` parameter coexist in the same envelope without one shadowing the other.
+Concretely:
 
-The rename is mechanical and applies to every envelope that carries a non-`void` C++ return alongside one or more primitive/enum/Handle outputs. Envelopes that have no C++ return value (the `void`-return + primitive-outputs row) are unaffected — they never had a `result` field.
+- `BRep_Tool.Curve` (Handle return + primitive outs): `r.returnValue, r.First, r.Last`
+- `XCAFDoc_ClippingPlaneTool.GetClippingPlane` (boolean return + Handle + primitive): `r.returnValue, r.theName, r.theCapping`
+- `FairCurve_Batten.Compute` (`FairCurve_AnalysisCode` enum return + primitive outs): `r.returnValue, r.<paramOuts>`
 
-**Migration table** (canonical cases):
-
-| Method                                                                             | Before                              | After                                    |
-| ---------------------------------------------------------------------------------- | ----------------------------------- | ---------------------------------------- |
-| `BRep_Tool.Curve` (Handle return + primitive outs)                                 | `r.result, r.First, r.Last`         | `r.returnValue, r.First, r.Last`         |
-| `XCAFDoc_ClippingPlaneTool.GetClippingPlane` (boolean + Handle + primitive)        | `r.result, r.theName, r.theCapping` | `r.returnValue, r.theName, r.theCapping` |
-| `FairCurve_Batten.Compute` (`FairCurve_AnalysisCode` enum return + primitive outs) | `r.result, r.<paramOuts>`           | `r.returnValue, r.<paramOuts>`           |
-| Any other envelope that previously surfaced `r.result`                             | `r.result`                          | `r.returnValue`                          |
-
-Envelopes whose C++ return is `void` (e.g. `Geom_Surface.Bounds`) never had a `result` field and remain unchanged — the envelope only carries the primitive/Handle outputs.
+Envelopes whose C++ return is `void` (e.g. `Geom_Surface.Bounds`) do not carry a `returnValue` field — they only carry the primitive/Handle outputs.
 
 **Collision fallback** — if a future OCCT method declares a parameter named `returnValue`, the codegen falls back to a suffixed name (`returnValue_`) for the parameter so the C++ return always stays at `envelope.returnValue`. This makes `returnValue` the stable, documented field name across every release.
 
-**Action**: regex-replace `\.result\b` → `.returnValue` in your call sites where the receiver is an envelope returned from an OCCT method. Calls that read a class output (now mutated in place; see [§B2](#b2--minimal-transformation--class-outputs-mutate-in-place-envelopes-only-when-js-truly-needs-them)) drop the `.result` access entirely.
+**Action**: when adopting the v3 envelope shape ([§B2](#b2--output-parameter-return-shape-class-outputs-mutate-in-place-envelopes-only-when-js-truly-needs-them)), read the native C++ return as `envelope.returnValue`. v2 surfaced the native return directly as the call expression's value (no envelope), so there is no field rename to apply — the change is structural, not a search-and-replace.
 
 ---
 
@@ -272,7 +259,7 @@ Envelopes whose C++ return is `void` (e.g. `Geom_Surface.Bounds`) never had a `r
 
 ### C1 — Why this changed
 
-Upstream's exception build wrapped every potentially-throwing call site in a JavaScript `invoke_*` trampoline (`-fexceptions` / `-sDISABLE_EXCEPTION_CATCHING=0`). That added ~80% gzipped binary overhead.
+v2's exception build wrapped every potentially-throwing call site in a JavaScript `invoke_*` trampoline (`-fexceptions` / `-sDISABLE_EXCEPTION_CATCHING=0`). That added ~80% gzipped binary overhead.
 
 v3 uses native WASM exceptions (`-fwasm-exceptions`): the `throw` and `catch` instructions live in the WASM bytecode itself, the JS trampolines disappear, and the gzipped exception overhead drops to ~12%. The happy path has zero overhead.
 
@@ -347,7 +334,7 @@ OCCT's `TopoDS` is a C++ namespace, not a class, so Embind cannot bind it direct
 
 Reference: [`tests/smoke/smoke-output-params.test.ts:126`](tests/smoke/smoke-output-params.test.ts), `dist/opencascade_full.d.ts:202837`.
 
-**Before** (upstream patterns varied — `prototype.Edge`, `_TopoDS_Edge`, manual `getPointer`, etc.)
+**Before** (v2 patterns varied — `prototype.Edge`, `_TopoDS_Edge`, manual `getPointer`, etc.)
 
 ```ts
 const edge = oc._TopoDS_Edge(shape);
@@ -401,7 +388,7 @@ console.log(min.X(), min.Y(), min.Z(), max.X(), max.Y(), max.Z());
 
 ### D3 — `Poly_Triangulation` normals API
 
-Upstream's `HasNormals()` + per-pass output reference is replaced by `HasNormals()` + value-returning `Normal(index)`.
+v2's `HasNormals()` + per-pass output reference is replaced by `HasNormals()` + value-returning `Normal(index)`.
 
 Reference: `dist/opencascade_full.d.ts:20576-20624`.
 
@@ -428,7 +415,7 @@ if (tri.HasNormals()) {
 }
 ```
 
-To set normals, use `tri.SetNormal(i, gpDir)` (replaces upstream's mutate-in-place callbacks).
+To set normals, use `tri.SetNormal(i, gpDir)` (replaces v2's mutate-in-place callbacks).
 
 **Action**: remove caller-allocated `gp_Dir` placeholders from normal iteration loops.
 
@@ -438,7 +425,7 @@ OCCT V8 reorganised the constructor overload set. The previously-common 5-arity 
 
 Reference: `dist/opencascade_full.d.ts:82824-82831`.
 
-**Before** (upstream `_N`-suffixed dispatch)
+**Before** (v2 `_N`-suffixed dispatch)
 
 ```ts
 const mesh = new oc.BRepMesh_IncrementalMesh_2(shape, 0.1, false, 0.5, false);
@@ -496,7 +483,7 @@ Then call it as `oc.OCJS_ShapeHasher.HashCode(shape, 1024)`.
 
 ### D6 — Constructor and method "renumbering" advice is inverted from V7.x
 
-Upstream V7.x docs told consumers to read the `_N` suffix off the generated `.d.ts` and use it verbatim. v3's suffix-free overloads (Section B1) collapse most of those — so the new advice is:
+OCCT V7.x-era v2 docs told consumers to read the `_N` suffix off the generated `.d.ts` and use it verbatim. v3's suffix-free overloads (Section B1) collapse most of those — so the new advice is:
 
 1. Drop the `_N` suffix.
 2. Only consult the `.d.ts` for the genuinely ambiguous cases that still emit suffixes (constructors / methods with two overloads sharing an arity).
@@ -509,7 +496,7 @@ Every same-arity method-overload group is now backed by a **single** embind val-
 
 Two consumer-visible consequences:
 
-1. **JS-indistinguishable primitive pairs are collapsed at codegen time.** OCCT V8's NCollection `size_t` API migration ([upstream `#1212`](https://dev.opencascade.org/content/occt-800)) introduced parallel `int`/`size_t` overloads for every indexed-container accessor (`NCollection_IndexedMap::FindKey`, `Substitute`, `RemoveLast` callsites, etc.). JS classifies both as `"number"`, so the dispatcher cannot distinguish them at runtime. The codegen now keeps the V8-modern `size_t` variant and drops the legacy `int` variant — only one entry survives per JS-equivalent signature. The `_N`-suffixed variants for these specific pairs are no longer emitted because there is no longer ambiguity to disambiguate.
+1. **JS-indistinguishable primitive pairs are collapsed at codegen time.** OCCT V8's NCollection `size_t` API migration ([OCCT `#1212`](https://dev.opencascade.org/content/occt-800)) introduced parallel `int`/`size_t` overloads for every indexed-container accessor (`NCollection_IndexedMap::FindKey`, `Substitute`, `RemoveLast` callsites, etc.). JS classifies both as `"number"`, so the dispatcher cannot distinguish them at runtime. The codegen now keeps the V8-modern `size_t` variant and drops the legacy `int` variant — only one entry survives per JS-equivalent signature. The `_N`-suffixed variants for these specific pairs are no longer emitted because there is no longer ambiguity to disambiguate.
 
 2. **Mixed static + instance same-arity groups now emit both `class_function` and `function`.** A handful of OCCT classes expose `static` and non-`static` overloads with identical arity (e.g. `XCAFDoc_ColorTool::GetColor` has a `static GetColor(TDF_Label, …)` family and an instance `GetColor(TopoDS_Shape, …)` family with the same arity). Previously the entire group was registered as one instance `.function(…)` and `oc.Class.foo(...)` static call sites hit an arity mismatch. Both shapes now exist on the JS class: `oc.XCAFDoc_ColorTool.GetColor(label, type, color)` (static) and `colorTool.GetColor(shape, type, color)` (instance) both dispatch correctly.
 
@@ -548,55 +535,63 @@ If your application depends on any of these and you cannot migrate, build a cust
 
 Skip if you only consume the prebuilt tarball.
 
-### F1 — `--preset` → `--config`
+### F1 — Build CLI: `build-wasm.sh` with explicit subcommands and named configurations
 
-The `--preset` flag and the `build-configs/presets/` directory are gone. The replacement is `--config <name>`, where `<name>` is a key in [`build-configs/configurations.json`](build-configs/configurations.json).
+v2's source build was driven by Python scripts inside the Docker image — the image's `ENTRYPOINT` was `src/buildFromYaml.py`, and invocation passed your YAML config path straight through. v3 collapses the entry surface into a single shell wrapper, `build-wasm.sh`, with explicit subcommands (`full`, `link`, `validate`) and an optional `--config <name>` flag that selects an optimisation profile from [`build-configs/configurations.json`](build-configs/configurations.json). The Docker image's `ENTRYPOINT` is now `build-wasm.sh`, so the same arguments pass through inside or outside Docker.
 
-**Before**
+**Before** (v2 — Docker entrypoint runs `buildFromYaml.py` against your YAML; native builds called the Python scripts directly):
 
 ```bash
-./build-wasm.sh --preset O3-maxperf full build-configs/full.yml
-./build-wasm.sh --preset Os-minsize full build-configs/full.yml
+docker run --rm -v "$(pwd):/src" donalffons/opencascade.js /src/your-config.yml
+# or, on a host with the source tree:
+python3 src/buildFromYaml.py /path/to/your-config.yml
 ```
 
-**After**
+**After** (v3 — explicit subcommand, optional `--config` flag, same Docker / host parity):
 
 ```bash
+docker run --rm -v "$(pwd):/src" ghcr.io/taucad/opencascade.js:beta \
+  --config default full /src/your-config.yml
+# or, on a host with the source tree:
 ./build-wasm.sh --config default full build-configs/full.yml
 ./build-wasm.sh --config Os-noLTO-simd full build-configs/full.yml
 ./build-wasm.sh --config O3-wasm-exc-simd full build-configs/full.yml
 ./build-wasm.sh --config O0-debug full build-configs/full.yml
 ```
 
-The five shipped configurations (full env-var matrix in [BUILD_SYSTEM.md](BUILD_SYSTEM.md)):
+The six shipped configurations (full env-var matrix in [BUILD_SYSTEM.md](BUILD_SYSTEM.md)):
 
-| Name               | Purpose                                                                                           |
-| ------------------ | ------------------------------------------------------------------------------------------------- |
-| `default`          | What the published tarball is built with: `-O3`, SIMD, BigInt, `EVAL_CTORS=2`, Closure, converge. |
-| `O3-wasm-exc-simd` | Like `default` but with native WASM exceptions on.                                                |
-| `O3-noLTO-simd`    | Performance variant, no Closure, no converge — useful when iterating on the link step.            |
-| `Os-noLTO-simd`    | Size-optimised (`-Os`), still fast enough for browser delivery.                                   |
-| `O0-debug`         | Fastest build, no SIMD, no exceptions — debug only.                                               |
+| Name                | Purpose                                                                                           |
+| ------------------- | ------------------------------------------------------------------------------------------------- |
+| `default`           | What the published tarball is built with: `-O3`, SIMD, BigInt, `EVAL_CTORS=2`, Closure, converge. |
+| `O3-wasm-exc-simd`  | Like `default` but with native WASM exceptions on.                                                |
+| `O3-noLTO-simd`     | Performance variant, no Closure, no converge — useful when iterating on the link step.            |
+| `Os-noLTO-simd`     | Size-optimised (`-Os`), still fast enough for browser delivery.                                   |
+| `O3-multi-threaded` | `-O3` + SIMD + native exceptions, threading on. For SAB-enabled deployments.                      |
+| `O0-debug`          | Fastest build, no SIMD, no exceptions — debug only.                                               |
 
-The old preset names (`O2-balanced`, `O3-maxperf`, `Os-minsize`) no longer exist. Add your own entry to `configurations.json` for new variants.
+v2 had no named-configuration system — the YAML's `emccFlags` block was the only knob, and consumers hand-tuned per build. v3's `--config <name>` layers curated defaults on top of your YAML; add your own entry to `configurations.json` if none of the shipped profiles fit.
 
-### F2 — `full-exceptions.yml` merged into `full.yml`
+### F2 — Reference `full.yml` bundled in the image; exceptions on by default
 
-The exception-enabled variant used to live in a separate YAML. v3 ships exceptions on by default in the single `full.yml` — its `emccFlags` block carries `-fwasm-exceptions`, `-sEXPORT_EXCEPTION_HANDLING_HELPERS`, `-sWASM_BIGINT`, `-sEVAL_CTORS=2`, `-msimd128`.
+v2 shipped example YAML templates (`customBuild_example.yml` and friends) and expected consumers to hand-write their config from scratch. v3 bundles a reference `full.yml` inside the Docker image at `/opencascade.js/build-configs/full.yml` — the same ~4,400-symbol list the published tarball builds from — so consumers can extract it as a starting point and trim down. The reference YAML's `emccFlags` block carries v3's defaults: `-fwasm-exceptions`, `-sEXPORT_EXCEPTION_HANDLING_HELPERS`, `-sWASM_BIGINT`, `-sEVAL_CTORS=2`, `-msimd128`.
 
-**Before**
-
-```bash
-./build-wasm.sh full build-configs/full-exceptions.yml
-```
-
-**After**
+**v3 workflow** — extract the reference, trim, build:
 
 ```bash
-./build-wasm.sh full build-configs/full.yml
+# Extract the reference YAML out of the image
+docker run --rm --entrypoint cat \
+  ghcr.io/taucad/opencascade.js:beta \
+  /opencascade.js/build-configs/full.yml > my-config.yml
+
+# Edit my-config.yml to trim symbols, then build
+docker run --rm -v "$(pwd):/src" ghcr.io/taucad/opencascade.js:beta \
+  --config default full /src/my-config.yml
 ```
 
 To build a non-exceptions variant, pick a configuration that sets `OCJS_EXCEPTIONS=0` (`Os-noLTO-simd`, `O3-noLTO-simd`, `default`) and let the YAML's exception flags get overridden by the env, or copy `full.yml` and strip the EH lines.
+
+See the [trim-symbols guide](docs/guides/trim-symbols.md) for the full extract-trim-build workflow.
 
 ### F3 — Removed and renamed Emscripten flags
 
