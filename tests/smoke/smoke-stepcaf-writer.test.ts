@@ -2,11 +2,12 @@
  * Smoke tests: STEPCAFControl_Writer.
  *
  * Guards two source patches in the STEPCAFControl package that are required
- * for WASM trimming: `patch_stepcaf_noexcept.py` (rewrites the destructor as
- * `noexcept` so it can be inlined and stripped) and `patch_stepcaf_dyntype.py`
- * (rewrites `DynamicType()` to drop the unused RTTI lookup). Both are easy to
- * regress because they touch generated method bodies. These tests verify that
- * colored STEP export still round-trips correctly after those rewrites.
+ * for WASM trimming: the `STEPCAFControl_ActorWrite` entry in
+ * `patch_noexcept_destructors.py` (rewrites the destructor as `noexcept` so it
+ * can be inlined and stripped) and `patch_stepcaf_dyntype.py` (rewrites
+ * `DynamicType()` to drop the unused RTTI lookup). Both are easy to regress
+ * because they touch generated method bodies. These tests verify that colored
+ * STEP export still round-trips correctly after those rewrites.
  */
 import { describe, it, expect, beforeAll } from 'vitest';
 import { initOC, getOC, wasmExists } from './helpers.js';

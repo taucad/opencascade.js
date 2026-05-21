@@ -100,7 +100,6 @@ TARGETS = [
         cxx_marker="IMPLEMENT_STANDARD_RTTIEXT(BRepBlend_Line, Standard_Transient)",
     ),
 
-    # Existing patch target (STEPCAFControl_ActorWrite) — supersedes patch_stepcaf_noexcept.py
     PatchTarget(
         class_name="STEPCAFControl_ActorWrite",
         hxx_rel="src/DataExchange/TKDESTEP/STEPCAFControl/STEPCAFControl_ActorWrite.hxx",

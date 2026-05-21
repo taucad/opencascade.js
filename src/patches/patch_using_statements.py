@@ -2,9 +2,14 @@
 """Patch OCCT V8 source files for Embind compatibility.
 
 Replaces problematic C++ `using Base::Method;` declarations with explicit
-forwarding methods (Embind can't bind name-introducing `using` declarations),
-applies V8-final bug fixes, and adds macro `#undef` guards for headers that
-leak preprocessor symbols out of `.lxx` inline files.
+forwarding methods (Embind can't bind name-introducing `using` declarations)
+and adds macro `#undef` guards for headers that leak preprocessor symbols out
+of `.lxx` inline files.
+
+Only patches classes that are actually bound by the bindgen — Visualization-
+module classes (AIS, V3d, Graphic3d, ...) are excluded from the build via
+`-DBUILD_MODULE_Visualization=OFF` and `bindgen-filters.yaml`, so they don't
+need (and never received) corresponding patches here.
 
 Honors the `OCCT_ROOT` environment variable (matches the convention used by
 every other patch in this directory). Idempotent — re-running on an already
@@ -65,15 +70,17 @@ def patch_file(filepath: str, old_text: str, new_text: str) -> bool:
 
 
 def apply_using_statement_patches(occt_src: str) -> None:
+    """Re-publish methods hidden behind protected inheritance / `using` declarations.
+
+    The bindgen drops every `USING_DECLARATION` cursor (see
+    `src/ocjs_bindgen/filters/method_or_properties.py`), so without these
+    explicit forwarders the methods are invisible to JS callers. Only classes
+    that are actually bound need patching — Visualization-module classes
+    (AIS, V3d, Graphic3d, ...) are excluded via `-DBUILD_MODULE_Visualization=OFF`
+    and `bindgen-filters.yaml` and therefore never received corresponding
+    entries here.
+    """
     patches = [
-        {
-            "file": "AIS_Shape.hxx",
-            "old": "  using AIS_InteractiveObject::BoundingBox;",
-            "new": (
-                "  // using AIS_InteractiveObject::BoundingBox;\n"
-                "  void BoundingBox (Bnd_Box& theBndBox) override { AIS_InteractiveObject::BoundingBox(theBndBox); }"
-            ),
-        },
         {
             "file": "BlendFunc_ChamfInv.hxx",
             "old": "  using Blend_FuncInv::Set;",
@@ -90,48 +97,6 @@ def apply_using_statement_patches(occt_src: str) -> None:
                 "  // using Blend_FuncInv::Set;\n"
                 "  void Set (const bool OnFirst, const occ::handle<Adaptor2d_Curve2d>& COnSurf) override"
                 " { BlendFunc_GenChamfInv::Set(OnFirst, COnSurf); }"
-            ),
-        },
-        {
-            "file": "Graphic3d_Buffer.hxx",
-            "old": "  using NCollection_Buffer::ChangeData;\n  using NCollection_Buffer::Data;",
-            "new": (
-                "  // using NCollection_Buffer::ChangeData;\n"
-                "  // using NCollection_Buffer::Data;\n"
-                "  const Standard_Byte* Data() const { return NCollection_Buffer::Data(); }\n"
-                "  Standard_Byte* ChangeData() { return NCollection_Buffer::ChangeData(); }"
-            ),
-        },
-        {
-            "file": "V3d_DirectionalLight.hxx",
-            "old": "  using Graphic3d_CLight::SetDirection;",
-            "new": (
-                "  // using Graphic3d_CLight::SetDirection;\n"
-                "  void SetDirection (const gp_Dir& theDir) { Graphic3d_CLight::SetDirection(theDir); }\n"
-                "  void SetDirection (double theVx, double theVy, double theVz)"
-                " { Graphic3d_CLight::SetDirection(theVx, theVy, theVz); }"
-            ),
-        },
-        {
-            "file": "V3d_SpotLight.hxx",
-            "old": (
-                "  using Graphic3d_CLight::Position;\n"
-                "  using Graphic3d_CLight::SetDirection;\n"
-                "  using Graphic3d_CLight::SetPosition;"
-            ),
-            "new": (
-                "  // using Graphic3d_CLight::Position;\n"
-                "  // using Graphic3d_CLight::SetDirection;\n"
-                "  // using Graphic3d_CLight::SetPosition;\n"
-                "  void SetDirection (const gp_Dir& theDir) { Graphic3d_CLight::SetDirection(theDir); }\n"
-                "  void SetDirection (double theVx, double theVy, double theVz)"
-                " { Graphic3d_CLight::SetDirection(theVx, theVy, theVz); }\n"
-                "  const gp_Pnt& Position() const { return Graphic3d_CLight::Position(); }\n"
-                "  void Position (double& theX, double& theY, double& theZ) const"
-                " { Graphic3d_CLight::Position(theX, theY, theZ); }\n"
-                "  void SetPosition (const gp_Pnt& thePosition) { Graphic3d_CLight::SetPosition(thePosition); }\n"
-                "  void SetPosition (double theX, double theY, double theZ)"
-                " { Graphic3d_CLight::SetPosition(theX, theY, theZ); }"
             ),
         },
         {
@@ -182,32 +147,6 @@ def apply_using_statement_patches(occt_src: str) -> None:
             patch_file(filepath, patch["old"], patch["new"])
 
 
-def apply_occt_v8_bugfixes(occt_src: str) -> None:
-    patches = [
-        {
-            "file": "MathLin_EigenSearch.hxx",
-            "old": (
-                "  MathUtils::Status          Status = MathUtils::Status::NotConverged;\n"
-                "  std::optional<math_Vector> EigenValues;  //!< Computed eigenvalues"
-            ),
-            "new": (
-                "  MathUtils::Status          Status = MathUtils::Status::NotConverged;\n"
-                "  size_t                     NbIterations = 0; //!< Number of Jacobi rotations performed\n"
-                "  std::optional<math_Vector> EigenValues;  //!< Computed eigenvalues"
-            ),
-        },
-    ]
-
-    print("Applying OCCT V8 bugfix patches...")
-    for patch in patches:
-        files = find_file(occt_src, patch["file"])
-        if not files:
-            print(f"  ERROR: {patch['file']} not found in OCCT source tree!", file=sys.stderr)
-            continue
-        for filepath in files:
-            patch_file(filepath, patch["old"], patch["new"])
-
-
 def apply_macro_undefs(occt_src: str) -> None:
     undef_patches = [
         {
@@ -237,7 +176,6 @@ def apply_macro_undefs(occt_src: str) -> None:
 def main() -> None:
     occt_src = _occt_src()
     apply_using_statement_patches(occt_src)
-    apply_occt_v8_bugfixes(occt_src)
     apply_macro_undefs(occt_src)
 
 
