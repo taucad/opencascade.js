@@ -55,7 +55,6 @@ export OCJS_WASM_OPT_LEVEL="-O3"
 export OCJS_CLOSURE="false"
 export OCJS_EVAL_CTORS="false"
 export OCJS_CONVERGE="false"
-export OCJS_PATCH_DUMP="true"
 export OCJS_OUTPUT_DIR="$OUT_DIR"
 
 cd "$OCJS_ROOT"
