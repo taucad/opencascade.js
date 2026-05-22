@@ -580,7 +580,25 @@ step_link() {
   echo "═══ Linking WASM from $yaml_abs ═══"
   echo "  Output dir: $OCJS_OUTPUT_DIR"
   mkdir -p "$OCJS_OUTPUT_DIR"
-  find "$OCJS_OUTPUT_DIR" -maxdepth 1 \( -name '*.wasm' -o -name '*.js' -o -name '*.d.ts' -o -name '*.js.symbols' -o -name '*.provenance.json' -o -name 'build-manifest.json' \) -delete 2>/dev/null || true
+  # Scope cleanup to the current build's name so multi-config workflows
+  # (e.g. single-threaded + multi-threaded coexisting in dist/) don't wipe
+  # the other config's artefacts. The build name lives at `mainBuild.name`
+  # in the YAML (always the first `name:` field at column 0+2 indentation).
+  local build_js build_base
+  build_js=$(awk '$1 == "name:" {print $2; exit}' "$yaml_abs")
+  if [ -z "$build_js" ]; then
+    echo "ERROR: could not parse mainBuild.name from $yaml_abs" >&2
+    exit 1
+  fi
+  build_base="${build_js%.js}"
+  find "$OCJS_OUTPUT_DIR" -maxdepth 1 \( \
+    -name "${build_base}.wasm" \
+    -o -name "${build_js}" \
+    -o -name "${build_base}.d.ts" \
+    -o -name "${build_base}.js.symbols" \
+    -o -name "${build_base}.provenance.json" \
+    -o -name "${build_base}.build-manifest.json" \
+  \) -delete 2>/dev/null || true
   cd "$OCJS_OUTPUT_DIR"
   PYTHONPATH="$OCJS_ROOT/src" "$OCJS_PYTHON" -m ocjs_bindgen.link.yaml_build "$yaml_abs"
   cd "$SCRIPT_DIR"
@@ -606,8 +624,6 @@ step_apply_patches() {
       echo "  Applying STEPCAFControl_Controller DynamicType patch..."
       "$OCJS_PYTHON" src/patches/patch_stepcaf_dyntype.py
     fi
-    echo "  Applying BRepGraph_VersionStamp wasm32 size_t guard..."
-    "$OCJS_PYTHON" src/patches/patch_brepgraph_versionstamp.py
     echo "  All patches applied."
   else
     echo "  OCJS_PATCH_DUMP=false — no patches to apply (clean OCCT tree)."

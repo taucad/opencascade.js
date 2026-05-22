@@ -74,6 +74,26 @@ Named compile-time configurations live in [`build-configs/configurations.json`](
 
 Add your own entry to `configurations.json` to define a new configuration. See [BUILD_SYSTEM.md](BUILD_SYSTEM.md) for the full list of `OCJS_*` keys.
 
+The published npm tarball ships **both** build outputs:
+
+| Artifact prefix | Config | Subpath export |
+| --- | --- | --- |
+| `opencascade_full.*` | `single-threaded` + `full.yml` | `@taucad/opencascade.js` / `@taucad/opencascade.js/wasm` |
+| `opencascade_full_multi.*` | `multi-threaded` + `full_multi.yml` | `@taucad/opencascade.js/multi` / `@taucad/opencascade.js/multi/wasm` |
+
+Each triple includes a matching `*.provenance.json` sidecar (`dist/opencascade_full.provenance.json` and `dist/opencascade_full_multi.provenance.json`).
+
+### npm release
+
+After `dist/` contains both ST and MT artifacts and smoke tests pass:
+
+```bash
+npm pack --dry-run   # verify tarball lists all 12 dist files (6 ST + 6 MT)
+npm publish --tag rc --access public
+```
+
+Do **not** publish from a dirty tree or without both binaries present — consumers expect the MT subpath to resolve at install time.
+
 ### Environment Variables
 
 Two layers of "default" matter here. The **bare default** is what `build-wasm.sh` falls back to if you set neither an env var nor a `--config`. The **shipped `full.yml` build** is what the published `@taucad/opencascade.js` tarball was actually linked with — the YAML config carries its own `emccFlags` (`-sWASM_BIGINT`, `-sEVAL_CTORS=2`, `-msimd128`) that win regardless of env var, and every named entry in [`build-configs/configurations.json`](build-configs/configurations.json) sets the corresponding `OCJS_*` envs to match.

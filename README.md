@@ -36,6 +36,7 @@
 - [Choose Your Path](#choose-your-path)
 - [Table of Contents](#table-of-contents)
 - [Quickstart (npm)](#quickstart-npm)
+  - [Multi-threaded build](#multi-threaded-build)
 - [Quickstart (Docker)](#quickstart-docker)
 - [Tags](#tags)
 - [What's New in v3](#whats-new-in-v3)
@@ -79,7 +80,45 @@ import wasmUrl from '@taucad/opencascade.js/wasm?url';
 const oc = await init({ locateFile: () => wasmUrl });
 ```
 
-The published tarball ships pre-built WASM at `dist/opencascade_full.{wasm,js,d.ts}` along with a `provenance.json` sidecar describing the exact toolchain and source commits used.
+The published tarball ships pre-built WASM at `dist/opencascade_full.{wasm,js,d.ts}` (single-threaded default) and `dist/opencascade_full_multi.{wasm,js,d.ts}` (multi-threaded opt-in), each with a `provenance.json` sidecar describing the exact toolchain and source commits used.
+
+### Multi-threaded build
+
+For batch meshing, boolean grids, and STEP→glTF pipelines that benefit from OCCT's internal thread pool, import the pthread-enabled variant instead of the default:
+
+```ts
+// Node
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+import init from '@taucad/opencascade.js/multi';
+
+const WASM_DIR = dirname(fileURLToPath(import.meta.resolve('@taucad/opencascade.js/multi/wasm')));
+
+const oc = await init({
+  locateFile: (filename: string) => join(WASM_DIR, filename),
+});
+
+// Run once after init — flip OCCT global parallel defaults and size the thread pool.
+oc.BOPAlgo_Options.SetParallelMode(true); // booleans fan out by default
+oc.BRepMesh_IncrementalMesh.SetParallelDefault(true); // meshing fan out by default
+const pool = oc.OSD_ThreadPool.DefaultPool(-1); // lazy-init pool to NbLogicalProcessors
+pool.SetNbDefaultThreadsToLaunch(pool.NbThreads()); // let each call use all workers
+```
+
+```ts
+// Vite / browser (requires COOP/COEP headers — see docs)
+import init from '@taucad/opencascade.js/multi';
+import wasmUrl from '@taucad/opencascade.js/multi/wasm?url';
+
+const oc = await init({ locateFile: () => wasmUrl });
+
+oc.BOPAlgo_Options.SetParallelMode(true);
+oc.BRepMesh_IncrementalMesh.SetParallelDefault(true);
+using pool = oc.OSD_ThreadPool.DefaultPool(-1);
+pool.SetNbDefaultThreadsToLaunch(pool.NbThreads());
+```
+
+Browsers require `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp` on every page that loads the threaded wasm. See the [multi-threaded build guide](https://ocjs.org/docs/package/guides/multi-threading) for activation, benchmarks, and when not to ship threaded; [toolchain custom-build](https://ocjs.org/docs/toolchain/guides/multi-threading) covers the YAML recipe for trimmed MT variants.
 
 ## Quickstart (Docker)
 
@@ -115,7 +154,7 @@ Docker resolves the right architecture from the manifest list automatically; no 
 - **OCCT 8.0.0 RC5** — 1,085 commits of improvements; 22-31% faster boolean operations
 - **Emscripten 5.0.1** — LLVM 17, modern WASM features
 - **Native WASM Exceptions** — `-fwasm-exceptions` replaces JS invoke trampolines; decodable end-to-end via `getExceptionMessage`
-- **ESM-only single-file distribution** — `"type": "module"`; `dist/` ships exactly one variant (`opencascade_full.{js,wasm,d.ts}`) with a default-export `init` function and explicit `locateFile`
+- **ESM-only distribution** — `"type": "module"`; default export is single-threaded `opencascade_full.{js,wasm,d.ts}`; multi-threaded `opencascade_full_multi.{js,wasm,d.ts}` ships under `@taucad/opencascade.js/multi` and `/multi/wasm`
 - **Full TypeScript bindings** — Doxygen-derived JSDoc rendered correctly in Monaco IntelliSense
 - **Suffix-free overloads** — single symbol per class with val-based dispatcher, no more `_2`/`_3` subclasses
 - **Reproducible builds** — `DEPS.json` pins every dependency to an exact commit; per-build `provenance.json` sidecar

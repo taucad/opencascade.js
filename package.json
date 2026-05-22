@@ -1,6 +1,6 @@
 {
   "name": "@taucad/opencascade.js",
-  "version": "3.0.0-beta.d3056ef",
+  "version": "3.0.0-rc.0",
   "description": "Port of the OpenCascade CAD library to JavaScript and WebAssembly via Emscripten.",
   "main": "dist/opencascade_full.js",
   "author": "Sebastian Alff <donalffons@gmail.com>",
@@ -16,6 +16,11 @@
       "default": "./dist/opencascade_full.js"
     },
     "./wasm": "./dist/opencascade_full.wasm",
+    "./multi": {
+      "types": "./dist/opencascade_full_multi.d.ts",
+      "default": "./dist/opencascade_full_multi.js"
+    },
+    "./multi/wasm": "./dist/opencascade_full_multi.wasm",
     "./package.json": "./package.json"
   },
   "files": [
@@ -25,6 +30,12 @@
     "dist/opencascade_full.js.symbols",
     "dist/opencascade_full.build-manifest.json",
     "dist/opencascade_full.provenance.json",
+    "dist/opencascade_full_multi.js",
+    "dist/opencascade_full_multi.wasm",
+    "dist/opencascade_full_multi.d.ts",
+    "dist/opencascade_full_multi.js.symbols",
+    "dist/opencascade_full_multi.build-manifest.json",
+    "dist/opencascade_full_multi.provenance.json",
     "CHANGELOG.md",
     "BREAKING_CHANGES.md"
   ],

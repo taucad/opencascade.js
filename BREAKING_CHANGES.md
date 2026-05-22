@@ -58,7 +58,9 @@ const oc = await initOpenCascade({ locateFile });
 
 The package is `"type": "module"`. CommonJS entry points are gone. The Emscripten loader still needs a `locateFile` callback so it can resolve `opencascade_full.wasm` from your bundler's output directory or your Node `node_modules` layout.
 
-The wasm binary is exposed via a `wasm` subpath export — `@taucad/opencascade.js/wasm` — which is the only supported way to reach the binary from consumer code. The same identifier works under Vite's `?url` suffix, Node's `import.meta.resolve`, Bun, and Deno.
+The wasm binary is exposed via subpath exports — `@taucad/opencascade.js/wasm` for the single-threaded default and `@taucad/opencascade.js/multi/wasm` for the pthread-enabled variant — which are the only supported ways to reach the binaries from consumer code. The same identifiers work under Vite's `?url` suffix, Node's `import.meta.resolve`, Bun, and Deno.
+
+For the multi-threaded variant, import `@taucad/opencascade.js/multi` instead of the package root and resolve wasm through `@taucad/opencascade.js/multi/wasm`. Browser deployments require cross-origin isolation headers; see the [multi-threaded build guide](https://ocjs.org/docs/package/guides/multi-threading) on ocjs.org.
 
 For Node ESM consumers:
 
@@ -90,7 +92,16 @@ import wasmUrl from '@taucad/opencascade.js/wasm?url';
 const oc = await init({ locateFile: () => wasmUrl });
 ```
 
-**Action**: pass `locateFile` to every `init()` call and remove any CommonJS `require()` of the package. Reach for the wasm binary through the `@taucad/opencascade.js/wasm` subpath export — `dist/*` deep paths are not part of the package's public surface.
+For the multi-threaded build (COOP/COEP-isolated deployments only):
+
+```ts
+import init from '@taucad/opencascade.js/multi';
+import wasmUrl from '@taucad/opencascade.js/multi/wasm?url';
+
+const oc = await init({ locateFile: () => wasmUrl });
+```
+
+**Action**: pass `locateFile` to every `init()` call and remove any CommonJS `require()` of the package. Reach for wasm through `@taucad/opencascade.js/wasm` (default) or `@taucad/opencascade.js/multi/wasm` (threaded) — `dist/*` deep paths are not part of the package's public surface.
 
 ---
 
