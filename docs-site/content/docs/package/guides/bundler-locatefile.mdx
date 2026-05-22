@@ -1,0 +1,248 @@
+---
+title: Bundler & locateFile
+description: How to wire the OCCT wasm asset in Vite, Next.js, Bun, Deno, and plain Node.
+---
+
+`init()` accepts a `locateFile` callback that returns the URL where the runtime
+should fetch the wasm binary. The right answer depends on your bundler.
+
+The package exposes the binary through the `@taucad/opencascade.js/wasm`
+subpath export. Every snippet on this page resolves the wasm through that
+specifier; resolving it any other way (deep `node_modules` paths, direct
+`dist/*` imports) bypasses the package's `exports` map and breaks under
+strict bundler resolution.
+
+## Vite 6+
+
+Vite's `?url` suffix turns any asset import into a content-hashed URL string.
+Use it for both dev and production:
+
+```typescript
+import init from '@taucad/opencascade.js';
+import wasmUrl from '@taucad/opencascade.js/wasm?url';
+
+const oc = await init({ locateFile: () => wasmUrl });
+```
+
+Add `@taucad/opencascade.js` to `optimizeDeps.exclude` in `vite.config.ts` so
+Vite skips its dep-optimizer for the binary module:
+
+```typescript title="vite.config.ts"
+import { defineConfig } from 'vite';
+export default defineConfig({
+  optimizeDeps: { exclude: ['@taucad/opencascade.js'] },
+});
+```
+
+## Next.js 15 (App Router)
+
+Next's App Router lacks a first-class `?url` wasm import. The reliable pattern
+is to copy the wasm into `public/` at install time via a postinstall script
+that resolves the subpath:
+
+```javascript title="scripts/copy-wasm.mjs"
+import { copyFile, mkdir } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
+
+const src = fileURLToPath(import.meta.resolve('@taucad/opencascade.js/wasm'));
+await mkdir('public', { recursive: true });
+await copyFile(src, 'public/opencascade_full.wasm');
+```
+
+```json title="package.json"
+{
+  "scripts": {
+    "postinstall": "node scripts/copy-wasm.mjs"
+  }
+}
+```
+
+Then reference the public path:
+
+```typescript title="lib/ocjs-init.ts"
+'use client';
+import init from '@taucad/opencascade.js';
+
+let ocPromise: ReturnType<typeof init> | undefined;
+export const getOc = () => (ocPromise ??= init({ locateFile: () => '/opencascade_full.wasm' }));
+```
+
+Mark `@taucad/opencascade.js` as a server external package if you only call it
+client-side:
+
+```typescript title="next.config.ts"
+import type { NextConfig } from 'next';
+const config: NextConfig = {
+  serverExternalPackages: ['@taucad/opencascade.js'],
+};
+export default config;
+```
+
+## Bun
+
+Bun resolves wasm imports natively. The `?url` pattern works identically to
+Vite. No extra config required.
+
+## Node (ESM)
+
+Use `import.meta.resolve` to find the wasm sibling to the loader:
+
+```typescript
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+import init from '@taucad/opencascade.js';
+
+const WASM_DIR = dirname(
+  fileURLToPath(import.meta.resolve('@taucad/opencascade.js/wasm')),
+);
+
+const oc = await init({ locateFile: (file: string) => join(WASM_DIR, file) });
+```
+
+## Deno
+
+Deno exposes the same `import.meta.resolve` API as Node 22+. The Node snippet
+above works unchanged.
+
+## Webpack 5
+
+Webpack 5 handles wasm via `asset/resource` (preferred) or the legacy
+`file-loader`. Wire `locateFile` to the emitted URL:
+
+```typescript title="src/ocjs-init.ts"
+import init from '@taucad/opencascade.js';
+import wasmUrl from '@taucad/opencascade.js/wasm';
+
+const oc = await init({
+  locateFile: (file) => (file.endsWith('.wasm') ? wasmUrl : file),
+});
+```
+
+```javascript title="webpack.config.js"
+module.exports = {
+  module: {
+    rules: [
+      {
+        test: /\.wasm$/,
+        type: 'asset/resource',
+      },
+    ],
+  },
+  resolve: {
+    fallback: {
+      fs: false,
+      perf_hooks: false,
+      os: false,
+      path: false,
+      worker_threads: false,
+      crypto: false,
+      stream: false,
+    },
+  },
+};
+```
+
+Mark `@taucad/opencascade.js` as an external or exclude it from aggressive
+bundle inlining — the 12+ MB wasm must stay a separate fetch.
+
+## Legacy bundlers
+
+Create-React-App, `react-app-rewired`, and Webpack 4 are **not supported** in
+v3 docs. The upstream Docusaurus site preserved CRA recipes in git history at
+[`website/docs/02-getting-started/02-configure-bundler.md`](https://github.com/taucad/opencascade.js/blob/master/website/docs/02-getting-started/02-configure-bundler.md)
+(recoverable via `git show HEAD:website/docs/02-getting-started/02-configure-bundler.md`
+in this repo). Use Vite, Next 15, Bun, Node, Deno, or Webpack 5 instead.
+
+## Common pitfalls
+
+- **`locateFile` is mandatory**. The single-file v3 build does not auto-discover
+  its wasm sibling — every consumer must provide a URL.
+- **Don't bundle the wasm inline**. Bundling the 12+ MB binary as base64 explodes
+  your JS payload and prevents the browser's wasm streaming compiler.
+- **Cache the `init` Promise**. Re-calling `init()` re-instantiates the wasm
+  module — always memoize behind a singleton.
+
+## Multi-threaded variant
+
+The pthread-enabled build ships under `@taucad/opencascade.js/multi` with wasm at `@taucad/opencascade.js/multi/wasm`. The `init` contract is identical — only the import path and wasm target change.
+
+**Browser prerequisite:** every page that loads the threaded wasm must send cross-origin isolation headers:
+
+```http
+Cross-Origin-Opener-Policy: same-origin
+Cross-Origin-Embedder-Policy: require-corp
+```
+
+Without these headers, browsers refuse to expose `SharedArrayBuffer` and the wasm fails to instantiate. See the [multi-threaded build guide](./multi-threading) for benchmarks and when not to ship threaded.
+
+Run the following **once** after `await init(...)` in every recipe below — it matches the benchmark harness and is required for full speedup on mesh/boolean workloads:
+
+```typescript
+oc.BOPAlgo_Options.SetParallelMode(true);
+oc.BRepMesh_IncrementalMesh.SetParallelDefault(true);
+const pool = oc.OSD_ThreadPool.DefaultPool(-1);
+pool.SetNbDefaultThreadsToLaunch(pool.NbThreads());
+```
+
+### Vite 6+
+
+```typescript
+import init from '@taucad/opencascade.js/multi';
+import wasmUrl from '@taucad/opencascade.js/multi/wasm?url';
+
+const oc = await init({ locateFile: () => wasmUrl });
+
+oc.BOPAlgo_Options.SetParallelMode(true);
+oc.BRepMesh_IncrementalMesh.SetParallelDefault(true);
+const pool = oc.OSD_ThreadPool.DefaultPool(-1);
+pool.SetNbDefaultThreadsToLaunch(pool.NbThreads());
+```
+
+### Next.js 15 (App Router)
+
+Copy the MT wasm into `public/` at install time:
+
+```javascript title="scripts/copy-wasm-multi.mjs"
+import { copyFile, mkdir } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
+
+const src = fileURLToPath(import.meta.resolve('@taucad/opencascade.js/multi/wasm'));
+await mkdir('public', { recursive: true });
+await copyFile(src, 'public/opencascade_full_multi.wasm');
+```
+
+```typescript title="lib/ocjs-init-multi.ts"
+'use client';
+import init from '@taucad/opencascade.js/multi';
+
+let ocPromise: ReturnType<typeof init> | undefined;
+export const getOcMulti = () =>
+  (ocPromise ??= init({ locateFile: () => '/opencascade_full_multi.wasm' }).then((oc) => {
+    oc.BOPAlgo_Options.SetParallelMode(true);
+    oc.BRepMesh_IncrementalMesh.SetParallelDefault(true);
+    const pool = oc.OSD_ThreadPool.DefaultPool(-1);
+    pool.SetNbDefaultThreadsToLaunch(pool.NbThreads());
+    return oc;
+  }));
+```
+
+### Node (ESM)
+
+```typescript
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+import init from '@taucad/opencascade.js/multi';
+
+const WASM_DIR = dirname(
+  fileURLToPath(import.meta.resolve('@taucad/opencascade.js/multi/wasm')),
+);
+
+const oc = await init({ locateFile: (file: string) => join(WASM_DIR, file) });
+
+oc.BOPAlgo_Options.SetParallelMode(true);
+oc.BRepMesh_IncrementalMesh.SetParallelDefault(true);
+const pool = oc.OSD_ThreadPool.DefaultPool(-1);
+pool.SetNbDefaultThreadsToLaunch(pool.NbThreads());
+```
+
+Per-call overrides (`SetRunParallel(true)`, `BRepMesh_IncrementalMesh(..., isInParallel=true)`) remain available for granular opt-in. See [Multi-threaded build — Per-call activation](./multi-threading#per-call-activation--granular).

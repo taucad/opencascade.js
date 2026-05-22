@@ -1,0 +1,28 @@
+---
+title: Toolchain
+description: Build a custom WASM via Docker — trim symbols, extend with C++, ship reproducible CI.
+---
+
+Pull the multi-arch GHCR image, link a custom YAML, trim symbols to the surface you need, extend
+with your own C++ via `additionalCppCode`, and ship reproducible CI builds with provenance and SBOM.
+
+<Cards>
+  <Card title="Quickstart — Docker" href="/docs/toolchain/getting-started/quick-start-docker">
+    Pull a GHCR image, link a custom YAML, build a trimmed wasm in 2 minutes.
+  </Card>
+  <Card title="Trim symbols" href="/docs/toolchain/guides/trim-symbols">
+    Reduce wasm size by binding only the OCCT classes your app uses.
+  </Card>
+  <Card title="Extend with C++" href="/docs/toolchain/guides/extend-with-cpp">
+    Add custom C++ via additionalCppCode, additionalCppFiles, and additionalBindCode.
+  </Card>
+  <Card title="YAML schema" href="/docs/toolchain/reference/yaml-schema">
+    Reference for the custom build YAML schema.
+  </Card>
+</Cards>
+
+## Two channels of configuration
+
+Compile-time `OCJS_*` environment variables and link-time `emccFlags` in your build YAML control
+different aspects of the output. See [Two-channel config model](/docs/toolchain/concepts/two-channel-config-model)
+for the full picture.

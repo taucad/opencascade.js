@@ -1,0 +1,144 @@
+---
+title: Multi-threaded build
+description: Opt into pthread-enabled OCCT for parallel meshing and boolean workloads via @taucad/opencascade.js/multi.
+---
+
+The npm package ships **two** pre-built variants:
+
+| Import | Binary | When to use |
+| --- | --- | --- |
+| `@taucad/opencascade.js` (default) | `opencascade_full.wasm` | Embeddable widgets, one-op-per-click UX, no COOP/COEP |
+| `@taucad/opencascade.js/multi` | `opencascade_full_multi.wasm` | Batch mesh/boolean, STEP→glTF pipelines, COOP/COEP-isolated surfaces |
+
+Load the threaded variant the same way as the default — import `@taucad/opencascade.js/multi` and resolve wasm through `@taucad/opencascade.js/multi/wasm`. See [Bundler & locateFile](./bundler-locatefile#multi-threaded-variant) for Vite, Next.js, and Node recipes.
+
+OCCT can drive multiple worker threads for mesh and boolean kernels once the pthread-enabled wasm is loaded. That requires hard browser prerequisites (`SharedArrayBuffer` + cross-origin isolation) in the browser; Node 22+ exposes `SharedArrayBuffer` without extra headers.
+
+## When to consider it
+
+| Operation | Speedup with 4 threads | Worth the COOP/COEP cost? |
+|---|---:|---|
+| `BRepMesh_IncrementalMesh` on large assemblies | 2.5–3.5× | Yes, for visualisation pipelines |
+| `BRepAlgoAPI_*` booleans on hundreds of operands | 2–3× | Yes, for batch CAD operations |
+| `STEPControl_Reader.Transfer` of large STEP files | 1.5–2× | Marginal — IO usually dominates |
+| Single-shape build (box + fillet + export) | 1.0× | No |
+
+If your app does one boolean and one mesh per user interaction, single-threaded
+is fine. If you batch hundreds of operations, threading pays off.
+
+See [BENCHMARKS.md](https://github.com/taucad/opencascade.js/blob/main/BENCHMARKS.md) for ST vs MT numbers on a representative workload mix.
+
+## Browser prerequisites
+
+Pthread builds use `SharedArrayBuffer`, which browsers gate behind
+**cross-origin isolation**. Your server must send:
+
+```http
+Cross-Origin-Opener-Policy: same-origin
+Cross-Origin-Embedder-Policy: require-corp
+```
+
+…on every page that imports the threaded wasm. Without these headers, browsers
+refuse to expose `SharedArrayBuffer` and the wasm fails to instantiate.
+
+Node 22+ exposes `SharedArrayBuffer` unconditionally — no headers needed.
+
+## Triggering OCCT parallelism
+
+OCCT respects its own `OSD_Parallel` switches once threads exist. Two
+levels of activation are available — **per-call** (granular, opt-in at
+each site) and **global** (sets a process-wide default).
+
+### Global activation — call once at startup
+
+The cleanest option: flip the OCCT-wide defaults once, then any subsequent
+call to a parallel-aware API inherits the toggle without an extra argument.
+
+```typescript
+// Run once after `await init({...})`.
+oc.BOPAlgo_Options.SetParallelMode(true);                 // booleans
+oc.BRepMesh_IncrementalMesh.SetParallelDefault(true);     // meshing
+
+// Right-size the OCCT thread pool to all logical CPUs. -1 means
+// "use NbLogicalProcessors". SetNbDefaultThreadsToLaunch caps the
+// fan-out of any single OCCT call; default is the pool size.
+const pool = oc.OSD_ThreadPool.DefaultPool(-1);
+pool.SetNbDefaultThreadsToLaunch(pool.NbThreads());
+```
+
+After these four calls every `new BRepMesh_IncrementalMesh(shape, lin)` and
+every `BRepAlgoAPI_*` automatically fans out across the pool. **No
+per-call argument required.**
+
+Skipping the pool sizing leaves OCCT's lazy default pool smaller than the
+pre-spawned worker count baked into the binary (`PTHREAD_POOL_SIZE=navigator.hardwareConcurrency`)
+and caps speedup on mesh/boolean workloads.
+
+### Per-call activation — granular
+
+If you want to keep the global default off and opt in selectively:
+
+```typescript
+using mesh = new oc.BRepMesh_IncrementalMesh(
+  shape,
+  0.1,    // linear deflection
+  false,  // not relative
+  0.5,    // angular deflection
+  true,   // inParallel — flips multi-threading on
+);
+```
+
+```typescript
+using bop = new oc.BRepAlgoAPI_BuilderAlgo();
+bop.SetRunParallel(true);
+// ... AddArgument / AddTool / Build()
+```
+
+`SetRunParallel(false)` is the default for per-instance APIs. OCJS does
+not auto-enable it unless you flip the global default above.
+
+### Other parallel-aware APIs
+
+Beyond mesh and boolean, the following APIs accept a parallel flag and
+benefit when the pool is sized correctly:
+
+| API | Activation |
+|---|---|
+| `BRepExtrema_DistShapeShape` | `.SetMultiThread(true)` |
+| `BRepCheck_Analyzer` | ctor `(shape, /*isParallel*/ true)` |
+| `RWGltf_CafReader` | `.SetParallel(true)` (glTF **read**) |
+| `RWGltf_CafWriter` | `.SetParallel(true)` (glTF **write**) |
+| `BVH_Builder` | `.SetParallel(true)` |
+| `BRepLib_ValidateEdge`, `BRepLib_CheckCurveOnSurface`, `GeomLib_CheckCurveOnSurface` | `.SetParallel(true)` — used transitively by `BRepCheck_Analyzer` |
+| `BRepFill_AdvancedEvolved` | already parallel by default — call `SetParallelMode(false)` to disable |
+
+**STEP/IGES readers (`STEPControl_Reader`, `IGESControl_Reader`) and
+`BRepBuilderAPI_Sewing` are sequential** in current OCCT — there is no
+parallel flag to flip.
+
+## Costs
+
+- **COOP/COEP headers** lock you out of third-party iframes that don't opt in
+  (e.g. embedded Stripe checkout, some auth providers). Subdomain-isolate
+  your CAD surface if that matters.
+- **Thread spawn time** adds ~50–200 ms to init, scaling with pool size.
+  Memoise the `init()` Promise.
+- **Memory** scales with `PTHREAD_POOL_SIZE × STACK_SIZE`. With the
+  shipped `navigator.hardwareConcurrency` sizing, a 12-core box
+  reserves ~96 MB of stack on top of `INITIAL_MEMORY`.
+- **Debuggability** drops — `console.log` from worker threads doesn't always
+  reach the main thread.
+
+## When NOT to ship threaded
+
+- You can't (or won't) set COOP/COEP headers — most CDNs/marketing sites can't.
+- Your workload is one shape per second — Amdahl's law eats the speedup.
+- Your target users include Safari ≤16 — older Safari refused
+  `SharedArrayBuffer` in cross-origin-isolated contexts.
+
+For most consumers the single-threaded default wins on simplicity. Reach for
+`@taucad/opencascade.js/multi` only when you have measured the bottleneck.
+
+## Custom builds
+
+Need a smaller threaded binary (trimmed symbol list) or custom Emscripten flags? See [Toolchain — Custom multi-threaded build](/docs/toolchain/guides/multi-threading) for the YAML recipe and `PTHREAD_POOL_SIZE` rationale.

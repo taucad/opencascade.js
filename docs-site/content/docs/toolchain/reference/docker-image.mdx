@@ -1,0 +1,99 @@
+---
+title: Docker image
+description: GHCR image entrypoint, tags, multi-arch matrix, OCI labels, provenance, and SBOM.
+---
+
+The maintainer-distributed Docker image lets consumers run custom-trimmed
+wasm builds without setting up emsdk, libclang, and Python locally.
+
+## Pulling
+
+<TagBadge tag="ghcr.io/taucad/opencascade.js:beta" />
+
+```bash
+docker pull ghcr.io/taucad/opencascade.js:beta
+```
+
+## Tags
+
+| Tag | Points to |
+|---|---|
+| `:beta` | Latest v3 beta release |
+| `:3.0.0-beta.5` | Specific beta version |
+| `:rolling` | Tip of the `master` branch — moves with every merge |
+| `@sha256:<digest>` | Immutable pin — use in CI |
+
+Pin by digest in CI. The `:beta` tag is **mutable** — a new beta drops at any
+time. See [Reproducible CI](../guides/reproducible-ci).
+
+## Entrypoint
+
+```bash
+docker run --rm -v "$(pwd):/src" ghcr.io/taucad/opencascade.js:beta /src/mybuild.yml
+```
+
+The entrypoint runs `validate` followed by `link` against the supplied YAML.
+Output (`<name>.wasm`, `<name>.js`, `<name>.d.ts`, `<name>.build-manifest.json`)
+appears next to the YAML in the mounted volume.
+
+### Override the entrypoint
+
+```bash
+docker run --rm -it -v "$(pwd):/src" --entrypoint bash \
+  ghcr.io/taucad/opencascade.js:beta
+```
+
+…drops you into a shell with `emsdk`, libclang, and Python on the PATH.
+
+## Multi-arch matrix
+
+| Arch | Image |
+|---|---|
+| `linux/amd64` | Built on `ubuntu-24.04` (GitHub Actions) |
+| `linux/arm64` | Built on `ubuntu-24.04-arm` (GitHub Actions) |
+
+`docker pull` resolves the right variant automatically. Force one with
+`--platform linux/arm64`.
+
+## OCI labels
+
+Inspect via `docker inspect ghcr.io/taucad/opencascade.js:beta`:
+
+| Label | Purpose |
+|---|---|
+| `org.opencontainers.image.source` | https://github.com/taucad/opencascade.js |
+| `org.opencontainers.image.revision` | Git commit the image was built from |
+| `org.opencontainers.image.version` | Semver tag |
+| `org.opencontainers.image.licenses` | LGPL-2.1-or-later |
+| `org.opencontainers.image.title` | OpenCascade.js custom build container |
+
+## Provenance
+
+```bash
+cosign verify-attestation \
+  --type slsaprovenance \
+  --certificate-identity-regexp 'https://github\.com/taucad/opencascade\.js/' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  ghcr.io/taucad/opencascade.js:beta
+```
+
+The attestation records the source commit, the workflow, and the runner that
+produced the image.
+
+## SBOM
+
+```bash
+docker buildx imagetools inspect \
+  --format '{{ json .SBOM }}' \
+  ghcr.io/taucad/opencascade.js:beta
+```
+
+Diff the SBOM across image digests in CI to flag unexpected dep bumps.
+
+## Image stages
+
+The Dockerfile is multi-stage — `deps-base` (emsdk + libclang + Python),
+`bindgen-base` (deps + Python-side bindgen tools), `final` (everything + the
+entrypoint). Each stage is independently rebuildable; CI uses `--target` to
+exercise one stage at a time. See [Bindgen pipeline](../concepts/bindgen-pipeline)
+for how the stages compose with the build pipeline.

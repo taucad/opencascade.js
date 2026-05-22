@@ -1,0 +1,125 @@
+---
+title: Derive a C++ class in JavaScript
+description: Override Message_ProgressIndicator virtual methods from JavaScript via allow_subclass and EMSCRIPTEN_WRAPPER.
+---
+
+OpenCascade reports progress and supports user-initiated cancellation through
+`Message_ProgressIndicator`. Because OCCT requires a **derived class** with
+overridden virtual methods, using progress callbacks in OpenCascade.js requires
+a **custom WASM build** that exposes `allow_subclass<>` bindings.
+
+This guide consolidates the legacy three-page `progress-indicators-user-break`
+series into a single v3 tutorial.
+
+## Overview
+
+1. Add a C++ bridge struct and `EMSCRIPTEN_WRAPPER` in your custom build YAML.
+2. Register `allow_subclass<>` in `additionalBindCode`.
+3. Derive the class in JavaScript with `.extend()` and pass `Start()` into
+   long-running algorithms like `BRepAlgoAPI_Fuse`.
+
+Three methods matter:
+
+| Method       | Required | Purpose                                              |
+| ------------ | -------- | ---------------------------------------------------- |
+| `Show`       | Yes      | Called on every progress update (pure virtual in OCCT) |
+| `UserBreak`  | Optional | Return `true` to cancel the current operation        |
+| `Reset`      | Optional | Called when a new long-running process starts        |
+
+## Step 1 — Custom build bindings
+
+Create `wrappers/progress-indicator-js.cpp`:
+
+```cpp title="wrappers/progress-indicator-js.cpp"
+#include <Message_ProgressIndicator.hxx>
+#include <Message_ProgressScope.hxx>
+#include <emscripten/bind.h>
+
+using namespace emscripten;
+
+struct Message_ProgressIndicator_JS : public Message_ProgressIndicator {
+  using Message_ProgressIndicator::Show;
+  using Message_ProgressIndicator::UserBreak;
+  using Message_ProgressIndicator::Reset;
+};
+
+struct Message_ProgressIndicator_JSWrapper : public wrapper<Message_ProgressIndicator_JS> {
+  EMSCRIPTEN_WRAPPER(Message_ProgressIndicator_JSWrapper);
+  void Show(const Message_ProgressScope& theScope, const Standard_Boolean isForce) {
+    val valTheScope = val::object();
+    valTheScope.set("current", &theScope);
+    return call<void>("Show", valTheScope, isForce);
+  }
+  Standard_Boolean UserBreak() { return call<Standard_Boolean>("UserBreak"); }
+  void Reset() { return call<void>("Reset"); }
+};
+```
+
+Add to your build YAML:
+
+```yaml title="build-configs/with-progress-callback.yml"
+additionalCppFiles:
+  - wrappers/progress-indicator-js.cpp
+mainBuild:
+  bindings:
+    - symbol: Message_ProgressIndicator
+    - symbol: Message_ProgressScope
+    - symbol: Message_ProgressRange
+    - symbol: BRepAlgoAPI_Fuse
+    - symbol: BRepPrimAPI_MakeBox
+    - symbol: gp_Pnt
+  additionalBindCode: |
+    EMSCRIPTEN_BINDINGS(progress_indicator_js) {
+      class_<Message_ProgressIndicator_JS, base<Message_ProgressIndicator>>(
+          "Message_ProgressIndicator_JS")
+        .function("Show", &Message_ProgressIndicator_JS::Show, pure_virtual())
+        .function("UserBreak", optional_override([](Message_ProgressIndicator_JS& self) {
+          return self.Message_ProgressIndicator_JS::UserBreak();
+        }))
+        .function("Reset", optional_override([](Message_ProgressIndicator_JS& self) {
+          return self.Message_ProgressIndicator_JS::Reset();
+        }))
+        .allow_subclass<Message_ProgressIndicator_JSWrapper>("Message_ProgressIndicator_JSWrapper");
+    }
+```
+
+Build with the [Toolchain quickstart](../getting-started/quick-start-docker).
+
+## Step 2 — Derive in JavaScript
+
+```typescript title="examples/progress-indicator.ts"
+import { getOc } from './ocjs-init';
+
+let shouldCancel = false;
+
+export const runFuseWithProgress = async (): Promise<void> => {
+  const oc = await getOc();
+
+  const MyProgress = oc.Message_ProgressIndicator_JS.extend('Message_ProgressIndicator_JS', {
+    Show(_scope, _isForce) {
+      console.log('progress', this.GetPosition());
+    },
+    UserBreak() {
+      return shouldCancel;
+    },
+  });
+
+  using p = new MyProgress();
+  using box1 = new oc.BRepPrimAPI_MakeBox(new oc.gp_Pnt(0, 0, 0), 2, 1, 1);
+  using box2 = new oc.BRepPrimAPI_MakeBox(new oc.gp_Pnt(1, 0, 0), 2, 1, 1);
+  using fuse = new oc.BRepAlgoAPI_Fuse(box1.Shape(), box2.Shape(), p.Start());
+  fuse.Build(new oc.Message_ProgressRange());
+};
+```
+
+v3 uses suffix-free `Start()` — the v2 `_1` / `_2` overload suffixes no longer
+exist. Overload dispatch happens in C++ via the unified RBV pipeline.
+
+## Step 3 — Cancellation
+
+Set `shouldCancel = true` from a UI button or timeout. The next `UserBreak()`
+call returns `true` and OCCT aborts the in-flight operation.
+
+See also: [Extend with C++](./extend-with-cpp) for the general custom-build
+mechanics, and [Debugging WASM exceptions](../../package/guides/debugging-wasm-exceptions)
+if the derived class throws across the wasm boundary.

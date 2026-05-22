@@ -1,0 +1,44 @@
+@import 'tailwindcss';
+@import 'fumadocs-ui/css/neutral.css';
+@import 'fumadocs-ui/css/preset.css';
+
+@source '../node_modules/fumadocs-ui/dist/**/*.js';
+
+/**
+ * API-reference token palette — sampled directly from the rendered Shiki
+ * GitHub Light / GitHub Dark themes used throughout the prose code blocks
+ * (see `source.config.ts`). Keeping the structured-API surface on the same
+ * token scheme as the surrounding prose makes the signatures read like
+ * highlighted code instead of a separate, monotone glyph stream.
+ *
+ * GitHub Light:                    GitHub Dark:
+ *   keyword       #D73A49            keyword       #F97583
+ *   fn / class    #6F42C1            fn / class    #B392F0
+ *   variable      #005CC5            variable      #79B8FF
+ *   text          #24292E            text          #E1E4E8
+ *   muted         #6A737D            muted         #8B949E
+ */
+@theme {
+  --color-api-keyword: #d73a49;
+  --color-api-fn: #6f42c1;
+  --color-api-var: #005cc5;
+  --color-api-text: #24292e;
+  --color-api-muted: #6a737d;
+}
+
+.dark {
+  --color-api-keyword: #f97583;
+  --color-api-fn: #b392f0;
+  --color-api-var: #79b8ff;
+  --color-api-text: #e1e4e8;
+  --color-api-muted: #8b949e;
+}
+
+body {
+  font-family:
+    'Inter',
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    sans-serif;
+}

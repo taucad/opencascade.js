@@ -1,0 +1,27 @@
+{
+  "title": "Toolchain",
+  "description": "Build a custom WASM via Docker — trim symbols, extend with C++, ship reproducible CI.",
+  "icon": "lucide:wrench text-amber",
+  "root": true,
+  "pages": [
+    "index",
+    "---Getting Started---",
+    "getting-started/quick-start-docker",
+    "---Guides---",
+    "guides/custom-emcc-flags",
+    "guides/extend-with-cpp",
+    "guides/trim-symbols",
+    "guides/multi-threading",
+    "guides/derive-cpp-class-in-js",
+    "guides/reproducible-ci",
+    "---Concepts---",
+    "concepts/bindgen-pipeline",
+    "concepts/two-channel-config-model",
+    "---Reference---",
+    "reference/yaml-schema",
+    "reference/configurations",
+    "reference/docker-image",
+    "reference/env-vars",
+    "reference/cli-build-wasm"
+  ]
+}

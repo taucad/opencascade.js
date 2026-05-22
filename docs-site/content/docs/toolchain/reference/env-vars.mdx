@@ -1,0 +1,62 @@
+---
+title: Environment variables
+description: Every OCJS_* env var the build system honours — exceptions, SIMD, BigInt, EVAL_CTORS, LTO, strict types.
+---
+
+The build system reads these env vars before compile and link. Set them on the
+command line, in CI, or in `build-configs/configurations.json`.
+
+## Compile-time flags
+
+| Variable | Default | Effect |
+|---|---|---|
+| `OCJS_EXCEPTIONS` | `1` | Compile every TU with `-fwasm-exceptions`. Mixed builds fail at link. |
+| `OCJS_SIMD` | `1` | Compile every TU with `-msimd128` (baseline SIMD). |
+| `OCJS_RELAXED_SIMD` | `0` | Additionally emit `-mrelaxed-simd`. Chrome/Firefox-only — breaks Safari. |
+| `OCJS_BIGINT` | `1` | Compile with `-sWASM_BIGINT`. Saves ~30 KB JS glue. |
+| `OCJS_EVAL_CTORS_LEVEL` | `2` | `-sEVAL_CTORS=N`. Levels: 0 off, 1 safe-side-effect, 2 full. |
+| `OCJS_LTO` | `0` | Enable LLVM LTO. Smaller binary, ~3× slower build. |
+| `OCJS_STRICT_TYPES` | `0` (warn-only) | When the link-time `.d.ts` post-processor rewrites method signatures to `unknown` (or codegen collects unbound-reference diagnostics), the build always prints a triage summary to stderr. Set `=1` to escalate that condition to a build failure. |
+
+## Build orchestration
+
+| Variable | Default | Effect |
+|---|---|---|
+| `OCJS_CONFIG` | `single-threaded` | Named preset from `configurations.json`. Alternative to the `--config <name>` CLI flag — both end up at the same place. |
+| `OCJS_PARALLEL_JOBS` | CPU count | Max parallel compile jobs. |
+| `OCJS_CACHE_DIR` | `./cache` | Where to store cached `.o` files and bindgen output. |
+| `OCJS_BUILD_DIR` | `./build` | Intermediate build outputs. |
+| `OCJS_DIST_DIR` | `./dist` | Final wasm + JS + .d.ts artifacts. |
+
+## Docker-specific
+
+| Variable | Default | Effect |
+|---|---|---|
+| `OCJS_DEPS_VERSION` | from `DEPS.json` | Override the dep pinning (OCCT, freetype, rapidjson). |
+| `OCJS_EMSDK_DIR` | `/deps/emsdk` | Location of the emscripten SDK inside the image. |
+| `OCJS_PYTHON` | `python3` | Python interpreter for the bindgen. |
+
+## Diagnostics
+
+| Variable | Default | Effect |
+|---|---|---|
+| `OCJS_VERBOSE` | `0` | Print every compile / link command. |
+| `OCJS_DUMP_CACHE_KEYS` | `0` | Print the cache-key contents on miss (debug spurious cache invalidation). |
+
+## Worked example
+
+```bash
+# Custom-trimmed Os build for an embedded edge runtime.
+# OCJS_STRICT_TYPES=1 escalates the missing-typedef warning to a build
+# failure -- recommended in CI; omit it for local builds (warn-only is
+# the default).
+OCJS_CONFIG=single-threaded-smallest \
+OCJS_STRICT_TYPES=1 \
+OCJS_PARALLEL_JOBS=8 \
+./build-wasm.sh link build-configs/edge-runtime.yml
+```
+
+## Related
+
+- [Named compile-time configurations](./configurations) — named preset list.
+- [Two-channel config model](../concepts/two-channel-config-model) — compile-time vs link-time channels.

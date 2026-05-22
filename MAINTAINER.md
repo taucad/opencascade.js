@@ -76,9 +76,9 @@ Add your own entry to `configurations.json` to define a new configuration. See [
 
 The published npm tarball ships **both** build outputs:
 
-| Artifact prefix | Config | Subpath export |
-| --- | --- | --- |
-| `opencascade_full.*` | `single-threaded` + `full.yml` | `@taucad/opencascade.js` / `@taucad/opencascade.js/wasm` |
+| Artifact prefix            | Config                              | Subpath export                                                       |
+| -------------------------- | ----------------------------------- | -------------------------------------------------------------------- |
+| `opencascade_full.*`       | `single-threaded` + `full.yml`      | `@taucad/opencascade.js` / `@taucad/opencascade.js/wasm`             |
 | `opencascade_full_multi.*` | `multi-threaded` + `full_multi.yml` | `@taucad/opencascade.js/multi` / `@taucad/opencascade.js/multi/wasm` |
 
 Each triple includes a matching `*.provenance.json` sidecar (`dist/opencascade_full.provenance.json` and `dist/opencascade_full_multi.provenance.json`).
@@ -98,19 +98,19 @@ Do **not** publish from a dirty tree or without both binaries present — consum
 
 Two layers of "default" matter here. The **bare default** is what `build-wasm.sh` falls back to if you set neither an env var nor a `--config`. The **shipped `full.yml` build** is what the published `@taucad/opencascade.js` tarball was actually linked with — the YAML config carries its own `emccFlags` (`-sWASM_BIGINT`, `-sEVAL_CTORS=2`, `-msimd128`) that win regardless of env var, and every named entry in [`build-configs/configurations.json`](build-configs/configurations.json) sets the corresponding `OCJS_*` envs to match.
 
-| Variable            | Bare default      | Shipped `full.yml` build | Description                                                                                                  |
-| ------------------- | ----------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------ |
-| `OCJS_OPT`          | `-O2`             | `-O3`                    | Compile optimization level                                                                                   |
+| Variable            | Bare default      | Shipped `full.yml` build | Description                                                                                                          |
+| ------------------- | ----------------- | ------------------------ | -------------------------------------------------------------------------------------------------------------------- |
+| `OCJS_OPT`          | `-O2`             | `-O3`                    | Compile optimization level                                                                                           |
 | `OCJS_LTO`          | `1`               | `0`                      | LTO at compile time. Empirically harmful for OCCT — see [custom emcc flags guide](docs/guides/custom-emcc-flags.md). |
-| `OCJS_EXCEPTIONS`   | `0`               | `1`                      | Native WASM exceptions. Shipped build forces this on for decodable C++ exceptions.                           |
-| `OCJS_SIMD`         | `0`               | `1`                      | Baseline WASM SIMD (`-msimd128`). Universally supported.                                                     |
-| `OCJS_RELAXED_SIMD` | `0`               | `0`                      | Relaxed SIMD ops on top of `OCJS_SIMD`. Safari 26.x cannot parse these — leave off for cross-browser builds. |
-| `OCJS_BIGINT`       | `0`               | `1`                      | `-sWASM_BIGINT` for native i64↔BigInt; eliminates the i64 legalization pass.                                 |
-| `OCJS_EVAL_CTORS`   | `false`           | `true`                   | `-sEVAL_CTORS=N` static-init evaluation at compile time.                                                     |
-| `OCJS_EXTRA_CFLAGS` | _(empty)_         | _(empty)_                | Extra compile flags appended to C/CXX (e.g. `"-mllvm -inline-threshold=128"`).                               |
-| `OCJS_DEFINES`      | _(empty)_         | `OCCT_NO_DUMP`           | Comma-separated list of `-D` macros.                                                                         |
-| `OCJS_UNDEFINES`    | _(empty)_         | `OCC_CONVERT_SIGNALS`    | Comma-separated list of `-U` undefines.                                                                      |
-| `THREADING`         | `single-threaded` | `single-threaded`        | Threading mode (`single-threaded` or `multi-threaded`).                                                      |
+| `OCJS_EXCEPTIONS`   | `0`               | `1`                      | Native WASM exceptions. Shipped build forces this on for decodable C++ exceptions.                                   |
+| `OCJS_SIMD`         | `0`               | `1`                      | Baseline WASM SIMD (`-msimd128`). Universally supported.                                                             |
+| `OCJS_RELAXED_SIMD` | `0`               | `0`                      | Relaxed SIMD ops on top of `OCJS_SIMD`. Safari 26.x cannot parse these — leave off for cross-browser builds.         |
+| `OCJS_BIGINT`       | `0`               | `1`                      | `-sWASM_BIGINT` for native i64↔BigInt; eliminates the i64 legalization pass.                                         |
+| `OCJS_EVAL_CTORS`   | `false`           | `true`                   | `-sEVAL_CTORS=N` static-init evaluation at compile time.                                                             |
+| `OCJS_EXTRA_CFLAGS` | _(empty)_         | _(empty)_                | Extra compile flags appended to C/CXX (e.g. `"-mllvm -inline-threshold=128"`).                                       |
+| `OCJS_DEFINES`      | _(empty)_         | `OCCT_NO_DUMP`           | Comma-separated list of `-D` macros.                                                                                 |
+| `OCJS_UNDEFINES`    | _(empty)_         | `OCC_CONVERT_SIGNALS`    | Comma-separated list of `-U` undefines.                                                                              |
+| `THREADING`         | `single-threaded` | `single-threaded`        | Threading mode (`single-threaded` or `multi-threaded`).                                                              |
 
 The bare-default column is only relevant if you invoke `build-wasm.sh` without `--config` _and_ without `OCJS_CONFIG` — the script's own fallback selects the `single-threaded` configuration when both are unset, so in practice you always get the rightmost column unless you go out of your way to disable it.
 

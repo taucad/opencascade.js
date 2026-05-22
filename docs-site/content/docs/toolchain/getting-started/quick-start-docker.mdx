@@ -1,0 +1,106 @@
+---
+title: Quickstart — Docker
+description: Pull the prebuilt GHCR image, link a custom YAML, and build a trimmed OCCT wasm in 2 minutes.
+---
+
+For when you need a custom-trimmed `opencascade.wasm` without setting up emsdk,
+libclang, and Python locally.
+
+## 1. Pull the image
+
+<TagBadge tag="ghcr.io/taucad/opencascade.js:beta" />
+
+<Callout type="warn">
+  **On macOS and Windows, run `docker` from a folder inside your home directory.**
+
+  Docker on macOS and Windows runs inside a small Linux virtual machine. Folders under your home directory (`/Users/...` or `C:\Users\...`) are shared with that VM automatically. Other top-level folders like `/tmp`, `/var`, and `/opt` are not — if you mount one of those, your build outputs land inside the VM and disappear when the container exits.
+
+  Every OCJS build prints an `[output] /output -> <path>  (your computer, files will be saved)` line at the top so you can see exactly where the files will be saved. If you ever see a `WARNING: build outputs are about to be saved INSIDE Docker` banner, follow the steps it prints.
+</Callout>
+
+```bash
+docker pull ghcr.io/taucad/opencascade.js:beta
+```
+
+The image is multi-arch (`linux/amd64`, `linux/arm64`), provenance-attested, and
+ships with `emsdk`, libclang, Python, and the OCCT source tree pre-installed.
+
+## 2. Write a build YAML
+
+Create `mybuild.yml` next to your project — list the OCCT symbols you actually
+use. See [Trim symbols](../guides/trim-symbols) for a worked example and
+[YAML schema](../reference/yaml-schema) for the full schema.
+
+```yaml title="mybuild.yml"
+mainBuild:
+  name: my-occt
+  bindings:
+    - symbol: package
+      glob: 'gp'
+    - symbol: package
+      glob: 'BRepPrim*'
+    - symbol: package
+      glob: 'BRepAlgoAPI'
+    - symbol: package
+      glob: 'BRepBuilderAPI'
+    - symbol: package
+      glob: 'BRepFilletAPI'
+    - symbol: package
+      glob: 'TopoDS'
+    - symbol: package
+      glob: 'TopExp'
+    - symbol: package
+      glob: 'STEPControl'
+    - symbol: package
+      glob: 'RWGltf*'
+  emccFlags:
+    - -O3
+    - -fwasm-exceptions
+    - -sMODULARIZE=1
+    - -sEXPORT_ES6=1
+    - -sEXPORT_NAME=initOpenCascade
+```
+
+## 3. Run the image
+
+```bash
+docker run --rm \
+  -v "$(pwd):/src" \
+  -u "$(id -u):$(id -g)" \
+  ghcr.io/taucad/opencascade.js:beta \
+  /src/mybuild.yml
+```
+
+Output lands next to `mybuild.yml`:
+
+- `my-occt.wasm` — the trimmed wasm binary
+- `my-occt.js` — the emscripten loader
+- `my-occt.d.ts` — generated TypeScript declarations
+- `my-occt.build-manifest.json` — symbol coverage and size report
+
+## 4. Wire the build output
+
+```typescript
+import init from './my-occt.js';
+import wasmUrl from './my-occt.wasm?url';
+
+const oc = await init({ locateFile: () => wasmUrl });
+```
+
+The build is byte-for-byte reproducible — pin the image by digest in CI
+(`ghcr.io/taucad/opencascade.js@sha256:…`) and the wasm hash matches across runs.
+See [Reproducible CI](../guides/reproducible-ci).
+
+## Where the time goes
+
+Typical wall-clock on an M1 Pro with the trimmed symbol set above:
+
+| Step | Time |
+|---|---:|
+| Generate bindings | 5–15 s |
+| Compile bindings | 1–3 min |
+| Link against precompiled OCCT objects | 30–60 s |
+| Total | ~2–4 min |
+
+Full surface builds (no symbol filter) take 25–40 minutes — they're for the
+maintainer pipeline, not consumer machines.

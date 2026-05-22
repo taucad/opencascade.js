@@ -180,12 +180,21 @@
         "cwd": "{projectRoot}"
       }
     },
-    "docs-serve": {
+    "docs-mdx": {
       "executor": "nx:run-commands",
-      "cache": false,
+      "cache": true,
       "dependsOn": ["docs"],
+      "inputs": [
+        "{projectRoot}/docs-site/scripts/generate-api-mdx.mjs",
+        "{projectRoot}/docs-site/data/index.json"
+      ],
+      "outputs": [
+        "{projectRoot}/docs-site/content/docs/api/",
+        "{projectRoot}/docs-site/lib/api-type-index.ts",
+        "{projectRoot}/docs-site/lib/api-search-index.ts"
+      ],
       "options": {
-        "command": "node scripts/serve-docs.mjs",
+        "command": "node docs-site/scripts/generate-api-mdx.mjs --in ./docs-site/data --out ./docs-site/content/docs/api --type-index ./docs-site/lib/api-type-index.ts --search-index ./docs-site/lib/api-search-index.ts",
         "cwd": "{projectRoot}"
       }
     },

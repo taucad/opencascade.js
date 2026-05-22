@@ -1,0 +1,87 @@
+---
+title: Custom multi-threaded build
+description: Build a pthread-enabled OCJS WASM with a trimmed symbol list or custom Emscripten flags.
+---
+
+The npm package already ships a pre-built multi-threaded variant at `@taucad/opencascade.js/multi` — see [Package — Multi-threaded build](/docs/package/guides/multi-threading) for the import recipe, COOP/COEP headers, and OCCT activation calls. Rebuild from source only when you need:
+
+- A trimmed symbol list (the shipped MT binary builds from `build-configs/full_multi.yml` with the same ~4,400 symbols as the ST binary).
+- Custom `emccFlags` (alternative `STACK_SIZE`, `INITIAL_MEMORY`, capped `PTHREAD_POOL_SIZE`).
+- A relaxed-SIMD sibling for non-Safari deployments (see the callout below).
+
+## Build YAML
+
+```yaml title="build-configs/threaded.yml"
+mainBuild:
+  name: occt_threaded
+  bindings:
+    # ... your symbol list ...
+  emccFlags:
+    - -O3
+    - -fwasm-exceptions
+    - -msimd128
+    - -pthread
+    - -sUSE_PTHREADS=1
+    # Pre-spawn one worker per logical CPU on the host. The expression is
+    # evaluated by the generated JS glue at module-instantiation time, so a
+    # single binary adapts to whatever hardware loads it.
+    - -sPTHREAD_POOL_SIZE=navigator.hardwareConcurrency
+    - -sSHARED_MEMORY=1
+    - -sMODULARIZE=1
+    - -sEXPORT_ES6=1
+    - -sENVIRONMENT=web,worker,node
+    - -sALLOW_MEMORY_GROWTH=1
+    - -sMAXIMUM_MEMORY=4GB
+```
+
+Build with:
+
+```bash
+./build-wasm.sh --config multi-threaded full build-configs/threaded.yml
+```
+
+`PTHREAD_POOL_SIZE=navigator.hardwareConcurrency` evaluates per-host: an M2
+Pro browser gets 12 workers, a mobile device gets 4–6, a Node server gets
+whatever `os.cpus().length` reports. Each worker costs `STACK_SIZE` (default
+8 MB) at module init, so a 12-core box reserves ~96 MB of stack on top of
+`INITIAL_MEMORY`. If you need a hard cap, wrap the expression:
+`Math.min(navigator.hardwareConcurrency, 16)`.
+
+> ### Why not a small fixed pool size?
+>
+> A round-number pool like `-sPTHREAD_POOL_SIZE=4` is tempting but
+> silently caps your speedup. On a 12-core machine OCCT's
+> `OSD_ThreadPool` requests 11 workers (`NbLogicalProcessors-1`); with a
+> pool of 4 the parallel sections degrade to 4-way fan-out and the
+> headline speedup stalls around 1.3×. Sizing the pool to
+> `navigator.hardwareConcurrency` recovers the full 2.0–2.5× on
+> mesh-dominated workloads, and shrinks gracefully on lower-core devices
+> without a separate build.
+
+> ### Relaxed-SIMD — advanced, non-default
+>
+> Do **not** add `-mrelaxed-simd` to the binary you ship to
+> browsers. Safari / WebKit (all versions as of May 2026) crash the JIT
+> when a relaxed-SIMD opcode actually executes — validation passes but
+> execution does not. If you want the 5–15 % uplift on Chromium /
+> Firefox / Node, build a sibling `occt_threaded_rsimd.wasm` with
+> `-mrelaxed-simd` and `wasm-opt --enable-relaxed-simd`, then UA-sniff in
+> your loader to serve the plain binary to WebKit and the relaxed
+> binary to everyone else.
+
+> ### `EVAL_CTORS=2` is dropped under threading
+>
+> `full.yml` enables `-sEVAL_CTORS=2` for the single-threaded build, but
+> `full_multi.yml` drops it — constructor evaluation order is
+> non-deterministic under pthread workers. The trade-off is a slightly
+> larger binary in exchange for race-free startup.
+
+## After building
+
+Wire the resulting `.js` / `.wasm` triple into your bundler the same way as the shipped variant — see [Package — Multi-threaded build](/docs/package/guides/multi-threading) for activation calls, parallel-aware OCCT APIs, and benchmarks.
+
+## Related
+
+- [Configurations reference](../reference/configurations) — `multi-threaded` preset and how to author a custom one.
+- [Custom emcc flags](./custom-emcc-flags) — link-time `emccFlags` rationale.
+- [Trim symbols](./trim-symbols) — shrink the symbol set before building.

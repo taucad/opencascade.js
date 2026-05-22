@@ -1,0 +1,218 @@
+---
+title: Trim symbols
+description: Drive the published Docker image to cut full.yml down to a consumer-sized symbol set — workflow, budget, and worked example.
+---
+
+`opencascade_full.wasm` binds ~4,400 OCCT classes and weighs roughly 27 MB.
+Most consumers need a fraction of that surface — a STEP round-tripper might
+touch ~120 classes, a glTF mesher even fewer. Trimming the YAML symbol list
+shrinks the wasm payload and reduces startup time.
+
+This guide drives the entire workflow through the published Docker image so
+you do not need `emsdk`, `libclang`, or Python installed locally. The image
+ships with `emsdk`, `libclang`, Python, the precompiled OCCT object cache,
+and the reference `full.yml` already in place.
+
+## Prerequisites
+
+- Docker (or any OCI runtime — Colima, Rancher Desktop, OrbStack all work).
+- A working directory under your home folder (`/Users/...` on macOS,
+  `C:\Users\...` on Windows). Other top-level folders like `/tmp` and
+  `/opt` are not shared into the Docker VM by default and will silently
+  drop build outputs.
+- Familiarity with the YAML schema. See [YAML schema](../reference/yaml-schema)
+  for the full reference.
+
+If you have not used the image before, run the
+[Quickstart — Docker](../getting-started/quick-start-docker) once to verify
+your setup before trimming.
+
+## Size budget
+
+Each bound class contributes roughly 15–25 KB to the linked wasm. A
+reasonable target by use case:
+
+| Use case                                       |             Symbols | Approximate wasm size |
+| ---------------------------------------------- | ------------------: | --------------------: |
+| Single-format viewer (read STEP → mesh)        |              80–150 |                2–4 MB |
+| Round-trip pipeline (STEP/IGES edit + write)   |             200–400 |               5–10 MB |
+| Full code-CAD tool (booleans + fillets + sweep) |           600–1,200 |              12–20 MB |
+| Reference / kitchen sink                        | 4,400 (`full.yml`) |                ~27 MB |
+
+Numbers are after `-O3 -msimd128 -sWASM_BIGINT -sEVAL_CTORS=2`.
+
+## Steps
+
+### 1. Extract the reference `full.yml`
+
+The image ships the reference `full.yml` at
+`/opencascade.js/build-configs/full.yml`. Pull it out with an entrypoint
+override so you can use it as your starting point:
+
+```bash
+docker run --rm --entrypoint cat \
+  ghcr.io/taucad/opencascade.js:beta \
+  /opencascade.js/build-configs/full.yml \
+  > my-config.yml
+```
+
+If you already know exactly which classes you need you can also hand-write
+`my-config.yml` from scratch — see the worked example below.
+
+### 2. Delete the classes you don't need
+
+Open `my-config.yml` and remove any `bindings` entry you don't call from
+JavaScript. There is no transitive closure to compute — Handle typedefs
+and `NCollection_*` members for the surviving classes are auto-discovered
+at codegen time, so you only list classes you instantiate or pass
+references to.
+
+### 3. Validate
+
+```bash
+docker run --rm \
+  -v "$(pwd):/src" \
+  ghcr.io/taucad/opencascade.js:beta \
+  validate /src/my-config.yml
+```
+
+`validate` parses the YAML against the schema and fails non-zero on any
+malformed entry, unknown key, or duplicated symbol. It does not run the
+C++ pipeline, so it returns in under a second.
+
+### 4. Link
+
+```bash
+docker run --rm \
+  -v "$(pwd):/src" \
+  -v "$(pwd)/output:/output" \
+  ghcr.io/taucad/opencascade.js:beta \
+  link /src/my-config.yml
+```
+
+`link` reuses the precompiled `.o` files baked into the image for every
+still-bound class, so a trim that strips half of `full.yml` typically
+completes in 60–180 seconds.
+
+Output lands in `./output/`:
+
+- `<name>.wasm` — the trimmed wasm binary
+- `<name>.js` — the emscripten loader
+- `<name>.d.ts` — generated TypeScript declarations
+- `<name>.build-manifest.json` — symbol coverage and size report
+
+If you removed a class another bound class transitively needs, the link
+step fails with `undefined symbol`. Add it back and re-run.
+
+### 5. Iterate with a persistent cache
+
+Repeated trims benefit from caching the Nx graph between runs. Create a
+named volume once, then mount it on every subsequent invocation:
+
+```bash
+docker volume create ocjs-nx-cache
+
+docker run --rm \
+  -v ocjs-nx-cache:/opencascade.js/.nx \
+  -v "$(pwd):/src" \
+  -v "$(pwd)/output:/output" \
+  ghcr.io/taucad/opencascade.js:beta \
+  link /src/my-config.yml
+```
+
+Cache hits drop subsequent link times to ~10–30 seconds when only the
+YAML changed and the touched classes were already compiled.
+
+## Worked example: STEP round-tripper
+
+```yaml title="my-config.yml"
+mainBuild:
+  name: step_roundtrip
+  bindings:
+    - symbol: Standard_Failure
+    - symbol: Message_ProgressRange
+    - symbol: TCollection_AsciiString
+    - symbol: TCollection_ExtendedString
+    - symbol: TopoDS
+    - symbol: TopoDS_Shape
+    - symbol: TopoDS_Compound
+    - symbol: TopoDS_Solid
+    - symbol: TopoDS_Shell
+    - symbol: TopoDS_Face
+    - symbol: TopoDS_Wire
+    - symbol: TopoDS_Edge
+    - symbol: TopoDS_Vertex
+    - symbol: TopExp
+    - symbol: TopExp_Explorer
+    - symbol: gp_Pnt
+    - symbol: gp_Dir
+    - symbol: gp_Vec
+    - symbol: gp_Ax2
+    - symbol: STEPControl_Reader
+    - symbol: STEPControl_Writer
+    - symbol: STEPControl_StepModelType
+    - symbol: IFSelect_ReturnStatus
+    - symbol: Interface_Static
+  emccFlags:
+    - -O3
+    - -msimd128
+    - -sWASM_BIGINT
+    - -sEVAL_CTORS=2
+    - -sMODULARIZE=1
+    - -sEXPORT_ES6=1
+    - -sENVIRONMENT=web,worker,node
+    - -sALLOW_MEMORY_GROWTH=1
+```
+
+Link it with the step-4 invocation above. On a warm cache, expect a
+1.5–3 MB binary in `./output/step_roundtrip.wasm`.
+
+## Variations
+
+### Pin the image by digest
+
+The `:beta` tag is mutable — a new beta drops at any time. For
+reproducible CI, replace the tag with an immutable digest:
+
+```bash
+docker run --rm \
+  -v "$(pwd):/src" \
+  -v "$(pwd)/output:/output" \
+  ghcr.io/taucad/opencascade.js@sha256:<digest> \
+  link /src/my-config.yml
+```
+
+See [Reproducible CI](./reproducible-ci) for the full pinning recipe.
+
+### Drop into the image for interactive exploration
+
+To browse `build-configs/*.yml` presets, the OCCT source tree, or the
+toolchain layout, override the entrypoint:
+
+```bash
+docker run --rm -it \
+  -v "$(pwd):/src" \
+  --entrypoint bash \
+  ghcr.io/taucad/opencascade.js:beta
+```
+
+The image's working directory is `/opencascade.js/`. `build-configs/`,
+`deps/OCCT/`, and the precompiled object cache under `dist/libs/` all
+live there.
+
+### When trimming feeds back into your design
+
+A trimmed binary makes your application's OCCT dependency graph explicit.
+Adding a class to recover from a link error is a signal: either the class
+is genuinely part of your call graph, or your code reaches into an OCCT
+subsystem it doesn't need. The second case is worth investigating.
+
+## Related
+
+- [Quickstart — Docker](../getting-started/quick-start-docker) — end-to-end first build.
+- [Docker image](../reference/docker-image) — tags, mounts, OCI labels, provenance.
+- [YAML schema](../reference/yaml-schema) — every YAML key and its semantics.
+- [Custom emcc flags](./custom-emcc-flags) — tuning link-time flags.
+- [Reproducible CI](./reproducible-ci) — pinning by digest for repeatable builds.
+- [Bindgen pipeline](../concepts/bindgen-pipeline) — why the trim works without
+  computing a transitive closure.

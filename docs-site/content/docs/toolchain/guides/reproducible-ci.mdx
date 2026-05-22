@@ -1,0 +1,109 @@
+---
+title: Reproducible CI
+description: Pin GHCR images by digest, capture provenance and SBOM, lock downstream consumer pins.
+---
+
+A reproducible OCJS build means: same inputs, same wasm bytes, every time.
+Three controls close the loop.
+
+## 1. Pin the image by digest
+
+`:beta` is a moving tag. CI should pin by digest so a new image publish
+doesn't silently change your wasm output.
+
+```bash
+# Resolve the current digest
+docker pull ghcr.io/taucad/opencascade.js:beta
+docker images --no-trunc --digests ghcr.io/taucad/opencascade.js
+
+# Use the digest in CI
+docker pull ghcr.io/taucad/opencascade.js@sha256:abc123...
+docker run --rm -v "$(pwd):/src" \
+  ghcr.io/taucad/opencascade.js@sha256:abc123... \
+  /src/mybuild.yml
+```
+
+## 2. Verify provenance
+
+The image ships a SLSA provenance attestation via cosign:
+
+```bash
+cosign verify-attestation \
+  --type slsaprovenance \
+  --certificate-identity-regexp 'https://github\.com/taucad/opencascade\.js/' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  ghcr.io/taucad/opencascade.js@sha256:abc123...
+```
+
+The attestation records the source commit, the runner, and the workflow that
+produced the image. CI failing this step on a sudden mismatch is a smoking gun
+that something tampered with the supply chain.
+
+## 3. Extract SBOM
+
+```bash
+docker buildx imagetools inspect \
+  --format '{{ json .SBOM }}' \
+  ghcr.io/taucad/opencascade.js@sha256:abc123...
+```
+
+The SBOM lists every apt package and pinned commit (OCCT, freetype, rapidjson)
+embedded in the image. Diff it against the prior digest's SBOM in CI to flag
+unexpected dep bumps.
+
+## 4. Lock downstream consumers
+
+In your `package.json`, pin the npm tarball alongside the docker digest:
+
+```json
+{
+  "dependencies": {
+    "@taucad/opencascade.js": "3.0.0-beta.5"
+  },
+  "pnpm": {
+    "supportedArchitectures": {
+      "os": ["linux", "darwin"],
+      "cpu": ["x64", "arm64"]
+    }
+  }
+}
+```
+
+Commit `pnpm-lock.yaml`. The lockfile records the integrity hash of the
+published tarball; if it ever changes, `pnpm install --frozen-lockfile` fails
+in CI.
+
+## End-to-end CI snippet
+
+```yaml title=".github/workflows/wasm-build.yml"
+jobs:
+  build-wasm:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify image provenance
+        run: |
+          DIGEST=$(cat .ocjs-digest)
+          cosign verify-attestation --type slsaprovenance \
+            --certificate-identity-regexp 'https://github\.com/taucad/opencascade\.js/' \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            "ghcr.io/taucad/opencascade.js@${DIGEST}"
+
+      - name: Build wasm
+        run: |
+          DIGEST=$(cat .ocjs-digest)
+          docker run --rm -v "$(pwd):/src" \
+            "ghcr.io/taucad/opencascade.js@${DIGEST}" \
+            /src/build-configs/my-config.yml
+
+      - name: Assert wasm hash
+        run: |
+          EXPECTED=$(cat .wasm-hash)
+          ACTUAL=$(sha256sum dist/my-config.wasm | cut -d' ' -f1)
+          [ "$EXPECTED" = "$ACTUAL" ] || { echo "wasm hash drift"; exit 1; }
+```
+
+The trailing `assert wasm hash` step is the safety net. If `EXPECTED` and
+`ACTUAL` ever diverge, something in the published image changed — either
+intentionally (bump your `.wasm-hash`) or by accident (investigate).

@@ -1,0 +1,74 @@
+---
+title: Module shape
+description: Top-level fields exposed on the resolved OCCT module — namespaces, runtime helpers, FS.
+---
+
+The object returned from `init()` carries every bound class plus emscripten
+runtime helpers.
+
+## Bound classes and namespaces
+
+Direct properties named after OCCT classes:
+
+```typescript
+const oc = await init({ locateFile });
+const box = new oc.BRepPrimAPI_MakeBox(10, 10, 10);
+const point = new oc.gp_Pnt(0, 0, 0);
+```
+
+OCCT namespaces (e.g. `TopoDS`, `Interface_Static`, `XCAFDoc_DocumentTool`)
+appear as static-method-only objects:
+
+```typescript
+oc.Interface_Static.SetIVal('write.step.schema', 5);
+const edge = oc.TopoDS.Edge(genericShape);
+const shapeTool = oc.XCAFDoc_DocumentTool.ShapeTool(doc.Main()).get();
+```
+
+## Filesystem (`oc.FS`)
+
+The emscripten MEMFS bridge. Used to write OCCT output (`STEP`, `GLB`, `IGES`)
+to an in-memory path, then read the bytes out.
+
+```typescript
+const path = `/out_${Date.now()}.step`;
+writer.Write(path);
+const bytes = oc.FS.readFile(path) as Uint8Array;
+oc.FS.unlink(path);
+```
+
+| Method | Purpose |
+|---|---|
+| `FS.readFile(path)` | Returns bytes as `Uint8Array` (view into wasm memory — copy out before `unlink`) |
+| `FS.writeFile(path, bytes)` | Write input file (e.g. for `STEPControl_Reader.ReadFile`) |
+| `FS.unlink(path)` | Free the MEMFS path |
+| `FS.mkdir(path)` | Create directory (rare — OCCT writes to `/` by default) |
+| `FS.readdir(path)` | List directory contents |
+
+Full FS API: [emscripten FS reference](https://emscripten.org/docs/api_reference/Filesystem-API.html).
+
+## Heap views
+
+| Property | Type |
+|---|---|
+| `oc.HEAP8` | `Int8Array` view of wasm memory |
+| `oc.HEAPU8` | `Uint8Array` |
+| `oc.HEAP16`, `HEAPU16` | 16-bit views |
+| `oc.HEAP32`, `HEAPU32` | 32-bit views |
+| `oc.HEAPF32`, `HEAPF64` | Float views |
+
+Use for advanced interop (e.g. reading bytes at a `Standard_Address` pointer
+returned from a low-level OCCT API). Most consumers never need these.
+
+## Exception helpers
+
+```typescript
+import init, { getExceptionMessage } from '@taucad/opencascade.js';
+// see /docs/package/guides/debugging-wasm-exceptions
+```
+
+## Module re-init
+
+Calling `init()` a second time **re-instantiates** the wasm module —
+expensive, and creates two parallel C++ heaps that don't share state. Always
+memoise behind a singleton; see [init function](./init-function).

@@ -1,0 +1,138 @@
+---
+title: YAML schema
+description: Every key the build YAML accepts — mainBuild, extraBuilds, additionalCppCode, additionalCppFiles, additionalBindCode, allowedUndefinedSymbols.
+---
+
+The build YAML controls which OCCT classes get bound, which C++ wrapper code
+is injected, and which emscripten linker flags drive the final wasm.
+
+## Top-level shape
+
+```yaml
+mainBuild:
+  name: <string>
+  bindings:
+    - symbol: <ClassName>
+  emccFlags:
+    - <flag>
+  additionalBindCode: |
+    EMSCRIPTEN_BINDINGS(custom) { ... }
+  allowedUndefinedSymbols:
+    - <symbol>
+
+extraBuilds:
+  - name: <string>
+    bindings: [...]
+    emccFlags: [...]
+    additionalBindCode: |
+      ...
+    allowedUndefinedSymbols: [...]
+
+additionalCppCode: |
+  typedef opencascade::handle<Geom_Curve> Handle_Geom_Curve;
+  class MyWrapper { ... };
+
+additionalCppFiles:
+  - path/to/extra.cpp
+
+generateTypescriptDefinitions: true
+```
+
+The canonical Cerberus definition lives in `src/customBuildSchema.py`.
+
+## `mainBuild`
+
+The primary wasm artifact produced by the YAML.
+
+### `mainBuild.name`
+
+Output filename without extension. `name: my-occt` produces `my-occt.wasm`,
+`my-occt.js`, `my-occt.d.ts`, and `my-occt.build-manifest.json`.
+
+### `mainBuild.bindings`
+
+Allowlist of OCCT classes to expose to JS via embind. Only classes listed
+here (and their transitive base classes) are accessible at runtime.
+
+```yaml
+bindings:
+  - symbol: BRepPrimAPI_MakeBox
+  - symbol: TopoDS_Shape
+  - symbol: gp_Pnt
+```
+
+The symbol name must match exactly the C++ class name in the generated
+binding `.cpp` files under `build/bindings/`. Base classes are auto-included
+if missing from the list.
+
+### `mainBuild.emccFlags`
+
+Emscripten linker flags. See [Custom emcc flags](../guides/custom-emcc-flags)
+for the recommended baseline and per-flag rationale.
+
+### `mainBuild.additionalBindCode`
+
+Per-build raw `EMSCRIPTEN_BINDINGS(...)` registrations compiled with
+`<emscripten/bind.h>` already included. See [Extend with C++](../guides/extend-with-cpp).
+
+### `mainBuild.allowedUndefinedSymbols`
+
+A list of symbols the linker is permitted to leave unresolved. Use only when
+you have a deliberate runtime substitution; otherwise an undefined symbol is
+a build error.
+
+## `extraBuilds`
+
+Same schema as `mainBuild`. Each entry produces a sibling wasm artifact.
+Useful for shipping multiple variants (e.g. baseline + relaxed-SIMD) from one
+YAML pass.
+
+## `additionalCppCode`
+
+Inline C++ injected into a generated `.cpp` file compiled with the same flags
+as the bindings TU. Common uses:
+
+1. Handle typedefs (`typedef opencascade::handle<T> Handle_T;`).
+2. Free-function helpers reachable from `additionalBindCode`.
+3. Small `value_object<T>` POD definitions.
+
+## `additionalCppFiles`
+
+List of `.cpp` files concatenated onto `additionalCppCode` before custom-binding
+generation runs.
+
+```yaml
+additionalCppCode: |
+  typedef opencascade::handle<Geom_BSplineSurface> Handle_Geom_BSplineSurface;
+
+additionalCppFiles:
+  - wrappers/fair-curve.cpp
+  - wrappers/shape-cast.cpp
+```
+
+- Paths resolve relative to the YAML file's directory; absolute paths also accepted.
+- File contents are appended in declaration order.
+- `additionalCppCode` wins on conflict because it precedes file contents in the TU.
+- A missing file fails-loud at validate time.
+
+## `generateTypescriptDefinitions`
+
+Default `true`. Set to `false` to skip `.d.ts` generation (rare — useful only
+for ultra-fast iteration builds).
+
+## Validation
+
+```bash
+./build-wasm.sh validate build-configs/my-config.yml
+```
+
+`validate` checks the YAML against the schema and exits non-zero on any
+malformed entry, unknown key, duplicated symbol, or missing
+`additionalCppFiles` path. It does not run the C++ pipeline — pair it with
+`./build-wasm.sh link` to actually produce the wasm.
+
+## Related
+
+- [Trim symbols](../guides/trim-symbols) — end-to-end workflow.
+- [Extend with C++](../guides/extend-with-cpp) — when to reach for which mechanism.
+- [Custom emcc flags](../guides/custom-emcc-flags) — flag-by-flag rationale.
