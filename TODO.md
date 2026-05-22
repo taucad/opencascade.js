@@ -1,42 +1,26 @@
-# OpenCascade.js To-Do's
+# opencascade.js — backlog (v3)
 
-## 1. AdditionalCppCode
+An honest, public backlog. Items here are either next-cut work or known investigations that have not yet landed. Closed items live in [`CHANGELOG.md`](CHANGELOG.md). Test failures and bugs go to GitHub issues, not here.
 
-* not specifying additionalCppCode should give you the default tools from opencascade.full.yml
+## Bindgen
 
-## 2. Improve Bindings
+- **Regex / glob support in YAML `bindings`**: today, every entry must be a literal `- symbol: ClassName`. Adding `- pattern: ^STEPControl_.*$` would compress hand-trimmed YAML files and reduce drift between consumer YAML and OCCT releases.
 
-* Passing objects as references is not consistent with passing built-in types, right now. The fix should be fairly easy and non-breaking.
-* It is impossible to return references to built-in types, right now. Is there a way to avoid a breaking change?
-* If a function takes a c-style string as a parameter, currently we wrap this into a std::string instead, because that is compatible with Embind. However, certain APIs like STEPCAFControl_Writer::Transfer behave differently if the c-style string is a null pointer. Currently, that case cannot be covered with the current bindings.
+## Build system
 
-## 3. Examples and Tests
+- **Provenance signing**: extend `provenance.json` with cosign signatures so downstream consumers can verify provenance without trusting GHCR's manifest list alone.
+- **Reproducible-CI guide adoption**: most downstream consumers still pin by tag rather than digest. Promote the `provenance.json` + image-digest workflow in the next release notes.
 
-* Allow interactive code editing on the home page
-  * Either by building a simple "Playground" page using [monaco](https://microsoft.github.io/monaco-editor/)
-  * Or by linking to example code using CodeSandbox / StackBlitz
-* When the above step done, we can archive the examples repository
-* Add more examples and / or tests
+## Test coverage
 
-## 4. Community Project Section
+- **Round-trip geometry coverage for mesh exporters**: `STEP`, `IGES`, and `BRep` smokes already write-then-read with `STEPControl_Reader` / `IGESControl_Reader` / `BRepTools` to assert geometry survives the round-trip. `GLB`, `OBJ`, `PLY`, and `STL` smokes currently stop at parsing vertex/face counts out of the serialised output; extend them to re-import through `RWGltf_CafReader` / `RWObj_CafReader` / `RWPly_PlyReader` / `RWStl_Reader` and assert geometric equality within tolerance.
+- **Per-template Playwright artifacts**: capture and archive screenshots from `starter-templates/<name>` smokes on every CI run, not just on failure. Useful for tracking visual drift across `@react-three/drei` or `three.js` upgrades.
 
-* Add section about featured community projects?!
-* Ask first if the community really wants / needs that (yet) or not
+## Community
 
-## 5. Default values in bindings
+- **Featured community projects**: confirm the projects listed in `README.md` (`ArchiYou`, `BitByBit`, `CascadeStudio`, `RepliCAD`, `Tau`) are still active and accepting contributors; add new ones if discovered.
+- **Discussions vs Issues triage**: current convention is unclear. Document on the GitHub Discussions front page whether feature requests should land as Discussions or Issues.
 
-* Add support for default values
+---
 
-## 6. More flexibility when defining custom build bindings in YAML files
-
-* Currently, only "symbol: bla" is supported.
-* Add support for regex
-* Maybe support for inline python functions?!
-
-## 7. TSDoc comments in typescript definitions
-
-* Helpful in IDEs that support intellisense
-
-## 8. Other
-
-* Experiment with opencascade's built-in visualization and see if it works with Emscripten and if it's any good. Create example.
+Patches welcome on any of the above. Open a draft PR if the work might exceed a weekend so the direction can be discussed early.
