@@ -12,7 +12,7 @@ Reversible via `git checkout` in the OCCT tree.
 import os
 import sys
 
-SENTINEL = "OCJS_PATCH_STEPCAF_RTTI"
+SENTINEL = "OCJS_STEPCAF_RTTI_PATCH_MARKER"
 
 OLD_MACRO = "IMPLEMENT_STANDARD_RTTIEXT(STEPCAFControl_Controller, STEPControl_Controller)"
 
