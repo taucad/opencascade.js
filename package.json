@@ -1,15 +1,33 @@
 {
   "name": "@taucad/opencascade.js",
-  "version": "3.0.0-rc.0",
+  "version": "3.0.0-beta.2",
   "description": "Port of the OpenCascade CAD library to JavaScript and WebAssembly via Emscripten.",
-  "main": "dist/opencascade_full.js",
-  "author": "Sebastian Alff <donalffons@gmail.com>",
-  "license": "LGPL-2.1-only",
+  "keywords": [
+    "opencascade",
+    "occt",
+    "cad",
+    "wasm",
+    "webassembly",
+    "brep",
+    "step",
+    "iges",
+    "geometry",
+    "3d"
+  ],
+  "homepage": "https://github.com/taucad/opencascade.js#readme",
+  "bugs": {
+    "url": "https://github.com/taucad/opencascade.js/issues"
+  },
+  "license": "LGPL-2.1-only WITH Open-CASCADE-Exception-1.0",
+  "author": "Richard Fontein <32132657+rifont@users.noreply.github.com>",
+  "contributors": [
+    "Sebastian Alff <donalffons@gmail.com>"
+  ],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/taucad/opencascade.js.git"
   },
-  "types": "dist/opencascade_full.d.ts",
+  "type": "module",
   "exports": {
     ".": {
       "types": "./dist/opencascade_full.d.ts",
@@ -37,15 +55,15 @@
     "dist/opencascade_full_multi.build-manifest.json",
     "dist/opencascade_full_multi.provenance.json",
     "CHANGELOG.md",
-    "BREAKING_CHANGES.md"
+    "BREAKING_CHANGES.md",
+    "LICENSE",
+    "LICENSE.OCCT-Exception"
   ],
-  "peerDependencies": {
-    "ws": "^8.5.0"
-  },
-  "type": "module",
   "engines": {
-    "node": "24.x",
-    "npm": "11.x"
+    "node": ">=22"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "test": "vitest run tests/smoke/",
@@ -54,16 +72,13 @@
     "lint": "eslint --config eslint.config.mjs tests",
     "lint:fix": "eslint --config eslint.config.mjs --fix tests"
   },
-  "dependencies": {
-    "@gltf-transform/core": "^4.3.0",
-    "@gltf-transform/functions": "^4.3.0"
-  },
   "devDependencies": {
+    "@gltf-transform/core": "^4.3.0",
+    "@gltf-transform/functions": "^4.3.0",
     "@types/node": "~24.0.15",
     "eslint": "^9.32.0",
     "nx": "22.5.2",
     "typedoc": "^0.28.19",
     "typescript-eslint": "^8.56.1"
-  },
-  "nx": {}
+  }
 }
