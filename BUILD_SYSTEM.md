@@ -174,7 +174,6 @@ The **bare default** column is what `build-wasm.sh` would fall back to if you se
 | `OCJS_EVAL_CTORS`     | Enable Emscripten eval ctors (`true` or `false`)        | `false`           | `true`                   |
 | `OCJS_EVAL_CTORS_LEVEL` | `-sEVAL_CTORS=N` level when `OCJS_EVAL_CTORS=true`    | `2`               | `2`                      |
 | `OCJS_CONVERGE`       | Use `--converge` in wasm-opt (`true` or `false`)        | `false`           | `true`                   |
-| `OCJS_PATCH_DUMP`     | Patch OCCT Standard_Dump.hxx (`true` or `false`)        | `false`           | `true`                   |
 | `OCJS_MALLOC`         | Heap allocator (`dlmalloc` or `mimalloc`)               | `dlmalloc`        | `mimalloc`               |
 | `OCJS_EXTRA_CFLAGS`   | Extra compile flags appended to C/CXX                   | _(empty)_         | _(empty)_                |
 

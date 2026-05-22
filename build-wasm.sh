@@ -53,7 +53,7 @@ Usage: ./build-wasm.sh <command> [options] [<yaml-config>]
 
 Commands:
   full <yaml>           Full pipeline: apply-patches + pch + generate + bindings + sources + link
-  apply-patches         Apply OCCT source patches (idempotent, based on OCJS_PATCH_DUMP)
+  apply-patches         Apply OCCT source patches (idempotent — all 4 OCCT patches + libembind patch are hard requirements)
   link <yaml>           Link only (reuses compiled .o files, fastest)
   pch                   Rebuild flat includes + precompiled header
   generate              Generate binding .cpp files from OCCT headers
@@ -295,7 +295,6 @@ export OCJS_EVAL_CTORS="${OCJS_EVAL_CTORS:-false}"
 export OCJS_CONVERGE="${OCJS_CONVERGE:-false}"
 export OCJS_DEFINES="${OCJS_DEFINES:-}"
 export OCJS_UNDEFINES="${OCJS_UNDEFINES:-}"
-export OCJS_PATCH_DUMP="${OCJS_PATCH_DUMP:-false}"
 export OCJS_SIMD="${OCJS_SIMD:-0}"
 export OCJS_RELAXED_SIMD="${OCJS_RELAXED_SIMD:-0}"
 export OCJS_BIGINT="${OCJS_BIGINT:-0}"
@@ -606,6 +605,12 @@ step_link() {
 }
 
 step_apply_patches() {
+  # The four OCCT source patches below are HARD REQUIREMENTS for every
+  # supported build (single-threaded and multi-threaded alike). The legacy
+  # OCJS_PATCH_DUMP / OCJS_PATCH_STEPCAF env-var toggles were removed —
+  # making required behaviour optional was a footgun (a `OCJS_PATCH_DUMP=false`
+  # build silently produces an unusable WASM that fails at link or at runtime
+  # depending on which symbols the consumer pulls in).
   echo "═══ Applying OCCT source patches ═══"
 
   if [ -d "$OCCT_ROOT/.git" ]; then
@@ -613,21 +618,15 @@ step_apply_patches() {
     git -C "$OCCT_ROOT" checkout -- . 2>/dev/null || true
   fi
 
-  if [ "$OCJS_PATCH_DUMP" = "true" ]; then
-    echo "  Applying using-statement / V8 bugfix patches..."
-    "$OCJS_PYTHON" src/patches/patch_using_statements.py
-    echo "  Applying Standard_Dump stub patch..."
-    "$OCJS_PYTHON" src/patches/patch_standard_dump.py
-    if [ "${OCJS_PATCH_STEPCAF:-true}" = "true" ]; then
-      echo "  Applying noexcept destructors patch (7 classes)..."
-      "$OCJS_PYTHON" src/patches/patch_noexcept_destructors.py
-      echo "  Applying STEPCAFControl_Controller DynamicType patch..."
-      "$OCJS_PYTHON" src/patches/patch_stepcaf_dyntype.py
-    fi
-    echo "  All patches applied."
-  else
-    echo "  OCJS_PATCH_DUMP=false — no patches to apply (clean OCCT tree)."
-  fi
+  echo "  Applying using-statement / V8 bugfix patches..."
+  "$OCJS_PYTHON" src/patches/patch_using_statements.py
+  echo "  Applying Standard_Dump stub patch..."
+  "$OCJS_PYTHON" src/patches/patch_standard_dump.py
+  echo "  Applying noexcept destructors patch (7 classes)..."
+  "$OCJS_PYTHON" src/patches/patch_noexcept_destructors.py
+  echo "  Applying STEPCAFControl_Controller DynamicType patch..."
+  "$OCJS_PYTHON" src/patches/patch_stepcaf_dyntype.py
+  echo "  All patches applied."
 
   step_patch_embind
 

@@ -13,9 +13,7 @@
       { "env": "OCJS_SIMD" },
       { "env": "THREADING" },
       { "env": "OCJS_DEFINES" },
-      { "env": "OCJS_UNDEFINES" },
-      { "env": "OCJS_PATCH_DUMP" },
-      { "env": "OCJS_PATCH_STEPCAF" }
+      { "env": "OCJS_UNDEFINES" }
     ],
     "linkConfig": [
       { "env": "OCJS_WASM_OPT_LEVEL" },

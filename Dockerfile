@@ -3,65 +3,71 @@
 # Build:
 #   DOCKER_BUILDKIT=1 docker build -t opencascade-js .
 #
-# Per-config warm-cache images (recommended for downstream consumers):
-#   docker build --build-arg OCJS_CONFIG_DEFAULT=single-threaded -t opencascade-js:single-threaded .
-#   docker build --build-arg OCJS_CONFIG_DEFAULT=multi-threaded  -t opencascade-js:multi-threaded  .
+# Per-tag production builds (consumer images):
+#   docker buildx build --target final-single -t opencascade-js:single-threaded .
+#   docker buildx build --target final-multi  -t opencascade-js:multi-threaded  .
+#   docker buildx build --target bindgen-base -t opencascade-js:bindgen-base    .
 #
-# Run (link with consumer YAML):
+# Default target is final-single (matches the canonical Quickstart tag).
+#
+# Run (single-mount Quickstart — outputs land next to your YAML):
 #   docker run --rm \
-#     -v $(pwd)/my-config.yml:/src/config.yml:ro \
-#     -v $(pwd)/output:/output \
-#     opencascade-js link /src/config.yml
-#
-# Run (full build with named configuration):
-#   docker run --rm -e OCJS_CONFIG=single-threaded \
-#     -v $(pwd)/my-config.yml:/src/config.yml:ro \
-#     -v $(pwd)/output:/output \
-#     opencascade-js full /src/config.yml
+#     -v "$(pwd):/src" \
+#     -u "$(id -u):$(id -g)" \
+#     opencascade-js full /src/my.yml
 #
 # Persistent caching across runs (recommended for iterative work):
 #   docker volume create ocjs-nx-cache ocjs-build-cache
 #   docker run --rm \
 #     -v ocjs-nx-cache:/opencascade.js/.nx \
 #     -v ocjs-build-cache:/opencascade.js/build \
-#     -v $(pwd)/output:/output \
-#     opencascade-js full build-configs/full.yml
+#     -v "$(pwd):/src" \
+#     -u "$(id -u):$(id -g)" \
+#     opencascade-js full /src/my.yml
 #
 # Environment overrides:
-#   docker run -e OCJS_OPT="-Os" -e OCJS_EXCEPTIONS=1 ... opencascade-js full build-configs/full.yml
+#   docker run -e OCJS_OPT="-Os" -e OCJS_EXCEPTIONS=1 ... opencascade-js full /src/my.yml
 #
-# This Dockerfile is split into three named stages so CI and downstream consumers
-# can build/cache them independently:
+# ─────────────────────────────────────────────────────────────────────────────
+# Stage architecture (5 logical stages; final-{threading} are thin tag-bearing
+# stages over the matching compiled-{threading} stage):
 #
-#   - deps-base    OS toolchain (emsdk + apt + Node 24 + uv + Python 3.14 + clone-deps.sh)
-#                  → invariant under in-repo source changes; cached aggressively
-#   - bindgen-base deps-base + npm ci + apply-patches + pch + generate
-#                  → invariant under YAML / consumer source changes; cached per-PR
-#   - final        bindgen-base + OCI labels + ENTRYPOINT/CMD
-#                  → the published image; rebuild on every commit
+#   deps-base                  OS toolchain (emsdk + apt + Node 24 + uv + Python 3.14)
+#                              + clone-deps.sh (OCCT/rapidjson/freetype/LLVM 17 tarball)
+#                              + LLVM 17 trim (~5 GB pruned in-RUN to ~250 MB)
+#                              + apt/uv cache purge
+#                              → invariant under in-repo source changes
+#                              → not published
 #
-# Each stage is independently buildable via `--target`:
-#   docker buildx build --target deps-base    -t ocjs-deps    .
-#   docker buildx build --target bindgen-base -t ocjs-bindgen .
-#   docker buildx build --target final        -t ocjs         .
+#   bindgen-base               deps-base + npm ci + apply-patches + pch + generate
+#                              + delete generated .cpp/.h sources in same RUN
+#                              → invariant under threading config
+#                              → published as `:bindgen-base` (custom-bindings starting point)
+#                              → consumers re-run `generate` against their own YAML
+#
+#   compiled-single-threaded   bindgen-base + (re)generate + compile-bindings
+#   compiled-multi-threaded    + compile-sources (CMake static libs)
+#                              + delete .cpp/.h sources, .cpp.o.d dep files, CMake scratch
+#                              → fan-out per ARG threading
+#                              → not published directly; final-{threading} adds metadata
+#
+#   final-single               compiled-{threading} + OCI labels + WORKDIR + ENTRYPOINT + CMD
+#   final-multi                → published as `:single-threaded` / `:multi-threaded`
+#
+# Each named stage is independently buildable via `--target`. R10 in-RUN pruning
+# is applied at every heavy stage; deletions stay inside the same RUN block so
+# Docker layer storage actually shrinks (whiteout markers over fat parent layers
+# would not).
 #
 # Notes on the underlying build pipeline:
 #   - All dependency fetching (OCCT/rapidjson/freetype git clones, Python venv,
-#     LLVM 17 tarball) is delegated to scripts/clone-deps.sh — the exact same
-#     script the host build uses. The Dockerfile is a thin OS+toolchain layer
-#     on top of it. Adding a new dep means editing DEPS.json + clone-deps.sh;
-#     the Dockerfile picks it up free. No duplicated curl/git/sha256 logic.
+#     LLVM 17 tarball) is delegated to scripts/clone-deps.sh — the same script
+#     the host build uses. The Dockerfile is a thin OS+toolchain layer on top.
 #   - emsdk is the only dep clone-deps.sh skips here: the base image already
 #     ships /emsdk with the `emsdk` launcher, and the script's §2 explicitly
-#     detects this via `[ -x $EMSDK_DIR/emsdk ]` (see line 98-101 there).
-#     A pre-symlink at /opencascade.js/deps/emsdk → /emsdk activates that path.
+#     detects this via `[ -x $EMSDK_DIR/emsdk ]`. A pre-symlink at
+#     /opencascade.js/deps/emsdk → /emsdk activates that path.
 #   - apt-installed Doxygen satisfies _ensure_doxygen at runtime (no GitHub download).
-#   - apply-patches + pch + generate are pre-baked into the bindgen-base stage so
-#     consumers pay only the compile-bindings/compile-sources/link cost on first
-#     `docker run`.
-#   - Convenience top-level symlinks /occt /rapidjson /freetype /llvm-17 point
-#     into /opencascade.js/deps/ so the `ENV OCCT_ROOT=/occt` defaults below
-#     and any external bind-mount UX (`-v /my/occt:/occt`) keep working.
 #   - The entrypoint dispatches recognised subcommands through `npx nx run` so
 #     consumers benefit from Nx's content-addressed cache (warm runs ≤ 5 min).
 
@@ -69,13 +75,13 @@
 
 # ═════════════════════════════════════════════════════════════════════════════
 # Stage 1: deps-base
-# OS toolchain + dependency clones. No in-repo source code beyond DEPS.json,
-# requirements.txt, and clone-deps.sh.
+# OS toolchain + dependency clones, with LLVM 17 trim and cache purge folded
+# into the clone-deps RUN so all of those bytes are gone from the layer.
 # ═════════════════════════════════════════════════════════════════════════════
 FROM emscripten/emsdk:5.0.1@sha256:c89732ef63a56de5a96395c5a8c1c7904f7420131a045406e6fedc4cbe1cc198 AS deps-base
 
 LABEL org.opencontainers.image.title="opencascade.js (deps-base)" \
-      org.opencontainers.image.description="OS toolchain + dependency clones (emsdk, Node 24, uv, Python 3.14, OCCT, rapidjson, freetype, LLVM 17)"
+      org.opencontainers.image.description="OS toolchain + dependency clones (emsdk, Node 24, uv, Python 3.14, OCCT, rapidjson, freetype, LLVM 17 — header-trimmed)"
 
 # ── System packages ─────────────────────────────────────────────────────────
 # Notes on what is intentionally NOT installed:
@@ -121,9 +127,19 @@ RUN --mount=type=cache,target=/var/cache/apt,id=ocjs-apt,sharing=locked \
 # uv installs python-build-standalone — same upstream CPython binary lineage
 # on macOS arm64 and Linux arm64 for a given release tag. Replaces both apt
 # python3* packages and pyenv. Host bootstrap is identical (see MAINTAINER.md).
+#
+# UV_PYTHON_INSTALL_DIR=/opt/uv-python relocates uv's python tree from
+# /root/.local/share/uv/python/… (which has mode 0700 by default and breaks
+# non-root execution via `docker run -u "$(id -u):$(id -g)"`) to a
+# world-traversable /opt subtree. The venv at /opencascade.js/.venv/bin/python
+# symlinks into this tree; without the relocation, non-root containers fail
+# at startup with "python not found" because the symlink target lives under
+# a directory the unprivileged user cannot traverse.
+ENV UV_PYTHON_INSTALL_DIR=/opt/uv-python
 RUN curl -LsSf https://astral.sh/uv/install.sh | \
       env UV_INSTALL_DIR=/usr/local/bin INSTALLER_NO_MODIFY_PATH=1 sh && \
-    uv python install 3.14.4
+    uv python install 3.14.4 && \
+    chmod -R go+rX /opt/uv-python
 
 # Put /usr/local/bin (uv) ahead of emsdk's bundled Node 22 so `node`/`npm`
 # resolve to the NodeSource-installed v24. The venv path gets prepended
@@ -136,26 +152,15 @@ RUN curl -LsSf https://astral.sh/uv/install.sh | \
 # Node version (see .nvmrc and package.json:engines).
 ENV PATH="/opencascade.js/.venv/bin:/usr/local/bin:/usr/bin:/bin:${PATH}"
 
-# ── Dependency fetch via the single host-tested script ──────────────────────
-# clone-deps.sh is the source of truth for every dep the build needs:
-#   §1 OCCT, rapidjson, freetype  → git clone + checkout at DEPS.json commits
-#   §2 emsdk                       → SKIPPED here, pre-symlinked below (the
-#                                    script's line 98-101 explicitly handles
-#                                    this Docker case — base image already
-#                                    ships /emsdk with the `emsdk` launcher)
-#   §3 Python .venv + pip install  → uv venv + uv pip install requirements.txt
-#   §4 LLVM 17 tarball             → curl + sha256 verify + tar -xJ
-# Host and container go through the same code path; sha256/commit drift
-# between them is impossible by construction. See clone-deps.sh.
 WORKDIR /opencascade.js/
 
 # Pre-create the venv with the pinned Python so /opencascade.js/.venv/bin/python3
 # lands on PATH BEFORE clone-deps.sh runs (its line 53 requires python3 to parse
-# DEPS.json). The script's §3 fast-paths past an already-created venv (line 121)
-# and still runs `uv pip install -r requirements.txt`, so this does NOT
-# re-duplicate the pip-install logic — it just bootstraps the python3 binary
-# the script needs to function. The base image intentionally has no system
-# python3 (see uv-only note above).
+# DEPS.json). The script's §3 fast-paths past an already-created venv and still
+# runs `uv pip install -r requirements.txt`, so this does NOT re-duplicate the
+# pip-install logic — it just bootstraps the python3 binary the script needs to
+# function. The base image intentionally has no system python3 (see uv-only
+# note above).
 RUN uv venv --python 3.14.4 /opencascade.js/.venv
 
 RUN mkdir -p /opencascade.js/deps && \
@@ -163,7 +168,44 @@ RUN mkdir -p /opencascade.js/deps && \
 
 COPY DEPS.json requirements.txt /opencascade.js/
 COPY scripts/clone-deps.sh /opencascade.js/scripts/clone-deps.sh
-RUN bash scripts/clone-deps.sh --dest /opencascade.js/deps
+
+# ── Dependency fetch + LLVM 17 trim + cache purge (mega-RUN, R10) ───────────
+# clone-deps.sh §1-§4 fetches: OCCT/rapidjson/freetype git checkouts,
+# Python .venv pip install, LLVM 17 tarball extract (~5.6 GB).
+#
+# LLVM 17 trim: src/ocjs_bindgen/config/paths.py consumes only:
+#   - deps/llvm-17/include/c++/v1/                  (libc++ headers)
+#   - deps/llvm-17/lib/clang/17/include/            (clang resource headers)
+# The actual libclang.so used by the parse pass is the pip wheel
+# `libclang==18.1.1`. Everything else in the LLVM 17 tarball (bin/, the rest
+# of lib/, libexec/, share/) is unused by the build and prunable to ~250 MB.
+#
+# uv pip cache: cleared because the venv is now fully populated and the
+# downloaded wheel cache (~150 MB) is dead weight in the image.
+RUN bash scripts/clone-deps.sh --dest /opencascade.js/deps && \
+    echo "── Trimming LLVM 17 vendored tarball (R10) ────────────────────────" && \
+    find /opencascade.js/deps/llvm-17 -mindepth 1 -maxdepth 1 \
+      ! -name include \
+      ! -name lib \
+      -exec rm -rf {} + && \
+    find /opencascade.js/deps/llvm-17/lib -mindepth 1 -maxdepth 1 \
+      ! -name clang \
+      -exec rm -rf {} + && \
+    find /opencascade.js/deps/llvm-17/lib/clang -mindepth 1 -maxdepth 1 \
+      ! -name 17 \
+      -exec rm -rf {} + && \
+    find /opencascade.js/deps/llvm-17/lib/clang/17 -mindepth 1 -maxdepth 1 \
+      ! -name include \
+      -exec rm -rf {} + && \
+    find /opencascade.js/deps/llvm-17/include -mindepth 1 -maxdepth 1 \
+      ! -name 'c++' \
+      -exec rm -rf {} + && \
+    echo "── LLVM 17 retained:" && \
+    du -sh /opencascade.js/deps/llvm-17 && \
+    echo "── Purging uv pip cache + apt lists ───────────────────────────────" && \
+    uv cache clean && \
+    rm -rf /root/.cache /tmp/* /var/tmp/* && \
+    apt-get clean
 
 # Convenience top-level symlinks: preserve the long-standing /occt, /rapidjson,
 # /freetype, /llvm-17 paths so the `ENV OCCT_ROOT=/occt` defaults below (and
@@ -176,13 +218,12 @@ RUN ln -s /opencascade.js/deps/OCCT      /occt && \
 
 # ═════════════════════════════════════════════════════════════════════════════
 # Stage 2: bindgen-base
-# Adds: in-repo build system, npm ci, apply-patches, pch, generate.
-# Cached at the YAML-config level — invariant under consumer YAML changes.
+# In-repo build system + npm ci + apply-patches + pch + generate, with
+# generated .cpp/.h sources pruned in-RUN. Published as :bindgen-base — the
+# custom-bindings starting point. Consumers re-run `generate` against their
+# own YAML in the compile-bindings flow.
 # ═════════════════════════════════════════════════════════════════════════════
 FROM deps-base AS bindgen-base
-
-LABEL org.opencontainers.image.title="opencascade.js (bindgen-base)" \
-      org.opencontainers.image.description="deps-base + npm ci + apply-patches + pch + generate (bindings TUs pre-built)"
 
 # Install Nx CLI + project devDeps deterministically from package-lock.json
 COPY package.json package-lock.json nx.json project.json /opencascade.js/
@@ -207,22 +248,20 @@ RUN chmod +x build-wasm.sh scripts/*.sh
 # Override at runtime with `-e OCJS_CONFIG=<name>` (see
 # build-configs/configurations.json for available named configurations) or
 # per-flag overrides (`-e OCJS_OPT=-Os`, etc.).
-#
-# OCJS_CONFIG_DEFAULT is the BUILD-TIME default that controls which config the
-# PCH stage pre-bakes for. Downstream consumers who want a warm cache for a
-# specific threading config can build with:
-#   docker build --build-arg OCJS_CONFIG_DEFAULT=multi-threaded -t ocjs:multi-threaded .
-# Runtime overrides still work, but a mismatched runtime `OCJS_CONFIG` will
-# invalidate the Nx pch cache and force a rebuild on first `docker run`.
-ARG OCJS_CONFIG_DEFAULT=single-threaded
 ENV OCCT_ROOT=/occt
 ENV RAPIDJSON_ROOT=/rapidjson
 ENV FREETYPE_ROOT=/freetype
 ENV EMSDK=/emsdk
-ENV OCJS_CONFIG="${OCJS_CONFIG_DEFAULT}"
-ENV OCJS_PATCH_DUMP=true
-ENV OCJS_PATCH_STEPCAF=true
-ENV OCJS_OUTPUT_DIR=/output
+# OCCT source patches (using-statement, Standard_Dump stub, noexcept dtors,
+# STEPCAF DynamicType) are HARD REQUIREMENTS for every supported build —
+# they're applied unconditionally by build-wasm.sh::step_apply_patches.
+# The legacy OCJS_PATCH_DUMP / OCJS_PATCH_STEPCAF env-var toggles were
+# removed because making required behaviour optional is a footgun.
+# Output directory defaults to /src (the canonical Quickstart mount point)
+# so single-mount `docker run -v "$(pwd):/src" …` writes artifacts next to
+# the consumer's YAML automatically. Override with `-e OCJS_OUTPUT_DIR=<path>`
+# + a matching `-v` mount for power users who want a separate output dir.
+ENV OCJS_OUTPUT_DIR=/src
 # Strict-types guardrail: defaults to warn-only -- the link step always
 # prints a triage summary to stderr if the .d.ts contains rewrites-to-
 # `unknown` method signatures or unbound class references (the silent
@@ -232,22 +271,123 @@ ENV OCJS_OUTPUT_DIR=/output
 # `docker run` time. See `ocjs_bindgen.link.yaml_build._enforce_strict_types_gate`
 # for the policy.
 
-RUN mkdir -p build/bindings build/sources /output
+RUN mkdir -p build/bindings build/sources
 
-# Pre-bake apply-patches + pch + generate via Nx. These targets depend only on
-# the pinned dep commits and the in-tree build system; their outputs (patched
-# OCCT tree, flat includes, PCH, generated .cpp / .d.ts.json fragments, and
-# the Nx cache itself) are baked into the bindgen-base stage so consumers skip
-# straight to compile-bindings/compile-sources/link on first `docker run`.
+# ── apply-patches + pch + generate + prune (mega-RUN, R10) ──────────────────
+# Apply OCCT patches, build flat includes + PCH, generate Embind .cpp + .h +
+# .d.ts.json fragments — then delete the generated .cpp/.h sources INSIDE
+# this same RUN so they never appear in any image layer. PCH (the expensive
+# bit, ~600 MB) and .d.ts.json (the type-graph index, ~few MB) are kept.
+#
+# Consumers of :bindgen-base who want a custom YAML build re-run `generate`
+# against their own YAML; the cached PCH + patched OCCT tree make that step
+# fast (~10-30s). The compiled-{threading} child stages also re-run
+# `generate` because they need the .cpp files back to compile against.
 RUN npx nx run ocjs:apply-patches && \
     npx nx run ocjs:pch && \
-    npx nx run ocjs:generate
+    npx nx run ocjs:generate && \
+    echo "── Pruning generated .cpp/.h sources (kept: .d.ts.json + PCH) ────" && \
+    find build/bindings -type f -name '*.cpp' -delete && \
+    find build/bindings -type f -name '*.h' -delete && \
+    rm -rf /root/.npm/_cacache 2>/dev/null || true
+
+# ── Non-root execution support ──────────────────────────────────────────────
+# Consumers running with `docker run -u "$(id -u):$(id -g)"` need writable
+# locations for Nx's content-addressed cache (.nx), build outputs (build/),
+# and emsdk's per-run scratch. Pre-create them with group-write, then chmod
+# the existing trees Nx/build will need to read+modify. Without this, the
+# first non-root run fails with EACCES when Nx tries to create its .nx
+# subdirectory under /opencascade.js (which is root:root mode 0755).
+RUN mkdir -p /opencascade.js/.nx && \
+    chmod -R go+w /opencascade.js/.nx /opencascade.js/build && \
+    chmod go+w /opencascade.js
+
+# ── OCI metadata for the published :bindgen-base image ──────────────────────
+ARG REVISION
+ARG VERSION
+ARG SOURCE_URL=https://github.com/taucad/opencascade.js
+LABEL org.opencontainers.image.title="opencascade.js (bindgen-base)" \
+      org.opencontainers.image.description="Custom-bindings starting point: OCCT patches + PCH + generate index pre-baked (.cpp sources pruned; re-run generate against your YAML)" \
+      org.opencontainers.image.source="${SOURCE_URL}" \
+      org.opencontainers.image.url="${SOURCE_URL}" \
+      org.opencontainers.image.revision="${REVISION}" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.licenses="LGPL-2.1-only" \
+      org.opencontainers.image.vendor="taucad"
+
+# R17: :bindgen-base ships with the same docker-entrypoint dispatcher as the
+# final-{threading} images so consumers get a consistent UX across all
+# published tags. Consumers wanting interactive shell override the entrypoint:
+#   docker run --rm -it --entrypoint bash ghcr.io/taucad/opencascade.js:bindgen-base
+WORKDIR /src
+ENTRYPOINT ["/opencascade.js/scripts/docker-entrypoint.sh"]
+CMD ["full", "/src/build-config.yml"]
 
 # ═════════════════════════════════════════════════════════════════════════════
-# Stage 3: final
-# Adds OCI labels, ENTRYPOINT, CMD. This is the published image.
+# Stage 3a: compiled-single-threaded
 # ═════════════════════════════════════════════════════════════════════════════
-FROM bindgen-base AS final
+FROM bindgen-base AS compiled-single-threaded
+
+# Reset to /opencascade.js for the build-tree RUNs; final-* will WORKDIR /src.
+WORKDIR /opencascade.js/
+
+ENV OCJS_CONFIG=single-threaded
+ENV THREADING=single-threaded
+
+# ── (re)generate + compile-bindings + compile-sources + prune (mega-RUN) ────
+# bindgen-base deleted the generated .cpp/.h files from its own layer so the
+# published :bindgen-base image stays small. compiled-{threading} re-runs
+# generate (cheap given PCH + patches are cached) to materialise the .cpp
+# files, then compiles them, then prunes the source files + CMake scratch.
+# .o files for bindings + OCCT static .a libs are kept (needed for link).
+RUN --mount=type=cache,target=/emsdk/upstream/emscripten/cache,id=ocjs-emsdk-${OCJS_CONFIG},sharing=locked \
+    npx nx run ocjs:generate && \
+    npx nx run ocjs:compile-bindings && \
+    npx nx run ocjs:compile-sources && \
+    echo "── Pruning compile intermediates (kept: .o files + OCCT .a libs) ──" && \
+    find build/bindings -type f -name '*.cpp' -delete && \
+    find build/bindings -type f -name '*.h' -delete && \
+    find build -type f -name '*.cpp.o.d' -delete && \
+    find build/occt-cmake -mindepth 1 -maxdepth 2 \
+      ! -path 'build/occt-cmake/lin32' \
+      ! -path 'build/occt-cmake/lin32/clang' \
+      -prune -exec rm -rf {} + 2>/dev/null || true && \
+    find build/occt-cmake/lin32/clang -mindepth 1 -maxdepth 1 \
+      ! -name lib \
+      ! -name bin \
+      -exec rm -rf {} + 2>/dev/null || true
+
+# ═════════════════════════════════════════════════════════════════════════════
+# Stage 3b: compiled-multi-threaded
+# ═════════════════════════════════════════════════════════════════════════════
+FROM bindgen-base AS compiled-multi-threaded
+
+WORKDIR /opencascade.js/
+
+ENV OCJS_CONFIG=multi-threaded
+ENV THREADING=multi-threaded
+
+RUN --mount=type=cache,target=/emsdk/upstream/emscripten/cache,id=ocjs-emsdk-${OCJS_CONFIG},sharing=locked \
+    npx nx run ocjs:generate && \
+    npx nx run ocjs:compile-bindings && \
+    npx nx run ocjs:compile-sources && \
+    echo "── Pruning compile intermediates (kept: .o files + OCCT .a libs) ──" && \
+    find build/bindings -type f -name '*.cpp' -delete && \
+    find build/bindings -type f -name '*.h' -delete && \
+    find build -type f -name '*.cpp.o.d' -delete && \
+    find build/occt-cmake -mindepth 1 -maxdepth 2 \
+      ! -path 'build/occt-cmake/lin32' \
+      ! -path 'build/occt-cmake/lin32/clang' \
+      -prune -exec rm -rf {} + 2>/dev/null || true && \
+    find build/occt-cmake/lin32/clang -mindepth 1 -maxdepth 1 \
+      ! -name lib \
+      ! -name bin \
+      -exec rm -rf {} + 2>/dev/null || true
+
+# ═════════════════════════════════════════════════════════════════════════════
+# Stage 4a: final-single  (published as ghcr.io/taucad/opencascade.js:single-threaded)
+# ═════════════════════════════════════════════════════════════════════════════
+FROM compiled-single-threaded AS final-single
 
 # ── OCI image metadata ──────────────────────────────────────────────────────
 # REVISION/VERSION are injected by CI (docker/metadata-action + github.sha);
@@ -257,8 +397,8 @@ FROM bindgen-base AS final
 ARG REVISION
 ARG VERSION
 ARG SOURCE_URL=https://github.com/taucad/opencascade.js
-LABEL org.opencontainers.image.title="opencascade.js" \
-      org.opencontainers.image.description="Emscripten build environment for OpenCASCADE.js (taucad fork, vendored LLVM 17 libclang)" \
+LABEL org.opencontainers.image.title="opencascade.js (single-threaded)" \
+      org.opencontainers.image.description="OpenCASCADE.js single-threaded WASM build image (warm cache, ≤5min link)" \
       org.opencontainers.image.source="${SOURCE_URL}" \
       org.opencontainers.image.url="${SOURCE_URL}" \
       org.opencontainers.image.revision="${REVISION}" \
@@ -266,5 +406,33 @@ LABEL org.opencontainers.image.title="opencascade.js" \
       org.opencontainers.image.licenses="LGPL-2.1-only" \
       org.opencontainers.image.vendor="taucad"
 
+# WORKDIR /src makes the consumer's bind-mounted YAML directory the working
+# directory at runtime. Combined with `ENV OCJS_OUTPUT_DIR=/src` in
+# bindgen-base, the canonical single-mount Quickstart pattern
+# (`docker run -v "$(pwd):/src" …`) writes artifacts next to the YAML.
+WORKDIR /src
+
 ENTRYPOINT ["/opencascade.js/scripts/docker-entrypoint.sh"]
-CMD ["full", "build-configs/full.yml"]
+CMD ["full", "/src/build-config.yml"]
+
+# ═════════════════════════════════════════════════════════════════════════════
+# Stage 4b: final-multi  (published as ghcr.io/taucad/opencascade.js:multi-threaded)
+# ═════════════════════════════════════════════════════════════════════════════
+FROM compiled-multi-threaded AS final-multi
+
+ARG REVISION
+ARG VERSION
+ARG SOURCE_URL=https://github.com/taucad/opencascade.js
+LABEL org.opencontainers.image.title="opencascade.js (multi-threaded)" \
+      org.opencontainers.image.description="OpenCASCADE.js multi-threaded WASM build image (requires COOP/COEP on consumer pages)" \
+      org.opencontainers.image.source="${SOURCE_URL}" \
+      org.opencontainers.image.url="${SOURCE_URL}" \
+      org.opencontainers.image.revision="${REVISION}" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.licenses="LGPL-2.1-only" \
+      org.opencontainers.image.vendor="taucad"
+
+WORKDIR /src
+
+ENTRYPOINT ["/opencascade.js/scripts/docker-entrypoint.sh"]
+CMD ["full", "/src/build-config.yml"]

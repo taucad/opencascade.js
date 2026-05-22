@@ -1,22 +1,40 @@
 name: docker
 
+# Production-readiness blueprint reference:
+#   docs/research/ocjs-docker-production-readiness-blueprint.md
+#
 # Two responsibilities:
 #
-# 1. **Smoke** (every push/PR to main/master/occt-v8-*):
-#    Builds the in-tree Dockerfile and links `build-configs/link-filter-poc.yml`
-#    (22 symbols) to catch breakage in the Docker build flow without paying for
-#    a full 60-90 min cold link on every push.
+# 1. **Branch DAG** (every push to main/master/occt-v8-*):
+#    For each published stage (final-single, final-multi, bindgen-base):
+#      amd64 build (with --load) → smoke (validate YAML) → e2e gate
+#      (5-min warm-link budget) → publish :branch-<slug>* / :*-branch-<slug>*
+#      → keyless cosign sign of the per-arch digest.
+#    Branch builds are amd64-only by design (R12) — Apple Silicon reviewers
+#    pay the Rosetta tax on branch tags; release tags carry the full
+#    multi-arch manifest list.
 #
-# 2. **Publish** (annotated git tags matching `v*`):
-#    Builds multi-arch (linux/amd64 on ubuntu-latest, linux/arm64 on
-#    ubuntu-24.04-arm — native runners, no QEMU) and pushes a manifest list to
-#    `ghcr.io/taucad/opencascade.js`. Native runners avoid the libclang-under-
-#    QEMU segfault during `apply-patches` (see
-#    vendored LLVM 17 libc++ for libclang 18 parse pass).
+# 2. **Release DAG** (annotated git tags matching `v*`):
+#    For each (stage, arch) ∈ {final-single, final-multi, bindgen-base} ×
+#    {amd64, arm64}:
+#      build with `outputs=type=image,push-by-digest=true` → smoke → e2e gate
+#      (5-min warm-link budget) → upload digest.
+#    Then for each stage:
+#      manifest-list assembly → keyless cosign sign of the manifest-list
+#      digest (one signature verifies regardless of which arch the consumer
+#      pulls).
+#    Post-publish smoke pulls the manifest list and re-runs the link-filter
+#    PoC to confirm the published artefact is functional.
 #
-# Cache strategy: BuildKit cache mounts (apt, npm, Nx, build/) are persisted
-# via the `docker/build-push-action@v6` GHA cache backend, scoped per platform
-# for the publish jobs so the two architectures don't poison each other.
+# Cache strategy (R5): all build/push-action invocations use registry-backed
+# cache (`type=registry,ref=…:buildcache-<arch>-<stage>`) — GHA cache
+# backend's 10 GB limit cannot accommodate the four scopes we need (~40 GB
+# combined). Scopes are partitioned by arch + stage so the two architectures
+# and three stages don't poison each other's cache hits.
+#
+# Disk: free-disk-space (`jlumbroso/free-disk-space@main`) reclaims ~30-40 GB
+# on the GHA runner before BuildKit starts — without it, the compiled-*
+# stages OOM the runner's 14 GB ext4 partition during link.
 
 on:
   push:
@@ -40,44 +58,105 @@ env:
   REGISTRY_IMAGE: ghcr.io/taucad/opencascade.js
 
 jobs:
+  # ───────────────────────────────────────────────────────────────────────────
+  # Setup
+  # ───────────────────────────────────────────────────────────────────────────
+  setup:
+    name: docker · setup · derive branch slug + DAG selector
+    runs-on: ubuntu-latest
+    outputs:
+      is_release: ${{ steps.derive.outputs.is_release }}
+      is_branch_push: ${{ steps.derive.outputs.is_branch_push }}
+      is_pr: ${{ steps.derive.outputs.is_pr }}
+      branch_slug: ${{ steps.derive.outputs.branch_slug }}
+    steps:
+      - name: Derive DAG selector + sanitized branch slug
+        id: derive
+        env:
+          REF: ${{ github.ref }}
+          REF_NAME: ${{ github.ref_name }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          if [[ "$REF" == refs/tags/v* ]]; then
+            echo "is_release=true"      >> "$GITHUB_OUTPUT"
+            echo "is_branch_push=false" >> "$GITHUB_OUTPUT"
+            echo "is_pr=false"          >> "$GITHUB_OUTPUT"
+          elif [[ "$EVENT" == "pull_request" ]]; then
+            echo "is_release=false"     >> "$GITHUB_OUTPUT"
+            echo "is_branch_push=false" >> "$GITHUB_OUTPUT"
+            echo "is_pr=true"           >> "$GITHUB_OUTPUT"
+          else
+            echo "is_release=false"     >> "$GITHUB_OUTPUT"
+            echo "is_branch_push=true"  >> "$GITHUB_OUTPUT"
+            echo "is_pr=false"          >> "$GITHUB_OUTPUT"
+          fi
+          # GHCR tags cannot contain '/' — replace with '-' (e.g. occt-v8-2026-05 stays unchanged;
+          # feature/x-y becomes feature-x-y).
+          slug=$(printf '%s' "$REF_NAME" | tr '/' '-')
+          echo "branch_slug=$slug" >> "$GITHUB_OUTPUT"
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # Smoke (every PR/push) — fast preflight that validates the Dockerfile + YAML
+  # without paying for the full compile. Independent of branch/release DAG.
+  # ───────────────────────────────────────────────────────────────────────────
   docker-smoke:
-    name: docker · build + link-filter-poc smoke
+    name: docker · smoke · build + link-filter-poc
+    needs: setup
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Free disk space (reclaim ~30-40 GB)
+        uses: jlumbroso/free-disk-space@main
+        with:
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: false
+          docker-images: false
+          swap-storage: false
+          tool-cache: false
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build image (cached via GHA backend)
+      - name: Log in to GHCR (for registry cache reads)
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build :bindgen-base + final-single (smoke target, --load)
         uses: docker/build-push-action@v6
         with:
           context: .
+          target: final-single
           tags: ocjs:ci
           load: true
-          cache-from: type=gha,scope=ocjs-docker
-          cache-to: type=gha,scope=ocjs-docker,mode=max
+          cache-from: type=registry,ref=ghcr.io/taucad/opencascade.js:buildcache-amd64-final-single
           provenance: false
           sbom: false
 
       - name: Validate full.yml schema (no build)
-        run: |
-          docker run --rm ocjs:ci validate build-configs/full.yml
+        run: docker run --rm ocjs:ci validate /opencascade.js/build-configs/full.yml
 
       - name: Validate link-filter-poc.yml schema
-        run: |
-          docker run --rm ocjs:ci validate build-configs/link-filter-poc.yml
+        run: docker run --rm ocjs:ci validate /opencascade.js/build-configs/link-filter-poc.yml
 
       - name: Smoke-link link-filter-poc.yml (22 symbols)
         run: |
           mkdir -p "$PWD/smoke-output"
           docker run --rm \
+            -u "$(id -u):$(id -g)" \
             -e OCJS_CONFIG=debug \
-            -v "$PWD/build-configs/link-filter-poc.yml:/src/config.yml:ro" \
-            -v "$PWD/smoke-output:/output" \
-            ocjs:ci full /src/config.yml
+            -v "$PWD/smoke-output:/src" \
+            -v "$PWD/build-configs/link-filter-poc.yml:/src/build-config.yml:ro" \
+            ocjs:ci full /src/build-config.yml
 
       - name: Assert smoke artefacts present
         run: |
@@ -103,31 +182,160 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
-  # ─────────────────────────────────────────────────────────────────────────
-  # Publish (tag push only) — native per-platform build + manifest merge.
-  # Pattern from https://docs.docker.com/build/ci/github-actions/multi-platform/
-  # ─────────────────────────────────────────────────────────────────────────
-  publish-platform:
-    name: docker · publish · ${{ matrix.platform }}
-    if: startsWith(github.ref, 'refs/tags/v')
+  # ───────────────────────────────────────────────────────────────────────────
+  # Branch DAG — fires on push to main/master/occt-v8-* (R12)
+  # Build each published stage on amd64-only, gate on e2e, publish as
+  # :*-branch-<slug>-<sha>, then keyless-sign with cosign.
+  # ───────────────────────────────────────────────────────────────────────────
+  branch-publish:
+    name: docker · branch · ${{ matrix.stage }}
+    if: needs.setup.outputs.is_branch_push == 'true'
+    needs: [setup, docker-smoke]
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - stage: final-single
+            tag_prefix: branch
+          - stage: final-multi
+            tag_prefix: multi-threaded-branch
+          - stage: bindgen-base
+            tag_prefix: bindgen-base-branch
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Free disk space (reclaim ~30-40 GB)
+        uses: jlumbroso/free-disk-space@main
+        with:
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: false
+          docker-images: false
+          swap-storage: false
+          tool-cache: false
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Compute image metadata (labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY_IMAGE }}
+
+      - name: Build ${{ matrix.stage }} (amd64, --load for e2e gate)
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: ${{ matrix.stage }}
+          platforms: linux/amd64
+          load: true
+          tags: ocjs:e2e
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            REVISION=${{ github.sha }}
+            VERSION=branch-${{ needs.setup.outputs.branch_slug }}
+          cache-from: type=registry,ref=${{ env.REGISTRY_IMAGE }}:buildcache-amd64-${{ matrix.stage }}
+          cache-to: type=registry,ref=${{ env.REGISTRY_IMAGE }}:buildcache-amd64-${{ matrix.stage }},mode=max
+          provenance: true
+          sbom: true
+
+      - name: E2E gate — 5-min warm-link budget
+        run: |
+          set -euo pipefail
+          chmod +x scripts/docker-e2e-validate.sh
+          OCJS_E2E_IMAGE=ocjs:e2e \
+            scripts/docker-e2e-validate.sh
+
+      - name: Build + push ${{ matrix.stage }} to GHCR
+        id: push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: ${{ matrix.stage }}
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ env.REGISTRY_IMAGE }}:${{ matrix.tag_prefix }}-${{ needs.setup.outputs.branch_slug }}
+            ${{ env.REGISTRY_IMAGE }}:${{ matrix.tag_prefix }}-${{ needs.setup.outputs.branch_slug }}-${{ github.sha }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            REVISION=${{ github.sha }}
+            VERSION=branch-${{ needs.setup.outputs.branch_slug }}
+          cache-from: type=registry,ref=${{ env.REGISTRY_IMAGE }}:buildcache-amd64-${{ matrix.stage }}
+          cache-to: type=registry,ref=${{ env.REGISTRY_IMAGE }}:buildcache-amd64-${{ matrix.stage }},mode=max
+          provenance: true
+          sbom: true
+
+      - name: Cosign sign published branch image (keyless)
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          set -euo pipefail
+          cosign sign --yes \
+            "${REGISTRY_IMAGE}:${{ matrix.tag_prefix }}-${{ needs.setup.outputs.branch_slug }}@${DIGEST}"
+          cosign sign --yes \
+            "${REGISTRY_IMAGE}:${{ matrix.tag_prefix }}-${{ needs.setup.outputs.branch_slug }}-${{ github.sha }}@${DIGEST}"
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # Release DAG — fires on annotated `v*` tag push (R7, R9, R12, R13)
+  # Per (stage × arch) build + e2e gate → manifest-list assembly → cosign
+  # sign manifest-list digest → post-publish smoke.
+  # ───────────────────────────────────────────────────────────────────────────
+  release-build:
+    name: docker · release · ${{ matrix.stage }} · ${{ matrix.arch }}
+    if: needs.setup.outputs.is_release == 'true'
+    needs: [setup, docker-smoke]
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 120
+    timeout-minutes: 240
     permissions:
       contents: read
       packages: write
     strategy:
       fail-fast: false
       matrix:
+        stage: [final-single, final-multi, bindgen-base]
+        arch: [amd64, arm64]
         include:
-          - platform: linux/amd64
-            platform_pair: linux-amd64
+          - arch: amd64
             runner: ubuntu-latest
-          - platform: linux/arm64
-            platform_pair: linux-arm64
+            platform: linux/amd64
+          - arch: arm64
             runner: ubuntu-24.04-arm
+            platform: linux/arm64
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Free disk space (reclaim ~30-40 GB)
+        uses: jlumbroso/free-disk-space@main
+        with:
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: false
+          docker-images: false
+          swap-storage: false
+          tool-cache: false
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -145,50 +353,88 @@ jobs:
         with:
           images: ${{ env.REGISTRY_IMAGE }}
 
-      - name: Build and push by digest
-        id: build
+      - name: Build ${{ matrix.stage }} (${{ matrix.arch }}, --load for e2e gate)
         uses: docker/build-push-action@v6
         with:
           context: .
+          target: ${{ matrix.stage }}
+          platforms: ${{ matrix.platform }}
+          load: true
+          tags: ocjs:e2e
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            REVISION=${{ github.sha }}
+            VERSION=${{ steps.meta.outputs.version }}
+          cache-from: type=registry,ref=${{ env.REGISTRY_IMAGE }}:buildcache-${{ matrix.arch }}-${{ matrix.stage }}
+          cache-to: type=registry,ref=${{ env.REGISTRY_IMAGE }}:buildcache-${{ matrix.arch }}-${{ matrix.stage }},mode=max
+          provenance: true
+          sbom: true
+
+      - name: E2E gate — 5-min warm-link budget
+        run: |
+          set -euo pipefail
+          chmod +x scripts/docker-e2e-validate.sh
+          OCJS_E2E_IMAGE=ocjs:e2e \
+            scripts/docker-e2e-validate.sh
+
+      - name: Build + push by digest
+        id: push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: ${{ matrix.stage }}
           platforms: ${{ matrix.platform }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             REVISION=${{ github.sha }}
             VERSION=${{ steps.meta.outputs.version }}
           outputs: type=image,name=${{ env.REGISTRY_IMAGE }},push-by-digest=true,name-canonical=true,push=true
-          cache-from: type=gha,scope=ocjs-${{ matrix.platform_pair }}
-          cache-to: type=gha,scope=ocjs-${{ matrix.platform_pair }},mode=max
+          cache-from: type=registry,ref=${{ env.REGISTRY_IMAGE }}:buildcache-${{ matrix.arch }}-${{ matrix.stage }}
+          cache-to: type=registry,ref=${{ env.REGISTRY_IMAGE }}:buildcache-${{ matrix.arch }}-${{ matrix.stage }},mode=max
           provenance: true
           sbom: true
 
       - name: Export digest
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
         run: |
+          set -euo pipefail
           mkdir -p "${{ runner.temp }}/digests"
-          digest="${{ steps.build.outputs.digest }}"
-          touch "${{ runner.temp }}/digests/${digest#sha256:}"
+          touch "${{ runner.temp }}/digests/${DIGEST#sha256:}"
 
       - name: Upload digest
         uses: actions/upload-artifact@v4
         with:
-          name: digests-${{ matrix.platform_pair }}
+          name: digests-${{ matrix.stage }}-${{ matrix.arch }}
           path: ${{ runner.temp }}/digests/*
           if-no-files-found: error
           retention-days: 1
 
-  publish-manifest:
-    name: docker · publish · merge manifest list
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: publish-platform
+  release-manifest:
+    name: docker · release · manifest · ${{ matrix.stage }}
+    if: needs.setup.outputs.is_release == 'true'
+    needs: [setup, release-build]
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
+      id-token: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - stage: final-single
+            tag_suffix: single-threaded
+          - stage: final-multi
+            tag_suffix: multi-threaded
+          - stage: bindgen-base
+            tag_suffix: bindgen-base
     steps:
-      - name: Download digests
+      - name: Download digests (${{ matrix.stage }} × all arches)
         uses: actions/download-artifact@v4
         with:
           path: ${{ runner.temp }}/digests
-          pattern: digests-*
+          pattern: digests-${{ matrix.stage }}-*
           merge-multiple: true
 
       - name: Set up Docker Buildx
@@ -201,29 +447,82 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Compute tags
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Compute release tags for ${{ matrix.tag_suffix }}
         id: meta
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY_IMAGE }}
+          # No :latest, no :beta, no :rolling — only versioned + base tags
+          # (single-threaded / multi-threaded / bindgen-base) and the matching
+          # version-suffixed pair. See blueprint Recommendations Trade-offs.
           tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=sha,prefix=sha-,format=short
-            type=raw,value=beta,enable=${{ contains(github.ref_name, '-beta.') }}
+            type=raw,value=${{ matrix.tag_suffix }}
+            type=semver,pattern={{version}}-${{ matrix.tag_suffix }}
+            type=semver,pattern={{major}}.{{minor}}-${{ matrix.tag_suffix }}
+            type=sha,prefix=sha-,suffix=-${{ matrix.tag_suffix }},format=short
 
-      - name: Create manifest list and push
+      - name: Assemble manifest list and push
         working-directory: ${{ runner.temp }}/digests
-        # SC2046: word splitting is intentional — both substitutions expand to
-        # multiple CLI args (`-t tag1 -t tag2 ...` and `image@sha256:a image@sha256:b`).
-        # This is the documented pattern from
-        # https://docs.docker.com/build/ci/github-actions/multi-platform/
+        env:
+          REGISTRY_IMAGE: ${{ env.REGISTRY_IMAGE }}
         run: |
+          set -euo pipefail
+          # Word splitting is intentional below: both jq/printf substitutions
+          # expand into multiple CLI args (`-t tag1 -t tag2 …` and
+          # `image@sha256:a image@sha256:b`). This is the documented pattern
+          # from https://docs.docker.com/build/ci/github-actions/multi-platform/
           # shellcheck disable=SC2046
           docker buildx imagetools create \
             $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
-            $(printf '${{ env.REGISTRY_IMAGE }}@sha256:%s ' *)
+            $(printf "${REGISTRY_IMAGE}@sha256:%s " *)
 
-      - name: Inspect image
+      - name: Read manifest-list digest (for cosign signing)
+        id: index_digest
+        env:
+          REGISTRY_IMAGE: ${{ env.REGISTRY_IMAGE }}
+          PRIMARY_TAG: ${{ matrix.tag_suffix }}
         run: |
-          docker buildx imagetools inspect "${{ env.REGISTRY_IMAGE }}:${{ steps.meta.outputs.version }}"
+          set -euo pipefail
+          # `buildx imagetools inspect --raw` prints the manifest-list bytes;
+          # we sha256 those bytes to get the canonical digest. This is the
+          # same digest cosign would compute, so the signature pins the
+          # exact published manifest list.
+          digest=$(docker buildx imagetools inspect "${REGISTRY_IMAGE}:${PRIMARY_TAG}" --format '{{json .Manifest}}' | jq -r '.digest')
+          if [ -z "$digest" ] || [ "$digest" = "null" ]; then
+            echo "::error::Failed to resolve manifest-list digest for ${REGISTRY_IMAGE}:${PRIMARY_TAG}"
+            exit 1
+          fi
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+
+      - name: Cosign sign manifest-list digest (keyless, R16)
+        env:
+          DIGEST: ${{ steps.index_digest.outputs.digest }}
+          REGISTRY_IMAGE: ${{ env.REGISTRY_IMAGE }}
+          PRIMARY_TAG: ${{ matrix.tag_suffix }}
+        run: |
+          set -euo pipefail
+          # Signing the manifest-list digest (rather than per-arch image
+          # digests) produces ONE signature that verifies regardless of which
+          # arch the consumer pulls. cosign 2.x automatically recognises and
+          # signs the OCI image index.
+          cosign sign --yes "${REGISTRY_IMAGE}@${DIGEST}"
+
+      - name: Post-publish smoke — pull + link-filter-poc
+        if: matrix.stage == 'final-single'
+        run: |
+          set -euo pipefail
+          docker pull "${REGISTRY_IMAGE}:${{ matrix.tag_suffix }}"
+          mkdir -p "$PWD/post-publish-output"
+          docker run --rm \
+            -u "$(id -u):$(id -g)" \
+            -e OCJS_CONFIG=debug \
+            -v "$PWD/post-publish-output:/src" \
+            -v "$PWD/build-configs/link-filter-poc.yml:/src/build-config.yml:ro" \
+            "${REGISTRY_IMAGE}:${{ matrix.tag_suffix }}" \
+            full /src/build-config.yml
+          test -s "$PWD/post-publish-output/opencascade_linkfilter_poc.wasm"
+        env:
+          REGISTRY_IMAGE: ${{ env.REGISTRY_IMAGE }}

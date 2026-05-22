@@ -122,32 +122,42 @@ Browsers require `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Emb
 
 ## Quickstart (Docker)
 
-Pre-built multi-arch images (`linux/amd64`, `linux/arm64`) are published to [ghcr.io/taucad/opencascade.js](https://github.com/taucad/opencascade.js/pkgs/container/opencascade.js) on every annotated `v*` tag. No local build required.
+Pre-built images are published to [ghcr.io/taucad/opencascade.js](https://github.com/taucad/opencascade.js/pkgs/container/opencascade.js):
+
+- **Release tags** (`v*`) publish multi-arch manifest lists (`linux/amd64` + `linux/arm64`).
+- **Branch pushes** publish `linux/amd64`-only images for fast smoke iteration.
+
+No local build required.
 
 ```bash
-docker pull ghcr.io/taucad/opencascade.js:beta
+docker pull ghcr.io/taucad/opencascade.js:single-threaded
 
-# Link a custom YAML config; output appears in ./output/
+# Single-mount Quickstart — outputs land next to your YAML
 docker run --rm \
-  -v $(pwd)/my-config.yml:/src/config.yml:ro \
-  -v $(pwd)/output:/output \
-  ghcr.io/taucad/opencascade.js:beta full /src/config.yml
+  -v "$(pwd):/src" \
+  -u "$(id -u):$(id -g)" \
+  ghcr.io/taucad/opencascade.js:single-threaded full /src/my-config.yml
 ```
 
-For cached iterative builds (link-only reruns in ≤ 5 min), see the named-volume recipe in [MAINTAINER.md](MAINTAINER.md#docker-end-to-end-validation). Apple Silicon runs natively — no `--platform` flag required.
+For cached iterative builds (link-only reruns in ≤ 5 min), see the named-volume recipe in [MAINTAINER.md](MAINTAINER.md#docker-end-to-end-validation). Apple Silicon runs natively from the manifest list — no `--platform` flag required.
 
 The entrypoint dispatches subcommands (`full`, `link`, `compile-bindings`, `compile-sources`, `pch`, `generate`, `apply-patches`) through `npx nx run ocjs:<target>`. Use `docker run … --help` for the full subcommand reference, or `docker run … nx <args>` as an escape hatch into raw Nx.
 
 ## Tags
 
-| Tag                 | What it points at                                     |
-| ------------------- | ----------------------------------------------------- |
-| `:beta`             | Latest pre-release build (currently the v3 beta line) |
-| `:3.0.0-beta.<sha>` | A specific pre-release                                |
-| `:3.0`              | Latest patch in the 3.0 minor line                    |
-| `:sha-<short>`      | Exact commit on `taucad/opencascade.js`               |
+| Tag                            | What it points at                                                                  |
+| ------------------------------ | ---------------------------------------------------------------------------------- |
+| `:single-threaded`             | Latest release, single-threaded warm cache (default for browser CAD UIs)           |
+| `:multi-threaded`              | Latest release, multi-threaded warm cache (requires COOP/COEP)                     |
+| `:bindgen-base`                | Latest release, post-PCH/generate but pre-compile (custom-bindings starting point) |
+| `:<version>-single-threaded`   | Pinned release, single-threaded (e.g. `:3.0.0-single-threaded`)                    |
+| `:<version>-multi-threaded`    | Pinned release, multi-threaded                                                     |
+| `:<version>-bindgen-base`      | Pinned release, bindgen-base                                                       |
+| `:branch-<slug>`               | Branch tip, single-threaded (amd64-only, ephemeral — 7-day GHCR retention)         |
+| `:multi-threaded-branch-<slug>`| Branch tip, multi-threaded (amd64-only, ephemeral)                                 |
+| `:bindgen-base-branch-<slug>`  | Branch tip, bindgen-base (amd64-only, ephemeral)                                   |
 
-Docker resolves the right architecture from the manifest list automatically; no `--platform` flag is needed on either `linux/amd64` or `linux/arm64` hosts.
+On release tags, Docker resolves the right architecture from the manifest list automatically — no `--platform` flag is needed on either `linux/amd64` or `linux/arm64` hosts.
 
 ## What's New in v3
 

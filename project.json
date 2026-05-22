@@ -19,9 +19,7 @@
         "patchScripts",
         "buildScript",
         "depsVersion",
-        { "runtime": "git -C deps/OCCT rev-parse HEAD 2>/dev/null || echo missing" },
-        { "env": "OCJS_PATCH_DUMP" },
-        { "env": "OCJS_PATCH_STEPCAF" }
+        { "runtime": "git -C deps/OCCT rev-parse HEAD 2>/dev/null || echo missing" }
       ],
       "outputs": ["{projectRoot}/build/patches-applied"],
       "options": {
