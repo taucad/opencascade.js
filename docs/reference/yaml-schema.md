@@ -16,17 +16,17 @@ build-configs/
 
 ```yaml
 mainBuild:
-  name: <string>              # Output filename (without extension)
-  bindings:                    # List of OCCT classes to bind
+  name: <string> # Output filename (without extension)
+  bindings: # List of OCCT classes to bind
     - symbol: <ClassName>
-  emccFlags:                   # Emscripten linker flags
+  emccFlags: # Emscripten linker flags
     - <flag>
-  additionalBindCode: |        # Extra embind registration C++ code (optional)
+  additionalBindCode: | # Extra embind registration C++ code (optional)
     EMSCRIPTEN_BINDINGS(custom) { ... }
-  allowedUndefinedSymbols:     # Symbols to leave unresolved at link time (optional)
+  allowedUndefinedSymbols: # Symbols to leave unresolved at link time (optional)
     - <symbol>
 
-extraBuilds:                   # Additional build variants (optional, same schema as mainBuild)
+extraBuilds: # Additional build variants (optional, same schema as mainBuild)
   - name: <string>
     bindings: [...]
     emccFlags: [...]
@@ -34,14 +34,14 @@ extraBuilds:                   # Additional build variants (optional, same schem
       ...
     allowedUndefinedSymbols: [...]
 
-additionalCppCode: |           # Inline C++ compiled into the bindings TU (typedefs, wrappers)
+additionalCppCode: | # Inline C++ compiled into the bindings TU (typedefs, wrappers)
   typedef opencascade::handle<Geom_Curve> Handle_Geom_Curve;
   class MyWrapper { ... };
 
-additionalCppFiles:            # Multi-file C++ sources concatenated into bindings (optional)
+additionalCppFiles: # Multi-file C++ sources concatenated into bindings (optional)
   - path/to/extra.cpp
 
-generateTypescriptDefinitions: true  # Generate .d.ts file (default: true)
+generateTypescriptDefinitions: true # Generate .d.ts file (default: true)
 ```
 
 Every key is described below; the canonical Cerberus definition lives in [`src/customBuildSchema.py`](../../src/customBuildSchema.py).
@@ -61,18 +61,19 @@ The symbol name must match exactly the C++ class name as it appears in the gener
 
 ### Symbol Categories
 
-| Category                   | Example                    | Notes |
-|----------------------------|----------------------------|-------|
-| OCCT classes               | `gp_Pnt`, `TopoDS_Shape`  | Core geometry and topology |
-| Algorithm classes          | `BRepAlgoAPI_Cut`          | Boolean operations, fillets, etc. |
-| Data exchange              | `STEPControl_Reader`       | STEP/STL/IGES import/export |
-| Handle types               | `Handle_Geom_Curve`        | Must be typedef'd in `additionalCppCode` |
-| Custom wrappers            | `TopoDS_Cast`, `OCJS_ShapeHasher` | V8 compatibility wrappers |
-| Enum types                 | `TopAbs_ShapeEnum`         | C++ enums |
+| Category          | Example                           | Notes                                    |
+| ----------------- | --------------------------------- | ---------------------------------------- |
+| OCCT classes      | `gp_Pnt`, `TopoDS_Shape`          | Core geometry and topology               |
+| Algorithm classes | `BRepAlgoAPI_Cut`                 | Boolean operations, fillets, etc.        |
+| Data exchange     | `STEPControl_Reader`              | STEP/STL/IGES import/export              |
+| Handle types      | `Handle_Geom_Curve`               | Must be typedef'd in `additionalCppCode` |
+| Custom wrappers   | `TopoDS_Cast`, `OCJS_ShapeHasher` | V8 compatibility wrappers                |
+| Enum types        | `TopAbs_ShapeEnum`                | C++ enums                                |
 
 ### Base Class Requirements
 
 Embind requires all base classes in the inheritance chain to be bound. If you bind `BRepBuilderAPI_MakeEdge`, you also need:
+
 - `BRepBuilderAPI_MakeShape`
 - `BRepBuilderAPI_Command`
 
@@ -116,34 +117,36 @@ Emscripten linker flags control the final WASM binary. Common flags:
 ### Module Format
 
 ```yaml
-- -sEXPORT_ES6=1              # ESM module output
-- -sEXPORTED_RUNTIME_METHODS=["FS"]  # Expose Emscripten filesystem API
-- --no-entry                   # No main() function
+- -sEXPORT_ES6=1 # ESM module output
+- -sEXPORTED_RUNTIME_METHODS=["FS"] # Expose Emscripten filesystem API
+- --no-entry # No main() function
 ```
 
 ### Memory
 
 ```yaml
-- -sINITIAL_MEMORY=100MB      # Starting heap size
-- -sMAXIMUM_MEMORY=4GB        # Max heap (with growth enabled)
-- -sALLOW_MEMORY_GROWTH=1     # Enable dynamic heap growth
+- -sINITIAL_MEMORY=100MB # Starting heap size
+- -sMAXIMUM_MEMORY=4GB # Max heap (with growth enabled)
+- -sALLOW_MEMORY_GROWTH=1 # Enable dynamic heap growth
 ```
 
 ### Optimization
 
 ```yaml
-- -O3                          # Link-time optimization level
-- -flto                        # Enable LTO for dead-code elimination
+- -O3 # Link-time optimization level
+- -flto # Enable LTO for dead-code elimination
 ```
 
 ### Exception Handling
 
 For builds **without** exceptions:
+
 ```yaml
 - -sDISABLE_EXCEPTION_CATCHING=1
 ```
 
 For builds **with** native WASM exceptions:
+
 ```yaml
 - -fwasm-exceptions
 - -sEXPORT_EXCEPTION_HANDLING_HELPERS
@@ -152,8 +155,8 @@ For builds **with** native WASM exceptions:
 ### Dependencies
 
 ```yaml
-- -sUSE_FREETYPE=1             # Link FreeType (for font rendering in OCCT)
-- -sERROR_ON_UNDEFINED_SYMBOLS=0  # Allow undefined symbols (some OCCT deps optional)
+- -sUSE_FREETYPE=1 # Link FreeType (for font rendering in OCCT)
+- -sERROR_ON_UNDEFINED_SYMBOLS=0 # Allow undefined symbols (some OCCT deps optional)
 ```
 
 ## additionalCppCode
@@ -346,7 +349,7 @@ mainBuild:
     - --no-entry
     - -O3
     - -sDISABLE_EXCEPTION_CATCHING=1
-additionalCppCode: ""
+additionalCppCode: ''
 ```
 
 ## Configurations
