@@ -15,6 +15,19 @@ pull-stages-output.log
 build-configs/*.js
 build-configs/*.d.ts
 build-configs/provenance.json
+build-configs/*.provenance.json
+build-configs/*.build-manifest.json
+
+# Experiments — keep sources, ignore regenerated build outputs and bench results
+experiments/**/dist-*/
+experiments/**/build-config/dist/
+experiments/**/results/
+experiments/**/results-*.json
+experiments/**/results.json
+experiments/**/reports/*.json
+experiments/**/profiles/*.cpuprofile
+experiments/option-d-boundary-narrowing/experiment.d.ts
+experiments/option-d-comprehensive-poc/experiment.d.ts
 
 # Nx
 .nx/
