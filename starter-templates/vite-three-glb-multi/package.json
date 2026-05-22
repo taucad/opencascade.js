@@ -1,0 +1,23 @@
+{
+  "name": "ocjs-vite-three-glb-multi",
+  "private": true,
+  "type": "module",
+  "version": "0.0.0",
+  "description": "v3 starter: @taucad/opencascade.js/multi with COOP/COEP, parallel mesh/boolean, GLB export, three.js viewer.",
+  "scripts": {
+    "dev": "vite --port 3003",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --port 4173",
+    "typecheck": "tsc --noEmit",
+    "smoke": "node ../_shared/smoke-render.mjs --url http://localhost:4173 --canvas '#ocjs-canvas' --screenshot smoke.png"
+  },
+  "dependencies": {
+    "@taucad/opencascade.js": "file:../..",
+    "three": "^0.184.0"
+  },
+  "devDependencies": {
+    "@types/three": "^0.184.1",
+    "typescript": "^6.0.3",
+    "vite": "^8.0.13"
+  }
+}
