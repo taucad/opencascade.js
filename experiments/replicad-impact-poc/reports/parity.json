@@ -1,0 +1,41 @@
+{
+  "generatedAt": "2026-05-16T01:57:56.371Z",
+  "patterns": {
+    "P1": {
+      "ok": true,
+      "endpoints": 2
+    },
+    "P2": {
+      "ok": true,
+      "nbPoles": {
+        "A": 15,
+        "naiveD": 15,
+        "splitApiD": 15
+      }
+    },
+    "P3": {
+      "ok": true,
+      "verts": 24,
+      "tris": 12
+    },
+    "P4": {
+      "ok": true,
+      "hash": "f038b3a5bfd7e437",
+      "verts": 3284
+    }
+  },
+  "examples": {
+    "simpleVase": {
+      "A": "a888e5f7744b1b6c",
+      "D": "a888e5f7744b1b6c",
+      "F": "a888e5f7744b1b6c",
+      "D+F": "a888e5f7744b1b6c"
+    },
+    "birdhouse": {
+      "A": "84a03f1f5c61088",
+      "D": "84a03f1f5c61088",
+      "F": "4909b3dc493d4e14",
+      "D+F": "4909b3dc493d4e14"
+    }
+  }
+}

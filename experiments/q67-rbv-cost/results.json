@@ -1,0 +1,88 @@
+{
+  "iterations": 200000,
+  "repeats": 15,
+  "warmup": 20000,
+  "node": "v24.3.0",
+  "results": [
+    {
+      "label": "V1 baseline_ref (recycled outputs)",
+      "median": 0.027243749999999987,
+      "mean": 0.028111125,
+      "std": 0.0019690911370181248,
+      "min": 0.02668125,
+      "max": 0.03290020500000001
+    },
+    {
+      "label": "V1b baseline_ref (alloc/delete per call)",
+      "median": 1.0655679200000001,
+      "mean": 1.0851201386666667,
+      "std": 0.06315583617495955,
+      "min": 1.0076150000000008,
+      "max": 1.2596410450000002
+    },
+    {
+      "label": "V2 value_object (no dispose, property access)",
+      "median": 1.1267010400000026,
+      "mean": 1.112611611333334,
+      "std": 0.0710872633686041,
+      "min": 1.0264633349999985,
+      "max": 1.2327470849999986
+    },
+    {
+      "label": "V2b value_object (destructured)",
+      "median": 1.102531874999995,
+      "mean": 1.0984452226666659,
+      "std": 0.059752581648993004,
+      "min": 1.021686040000004,
+      "max": 1.208821670000002
+    },
+    {
+      "label": "V3 value_object + JS dispose wrap",
+      "median": 1.0686912500000016,
+      "mean": 1.0968102083333342,
+      "std": 0.04351339550028697,
+      "min": 1.0539816699999938,
+      "max": 1.183128540000007
+    },
+    {
+      "label": "V3b value_object + `using` declaration",
+      "median": 1.1713610450000034,
+      "mean": 1.2314712086666657,
+      "std": 0.1579754372164611,
+      "min": 1.1318983349999963,
+      "max": 1.7867685449999955
+    },
+    {
+      "label": "V4 val::object() (no dispose, property access)",
+      "median": 1.6395629150000057,
+      "mean": 1.6390058466666673,
+      "std": 0.056031098115399504,
+      "min": 1.5615302100000006,
+      "max": 1.7644143749999965
+    },
+    {
+      "label": "V4b val::object() + JS dispose wrap (`using`)",
+      "median": 1.8283395800000108,
+      "mean": 1.8415170973333317,
+      "std": 0.15180953808657063,
+      "min": 1.7125860399999875,
+      "max": 2.3507089599999924
+    },
+    {
+      "label": "V5 val::object() + C++ Symbol.dispose (manual)",
+      "median": 2.3666299999999683,
+      "mean": 2.3422436103333313,
+      "std": 0.08019782623065175,
+      "min": 2.2096564599999873,
+      "max": 2.4748037500000097
+    },
+    {
+      "label": "V5b skipped (using-incompatible)",
+      "median": null,
+      "mean": null,
+      "std": null,
+      "min": null,
+      "max": null
+    }
+  ]
+}

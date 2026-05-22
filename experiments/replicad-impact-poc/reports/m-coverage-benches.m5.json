@@ -1,0 +1,74 @@
+{
+  "generatedAt": "2026-05-17T23:25:07.940Z",
+  "node": "v24.10.0",
+  "platform": "darwin",
+  "arch": "arm64",
+  "phase": "m5",
+  "models": {
+    "M5": {
+      "iterations": 30,
+      "parity": {
+        "A": "e1bfafcab8ecd048",
+        "F": "17d72c80c3157ebe"
+      },
+      "meshStats": {
+        "vertexCount": 8098,
+        "triangleCount": 8050,
+        "faceGroupCount": 25,
+        "meta": null
+      },
+      "runs": {
+        "A": {
+          "label": "combo A",
+          "iterations": 30,
+          "timing": {
+            "n": 30,
+            "mean": 605.2633,
+            "median": 544.3341,
+            "p95": 860.9976,
+            "p99": 1145.3625,
+            "min": 531.3105,
+            "max": 1145.3625,
+            "stddev": 131.2196,
+            "total": 18157.8986
+          },
+          "memory": {
+            "v8HeapDeltaKB": -824.4,
+            "wasmDeltaKB": 426624
+          }
+        },
+        "F": {
+          "label": "combo F",
+          "iterations": 30,
+          "timing": {
+            "n": 30,
+            "mean": 645.3906,
+            "median": 574.7252,
+            "p95": 866.7511,
+            "p99": 1832.4555,
+            "min": 511.6384,
+            "max": 1832.4555,
+            "stddev": 239.557,
+            "total": 19361.7193
+          },
+          "memory": {
+            "v8HeapDeltaKB": -26,
+            "wasmDeltaKB": 511360
+          }
+        }
+      },
+      "verdict": {
+        "label": "A→F",
+        "ratio": 1.056,
+        "changePct": "+5.6%",
+        "assessment": "REGRESSION"
+      }
+    }
+  },
+  "notes": {
+    "m1": "Pattern 2 (pass-through .Segment) sweep across NbPoles ∈ {30,100,300,1000,3000}, comparing status-quo A vs naive-D (materialise via adapter) vs split-API-D (single C++ call).",
+    "m2_m7": "Build + mesh full pipeline; A = naive per-element mesh extraction, F = zero-copy ReplicadAdapters.extractMesh.",
+    "m6_m7": "STEP file (3.1 MB, AP242, 21 sub-solids) is pre-staged into wasm virtual FS during harness setup; per-iteration cost excludes disk I/O.",
+    "allocator": "mimalloc (Emscripten -sMALLOC=mimalloc); per-phase processes still required because each model contributes 250 MB – 1.3 GB of wasm linear-memory growth that mimalloc retains."
+  }
+}

@@ -1,0 +1,411 @@
+{
+  "warmup": 2,
+  "iters": 7,
+  "buildDir": "/Users/rifont/git/tau/repos/opencascade.js/dist",
+  "generatedAt": "2026-05-21T04:20:04.369Z",
+  "runs": {
+    "single": {
+      "label": "single-threaded",
+      "binary": "opencascade_full",
+      "useParallel": false,
+      "wasmSize": 40329455,
+      "loadMs": 415.747167,
+      "samples": {
+        "01_primitive_box": {
+          "medianMs": 0.0424,
+          "meanMs": 0.0448,
+          "minMs": 0.0363,
+          "maxMs": 0.0627,
+          "stddevMs": 0.0081,
+          "timesMs": [
+            0.0472,
+            0.0407,
+            0.0627,
+            0.0458,
+            0.0383,
+            0.0363,
+            0.0424
+          ],
+          "parallelAware": false
+        },
+        "02_primitive_cylinder": {
+          "medianMs": 0.0161,
+          "meanMs": 0.0161,
+          "minMs": 0.015,
+          "maxMs": 0.0174,
+          "stddevMs": 0.0009,
+          "timesMs": [
+            0.0166,
+            0.0161,
+            0.015,
+            0.0152,
+            0.0151,
+            0.0172,
+            0.0174
+          ],
+          "parallelAware": false
+        },
+        "03_boolean_fuse": {
+          "medianMs": 4.794,
+          "meanMs": 4.9271,
+          "minMs": 4.5696,
+          "maxMs": 5.6783,
+          "stddevMs": 0.3626,
+          "timesMs": [
+            4.794,
+            5.6783,
+            5.2136,
+            4.877,
+            4.7151,
+            4.6422,
+            4.5696
+          ],
+          "parallelAware": true
+        },
+        "04_boolean_cut_grid": {
+          "medianMs": 27.2944,
+          "meanMs": 27.4786,
+          "minMs": 26.6848,
+          "maxMs": 28.9178,
+          "stddevMs": 0.6794,
+          "timesMs": [
+            28.9178,
+            27.8709,
+            27.4498,
+            27.2944,
+            27.0837,
+            27.0486,
+            26.6848
+          ],
+          "parallelAware": true
+        },
+        "05_loft_thru_sections": {
+          "medianMs": 1.0125,
+          "meanMs": 1.0242,
+          "minMs": 0.9549,
+          "maxMs": 1.1247,
+          "stddevMs": 0.0647,
+          "timesMs": [
+            1.1247,
+            1.111,
+            1.0333,
+            0.9711,
+            1.0125,
+            0.962,
+            0.9549
+          ],
+          "parallelAware": false
+        },
+        "06_pipe_shell_sweep": {
+          "medianMs": 0.3204,
+          "meanMs": 0.3185,
+          "minMs": 0.3007,
+          "maxMs": 0.347,
+          "stddevMs": 0.0141,
+          "timesMs": [
+            0.347,
+            0.3173,
+            0.3204,
+            0.3208,
+            0.3027,
+            0.3007,
+            0.3208
+          ],
+          "parallelAware": false
+        },
+        "07_surface_filling_patch": {
+          "medianMs": 350.881,
+          "meanMs": 351.1507,
+          "minMs": 347.8128,
+          "maxMs": 356.4703,
+          "stddevMs": 2.836,
+          "timesMs": [
+            347.8128,
+            352.4505,
+            352.976,
+            356.4703,
+            348.9168,
+            348.5474,
+            350.881
+          ],
+          "parallelAware": false
+        },
+        "08_fillet_all_edges": {
+          "medianMs": 5.3844,
+          "meanMs": 5.3794,
+          "minMs": 5.1303,
+          "maxMs": 5.6295,
+          "stddevMs": 0.1577,
+          "timesMs": [
+            5.4909,
+            5.4868,
+            5.6295,
+            5.1303,
+            5.2723,
+            5.3844,
+            5.2614
+          ],
+          "parallelAware": false
+        },
+        "09_fuse_many_boxes": {
+          "medianMs": 57.7422,
+          "meanMs": 58.4808,
+          "minMs": 56.8764,
+          "maxMs": 60.7823,
+          "stddevMs": 1.4376,
+          "timesMs": [
+            59.8633,
+            59.5223,
+            57.7422,
+            57.6182,
+            56.9606,
+            56.8764,
+            60.7823
+          ],
+          "parallelAware": true
+        },
+        "10_mesh_incremental": {
+          "medianMs": 72.7741,
+          "meanMs": 73.1447,
+          "minMs": 69.4382,
+          "maxMs": 77.6969,
+          "stddevMs": 2.5247,
+          "timesMs": [
+            77.6969,
+            75.4348,
+            72.7741,
+            71.3813,
+            69.4382,
+            71.8808,
+            73.4064
+          ],
+          "parallelAware": true
+        },
+        "11_step_import_and_mesh": {
+          "medianMs": 1793.7312,
+          "meanMs": 1794.169,
+          "minMs": 1775.1299,
+          "maxMs": 1812.0681,
+          "stddevMs": 12.5705,
+          "timesMs": [
+            1793.7312,
+            1795.7496,
+            1812.0681,
+            1810.7293,
+            1775.1299,
+            1783.7475,
+            1788.0273
+          ],
+          "parallelAware": true
+        }
+      },
+      "totals": {
+        "sumOfMediansMs": 2313.9927,
+        "sumOfMeansMs": 2316.1339
+      }
+    },
+    "multi": {
+      "label": "multi-threaded",
+      "binary": "opencascade_full_multi",
+      "useParallel": true,
+      "wasmSize": 39727113,
+      "loadMs": 554.2898750000022,
+      "samples": {
+        "01_primitive_box": {
+          "medianMs": 0.0456,
+          "meanMs": 0.0474,
+          "minMs": 0.0411,
+          "maxMs": 0.0599,
+          "stddevMs": 0.006,
+          "timesMs": [
+            0.0497,
+            0.0422,
+            0.0599,
+            0.0434,
+            0.0496,
+            0.0411,
+            0.0456
+          ],
+          "parallelAware": false
+        },
+        "02_primitive_cylinder": {
+          "medianMs": 0.015,
+          "meanMs": 0.0156,
+          "minMs": 0.014,
+          "maxMs": 0.0188,
+          "stddevMs": 0.0015,
+          "timesMs": [
+            0.0165,
+            0.015,
+            0.0157,
+            0.0146,
+            0.0147,
+            0.0188,
+            0.014
+          ],
+          "parallelAware": false
+        },
+        "03_boolean_fuse": {
+          "medianMs": 7.9093,
+          "meanMs": 7.9303,
+          "minMs": 7.5185,
+          "maxMs": 8.4744,
+          "stddevMs": 0.3323,
+          "timesMs": [
+            8.3408,
+            8.4744,
+            7.9093,
+            7.66,
+            7.9349,
+            7.5185,
+            7.6743
+          ],
+          "parallelAware": true
+        },
+        "04_boolean_cut_grid": {
+          "medianMs": 17.1874,
+          "meanMs": 17.5344,
+          "minMs": 16.4326,
+          "maxMs": 19.1893,
+          "stddevMs": 1.0534,
+          "timesMs": [
+            19.1893,
+            19.0296,
+            17.5201,
+            16.5578,
+            17.1874,
+            16.8237,
+            16.4326
+          ],
+          "parallelAware": true
+        },
+        "05_loft_thru_sections": {
+          "medianMs": 1.0304,
+          "meanMs": 1.0458,
+          "minMs": 0.9655,
+          "maxMs": 1.1481,
+          "stddevMs": 0.0586,
+          "timesMs": [
+            1.1481,
+            1.0888,
+            1.077,
+            1.0304,
+            1.0252,
+            0.9853,
+            0.9655
+          ],
+          "parallelAware": false
+        },
+        "06_pipe_shell_sweep": {
+          "medianMs": 0.3709,
+          "meanMs": 0.3901,
+          "minMs": 0.3315,
+          "maxMs": 0.5027,
+          "stddevMs": 0.0544,
+          "timesMs": [
+            0.4008,
+            0.3315,
+            0.4228,
+            0.5027,
+            0.3709,
+            0.352,
+            0.3497
+          ],
+          "parallelAware": false
+        },
+        "07_surface_filling_patch": {
+          "medianMs": 353.823,
+          "meanMs": 353.7934,
+          "minMs": 351.7009,
+          "maxMs": 355.8272,
+          "stddevMs": 1.3006,
+          "timesMs": [
+            353.4225,
+            354.4144,
+            351.7009,
+            353.823,
+            354.8613,
+            355.8272,
+            352.5042
+          ],
+          "parallelAware": false
+        },
+        "08_fillet_all_edges": {
+          "medianMs": 5.7845,
+          "meanMs": 6.2796,
+          "minMs": 5.4851,
+          "maxMs": 8.2158,
+          "stddevMs": 1.006,
+          "timesMs": [
+            5.7845,
+            5.6323,
+            7.4321,
+            8.2158,
+            5.8593,
+            5.5481,
+            5.4851
+          ],
+          "parallelAware": false
+        },
+        "09_fuse_many_boxes": {
+          "medianMs": 57.7423,
+          "meanMs": 57.6647,
+          "minMs": 56.4554,
+          "maxMs": 59.3945,
+          "stddevMs": 0.9754,
+          "timesMs": [
+            59.3945,
+            58.115,
+            58.3159,
+            57.0687,
+            57.7423,
+            56.4554,
+            56.5612
+          ],
+          "parallelAware": true
+        },
+        "10_mesh_incremental": {
+          "medianMs": 70.7873,
+          "meanMs": 71.2631,
+          "minMs": 69.9254,
+          "maxMs": 72.9943,
+          "stddevMs": 0.993,
+          "timesMs": [
+            72.1682,
+            72.9943,
+            71.7373,
+            70.5688,
+            70.6607,
+            70.7873,
+            69.9254
+          ],
+          "parallelAware": true
+        },
+        "11_step_import_and_mesh": {
+          "medianMs": 1390.8465,
+          "meanMs": 1390.8554,
+          "minMs": 1380.7981,
+          "maxMs": 1399.7995,
+          "stddevMs": 5.2626,
+          "timesMs": [
+            1394.0315,
+            1391.029,
+            1389.4969,
+            1389.9865,
+            1390.8465,
+            1399.7995,
+            1380.7981
+          ],
+          "parallelAware": true
+        }
+      },
+      "totals": {
+        "sumOfMediansMs": 1905.5422,
+        "sumOfMeansMs": 1906.8198
+      }
+    }
+  },
+  "comparison": {
+    "table": "\n═══════════════════════════════════════════════════════════════════════════════════════════════\nSample                        ST median   MT median      Δ ms       Δ %   speedup  parallel?\n───────────────────────────────────────────────────────────────────────────────────────────────\n01_primitive_box                 0.04      0.05      0.00  +  7.5%     0.93x      \n02_primitive_cylinder            0.02      0.01     -0.00   -6.8%     1.07x      \n03_boolean_fuse                  4.79      7.91      3.12  + 65.0%     0.61x     *\n04_boolean_cut_grid             27.29     17.19    -10.11  -37.0%     1.59x     *\n05_loft_thru_sections            1.01      1.03      0.02  +  1.8%     0.98x      \n06_pipe_shell_sweep              0.32      0.37      0.05  + 15.8%     0.86x      \n07_surface_filling_patch       350.88    353.82      2.94  +  0.8%     0.99x      \n08_fillet_all_edges              5.38      5.78      0.40  +  7.4%     0.93x      \n09_fuse_many_boxes              57.74     57.74      0.00  +  0.0%     1.00x     *\n10_mesh_incremental             72.77     70.79     -1.99   -2.7%     1.03x     *\n11_step_import_and_mesh       1793.73   1390.85   -402.88  -22.5%     1.29x     *\n───────────────────────────────────────────────────────────────────────────────────────────────\nTOTAL (sum of medians)        2313.99   1905.54   -408.45  -17.7%     1.21x\n═══════════════════════════════════════════════════════════════════════════════════════════════\nLegend: parallel? * = sample exercises an OCCT API with a parallel path\n        load ST=415.7ms  MT=554.3ms\n        wasm size ST=38.46 MB  MT=37.89 MB"
+  }
+}

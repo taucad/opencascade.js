@@ -1,0 +1,824 @@
+{
+  "generatedAt": "2026-05-16T01:53:35.372Z",
+  "node": "v24.10.0",
+  "platform": "darwin",
+  "arch": "arm64",
+  "patterns": {
+    "P1": [
+      {
+        "pattern": "P1",
+        "n": 16,
+        "statusQuo": {
+          "label": "Strategy A (status quo)",
+          "iterations": 50,
+          "timing": {
+            "n": 50,
+            "mean": 0.8419,
+            "median": 0.8134,
+            "p95": 1.0264,
+            "p99": 1.0883,
+            "min": 0.758,
+            "max": 1.0883,
+            "stddev": 0.0754,
+            "total": 42.094
+          },
+          "memory": {
+            "v8HeapDeltaKB": 129.9,
+            "wasmDeltaKB": 0
+          }
+        },
+        "strategyD": {
+          "label": "Strategy D (Float64Array)",
+          "iterations": 50,
+          "timing": {
+            "n": 50,
+            "mean": 0.7519,
+            "median": 0.7461,
+            "p95": 0.7951,
+            "p99": 0.859,
+            "min": 0.7295,
+            "max": 0.859,
+            "stddev": 0.0222,
+            "total": 37.5972
+          },
+          "memory": {
+            "v8HeapDeltaKB": 0.2,
+            "wasmDeltaKB": 0
+          }
+        },
+        "verdict": {
+          "label": "A→D",
+          "ratio": 0.917,
+          "changePct": "-8.3%",
+          "assessment": "SPEEDUP"
+        }
+      },
+      {
+        "pattern": "P1",
+        "n": 64,
+        "statusQuo": {
+          "label": "Strategy A (status quo)",
+          "iterations": 50,
+          "timing": {
+            "n": 50,
+            "mean": 2.6383,
+            "median": 2.6257,
+            "p95": 2.7726,
+            "p99": 2.785,
+            "min": 2.5681,
+            "max": 2.785,
+            "stddev": 0.0488,
+            "total": 131.9134
+          },
+          "memory": {
+            "v8HeapDeltaKB": 15.5,
+            "wasmDeltaKB": 0
+          }
+        },
+        "strategyD": {
+          "label": "Strategy D (Float64Array)",
+          "iterations": 50,
+          "timing": {
+            "n": 50,
+            "mean": 2.5689,
+            "median": 2.5583,
+            "p95": 2.6735,
+            "p99": 2.7315,
+            "min": 2.5059,
+            "max": 2.7315,
+            "stddev": 0.0469,
+            "total": 128.4445
+          },
+          "memory": {
+            "v8HeapDeltaKB": 10.9,
+            "wasmDeltaKB": 0
+          }
+        },
+        "verdict": {
+          "label": "A→D",
+          "ratio": 0.974,
+          "changePct": "-2.6%",
+          "assessment": "PARITY"
+        }
+      },
+      {
+        "pattern": "P1",
+        "n": 256,
+        "statusQuo": {
+          "label": "Strategy A (status quo)",
+          "iterations": 50,
+          "timing": {
+            "n": 50,
+            "mean": 12.8794,
+            "median": 12.8736,
+            "p95": 13.0845,
+            "p99": 13.1609,
+            "min": 12.6236,
+            "max": 13.1609,
+            "stddev": 0.1267,
+            "total": 643.9718
+          },
+          "memory": {
+            "v8HeapDeltaKB": 33,
+            "wasmDeltaKB": 0
+          }
+        },
+        "strategyD": {
+          "label": "Strategy D (Float64Array)",
+          "iterations": 50,
+          "timing": {
+            "n": 50,
+            "mean": 12.6376,
+            "median": 12.6112,
+            "p95": 12.9334,
+            "p99": 13.1792,
+            "min": 12.4156,
+            "max": 13.1792,
+            "stddev": 0.149,
+            "total": 631.8802
+          },
+          "memory": {
+            "v8HeapDeltaKB": -11.3,
+            "wasmDeltaKB": 0
+          }
+        },
+        "verdict": {
+          "label": "A→D",
+          "ratio": 0.98,
+          "changePct": "-2%",
+          "assessment": "PARITY"
+        }
+      },
+      {
+        "pattern": "P1",
+        "n": 1024,
+        "statusQuo": {
+          "label": "Strategy A (status quo)",
+          "iterations": 50,
+          "timing": {
+            "n": 50,
+            "mean": 113.1267,
+            "median": 112.5191,
+            "p95": 118.5858,
+            "p99": 121.4379,
+            "min": 110.2664,
+            "max": 121.4379,
+            "stddev": 2.6651,
+            "total": 5656.3325
+          },
+          "memory": {
+            "v8HeapDeltaKB": 19,
+            "wasmDeltaKB": 0
+          }
+        },
+        "strategyD": {
+          "label": "Strategy D (Float64Array)",
+          "iterations": 50,
+          "timing": {
+            "n": 50,
+            "mean": 111.048,
+            "median": 109.8327,
+            "p95": 118.5477,
+            "p99": 120.6268,
+            "min": 108.5455,
+            "max": 120.6268,
+            "stddev": 2.8738,
+            "total": 5552.3979
+          },
+          "memory": {
+            "v8HeapDeltaKB": -35.6,
+            "wasmDeltaKB": 0
+          }
+        },
+        "verdict": {
+          "label": "A→D",
+          "ratio": 0.976,
+          "changePct": "-2.4%",
+          "assessment": "PARITY"
+        }
+      }
+    ],
+    "P2": [
+      {
+        "pattern": "P2",
+        "n": 32,
+        "nbPoles": 15,
+        "statusQuo": {
+          "label": "Strategy A (status quo)",
+          "iterations": 50,
+          "timing": {
+            "n": 50,
+            "mean": 0.015,
+            "median": 0.013,
+            "p95": 0.0245,
+            "p99": 0.0504,
+            "min": 0.0122,
+            "max": 0.0504,
+            "stddev": 0.007,
+            "total": 0.7515
+          },
+          "memory": {
+            "v8HeapDeltaKB": 10.3,
+            "wasmDeltaKB": 0
+          }
+        },
+        "naiveD": {
+          "label": "Naive D (regression!)",
+          "iterations": 50,
+          "timing": {
+            "n": 50,
+            "mean": 0.0126,
+            "median": 0.0098,
+            "p95": 0.0184,
+            "p99": 0.0911,
+            "min": 0.0094,
+            "max": 0.0911,
+            "stddev": 0.0116,
+            "total": 0.6306
+          },
+          "memory": {
+            "v8HeapDeltaKB": 248.5,
+            "wasmDeltaKB": 0
+          }
+        },
+        "splitApiD": {
+          "label": "Split-API D (mitigation)",
+          "iterations": 50,
+          "timing": {
+            "n": 50,
+            "mean": 0.0035,
+            "median": 0.0029,
+            "p95": 0.0049,
+            "p99": 0.023,
+            "min": 0.0027,
+            "max": 0.023,
+            "stddev": 0.0028,
+            "total": 0.1757
+          },
+          "memory": {
+            "v8HeapDeltaKB": 0.8,
+            "wasmDeltaKB": 0
+          }
+        },
+        "verdicts": {
+          "naive": {
+            "label": "A→naiveD",
+            "ratio": 0.754,
+            "changePct": "-24.6%",
+            "assessment": "SPEEDUP"
+          },
+          "split": {
+            "label": "A→split-API D",
+            "ratio": 0.223,
+            "changePct": "-77.7%",
+            "assessment": "SPEEDUP"
+          }
+        }
+      },
+      {
+        "pattern": "P2",
+        "n": 128,
+        "nbPoles": 15,
+        "statusQuo": {
+          "label": "Strategy A (status quo)",
+          "iterations": 50,
+          "timing": {
+            "n": 50,
+            "mean": 0.0165,
+            "median": 0.0105,
+            "p95": 0.034,
+            "p99": 0.2021,
+            "min": 0.0099,
+            "max": 0.2021,
+            "stddev": 0.0274,
+            "total": 0.8258
+          },
+          "memory": {
+            "v8HeapDeltaKB": 1,
+            "wasmDeltaKB": 0
+          }
+        },
+        "naiveD": {
+          "label": "Naive D (regression!)",
+          "iterations": 50,
+          "timing": {
+            "n": 50,
+            "mean": 0.0097,
+            "median": 0.008,
+            "p95": 0.0134,
+            "p99": 0.0627,
+            "min": 0.0077,
+            "max": 0.0627,
+            "stddev": 0.0079,
+            "total": 0.4857
+          },
+          "memory": {
+            "v8HeapDeltaKB": 278.7,
+            "wasmDeltaKB": 0
+          }
+        },
+        "splitApiD": {
+          "label": "Split-API D (mitigation)",
+          "iterations": 50,
+          "timing": {
+            "n": 50,
+            "mean": 0.0036,
+            "median": 0.0027,
+            "p95": 0.0053,
+            "p99": 0.0315,
+            "min": 0.0026,
+            "max": 0.0315,
+            "stddev": 0.0041,
+            "total": 0.1778
+          },
+          "memory": {
+            "v8HeapDeltaKB": 0.5,
+            "wasmDeltaKB": 0
+          }
+        },
+        "verdicts": {
+          "naive": {
+            "label": "A→naiveD",
+            "ratio": 0.762,
+            "changePct": "-23.8%",
+            "assessment": "SPEEDUP"
+          },
+          "split": {
+            "label": "A→split-API D",
+            "ratio": 0.257,
+            "changePct": "-74.3%",
+            "assessment": "SPEEDUP"
+          }
+        }
+      },
+      {
+        "pattern": "P2",
+        "n": 512,
+        "nbPoles": 15,
+        "statusQuo": {
+          "label": "Strategy A (status quo)",
+          "iterations": 50,
+          "timing": {
+            "n": 50,
+            "mean": 0.0104,
+            "median": 0.0092,
+            "p95": 0.0131,
+            "p99": 0.0473,
+            "min": 0.0089,
+            "max": 0.0473,
+            "stddev": 0.0055,
+            "total": 0.5205
+          },
+          "memory": {
+            "v8HeapDeltaKB": 201.8,
+            "wasmDeltaKB": 0
+          }
+        },
+        "naiveD": {
+          "label": "Naive D (regression!)",
+          "iterations": 50,
+          "timing": {
+            "n": 50,
+            "mean": 0.0085,
+            "median": 0.0072,
+            "p95": 0.0132,
+            "p99": 0.0496,
+            "min": 0.007,
+            "max": 0.0496,
+            "stddev": 0.0062,
+            "total": 0.4231
+          },
+          "memory": {
+            "v8HeapDeltaKB": 6.3,
+            "wasmDeltaKB": 0
+          }
+        },
+        "splitApiD": {
+          "label": "Split-API D (mitigation)",
+          "iterations": 50,
+          "timing": {
+            "n": 50,
+            "mean": 0.0029,
+            "median": 0.0025,
+            "p95": 0.0028,
+            "p99": 0.018,
+            "min": 0.0024,
+            "max": 0.018,
+            "stddev": 0.0022,
+            "total": 0.1438
+          },
+          "memory": {
+            "v8HeapDeltaKB": 0.5,
+            "wasmDeltaKB": 0
+          }
+        },
+        "verdicts": {
+          "naive": {
+            "label": "A→naiveD",
+            "ratio": 0.783,
+            "changePct": "-21.7%",
+            "assessment": "SPEEDUP"
+          },
+          "split": {
+            "label": "A→split-API D",
+            "ratio": 0.272,
+            "changePct": "-72.8%",
+            "assessment": "SPEEDUP"
+          }
+        }
+      },
+      {
+        "pattern": "P2",
+        "n": 2048,
+        "nbPoles": 15,
+        "statusQuo": {
+          "label": "Strategy A (status quo)",
+          "iterations": 50,
+          "timing": {
+            "n": 50,
+            "mean": 0.0111,
+            "median": 0.0101,
+            "p95": 0.0109,
+            "p99": 0.0525,
+            "min": 0.0098,
+            "max": 0.0525,
+            "stddev": 0.0059,
+            "total": 0.5537
+          },
+          "memory": {
+            "v8HeapDeltaKB": -9.1,
+            "wasmDeltaKB": 0
+          }
+        },
+        "naiveD": {
+          "label": "Naive D (regression!)",
+          "iterations": 50,
+          "timing": {
+            "n": 50,
+            "mean": 0.0092,
+            "median": 0.0077,
+            "p95": 0.0127,
+            "p99": 0.065,
+            "min": 0.0072,
+            "max": 0.065,
+            "stddev": 0.0081,
+            "total": 0.4621
+          },
+          "memory": {
+            "v8HeapDeltaKB": 0.5,
+            "wasmDeltaKB": 0
+          }
+        },
+        "splitApiD": {
+          "label": "Split-API D (mitigation)",
+          "iterations": 50,
+          "timing": {
+            "n": 50,
+            "mean": 0.0031,
+            "median": 0.0027,
+            "p95": 0.0034,
+            "p99": 0.0195,
+            "min": 0.0026,
+            "max": 0.0195,
+            "stddev": 0.0024,
+            "total": 0.1536
+          },
+          "memory": {
+            "v8HeapDeltaKB": 0.5,
+            "wasmDeltaKB": 0
+          }
+        },
+        "verdicts": {
+          "naive": {
+            "label": "A→naiveD",
+            "ratio": 0.762,
+            "changePct": "-23.8%",
+            "assessment": "SPEEDUP"
+          },
+          "split": {
+            "label": "A→split-API D",
+            "ratio": 0.267,
+            "changePct": "-73.3%",
+            "assessment": "SPEEDUP"
+          }
+        }
+      }
+    ],
+    "P3": [
+      {
+        "pattern": "P3",
+        "kind": "box-coarse",
+        "tol": 0.5,
+        "verts": 24,
+        "tris": 12,
+        "naive": {
+          "label": "Naive (per-element JS)",
+          "iterations": 30,
+          "timing": {
+            "n": 30,
+            "mean": 0.5693,
+            "median": 0.5413,
+            "p95": 0.7629,
+            "p99": 0.7843,
+            "min": 0.4803,
+            "max": 0.7843,
+            "stddev": 0.0823,
+            "total": 17.0777
+          },
+          "memory": {
+            "v8HeapDeltaKB": 33.2,
+            "wasmDeltaKB": 0
+          }
+        },
+        "strategyF": {
+          "label": "Strategy F (extractor)",
+          "iterations": 30,
+          "timing": {
+            "n": 30,
+            "mean": 0.3736,
+            "median": 0.3575,
+            "p95": 0.4406,
+            "p99": 0.6785,
+            "min": 0.3435,
+            "max": 0.6785,
+            "stddev": 0.0606,
+            "total": 11.2069
+          },
+          "memory": {
+            "v8HeapDeltaKB": -425,
+            "wasmDeltaKB": 0
+          }
+        },
+        "verdict": {
+          "label": "naive→F",
+          "ratio": 0.66,
+          "changePct": "-34%",
+          "assessment": "SPEEDUP"
+        }
+      },
+      {
+        "pattern": "P3",
+        "kind": "sphere-coarse",
+        "tol": 0.5,
+        "verts": 4066,
+        "tris": 8002,
+        "naive": {
+          "label": "Naive (per-element JS)",
+          "iterations": 30,
+          "timing": {
+            "n": 30,
+            "mean": 45.6496,
+            "median": 45.2807,
+            "p95": 48.2318,
+            "p99": 48.7661,
+            "min": 44.0998,
+            "max": 48.7661,
+            "stddev": 1.1668,
+            "total": 1369.4871
+          },
+          "memory": {
+            "v8HeapDeltaKB": 0.3,
+            "wasmDeltaKB": 0
+          }
+        },
+        "strategyF": {
+          "label": "Strategy F (extractor)",
+          "iterations": 30,
+          "timing": {
+            "n": 30,
+            "mean": 33.2088,
+            "median": 33.0804,
+            "p95": 34.0693,
+            "p99": 34.5558,
+            "min": 32.5455,
+            "max": 34.5558,
+            "stddev": 0.4488,
+            "total": 996.2625
+          },
+          "memory": {
+            "v8HeapDeltaKB": -35.8,
+            "wasmDeltaKB": 0
+          }
+        },
+        "verdict": {
+          "label": "naive→F",
+          "ratio": 0.731,
+          "changePct": "-26.9%",
+          "assessment": "SPEEDUP"
+        }
+      },
+      {
+        "pattern": "P3",
+        "kind": "sphere-fine",
+        "tol": 0.05,
+        "verts": 5153,
+        "tris": 10176,
+        "naive": {
+          "label": "Naive (per-element JS)",
+          "iterations": 30,
+          "timing": {
+            "n": 30,
+            "mean": 58.3732,
+            "median": 58.5879,
+            "p95": 59.5802,
+            "p99": 60.0749,
+            "min": 56.7057,
+            "max": 60.0749,
+            "stddev": 0.8023,
+            "total": 1751.1956
+          },
+          "memory": {
+            "v8HeapDeltaKB": -28.7,
+            "wasmDeltaKB": 28864
+          }
+        },
+        "strategyF": {
+          "label": "Strategy F (extractor)",
+          "iterations": 30,
+          "timing": {
+            "n": 30,
+            "mean": 47.2919,
+            "median": 43.0947,
+            "p95": 88.6286,
+            "p99": 108.9766,
+            "min": 42.0203,
+            "max": 108.9766,
+            "stddev": 14.0951,
+            "total": 1418.7556
+          },
+          "memory": {
+            "v8HeapDeltaKB": -53.5,
+            "wasmDeltaKB": 0
+          }
+        },
+        "verdict": {
+          "label": "naive→F",
+          "ratio": 0.736,
+          "changePct": "-26.4%",
+          "assessment": "SPEEDUP"
+        }
+      }
+    ],
+    "P4": [
+      {
+        "pattern": "P4",
+        "label": "small (10x20x30)",
+        "dims": [
+          10,
+          20,
+          30
+        ],
+        "statusQuo": {
+          "label": "Status quo (per-pole)",
+          "iterations": 30,
+          "timing": {
+            "n": 30,
+            "mean": 0.4925,
+            "median": 0.4743,
+            "p95": 0.6352,
+            "p99": 0.7292,
+            "min": 0.378,
+            "max": 0.7292,
+            "stddev": 0.078,
+            "total": 14.7742
+          },
+          "memory": {
+            "v8HeapDeltaKB": 57.7,
+            "wasmDeltaKB": 0
+          }
+        },
+        "strategyD": {
+          "label": "Strategy D (flat array)",
+          "iterations": 30,
+          "timing": {
+            "n": 30,
+            "mean": 0.3835,
+            "median": 0.3735,
+            "p95": 0.4609,
+            "p99": 0.5472,
+            "min": 0.3461,
+            "max": 0.5472,
+            "stddev": 0.0391,
+            "total": 11.5052
+          },
+          "memory": {
+            "v8HeapDeltaKB": 0.6,
+            "wasmDeltaKB": 0
+          }
+        },
+        "verdict": {
+          "label": "A→D",
+          "ratio": 0.787,
+          "changePct": "-21.3%",
+          "assessment": "SPEEDUP"
+        }
+      },
+      {
+        "pattern": "P4",
+        "label": "medium (100x200x50)",
+        "dims": [
+          100,
+          200,
+          50
+        ],
+        "statusQuo": {
+          "label": "Status quo (per-pole)",
+          "iterations": 30,
+          "timing": {
+            "n": 30,
+            "mean": 0.3986,
+            "median": 0.3833,
+            "p95": 0.4901,
+            "p99": 0.508,
+            "min": 0.362,
+            "max": 0.508,
+            "stddev": 0.0404,
+            "total": 11.959
+          },
+          "memory": {
+            "v8HeapDeltaKB": 6,
+            "wasmDeltaKB": 0
+          }
+        },
+        "strategyD": {
+          "label": "Strategy D (flat array)",
+          "iterations": 30,
+          "timing": {
+            "n": 30,
+            "mean": 0.3705,
+            "median": 0.3548,
+            "p95": 0.473,
+            "p99": 0.6128,
+            "min": 0.3284,
+            "max": 0.6128,
+            "stddev": 0.0549,
+            "total": 11.1161
+          },
+          "memory": {
+            "v8HeapDeltaKB": 3.2,
+            "wasmDeltaKB": 0
+          }
+        },
+        "verdict": {
+          "label": "A→D",
+          "ratio": 0.926,
+          "changePct": "-7.4%",
+          "assessment": "SPEEDUP"
+        }
+      },
+      {
+        "pattern": "P4",
+        "label": "wide (1000x200x50)",
+        "dims": [
+          1000,
+          200,
+          50
+        ],
+        "statusQuo": {
+          "label": "Status quo (per-pole)",
+          "iterations": 30,
+          "timing": {
+            "n": 30,
+            "mean": 0.3996,
+            "median": 0.379,
+            "p95": 0.5215,
+            "p99": 0.5425,
+            "min": 0.3505,
+            "max": 0.5425,
+            "stddev": 0.0536,
+            "total": 11.9875
+          },
+          "memory": {
+            "v8HeapDeltaKB": 27.1,
+            "wasmDeltaKB": 0
+          }
+        },
+        "strategyD": {
+          "label": "Strategy D (flat array)",
+          "iterations": 30,
+          "timing": {
+            "n": 30,
+            "mean": 0.3592,
+            "median": 0.3381,
+            "p95": 0.5447,
+            "p99": 0.5756,
+            "min": 0.3209,
+            "max": 0.5756,
+            "stddev": 0.0603,
+            "total": 10.7763
+          },
+          "memory": {
+            "v8HeapDeltaKB": 3.8,
+            "wasmDeltaKB": 0
+          }
+        },
+        "verdict": {
+          "label": "A→D",
+          "ratio": 0.892,
+          "changePct": "-10.8%",
+          "assessment": "SPEEDUP"
+        }
+      }
+    ]
+  }
+}

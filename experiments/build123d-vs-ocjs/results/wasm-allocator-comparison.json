@@ -1,0 +1,324 @@
+{
+  "generatedAt": "2026-05-14T01:04:29.127Z",
+  "allocators": [
+    "dlmalloc",
+    "emmalloc",
+    "mimalloc"
+  ],
+  "meta": {
+    "dlmalloc": {
+      "engine": "ocjs-dlmalloc",
+      "file": "results/wasm-alloc-dlmalloc-latest.json",
+      "warmup": 2,
+      "iterations": 7,
+      "ocjsLoadMs": 126.23700000000001,
+      "wasmSize": 15931568
+    },
+    "emmalloc": {
+      "engine": "ocjs-emmalloc",
+      "file": "results/wasm-alloc-emmalloc-latest.json",
+      "warmup": 2,
+      "iterations": 7,
+      "ocjsLoadMs": 103.922625,
+      "wasmSize": 15935362
+    },
+    "mimalloc": {
+      "engine": "ocjs-mimalloc",
+      "file": "results/wasm-alloc-mimalloc-latest.json",
+      "warmup": 2,
+      "iterations": 7,
+      "ocjsLoadMs": 89.623208,
+      "wasmSize": 15986837
+    }
+  },
+  "ratioPairs": [
+    {
+      "num": "emmalloc",
+      "den": "dlmalloc",
+      "label": "emmalloc vs dlmalloc baseline"
+    },
+    {
+      "num": "mimalloc",
+      "den": "dlmalloc",
+      "label": "mimalloc vs dlmalloc baseline"
+    },
+    {
+      "num": "mimalloc",
+      "den": "emmalloc",
+      "label": "mimalloc vs emmalloc"
+    }
+  ],
+  "overallRatios": {
+    "emmalloc/dlmalloc": 1.014865263160201,
+    "mimalloc/dlmalloc": 0.9538177769944342,
+    "mimalloc/emmalloc": 0.9398467083446423
+  },
+  "perSampleWinnerTally": {
+    "dlmalloc": 1,
+    "emmalloc": 0,
+    "mimalloc": 6,
+    "tie": 3
+  },
+  "rows": [
+    {
+      "name": "01_primitive_box",
+      "medians": {
+        "dlmalloc": 0.043874999999985675,
+        "emmalloc": 0.04583300000000179,
+        "mimalloc": 0.04449999999999932
+      },
+      "minMs": {
+        "dlmalloc": 0.036000000000001364,
+        "emmalloc": 0.03941700000000026,
+        "mimalloc": 0.03683399999999892
+      },
+      "maxMs": {
+        "dlmalloc": 0.06570800000000077,
+        "emmalloc": 0.06074999999999875,
+        "mimalloc": 0.06816599999999085
+      },
+      "ratios": {
+        "emmalloc/dlmalloc": 1.0446267806271625,
+        "mimalloc/dlmalloc": 1.0142450142453299,
+        "mimalloc/emmalloc": 0.9709161521174172
+      },
+      "winner": "dlmalloc",
+      "winnerMs": 0.043874999999985675,
+      "spreadMs": 0.0019580000000161135
+    },
+    {
+      "name": "02_primitive_cylinder",
+      "medians": {
+        "dlmalloc": 0.016124999999988177,
+        "emmalloc": 0.017457999999990648,
+        "mimalloc": 0.016334000000000515
+      },
+      "minMs": {
+        "dlmalloc": 0.015292000000016515,
+        "emmalloc": 0.016334000000000515,
+        "mimalloc": 0.015208999999998696
+      },
+      "maxMs": {
+        "dlmalloc": 0.02108400000000188,
+        "emmalloc": 0.02270800000000861,
+        "mimalloc": 0.01808299999999008
+      },
+      "ratios": {
+        "emmalloc/dlmalloc": 1.0826666666668805,
+        "mimalloc/dlmalloc": 1.012961240310852,
+        "mimalloc/emmalloc": 0.9356169091539275
+      },
+      "winner": "dlmalloc",
+      "winnerMs": 0.016124999999988177,
+      "spreadMs": 0.001333000000002471
+    },
+    {
+      "name": "03_boolean_fuse",
+      "medians": {
+        "dlmalloc": 6.472165999999987,
+        "emmalloc": 6.141957999999988,
+        "mimalloc": 5.813125000000014
+      },
+      "minMs": {
+        "dlmalloc": 5.452625000000012,
+        "emmalloc": 5.380750000000006,
+        "mimalloc": 5.195666999999986
+      },
+      "maxMs": {
+        "dlmalloc": 7.369,
+        "emmalloc": 7.500416999999999,
+        "mimalloc": 7.6865840000000105
+      },
+      "ratios": {
+        "emmalloc/dlmalloc": 0.9489802950047944,
+        "mimalloc/dlmalloc": 0.8981730382069967,
+        "mimalloc/emmalloc": 0.946461209926871
+      },
+      "winner": "mimalloc",
+      "winnerMs": 5.813125000000014,
+      "spreadMs": 0.6590409999999736
+    },
+    {
+      "name": "04_boolean_cut_grid",
+      "medians": {
+        "dlmalloc": 196.03691700000002,
+        "emmalloc": 213.2572500000001,
+        "mimalloc": 179.174708
+      },
+      "minMs": {
+        "dlmalloc": 189.91099999999983,
+        "emmalloc": 198.33966700000008,
+        "mimalloc": 176.90879200000018
+      },
+      "maxMs": {
+        "dlmalloc": 200.56375000000003,
+        "emmalloc": 226.8237909999998,
+        "mimalloc": 185.49737500000003
+      },
+      "ratios": {
+        "emmalloc/dlmalloc": 1.087842296560908,
+        "mimalloc/dlmalloc": 0.9139845226192779,
+        "mimalloc/emmalloc": 0.8401810864577871
+      },
+      "winner": "mimalloc",
+      "winnerMs": 179.174708,
+      "spreadMs": 34.0825420000001
+    },
+    {
+      "name": "05_loft_thru_sections",
+      "medians": {
+        "dlmalloc": 1.113459000000148,
+        "emmalloc": 1.1807079999998678,
+        "mimalloc": 1.1199169999999867
+      },
+      "minMs": {
+        "dlmalloc": 0.963083000000097,
+        "emmalloc": 1.0187499999997272,
+        "mimalloc": 1.0214590000000499
+      },
+      "maxMs": {
+        "dlmalloc": 1.2006249999999454,
+        "emmalloc": 1.290042000000085,
+        "mimalloc": 1.328499999999849
+      },
+      "ratios": {
+        "emmalloc/dlmalloc": 1.060396476205869,
+        "mimalloc/dlmalloc": 1.0057999441378962,
+        "mimalloc/emmalloc": 0.948513095532606
+      },
+      "winner": "dlmalloc",
+      "winnerMs": 1.113459000000148,
+      "spreadMs": 0.06724899999971967
+    },
+    {
+      "name": "06_pipe_shell_sweep",
+      "medians": {
+        "dlmalloc": 0.3964169999999285,
+        "emmalloc": 0.36108299999978044,
+        "mimalloc": 0.3300420000000486
+      },
+      "minMs": {
+        "dlmalloc": 0.33095800000000963,
+        "emmalloc": 0.3397090000003118,
+        "mimalloc": 0.2974169999999958
+      },
+      "maxMs": {
+        "dlmalloc": 0.6797919999999067,
+        "emmalloc": 0.7742499999999382,
+        "mimalloc": 0.5193750000000819
+      },
+      "ratios": {
+        "emmalloc/dlmalloc": 0.9108665874567577,
+        "mimalloc/dlmalloc": 0.8325626802082354,
+        "mimalloc/emmalloc": 0.9140336155406077
+      },
+      "winner": "mimalloc",
+      "winnerMs": 0.3300420000000486,
+      "spreadMs": 0.06637499999987995
+    },
+    {
+      "name": "07_surface_filling_patch",
+      "medians": {
+        "dlmalloc": 375.02691700000014,
+        "emmalloc": 383.0284579999998,
+        "mimalloc": 385.15008300000045
+      },
+      "minMs": {
+        "dlmalloc": 366.35470799999985,
+        "emmalloc": 377.46566600000006,
+        "mimalloc": 374.5431659999995
+      },
+      "maxMs": {
+        "dlmalloc": 382.63587499999994,
+        "emmalloc": 394.01316700000007,
+        "mimalloc": 395.1104999999998
+      },
+      "ratios": {
+        "emmalloc/dlmalloc": 1.0213359112034073,
+        "mimalloc/dlmalloc": 1.0269931717994534,
+        "mimalloc/emmalloc": 1.0055390792921206
+      },
+      "winner": "dlmalloc",
+      "winnerMs": 375.02691700000014,
+      "spreadMs": 10.12316600000031
+    },
+    {
+      "name": "08_fillet_all_edges",
+      "medians": {
+        "dlmalloc": 5.93291599999975,
+        "emmalloc": 5.864250000000538,
+        "mimalloc": 5.398750000000291
+      },
+      "minMs": {
+        "dlmalloc": 5.585041999999703,
+        "emmalloc": 5.547167000000627,
+        "mimalloc": 5.172040999999808
+      },
+      "maxMs": {
+        "dlmalloc": 6.773750000000291,
+        "emmalloc": 7.153041999999914,
+        "mimalloc": 5.847624999999425
+      },
+      "ratios": {
+        "emmalloc/dlmalloc": 0.9884262645890799,
+        "mimalloc/dlmalloc": 0.909965689721634,
+        "mimalloc/emmalloc": 0.9206207102357157
+      },
+      "winner": "mimalloc",
+      "winnerMs": 5.398750000000291,
+      "spreadMs": 0.534165999999459
+    },
+    {
+      "name": "09_fuse_many_boxes",
+      "medians": {
+        "dlmalloc": 868.7242500000002,
+        "emmalloc": 883.5820000000003,
+        "mimalloc": 848.4811669999999
+      },
+      "minMs": {
+        "dlmalloc": 826.6527499999993,
+        "emmalloc": 853.9370830000007,
+        "mimalloc": 801.3374169999997
+      },
+      "maxMs": {
+        "dlmalloc": 1147.2817919999989,
+        "emmalloc": 955.2155419999999,
+        "mimalloc": 907.8781249999993
+      },
+      "ratios": {
+        "emmalloc/dlmalloc": 1.0171029529796136,
+        "mimalloc/dlmalloc": 0.9766979188160106,
+        "mimalloc/emmalloc": 0.9602743910582149
+      },
+      "winner": "mimalloc",
+      "winnerMs": 848.4811669999999,
+      "spreadMs": 35.10083300000042
+    },
+    {
+      "name": "10_mesh_incremental",
+      "medians": {
+        "dlmalloc": 913.3169170000001,
+        "emmalloc": 914.166874999999,
+        "mimalloc": 882.9979160000003
+      },
+      "minMs": {
+        "dlmalloc": 849.9620419999992,
+        "emmalloc": 876.2812920000033,
+        "mimalloc": 819.015625
+      },
+      "maxMs": {
+        "dlmalloc": 1215.5001669999983,
+        "emmalloc": 1052.8999160000021,
+        "mimalloc": 1413.693542000001
+      },
+      "ratios": {
+        "emmalloc/dlmalloc": 1.0009306276760872,
+        "mimalloc/dlmalloc": 0.9668034168253561,
+        "mimalloc/emmalloc": 0.9659045193471939
+      },
+      "winner": "mimalloc",
+      "winnerMs": 882.9979160000003,
+      "spreadMs": 31.168958999998722
+    }
+  ]
+}
