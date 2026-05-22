@@ -46,7 +46,7 @@ describe.skipIf(!wasmExists)('Smoke: Symbol.dispose on RBV containers (Handle-el
     using edge = oc.TopoDS.Edge(edgeCurrent);
     using loc = new oc.TopLoc_Location();
 
-    const result = oc.BRep_Tool.PolygonOnTriangulation(edge, loc);
+    using result = oc.BRep_Tool.PolygonOnTriangulation(edge, loc);
     expect(typeof (result as unknown as { [Symbol.dispose]?: () => void })[Symbol.dispose]).toBe('function');
 
     result[Symbol.dispose]();
@@ -119,7 +119,7 @@ describe.skipIf(!wasmExists)('Smoke: Symbol.dispose on RBV containers (Handle-el
     using loc = new oc.TopLoc_Location();
 
     using stack = new DisposableStack();
-    const r = stack.use(oc.BRep_Tool.PolygonOnTriangulation(edge, loc));
+    using r = stack.use(oc.BRep_Tool.PolygonOnTriangulation(edge, loc));
     expect(typeof r.P.isNull).toBe('function');
     // stack.dispose() runs at scope exit and disposes r.
   });

@@ -12,6 +12,8 @@ import packageJson from '../../package.json' with { type: 'json' };
  *   - `@taucad/opencascade.js`         → ESM entry + types
  *   - `@taucad/opencascade.js/wasm`    → opencascade_full.wasm (canonical
  *                                        locateFile target for every bundler)
+ *   - `@taucad/opencascade.js/multi`   → multi-threaded ESM entry + types
+ *   - `@taucad/opencascade.js/multi/wasm` → opencascade_full_multi.wasm
  *   - `@taucad/opencascade.js/package.json` → readable for tooling
  *
  * The subpath export is what lets consumers write
@@ -50,6 +52,42 @@ describe('package exports — wasm subpath contract', () => {
   it('should include the wasm file in the published files allowlist', () => {
     const files = packageJson.files as readonly string[];
     expect(files).toContain('dist/opencascade_full.wasm');
+  });
+
+  it('should declare ./multi in the exports map with types and default conditions', () => {
+    const exportsMap = packageJson.exports as Record<string, { types?: string; default?: string }>;
+    const multi = exportsMap['./multi'];
+    expect(multi, 'package.json#exports must include a "./multi" subpath').toBeDefined();
+    expect(multi!.types).toBe('./dist/opencascade_full_multi.d.ts');
+    expect(multi!.default).toBe('./dist/opencascade_full_multi.js');
+  });
+
+  it('should declare ./multi/wasm in the exports map pointing at the MT wasm', () => {
+    const exportsMap = packageJson.exports as Record<string, unknown>;
+    expect(exportsMap['./multi/wasm']).toBe('./dist/opencascade_full_multi.wasm');
+  });
+
+  it('should include the MT artifacts in the published files allowlist', () => {
+    const files = packageJson.files as readonly string[];
+    expect(files).toContain('dist/opencascade_full_multi.wasm');
+    expect(files).toContain('dist/opencascade_full_multi.js');
+    expect(files).toContain('dist/opencascade_full_multi.d.ts');
+    expect(files).toContain('dist/opencascade_full_multi.provenance.json');
+  });
+
+  it('should resolve @taucad/opencascade.js/multi to the MT loader the exports map declares', () => {
+    const url = import.meta.resolve('@taucad/opencascade.js/multi');
+    expect(url.startsWith('file://'), `Expected file:// URL, got ${url}`).toBe(true);
+    const resolvedPath = fileURLToPath(url);
+    expect(basename(resolvedPath)).toBe('opencascade_full_multi.js');
+    expect(dirname(resolvedPath).endsWith('/dist')).toBe(true);
+  });
+
+  it('should resolve @taucad/opencascade.js/multi/wasm to the MT wasm the exports map declares', () => {
+    const url = import.meta.resolve('@taucad/opencascade.js/multi/wasm');
+    const resolvedPath = fileURLToPath(url);
+    expect(basename(resolvedPath)).toBe('opencascade_full_multi.wasm');
+    expect(dirname(resolvedPath).endsWith('/dist')).toBe(true);
   });
 
   it('should resolve @taucad/opencascade.js/wasm to the same file the exports map declares', async () => {

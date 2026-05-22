@@ -59,7 +59,7 @@ describe.skipIf(!wasmExists)('Smoke: ExtremaPC circle', () => {
     using queryPoint = new oc.gp_Pnt(10, 0, 0);
     const tol = 1e-7;
     const searchMode: ExtremaPC_SearchMode = 'MinMax';
-    const res = ex.Perform(queryPoint, tol, searchMode);
+    using res = ex.Perform(queryPoint, tol, searchMode);
 
     expect(res.IsDone()).toBe(true);
     expect(res.IsInfinite()).toBe(false);
@@ -94,7 +94,7 @@ describe.skipIf(!wasmExists)('Smoke: ExtremaPC circle', () => {
 
     using queryPoint = new oc.gp_Pnt(0, 0, 0);
     const searchMode: ExtremaPC_SearchMode = 'MinMax';
-    const res = ex.Perform(queryPoint, 1e-7, searchMode);
+    using res = ex.Perform(queryPoint, 1e-7, searchMode);
 
     expect(res.IsDone()).toBe(false);
     expect(res.IsInfinite()).toBe(true);

@@ -1,14 +1,20 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { OpenCascadeInstance } from '../../build-configs/opencascade_full.js';
+import type { OpenCascadeInstance as OpenCascadeInstanceMulti } from '../../dist/opencascade_full_multi.js';
 import init from '../../build-configs/opencascade_full.js';
+import initMulti from '../../dist/opencascade_full_multi.js';
 
 const BUILD_DIR = path.resolve(import.meta.dirname, '../../build-configs');
 const WASM_PATH = path.join(BUILD_DIR, 'opencascade_full.wasm');
+const DIST_DIR = path.resolve(import.meta.dirname, '../../dist');
+const WASM_MULTI_PATH = path.join(DIST_DIR, 'opencascade_full_multi.wasm');
 
 export const wasmExists = fs.existsSync(WASM_PATH);
+export const multiWasmExists = fs.existsSync(WASM_MULTI_PATH);
 
 let _oc: OpenCascadeInstance | undefined;
+let _ocMulti: OpenCascadeInstanceMulti | undefined;
 
 /**
  * Initializes the shared OpenCASCADE WASM module.
@@ -28,6 +34,28 @@ export async function initOC(): Promise<OpenCascadeInstance> {
 export function getOC(): OpenCascadeInstance {
   if (!_oc) throw new Error('Call initOC() before getOC()');
   return _oc;
+}
+
+/**
+ * Initializes the multi-threaded OpenCASCADE WASM module from `dist/`.
+ * Uses the same locateFile pattern as the `@taucad/opencascade.js/multi/wasm`
+ * subpath export. Safe to call multiple times.
+ */
+export async function initOCMulti(): Promise<OpenCascadeInstanceMulti> {
+  if (!_ocMulti) {
+    if (!multiWasmExists) {
+      throw new Error('dist/opencascade_full_multi.wasm not found — build the MT binary first');
+    }
+    _ocMulti = await initMulti({
+      locateFile: (filename: string) => path.join(DIST_DIR, filename),
+    });
+  }
+  return _ocMulti;
+}
+
+export function getOCMulti(): OpenCascadeInstanceMulti {
+  if (!_ocMulti) throw new Error('Call initOCMulti() before getOCMulti()');
+  return _ocMulti;
 }
 
 /**
@@ -60,16 +88,8 @@ export function buildBoxGraph(
 ): BoxGraphFixture {
   const oc = getOC();
   const graph = new oc.BRepGraph();
-  const box = new oc.BRepPrimAPI_MakeBox(size.dx, size.dy, size.dz);
-  try {
-    const shape = box.Shape();
-    try {
-      const addResult = oc.BRepGraph_Builder.Add(graph, shape);
-      return { graph, addResult };
-    } finally {
-      shape.delete();
-    }
-  } finally {
-    box.delete();
-  }
+  using box = new oc.BRepPrimAPI_MakeBox(size.dx, size.dy, size.dz);
+  using shape = box.Shape();
+  const addResult = oc.BRepGraph_Builder.Add(graph, shape);
+  return { graph, addResult };
 }

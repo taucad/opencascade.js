@@ -97,36 +97,43 @@ describe('dead-code sweep', () => {
     ).toHaveLength(0);
   });
 
-  it('starter-templates/v3 contains no legacy v2-suffixed OCCT identifiers (Perform_2, Handle_TDocStd_Document_2, BRepMesh_IncrementalMesh_2)', () => {
+  it('starter-templates contains no legacy v2-suffixed OCCT identifiers (Perform_2, Handle_TDocStd_Document_2, BRepMesh_IncrementalMesh_2)', () => {
     const offenders: string[] = [];
+    const isCurrentTemplate = (file: string) =>
+      file.startsWith('starter-templates/') &&
+      !file.startsWith('starter-templates/legacy/') &&
+      !file.includes('/node_modules/') &&
+      !file.includes('/.next/');
     for (const symbol of [
       'Perform_2',
       'Handle_TDocStd_Document_2',
       'BRepMesh_IncrementalMesh_2',
     ]) {
-      const { matchedFiles } = runRg(`\\b${symbol}\\b`, ['starter-templates/v3/**']);
-      const inV3 = matchedFiles.filter((file) => file.startsWith('starter-templates/v3/'));
-      for (const file of inV3) {
+      const { matchedFiles } = runRg(`\\b${symbol}\\b`, ['starter-templates/**']);
+      const inCurrentTemplates = matchedFiles.filter(isCurrentTemplate);
+      for (const file of inCurrentTemplates) {
         offenders.push(`${file} contains legacy ${symbol}`);
       }
     }
     expect(
       offenders,
-      `Legacy v2-suffixed OCCT identifiers leaked into v3 templates:\n  ${offenders.join('\n  ')}`,
+      `Legacy v2-suffixed OCCT identifiers leaked into current starter templates:\n  ${offenders.join('\n  ')}`,
     ).toHaveLength(0);
   });
 
-  it('starter-templates/v3 package.json files depend on @taucad/opencascade.js, never the unscoped "opencascade.js@beta"', () => {
+  it('starter-templates package.json files depend on @taucad/opencascade.js, never the unscoped "opencascade.js@beta"', () => {
     const { matchedFiles } = runRg(`"opencascade\\.js"\\s*:\\s*"beta"`, [
-      'starter-templates/v3/**/package.json',
+      'starter-templates/**/package.json',
     ]);
     const offenders = matchedFiles.filter(
       (file) =>
-        file.startsWith('starter-templates/v3/') && file.endsWith('package.json'),
+        file.startsWith('starter-templates/') &&
+        !file.startsWith('starter-templates/legacy/') &&
+        file.endsWith('package.json'),
     );
     expect(
       offenders,
-      `v3 starter package.json files declare the unscoped "opencascade.js":"beta" dep:\n  ${offenders.join('\n  ')}`,
+      `Current starter package.json files declare the unscoped "opencascade.js":"beta" dep:\n  ${offenders.join('\n  ')}`,
     ).toHaveLength(0);
   });
 
