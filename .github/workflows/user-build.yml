@@ -1,0 +1,39 @@
+name: User Build Full
+on:
+  workflow_dispatch:
+jobs:
+  build:
+    name: Build Full
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install uv
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
+
+      - name: NPM Install
+        run: npm install
+
+      - name: Clone Dependencies
+        run: bash ./scripts/clone-deps.sh
+
+      - name: Build WebAssembly (Full)
+        run: |
+          mkdir -p dist
+          cd dist
+          ../build-wasm.sh --config single-threaded full ../build-configs/full.yml
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: opencascade-js-full
+          path: |
+            dist/*.js
+            dist/*.wasm
+            dist/*.d.ts
