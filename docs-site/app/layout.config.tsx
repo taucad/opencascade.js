@@ -12,12 +12,12 @@ export const NavTitle = (): ReactNode => (
 );
 
 export const TauAttributionFooter = (): ReactNode => (
-  <p className="border-t border-fd-border px-4 py-3 text-xs text-fd-muted-foreground">
+  <p className="order-first mb-2 border-t border-fd-border px-4 py-3 text-xs text-fd-muted-foreground">
     Maintained by{' '}
     <a href="https://tau.new" className="text-fd-primary hover:underline">
       Tau
     </a>{' '}
-    during the v3 / OCCT V8 release window — see the{' '}
+    during the V3 / OCCT V8 release window — see the{' '}
     <Link href="/docs/package/getting-started/faq" className="text-fd-primary hover:underline">
       FAQ
     </Link>

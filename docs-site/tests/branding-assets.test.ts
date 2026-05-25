@@ -12,6 +12,14 @@ describe('branding assets', () => {
     }
   });
 
+  it('should ship sidebar brand icons under public/icons', () => {
+    for (const file of ['icons/npm.svg', 'icons/docker.svg', 'icons/webassembly.svg'] as const) {
+      const path = resolve(PUBLIC, file);
+      expect(statSync(path).size).toBeGreaterThan(0);
+      expect(readFileSync(path, 'utf8').includes('<svg')).toBe(true);
+    }
+  });
+
   it('should parse logo.svg as XML with an svg root', () => {
     const svg = readFileSync(resolve(PUBLIC, 'logo.svg'), 'utf8');
     expect(svg.includes('<svg')).toBe(true);

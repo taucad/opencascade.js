@@ -148,14 +148,14 @@ bundle inlining — the 12+ MB wasm must stay a separate fetch.
 ## Legacy bundlers
 
 Create-React-App, `react-app-rewired`, and Webpack 4 are **not supported** in
-v3 docs. The upstream Docusaurus site preserved CRA recipes in git history at
+V3 docs. The upstream Docusaurus site preserved CRA recipes in git history at
 [`website/docs/02-getting-started/02-configure-bundler.md`](https://github.com/taucad/opencascade.js/blob/master/website/docs/02-getting-started/02-configure-bundler.md)
 (recoverable via `git show HEAD:website/docs/02-getting-started/02-configure-bundler.md`
 in this repo). Use Vite, Next 15, Bun, Node, Deno, or Webpack 5 instead.
 
 ## Common pitfalls
 
-- **`locateFile` is mandatory**. The single-file v3 build does not auto-discover
+- **`locateFile` is mandatory**. The single-file V3 build does not auto-discover
   its wasm sibling — every consumer must provide a URL.
 - **Don't bundle the wasm inline**. Bundling the 12+ MB binary as base64 explodes
   your JS payload and prevents the browser's wasm streaming compiler.

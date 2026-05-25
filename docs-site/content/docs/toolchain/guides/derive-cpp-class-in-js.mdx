@@ -9,7 +9,7 @@ overridden virtual methods, using progress callbacks in OpenCascade.js requires
 a **custom WASM build** that exposes `allow_subclass<>` bindings.
 
 This guide consolidates the legacy three-page `progress-indicators-user-break`
-series into a single v3 tutorial.
+series into a single V3 tutorial.
 
 ## Overview
 
@@ -112,7 +112,7 @@ export const runFuseWithProgress = async (): Promise<void> => {
 };
 ```
 
-v3 uses suffix-free `Start()` — the v2 `_1` / `_2` overload suffixes no longer
+V3 uses suffix-free `Start()` — the v2 `_1` / `_2` overload suffixes no longer
 exist. Overload dispatch happens in C++ via the unified RBV pipeline.
 
 ## Step 3 — Cancellation

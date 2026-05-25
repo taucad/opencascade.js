@@ -1,7 +1,7 @@
 {
   "title": "Toolchain",
   "description": "Build a custom WASM via Docker — trim symbols, extend with C++, ship reproducible CI.",
-  "icon": "lucide:wrench text-amber",
+  "icon": "lib:webassembly",
   "root": true,
   "pages": [
     "index",

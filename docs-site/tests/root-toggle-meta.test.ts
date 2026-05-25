@@ -14,12 +14,17 @@ describe('root-toggle meta.json', () => {
   });
 
   it('should mark package and toolchain roots with icons and descriptions', () => {
+    const icons: Record<'package' | 'toolchain', string> = {
+      package: 'lib:npm',
+      toolchain: 'lib:webassembly',
+    };
+
     for (const root of ['package', 'toolchain'] as const) {
       const meta = readJson(`${root}/meta.json`);
       expect(meta['root']).toBe(true);
       expect(typeof meta['title']).toBe('string');
       expect(typeof meta['description']).toBe('string');
-      expect(String(meta['icon'])).toMatch(/^lucide:[a-z-]+ text-[a-z]+$/);
+      expect(meta['icon']).toBe(icons[root]);
       expect(Array.isArray(meta['pages'])).toBe(true);
       expect((meta['pages'] as unknown[]).length).toBeGreaterThan(0);
     }

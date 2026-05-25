@@ -44,4 +44,19 @@ describe('resolveIcon', () => {
   it('should return undefined for non-lucide namespaces', () => {
     expect(resolveIcon('mdi:foo')).toBeUndefined();
   });
+
+  it('should resolve lib brand icons to img elements', () => {
+    const npm = resolveIcon('lib:npm');
+    expect(isValidElement(npm)).toBe(true);
+    const { container: npmContainer } = render(<>{npm}</>);
+    expect(npmContainer.querySelector('img')?.getAttribute('src')).toBe('/icons/npm.svg');
+
+    const wasm = resolveIcon('lib:webassembly');
+    const { container: wasmContainer } = render(<>{wasm}</>);
+    expect(wasmContainer.querySelector('img')?.getAttribute('src')).toBe('/icons/webassembly.svg');
+
+    const docker = resolveIcon('lib:docker');
+    const { container: dockerContainer } = render(<>{docker}</>);
+    expect(dockerContainer.querySelector('img')?.getAttribute('src')).toBe('/icons/docker.svg');
+  });
 });

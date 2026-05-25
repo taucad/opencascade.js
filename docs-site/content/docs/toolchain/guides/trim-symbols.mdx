@@ -51,7 +51,7 @@ override so you can use it as your starting point:
 
 ```bash
 docker run --rm --entrypoint cat \
-  ghcr.io/taucad/opencascade.js:beta \
+  ghcr.io/taucad/opencascade.js:single-threaded \
   /opencascade.js/build-configs/full.yml \
   > my-config.yml
 ```
@@ -72,7 +72,8 @@ references to.
 ```bash
 docker run --rm \
   -v "$(pwd):/src" \
-  ghcr.io/taucad/opencascade.js:beta \
+  -u "$(id -u):$(id -g)" \
+  ghcr.io/taucad/opencascade.js:single-threaded \
   validate /src/my-config.yml
 ```
 
@@ -85,8 +86,8 @@ C++ pipeline, so it returns in under a second.
 ```bash
 docker run --rm \
   -v "$(pwd):/src" \
-  -v "$(pwd)/output:/output" \
-  ghcr.io/taucad/opencascade.js:beta \
+  -u "$(id -u):$(id -g)" \
+  ghcr.io/taucad/opencascade.js:single-threaded \
   link /src/my-config.yml
 ```
 
@@ -94,7 +95,7 @@ docker run --rm \
 still-bound class, so a trim that strips half of `full.yml` typically
 completes in 60–180 seconds.
 
-Output lands in `./output/`:
+Output lands next to `my-config.yml` (per `OCJS_OUTPUT_DIR=/src` default):
 
 - `<name>.wasm` — the trimmed wasm binary
 - `<name>.js` — the emscripten loader
@@ -115,8 +116,8 @@ docker volume create ocjs-nx-cache
 docker run --rm \
   -v ocjs-nx-cache:/opencascade.js/.nx \
   -v "$(pwd):/src" \
-  -v "$(pwd)/output:/output" \
-  ghcr.io/taucad/opencascade.js:beta \
+  -u "$(id -u):$(id -g)" \
+  ghcr.io/taucad/opencascade.js:single-threaded \
   link /src/my-config.yml
 ```
 
@@ -171,13 +172,14 @@ Link it with the step-4 invocation above. On a warm cache, expect a
 
 ### Pin the image by digest
 
-The `:beta` tag is mutable — a new beta drops at any time. For
-reproducible CI, replace the tag with an immutable digest:
+The `:single-threaded` tag is mutable — a new release rolls forward at any
+time. For reproducible CI, replace the tag with an immutable manifest-list
+digest:
 
 ```bash
 docker run --rm \
   -v "$(pwd):/src" \
-  -v "$(pwd)/output:/output" \
+  -u "$(id -u):$(id -g)" \
   ghcr.io/taucad/opencascade.js@sha256:<digest> \
   link /src/my-config.yml
 ```
@@ -193,7 +195,7 @@ toolchain layout, override the entrypoint:
 docker run --rm -it \
   -v "$(pwd):/src" \
   --entrypoint bash \
-  ghcr.io/taucad/opencascade.js:beta
+  ghcr.io/taucad/opencascade.js:single-threaded
 ```
 
 The image's working directory is `/opencascade.js/`. `build-configs/`,

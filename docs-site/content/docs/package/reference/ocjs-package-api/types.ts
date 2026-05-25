@@ -6,7 +6,7 @@
 export type InitOpenCascadeOptions = {
   /**
    * Resolve the URL where the runtime will fetch a sibling asset (most
-   * importantly `opencascade_full.wasm`). Mandatory for the v3 single-file
+   * importantly `opencascade_full.wasm`). Mandatory for the V3 single-file
    * build — the runtime no longer auto-discovers its wasm sibling.
    *
    * The canonical pattern is to point at the `@taucad/opencascade.js/wasm`

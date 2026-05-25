@@ -20,7 +20,7 @@ const REQUIRED = [
 const FORBIDDEN_SUFFIXES = ['Start_1', 'Start_2', 'Show_1', 'Show_2'] as const;
 
 describe('derive-cpp-class tutorial', () => {
-  it('should document v3 derive-class surfaces without legacy overload suffixes', () => {
+  it('should document V3 derive-class surfaces without legacy overload suffixes', () => {
     const body = readFileSync(TUTORIAL_PATH, 'utf8');
     for (const token of REQUIRED) {
       expect(body, `missing ${token}`).toContain(token);

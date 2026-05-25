@@ -35,6 +35,7 @@ command line, in CI, or in `build-configs/configurations.json`.
 | `OCJS_DEPS_VERSION` | from `DEPS.json` | Override the dep pinning (OCCT, freetype, rapidjson). |
 | `OCJS_EMSDK_DIR` | `/deps/emsdk` | Location of the emscripten SDK inside the image. |
 | `OCJS_PYTHON` | `python3` | Python interpreter for the bindgen. |
+| `OCJS_OUTPUT_DIR` | `/src` (in container) / `./dist` (host) | Where the link step writes the final `.wasm`, `.js`, `.d.ts`, and `.build-manifest.json`. In-container default is `/src` so the canonical single-mount Quickstart (`docker run -v "$(pwd):/src" …`) writes outputs next to the YAML automatically. Override to a separate path if you need outputs outside the bind-mount. |
 
 ## Diagnostics
 

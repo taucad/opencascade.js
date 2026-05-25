@@ -3,7 +3,7 @@ title: Handles and collections
 description: Smart-pointer surfaces (isNull / nullify) and the NCollection_* container family — what shows up in JS and how to use it.
 ---
 
-OCCT carries two long-running C++ idioms that v3's JS surface unifies under
+OCCT carries two long-running C++ idioms that V3's JS surface unifies under
 JS-native shapes: the `Handle<T>` smart pointer family and the `NCollection_*`
 templated container family. This page covers both and the everyday patterns
 they bring to your call sites.
@@ -11,7 +11,7 @@ they bring to your call sites.
 ## Smart pointers are unified
 
 In OCCT C++, a `Handle<Geom_Curve>` is an intrusive refcount wrapper around a
-heap-allocated `Geom_Curve`. In the v3 JS bindings, the wrapper and the
+heap-allocated `Geom_Curve`. In the V3 JS bindings, the wrapper and the
 pointee are the same JS object — every `Standard_Transient` subclass _is_ the
 Handle.
 

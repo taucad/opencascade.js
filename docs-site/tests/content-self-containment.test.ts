@@ -93,11 +93,11 @@ describe('content self-containment', () => {
 
     const bannedRegex: ReadonlyArray<{ readonly label: string; readonly pattern: RegExp }> = [
       {
-        label: 'Handle_* constructor — `new oc.Handle_Foo(...)` is the pre-v3 wrapper class pattern; v3 returns Transients directly.',
+        label: 'Handle_* constructor — `new oc.Handle_Foo(...)` is the pre-V3 wrapper class pattern; V3 returns Transients directly.',
         pattern: /\bnew\s+oc\.Handle_[A-Z]/,
       },
       {
-        label: 'Handle.get() unwrap — pre-v3 pattern; v3 wrappers ARE the Handle.',
+        label: 'Handle.get() unwrap — pre-V3 pattern; V3 wrappers ARE the Handle.',
         pattern: /Handle[A-Za-z_]*\.get\(\)/,
       },
       {
@@ -136,7 +136,7 @@ describe('content self-containment', () => {
         needle: 'are removed from the signature',
       },
       {
-        label: 'Pre-v3 envelope field name — `result` was renamed to `returnValue` in B4.',
+        label: 'Pre-V3 envelope field name — `result` was renamed to `returnValue` in B4.',
         needle: 'r.result',
       },
     ];

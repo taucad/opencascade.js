@@ -103,6 +103,22 @@ concept pages:
 - [Return shapes](./return-shapes) — class outputs, envelopes, `returnValue`,
   and Handle elision.
 
+## Docker stage mapping
+
+The pipeline stages map directly to the published Docker stages described in
+[Docker image](../reference/docker-image#image-stages):
+
+| Pipeline stage         | Docker stage              | Published tag        |
+| ---------------------- | ------------------------- | -------------------- |
+| 1 — discover           | `bindgen-base`            | `:bindgen-base`      |
+| 2 — emit (TUs + .d.ts) | `bindgen-base`            | `:bindgen-base`      |
+| 3 — compile + link     | `compiled-{threading}` + `final-{threading}` | `:single-threaded`, `:multi-threaded` |
+
+`:bindgen-base` is both a build stage and a published image — it carries the
+patched OCCT tree, the PCH, and the `.d.ts.json` index but not the
+pre-compiled `.o` files. Custom-bindings consumers pull `:bindgen-base`,
+re-run `generate` against their own YAML, and compile from there.
+
 ## Related
 
 - [Extend with C++](../guides/extend-with-cpp) — how to inject custom C++ into the pipeline.

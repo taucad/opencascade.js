@@ -1,6 +1,6 @@
 ---
 title: Docker image
-description: GHCR image entrypoint, tags, multi-arch matrix, OCI labels, provenance, and SBOM.
+description: GHCR image tags, multi-arch matrix, OCI labels, cosign signatures, provenance, and SBOM.
 ---
 
 The maintainer-distributed Docker image lets consumers run custom-trimmed
@@ -8,92 +8,149 @@ wasm builds without setting up emsdk, libclang, and Python locally.
 
 ## Pulling
 
-<TagBadge tag="ghcr.io/taucad/opencascade.js:beta" />
+<TagBadge tag="ghcr.io/taucad/opencascade.js:single-threaded" />
 
 ```bash
-docker pull ghcr.io/taucad/opencascade.js:beta
+docker pull ghcr.io/taucad/opencascade.js:single-threaded
 ```
 
 ## Tags
 
-| Tag | Points to |
-|---|---|
-| `:beta` | Latest v3 beta release |
-| `:3.0.0-beta.5` | Specific beta version |
-| `:rolling` | Tip of the `master` branch — moves with every merge |
-| `@sha256:<digest>` | Immutable pin — use in CI |
+| Tag                                                              | Points to                                                                             |
+| ---------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| `:single-threaded`                                               | Latest release, single-threaded warm cache (default for browser CAD UIs)              |
+| `:multi-threaded`                                                | Latest release, multi-threaded warm cache (requires COOP/COEP on consumer pages)      |
+| `:bindgen-base`                                                  | Latest release, post-PCH/generate but pre-compile (custom-bindings starting point)    |
+| `:{{version}}-single-threaded`<br/>`:{{version}}-multi-threaded` | Pinned release (e.g. `:3.0.0-single-threaded`); manifest list of `linux/amd64+arm64`  |
+| `:{{version}}-bindgen-base`                                      | Pinned release, bindgen-base                                                          |
+| `:branch-<slug>` / `:branch-<slug>-<sha>`                        | Branch tip, single-threaded, **`linux/amd64`-only**, 7-day GHCR retention             |
+| `:multi-threaded-branch-<slug>` / `…-<sha>`                      | Branch tip, multi-threaded, amd64-only, 7-day retention                               |
+| `:bindgen-base-branch-<slug>` / `…-<sha>`                        | Branch tip, bindgen-base, amd64-only, 7-day retention                                 |
+| `@sha256:<digest>`                                               | Immutable pin — use in CI                                                             |
 
-Pin by digest in CI. The `:beta` tag is **mutable** — a new beta drops at any
-time. See [Reproducible CI](../guides/reproducible-ci).
+**Pin by digest in production.** The bare-name tags (`:single-threaded`,
+`:multi-threaded`, `:bindgen-base`) are mutable and roll forward with every
+release. See [Reproducible CI](../guides/reproducible-ci) for the pinning
+workflow.
+
+The legacy `:beta`, `:rolling`, and `:latest` tags are **not published** by
+this fork. Use a version-pinned tag (e.g. `:3.0.0-single-threaded`) or the
+manifest-list digest for explicit version control.
 
 ## Entrypoint
 
 ```bash
-docker run --rm -v "$(pwd):/src" ghcr.io/taucad/opencascade.js:beta /src/mybuild.yml
+docker run --rm \
+  -v "$(pwd):/src" \
+  -u "$(id -u):$(id -g)" \
+  ghcr.io/taucad/opencascade.js:single-threaded \
+  full /src/mybuild.yml
 ```
 
-The entrypoint runs `validate` followed by `link` against the supplied YAML.
-Output (`<name>.wasm`, `<name>.js`, `<name>.d.ts`, `<name>.build-manifest.json`)
-appears next to the YAML in the mounted volume.
+The entrypoint dispatches subcommands through `npx nx run ocjs:<target>` so
+runs benefit from Nx's content-addressed cache:
+
+| Subcommand                                          | What it does                                                |
+| --------------------------------------------------- | ----------------------------------------------------------- |
+| `full <yaml>`                                       | Full pipeline (apply-patches + pch + generate + compile + link) |
+| `link <yaml>`                                       | Link only (reuses compiled `.o` files; fastest)             |
+| `compile-bindings`, `compile-sources`, `pch`, …     | Run an individual Nx target                                 |
+| `validate <yaml>`                                   | Validate YAML without building                              |
+| `nx <args…>`                                        | Pass-through to `npx nx` (escape hatch)                     |
+
+Outputs land in `/src` next to your YAML (`OCJS_OUTPUT_DIR=/src` default).
 
 ### Override the entrypoint
 
 ```bash
 docker run --rm -it -v "$(pwd):/src" --entrypoint bash \
-  ghcr.io/taucad/opencascade.js:beta
+  ghcr.io/taucad/opencascade.js:single-threaded
 ```
 
 …drops you into a shell with `emsdk`, libclang, and Python on the PATH.
 
 ## Multi-arch matrix
 
-| Arch | Image |
-|---|---|
-| `linux/amd64` | Built on `ubuntu-24.04` (GitHub Actions) |
-| `linux/arm64` | Built on `ubuntu-24.04-arm` (GitHub Actions) |
+| Tag family     | Manifest list                  | Built on                                                       |
+| -------------- | ------------------------------ | -------------------------------------------------------------- |
+| Release tags   | `linux/amd64` + `linux/arm64`  | `ubuntu-latest` (amd64) + `ubuntu-24.04-arm` (arm64), GitHub Actions native runners |
+| Branch tags    | `linux/amd64` only             | `ubuntu-latest`, GitHub Actions                                |
 
-`docker pull` resolves the right variant automatically. Force one with
-`--platform linux/arm64`.
+Releases ship full manifest lists so Apple Silicon and ARM Linux hosts pull
+the native arch transparently. Branch tags are amd64-only by design (R12 in
+the [production-readiness blueprint](https://github.com/taucad/opencascade.js/blob/main/docs/research/ocjs-docker-production-readiness-blueprint.md))
+— ARM hosts will run under Rosetta / QEMU for branch tags.
 
 ## OCI labels
 
-Inspect via `docker inspect ghcr.io/taucad/opencascade.js:beta`:
+Inspect via `docker inspect ghcr.io/taucad/opencascade.js:single-threaded`:
 
-| Label | Purpose |
-|---|---|
-| `org.opencontainers.image.source` | https://github.com/taucad/opencascade.js |
-| `org.opencontainers.image.revision` | Git commit the image was built from |
-| `org.opencontainers.image.version` | Semver tag |
-| `org.opencontainers.image.licenses` | LGPL-2.1-or-later |
-| `org.opencontainers.image.title` | OpenCascade.js custom build container |
+| Label                                  | Purpose                                                  |
+| -------------------------------------- | -------------------------------------------------------- |
+| `org.opencontainers.image.title`       | Stage-specific title (single-threaded, multi-threaded, …) |
+| `org.opencontainers.image.description` | Threading model and consumer prerequisites               |
+| `org.opencontainers.image.source`      | https://github.com/taucad/opencascade.js                 |
+| `org.opencontainers.image.url`         | Same as source                                           |
+| `org.opencontainers.image.revision`    | Git commit the image was built from                      |
+| `org.opencontainers.image.version`     | Semver tag                                               |
+| `org.opencontainers.image.licenses`    | LGPL-2.1-only                                            |
+| `org.opencontainers.image.vendor`      | taucad                                                   |
+
+## Cosign signatures
+
+Every published image is signed with [cosign](https://github.com/sigstore/cosign)
+via OIDC keyless signing — no rotating private keys, signatures published to
+the Sigstore Rekor transparency log. Release tags carry **one signature on
+the manifest-list digest** that verifies regardless of which arch the
+consumer pulls; branch tags carry **per-arch image-digest signatures**.
+
+```bash
+cosign verify ghcr.io/taucad/opencascade.js:single-threaded \
+  --certificate-identity-regexp 'https://github.com/taucad/opencascade\.js/\.github/workflows/docker\.yml@.*' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+```
+
+A successful verification confirms the image was built by the
+`taucad/opencascade.js` GitHub Actions `docker.yml` workflow and has not
+been tampered with since publication.
 
 ## Provenance
 
 ```bash
 cosign verify-attestation \
   --type slsaprovenance \
-  --certificate-identity-regexp 'https://github\.com/taucad/opencascade\.js/' \
+  --certificate-identity-regexp 'https://github\.com/taucad/opencascade\.js/\.github/workflows/docker\.yml@.*' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-  ghcr.io/taucad/opencascade.js:beta
+  ghcr.io/taucad/opencascade.js:single-threaded
 ```
 
-The attestation records the source commit, the workflow, and the runner that
-produced the image.
+The attestation records the source commit, the workflow, and the runner
+that produced the image.
 
 ## SBOM
 
 ```bash
 docker buildx imagetools inspect \
   --format '{{ json .SBOM }}' \
-  ghcr.io/taucad/opencascade.js:beta
+  ghcr.io/taucad/opencascade.js:single-threaded
 ```
 
 Diff the SBOM across image digests in CI to flag unexpected dep bumps.
 
 ## Image stages
 
-The Dockerfile is multi-stage — `deps-base` (emsdk + libclang + Python),
-`bindgen-base` (deps + Python-side bindgen tools), `final` (everything + the
-entrypoint). Each stage is independently rebuildable; CI uses `--target` to
-exercise one stage at a time. See [Bindgen pipeline](../concepts/bindgen-pipeline)
-for how the stages compose with the build pipeline.
+The [Dockerfile](https://github.com/taucad/opencascade.js/blob/main/Dockerfile)
+is multi-stage with five logical stages, three of which are published:
+
+| Stage                       | Published as            | Contents                                                  |
+| --------------------------- | ----------------------- | --------------------------------------------------------- |
+| `deps-base`                 | _(not published)_       | emsdk + apt + Node 24 + uv + Python + OCCT/rapidjson/freetype + LLVM 17 headers |
+| `bindgen-base`              | `:bindgen-base`         | deps + npm ci + patches + PCH + `.d.ts.json` index        |
+| `compiled-single-threaded`  | _(not published)_       | bindgen + compiled `.o` files + OCCT `.a` (single-threaded) |
+| `compiled-multi-threaded`   | _(not published)_       | bindgen + compiled `.o` files + OCCT `.a` (multi-threaded)  |
+| `final-single`              | `:single-threaded`      | compiled-single + OCI labels + entrypoint                 |
+| `final-multi`               | `:multi-threaded`       | compiled-multi  + OCI labels + entrypoint                 |
+
+Each stage is independently rebuildable via `docker buildx build --target
+<stage>`. See [Bindgen pipeline](../concepts/bindgen-pipeline) for how the
+stages compose with the build pipeline.

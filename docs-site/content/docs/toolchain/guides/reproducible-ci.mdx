@@ -6,38 +6,61 @@ description: Pin GHCR images by digest, capture provenance and SBOM, lock downst
 A reproducible OCJS build means: same inputs, same wasm bytes, every time.
 Three controls close the loop.
 
-## 1. Pin the image by digest
+## 1. Pin the image by manifest-list digest
 
-`:beta` is a moving tag. CI should pin by digest so a new image publish
-doesn't silently change your wasm output.
+`:single-threaded`, `:multi-threaded`, and `:bindgen-base` are moving tags
+that roll forward with every release. CI should pin by digest so a new
+publish doesn't silently change your wasm output. Pinning the manifest-list
+digest (not the per-arch image digest) covers both `linux/amd64` and
+`linux/arm64` sub-images in a single deterministic pin.
 
 ```bash
-# Resolve the current digest
-docker pull ghcr.io/taucad/opencascade.js:beta
-docker images --no-trunc --digests ghcr.io/taucad/opencascade.js
+# Resolve the manifest-list digest once
+docker buildx imagetools inspect ghcr.io/taucad/opencascade.js:single-threaded \
+  --format '{{json .Manifest.Digest}}'
+# → "sha256:abc123…"
 
-# Use the digest in CI
+# Use the digest in CI (resolves to the matching native arch transparently)
 docker pull ghcr.io/taucad/opencascade.js@sha256:abc123...
-docker run --rm -v "$(pwd):/src" \
+docker run --rm \
+  -v "$(pwd):/src" \
+  -u "$(id -u):$(id -g)" \
   ghcr.io/taucad/opencascade.js@sha256:abc123... \
-  /src/mybuild.yml
+  full /src/mybuild.yml
 ```
 
-## 2. Verify provenance
+## 2. Verify the cosign signature
 
-The image ships a SLSA provenance attestation via cosign:
+Every published image is signed via cosign keyless signing (OIDC) of the
+manifest-list digest — one signature verifies regardless of which arch
+the consumer pulls.
+
+```bash
+cosign verify ghcr.io/taucad/opencascade.js@sha256:abc123... \
+  --certificate-identity-regexp 'https://github.com/taucad/opencascade\.js/\.github/workflows/docker\.yml@.*' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+```
+
+A successful verification confirms the image was built by the
+`taucad/opencascade.js` GitHub Actions `docker.yml` workflow and has not
+been tampered with since publication. CI failing this step on a sudden
+mismatch is a smoking gun that something tampered with the supply chain.
+
+## 2b. Verify SLSA provenance attestation
+
+In addition to the cosign signature, the image ships a SLSA provenance
+attestation:
 
 ```bash
 cosign verify-attestation \
   --type slsaprovenance \
-  --certificate-identity-regexp 'https://github\.com/taucad/opencascade\.js/' \
+  --certificate-identity-regexp 'https://github\.com/taucad/opencascade\.js/\.github/workflows/docker\.yml@.*' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   ghcr.io/taucad/opencascade.js@sha256:abc123...
 ```
 
-The attestation records the source commit, the runner, and the workflow that
-produced the image. CI failing this step on a sudden mismatch is a smoking gun
-that something tampered with the supply chain.
+The attestation records the source commit, the runner, and the workflow
+that produced the image.
 
 ## 3. Extract SBOM
 
@@ -82,25 +105,34 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Verify cosign signature
+        run: |
+          DIGEST=$(cat .ocjs-digest)
+          cosign verify "ghcr.io/taucad/opencascade.js@${DIGEST}" \
+            --certificate-identity-regexp 'https://github.com/taucad/opencascade\.js/\.github/workflows/docker\.yml@.*' \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com
+
       - name: Verify image provenance
         run: |
           DIGEST=$(cat .ocjs-digest)
           cosign verify-attestation --type slsaprovenance \
-            --certificate-identity-regexp 'https://github\.com/taucad/opencascade\.js/' \
+            --certificate-identity-regexp 'https://github\.com/taucad/opencascade\.js/\.github/workflows/docker\.yml@.*' \
             --certificate-oidc-issuer https://token.actions.githubusercontent.com \
             "ghcr.io/taucad/opencascade.js@${DIGEST}"
 
       - name: Build wasm
         run: |
           DIGEST=$(cat .ocjs-digest)
-          docker run --rm -v "$(pwd):/src" \
+          docker run --rm \
+            -v "$(pwd):/src" \
+            -u "$(id -u):$(id -g)" \
             "ghcr.io/taucad/opencascade.js@${DIGEST}" \
-            /src/build-configs/my-config.yml
+            full /src/build-configs/my-config.yml
 
       - name: Assert wasm hash
         run: |
           EXPECTED=$(cat .wasm-hash)
-          ACTUAL=$(sha256sum dist/my-config.wasm | cut -d' ' -f1)
+          ACTUAL=$(sha256sum my-config.wasm | cut -d' ' -f1)
           [ "$EXPECTED" = "$ACTUAL" ] || { echo "wasm hash drift"; exit 1; }
 ```
 

@@ -1,10 +1,10 @@
 ---
 title: Classic bottle
-description: The canonical OCCT tutorial — bottle profile, fillets, neck, threading — translated to v3 TypeScript.
+description: The canonical OCCT tutorial — bottle profile, fillets, neck, threading — translated to V3 TypeScript.
 ---
 
 The [OpenCASCADE bottle tutorial](https://dev.opencascade.org/doc/overview/html/occt__tutorial.html)
-ported to v3 TypeScript with `using` syntax and suffix-free API.
+ported to V3 TypeScript with `using` syntax and suffix-free API.
 
 The example demonstrates **every major OCCT capability** in one script: 2D
 profile construction, mirroring, extrusion, fillets, cylinder primitives,
@@ -185,14 +185,14 @@ export const buildBottle = async (
 };
 ```
 
-Every OCCT API used above has a direct v3 binding under `oc.<ClassName>` with no
+Every OCCT API used above has a direct V3 binding under `oc.<ClassName>` with no
 `_N` suffix. See the [OpenCASCADE tutorial](https://dev.opencascade.org/doc/overview/html/occt__tutorial.html)
 for the step-by-step walkthrough of the underlying geometry.
 
 ## Migration from v2
 
 The v2 example used `gp_Pnt_3`, `GC_MakeArcOfCircle_4`, `BRepBuilderAPI_MakeEdge_24`,
-`gp_Trsf_1`, etc. v3 drops every `_N` suffix — overload dispatch happens in
+`gp_Trsf_1`, etc. V3 drops every `_N` suffix — overload dispatch happens in
 C++ via the unified RBV pipeline. Pass arguments by type and the right overload
 runs automatically.
 
