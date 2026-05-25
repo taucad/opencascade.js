@@ -27,6 +27,16 @@ tarballs/
 tmp/
 tools/
 
+# Prebuilt host-side artifacts left next to YAML configs
+# (the docker build re-creates these inside the image; shipping them as
+# build context bloats the build-configs/ COPY layer by ~63 MB).
+build-configs/opencascade_full.js
+build-configs/opencascade_full.d.ts
+build-configs/opencascade_full.wasm
+build-configs/opencascade_full.js.symbols
+build-configs/opencascade_full.provenance.json
+build-configs/provenance.json
+
 # Legacy / pre-V8 directories (excluded so the build context stays minimal)
 test/
 occt-src/

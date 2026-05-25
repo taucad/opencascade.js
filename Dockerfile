@@ -174,11 +174,18 @@ COPY scripts/clone-deps.sh /opencascade.js/scripts/clone-deps.sh
 # Python .venv pip install, LLVM 17 tarball extract (~5.6 GB).
 #
 # LLVM 17 trim: src/ocjs_bindgen/config/paths.py consumes only:
-#   - deps/llvm-17/include/c++/v1/                  (libc++ headers)
+#   - deps/llvm-17/include/c++/v1/                  (libc++ generic headers)
+#   - deps/llvm-17/include/<host-triple>/c++/v1/    (libc++ __config_site —
+#                                                    Linux tarballs only;
+#                                                    Apple bundles it under
+#                                                    c++/v1/ directly)
 #   - deps/llvm-17/lib/clang/17/include/            (clang resource headers)
 # The actual libclang.so used by the parse pass is the pip wheel
 # `libclang==18.1.1`. Everything else in the LLVM 17 tarball (bin/, the rest
-# of lib/, libexec/, share/) is unused by the build and prunable to ~250 MB.
+# of lib/, libexec/, share/) is unused by the build and prunable.
+# We retain all of include/ (~100 MB) rather than just include/c++/ because
+# pruning the target-triple subdir hides __config_site (a hard requirement
+# for libc++ <__config> to parse) — see paths.py::_get_libc_include_args.
 #
 # uv pip cache: cleared because the venv is now fully populated and the
 # downloaded wheel cache (~150 MB) is dead weight in the image.
@@ -196,9 +203,6 @@ RUN bash scripts/clone-deps.sh --dest /opencascade.js/deps && \
       -exec rm -rf {} + && \
     find /opencascade.js/deps/llvm-17/lib/clang/17 -mindepth 1 -maxdepth 1 \
       ! -name include \
-      -exec rm -rf {} + && \
-    find /opencascade.js/deps/llvm-17/include -mindepth 1 -maxdepth 1 \
-      ! -name 'c++' \
       -exec rm -rf {} + && \
     echo "── LLVM 17 retained:" && \
     du -sh /opencascade.js/deps/llvm-17 && \
@@ -283,24 +287,36 @@ RUN mkdir -p build/bindings build/sources
 # against their own YAML; the cached PCH + patched OCCT tree make that step
 # fast (~10-30s). The compiled-{threading} child stages also re-run
 # `generate` because they need the .cpp files back to compile against.
+# ── apply-patches + pch + generate + prune + non-root perms (mega-RUN) ──────
+# Folding `chmod -R go+w` for the writable-by-non-root paths INTO this same
+# RUN is critical: a separate `chmod -R` layer copies every modified inode
+# (PCH ≈ 600 MB, build/ tree ≈ 1.5 GB) into the new overlay layer because
+# overlayfs treats permission changes as content changes — that produces a
+# ~2 GB duplicate layer for what should be a metadata-only operation. By
+# applying chmod in-place inside the same RUN, the perms commit alongside
+# the original file content with zero duplication.
+#
+# Consumers running with `docker run -u "$(id -u):$(id -g)"` need writable
+# locations for Nx's content-addressed cache (.nx), build outputs (build/),
+# and emsdk's per-run scratch. Without this chmod, the first non-root run
+# fails with EACCES when Nx tries to create its .nx subdirectory under
+# /opencascade.js (root:root mode 0755 by default).
 RUN npx nx run ocjs:apply-patches && \
     npx nx run ocjs:pch && \
     npx nx run ocjs:generate && \
     echo "── Pruning generated .cpp/.h sources (kept: .d.ts.json + PCH) ────" && \
     find build/bindings -type f -name '*.cpp' -delete && \
     find build/bindings -type f -name '*.h' -delete && \
-    rm -rf /root/.npm/_cacache 2>/dev/null || true
-
-# ── Non-root execution support ──────────────────────────────────────────────
-# Consumers running with `docker run -u "$(id -u):$(id -g)"` need writable
-# locations for Nx's content-addressed cache (.nx), build outputs (build/),
-# and emsdk's per-run scratch. Pre-create them with group-write, then chmod
-# the existing trees Nx/build will need to read+modify. Without this, the
-# first non-root run fails with EACCES when Nx tries to create its .nx
-# subdirectory under /opencascade.js (which is root:root mode 0755).
-RUN mkdir -p /opencascade.js/.nx && \
+    rm -rf /root/.npm/_cacache && \
+    echo "── Setting non-root execution perms (folded; avoids 2 GB chmod layer) ──" && \
+    mkdir -p /opencascade.js/.nx && \
     chmod -R go+w /opencascade.js/.nx /opencascade.js/build && \
-    chmod go+w /opencascade.js
+    chmod go+w /opencascade.js && \
+    echo "── Allowing git on vendored OCCT/rapidjson/freetype for non-root runs ──" && \
+    git config --system --add safe.directory '*' && \
+    echo "── Marking .venv/.deps-ready (skip uv pip install on non-root rerun) ──" && \
+    touch /opencascade.js/.venv/.deps-ready && \
+    chmod go+w /opencascade.js/.venv/.deps-ready
 
 # ── OCI metadata for the published :bindgen-base image ──────────────────────
 ARG REVISION
@@ -348,14 +364,18 @@ RUN --mount=type=cache,target=/emsdk/upstream/emscripten/cache,id=ocjs-emsdk-${O
     find build/bindings -type f -name '*.cpp' -delete && \
     find build/bindings -type f -name '*.h' -delete && \
     find build -type f -name '*.cpp.o.d' -delete && \
-    find build/occt-cmake -mindepth 1 -maxdepth 2 \
-      ! -path 'build/occt-cmake/lin32' \
-      ! -path 'build/occt-cmake/lin32/clang' \
-      -prune -exec rm -rf {} + 2>/dev/null || true && \
-    find build/occt-cmake/lin32/clang -mindepth 1 -maxdepth 1 \
-      ! -name lib \
-      ! -name bin \
-      -exec rm -rf {} + 2>/dev/null || true
+    if [ -d build/occt-cmake ]; then \
+      find build/occt-cmake -mindepth 1 -maxdepth 2 \
+        ! -path 'build/occt-cmake/lin32' \
+        ! -path 'build/occt-cmake/lin32/clang' \
+        -prune -exec rm -rf {} + ; \
+      find build/occt-cmake/lin32/clang -mindepth 1 -maxdepth 1 \
+        ! -name lib \
+        ! -name bin \
+        -exec rm -rf {} + ; \
+    fi && \
+    echo "── Re-applying non-root perms (folded; bindgen-base chmod stale here) ──" && \
+    chmod -R go+w /opencascade.js/.nx /opencascade.js/build
 
 # ═════════════════════════════════════════════════════════════════════════════
 # Stage 3b: compiled-multi-threaded
@@ -375,14 +395,18 @@ RUN --mount=type=cache,target=/emsdk/upstream/emscripten/cache,id=ocjs-emsdk-${O
     find build/bindings -type f -name '*.cpp' -delete && \
     find build/bindings -type f -name '*.h' -delete && \
     find build -type f -name '*.cpp.o.d' -delete && \
-    find build/occt-cmake -mindepth 1 -maxdepth 2 \
-      ! -path 'build/occt-cmake/lin32' \
-      ! -path 'build/occt-cmake/lin32/clang' \
-      -prune -exec rm -rf {} + 2>/dev/null || true && \
-    find build/occt-cmake/lin32/clang -mindepth 1 -maxdepth 1 \
-      ! -name lib \
-      ! -name bin \
-      -exec rm -rf {} + 2>/dev/null || true
+    if [ -d build/occt-cmake ]; then \
+      find build/occt-cmake -mindepth 1 -maxdepth 2 \
+        ! -path 'build/occt-cmake/lin32' \
+        ! -path 'build/occt-cmake/lin32/clang' \
+        -prune -exec rm -rf {} + ; \
+      find build/occt-cmake/lin32/clang -mindepth 1 -maxdepth 1 \
+        ! -name lib \
+        ! -name bin \
+        -exec rm -rf {} + ; \
+    fi && \
+    echo "── Re-applying non-root perms (folded; bindgen-base chmod stale here) ──" && \
+    chmod -R go+w /opencascade.js/.nx /opencascade.js/build
 
 # ═════════════════════════════════════════════════════════════════════════════
 # Stage 4a: final-single  (published as ghcr.io/taucad/opencascade.js:single-threaded)

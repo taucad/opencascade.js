@@ -109,8 +109,20 @@ if ! "$EMSDK_DIR/emsdk" list 2>/dev/null | grep -q "$EMSDK_VERSION.*INSTALLED"; 
   "$EMSDK_DIR/emsdk" install "$EMSDK_VERSION"
 fi
 
-echo "Activating emsdk $EMSDK_VERSION..."
-"$EMSDK_DIR/emsdk" activate "$EMSDK_VERSION"
+# emsdk activate is non-idempotent in an annoying way: it always rotates
+# .emscripten → .emscripten.old via os.rename + os.remove, which fails with
+# EACCES if the running user can't write to $EMSDK_DIR. The Docker image
+# pre-activates emsdk during build (root) and then is invoked under
+# `-u "$(id -u):$(id -g)"` (non-root) where /emsdk is root-owned 0755, so an
+# unconditional re-activation breaks the canonical Quickstart pattern. Skip
+# when .emscripten already exists with content — emcc reads that file on
+# every invocation, so re-activation is a no-op when it is already populated.
+if [ -s "$EMSDK_DIR/.emscripten" ]; then
+  echo "emsdk $EMSDK_VERSION already active ($EMSDK_DIR/.emscripten present), skipping activate"
+else
+  echo "Activating emsdk $EMSDK_VERSION..."
+  "$EMSDK_DIR/emsdk" activate "$EMSDK_VERSION"
+fi
 
 # ── 3. Python virtualenv ────────────────────────────────────────────────────
 # Project-local venv pinned to 3.14 for OCCT V8 bindgen toolchain
@@ -158,12 +170,23 @@ EOF
 fi
 
 echo "Installing Python build requirements (libclang, cerberus, pyyaml)..."
-if command -v uv >/dev/null 2>&1; then
+# Sentinel-based skip: the docker image's deps-base stage installs all Python
+# requirements during build (as root). At runtime, when the container runs
+# under `-u "$(id -u):$(id -g)"`, the non-root user has no $HOME and uv's
+# default cache dir (~/.cache/uv) fails with EACCES on `/.cache/uv`. Re-running
+# `uv pip install` would also try to write into a root-owned .venv. Skipping
+# entirely when the sentinel `$VENV_DIR/.deps-ready` is present sidesteps both
+# issues with no behavioural change for already-prepared trees.
+if [ -f "$VENV_DIR/.deps-ready" ]; then
+  echo "Python deps already installed in $VENV_DIR (sentinel: .deps-ready), skipping pip install"
+elif command -v uv >/dev/null 2>&1; then
   uv pip install --python "$VENV_DIR/bin/python" --upgrade pip setuptools wheel
   uv pip install --python "$VENV_DIR/bin/python" -r "$REPO_ROOT/requirements.txt"
+  touch "$VENV_DIR/.deps-ready"
 else
   "$VENV_DIR/bin/python" -m pip install --quiet --upgrade pip setuptools wheel
   "$VENV_DIR/bin/python" -m pip install --quiet -r "$REPO_ROOT/requirements.txt"
+  touch "$VENV_DIR/.deps-ready"
 fi
 
 # ── 4. Vendored LLVM 17 toolchain ───────────────────────────────────────────
