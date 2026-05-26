@@ -76,8 +76,14 @@ docker run --rm \
   -v "$(pwd):/src" \
   -u "$(id -u):$(id -g)" \
   ghcr.io/taucad/opencascade.js:single-threaded \
-  full /src/mybuild.yml
+  link /src/mybuild.yml
 ```
+
+`link` is the end-to-end command. Inside the container Nx's `dependsOn`
+graph walks every upstream step (apply-patches → pch → generate →
+compile-bindings → compile-sources → link) with cache reuse, so a fresh
+container performs a full build and cached re-runs replay only the link
+step.
 
 Output lands next to `mybuild.yml`:
 

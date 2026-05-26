@@ -44,19 +44,18 @@ docker run --rm \
   -v "$(pwd):/src" \
   -u "$(id -u):$(id -g)" \
   ghcr.io/taucad/opencascade.js:single-threaded \
-  full /src/mybuild.yml
+  link /src/mybuild.yml
 ```
 
 The entrypoint dispatches subcommands through `npx nx run ocjs:<target>` so
 runs benefit from Nx's content-addressed cache:
 
-| Subcommand                                          | What it does                                                |
-| --------------------------------------------------- | ----------------------------------------------------------- |
-| `full <yaml>`                                       | Full pipeline (apply-patches + pch + generate + compile + link) |
-| `link <yaml>`                                       | Link only (reuses compiled `.o` files; fastest)             |
-| `compile-bindings`, `compile-sources`, `pch`, …     | Run an individual Nx target                                 |
-| `validate <yaml>`                                   | Validate YAML without building                              |
-| `nx <args…>`                                        | Pass-through to `npx nx` (escape hatch)                     |
+| Subcommand                                          | What it does                                                                              |
+| --------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `link <yaml>`                                       | End-to-end build. Nx walks `apply-patches → pch → generate → compile-bindings → compile-sources → link` with cache reuse — fresh container = full build, cached re-run = link only. |
+| `compile-bindings`, `compile-sources`, `pch`, …     | Run an individual Nx target                                                                |
+| `validate <yaml>`                                   | Validate YAML without building                                                             |
+| `nx <args…>`                                        | Pass-through to `npx nx` (escape hatch)                                                    |
 
 Outputs land in `/src` next to your YAML (`OCJS_OUTPUT_DIR=/src` default).
 

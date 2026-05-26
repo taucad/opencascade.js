@@ -14,7 +14,7 @@
 #   docker run --rm \
 #     -v "$(pwd):/src" \
 #     -u "$(id -u):$(id -g)" \
-#     opencascade-js full /src/my.yml
+#     opencascade-js link /src/my.yml
 #
 # Persistent caching across runs (recommended for iterative work):
 #   docker volume create ocjs-nx-cache ocjs-build-cache
@@ -23,10 +23,10 @@
 #     -v ocjs-build-cache:/opencascade.js/build \
 #     -v "$(pwd):/src" \
 #     -u "$(id -u):$(id -g)" \
-#     opencascade-js full /src/my.yml
+#     opencascade-js link /src/my.yml
 #
 # Environment overrides:
-#   docker run -e OCJS_OPT="-Os" -e OCJS_EXCEPTIONS=1 ... opencascade-js full /src/my.yml
+#   docker run -e OCJS_OPT="-Os" -e OCJS_EXCEPTIONS=1 ... opencascade-js link /src/my.yml
 #
 # ─────────────────────────────────────────────────────────────────────────────
 # Stage architecture (5 logical stages; final-{threading} are thin tag-bearing

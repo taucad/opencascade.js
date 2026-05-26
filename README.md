@@ -136,12 +136,12 @@ docker pull ghcr.io/taucad/opencascade.js:single-threaded
 docker run --rm \
   -v "$(pwd):/src" \
   -u "$(id -u):$(id -g)" \
-  ghcr.io/taucad/opencascade.js:single-threaded full /src/my-config.yml
+  ghcr.io/taucad/opencascade.js:single-threaded link /src/my-config.yml
 ```
 
 For cached iterative builds (link-only reruns in ≤ 5 min), see the named-volume recipe in [MAINTAINER.md](MAINTAINER.md#docker-end-to-end-validation). Apple Silicon runs natively from the manifest list — no `--platform` flag required.
 
-The entrypoint dispatches subcommands (`full`, `link`, `compile-bindings`, `compile-sources`, `pch`, `generate`, `apply-patches`) through `npx nx run ocjs:<target>`. Use `docker run … --help` for the full subcommand reference, or `docker run … nx <args>` as an escape hatch into raw Nx.
+The entrypoint dispatches subcommands (`link`, `compile-bindings`, `compile-sources`, `pch`, `generate`, `apply-patches`) through `npx nx run ocjs:<target>`. `link` is the end-to-end command — Nx's `dependsOn` graph pulls every upstream step with cache reuse, so a fresh container performs a full build and cached re-runs replay only the link. Use `docker run … --help` for the complete reference, or `docker run … nx <args>` as an escape hatch into raw Nx.
 
 ## Tags
 

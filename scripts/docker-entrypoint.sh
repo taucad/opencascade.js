@@ -3,10 +3,10 @@
 # get content-addressed caching across `docker run` invocations.
 #
 # Recognised forms:
-#   full <yaml>         -> nx run ocjs:link (Nx graph pulls every transitive dep)
-#   link <yaml>         -> nx run ocjs:link
+#   link <yaml>         -> nx run ocjs:link  (Nx graph pulls every transitive
+#                                             dep with cache reuse)
 #   compile-bindings    -> nx run ocjs:compile-bindings
-#   compile-sources     -> nx run ocjs:compile-sources
+#   compile-sources    -> nx run ocjs:compile-sources
 #   pch                 -> nx run ocjs:pch
 #   generate            -> nx run ocjs:generate
 #   apply-patches       -> nx run ocjs:apply-patches
@@ -14,7 +14,7 @@
 #   nx <args...>        -> npx nx <args...>                (escape hatch)
 #   --help|-h           -> show this help
 #
-# Everything else falls through to build-wasm.sh for backwards compatibility.
+# Everything else falls through to build-wasm.sh.
 #
 # OCJS_YAML is set from the YAML positional argument so the Nx `link` target
 # (whose cache key depends on OCJS_YAML + a sha of the file contents) can hash
@@ -33,8 +33,12 @@ show_help() {
 docker-entrypoint.sh — opencascade.js Docker dispatcher
 
 Subcommands (Nx-cached):
-  full <yaml>           Full pipeline (apply-patches + pch + generate + compile-bindings + compile-sources + link)
-  link <yaml>           Link only (reuses compiled .o files; fastest)
+  link <yaml>           Build the bindings end-to-end. Nx walks the dependency
+                        graph (apply-patches → pch → generate → compile-bindings
+                        → compile-sources → link) and re-uses any cached step
+                        whose inputs are unchanged. Fresh container = full
+                        build; cached re-run with persistent volumes = link
+                        only.
   compile-bindings      Recompile Embind .cpp files
   compile-sources       Recompile OCCT static libraries via CMake
   pch                   Rebuild flat includes + precompiled header
@@ -45,13 +49,13 @@ Subcommands (non-cached):
   validate <yaml>       Validate YAML config without building
   nx <args...>          Pass-through to `npx nx <args...>`
 
-Anything else is forwarded to /opencascade.js/build-wasm.sh for backwards compat.
+Anything else is forwarded to /opencascade.js/build-wasm.sh.
 
 Canonical single-mount Quickstart:
   docker run --rm \
     -v "$(pwd):/src" \
     -u "$(id -u):$(id -g)" \
-    ghcr.io/taucad/opencascade.js:single-threaded full /src/my.yml
+    ghcr.io/taucad/opencascade.js:single-threaded link /src/my.yml
 
 Persistent caches across runs (iterative work):
   docker volume create ocjs-nx-cache ocjs-build-cache
@@ -60,7 +64,7 @@ Persistent caches across runs (iterative work):
     -v ocjs-build-cache:/opencascade.js/build \
     -v "$(pwd):/src" \
     -u "$(id -u):$(id -g)" \
-    ghcr.io/taucad/opencascade.js:single-threaded full /src/my.yml
+    ghcr.io/taucad/opencascade.js:single-threaded link /src/my.yml
 EOF
 }
 
@@ -105,10 +109,10 @@ run_nx_simple() {
 }
 
 case "$cmd" in
-  full|link)
-    # `full` and `link` both resolve to ocjs:link — its Nx dependsOn graph
-    # transitively pulls apply-patches, pch, generate, compile-bindings, and
-    # compile-sources, with cache reuse wherever inputs are unchanged.
+  link)
+    # Nx dependsOn pulls apply-patches, pch, generate, compile-bindings, and
+    # compile-sources transitively, with cache reuse wherever inputs are
+    # unchanged.
     run_nx_with_yaml "link" "${1:-}"
     ;;
   apply-patches|pch|generate|compile-bindings|compile-sources|dts|provenance|validate-build)

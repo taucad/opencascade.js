@@ -129,8 +129,8 @@ fi
 REPLICAD_YAML_ABS="$(cd "$(dirname "$REPLICAD_YAML")" && pwd)/$(basename "$REPLICAD_YAML")"
 _ok "Using $REPLICAD_YAML_ABS"
 
-# ── Phase 3: Cold full link ─────────────────────────────────────────────────
-_section "Phase 3/7  Cold full-link against replicad YAML"
+# ── Phase 3: Cold end-to-end link ───────────────────────────────────────────
+_section "Phase 3/7  Cold end-to-end link against replicad YAML"
 COLD_START=$(date +%s)
 docker run --rm \
   "${PLATFORM_FLAGS[@]}" \
@@ -139,7 +139,7 @@ docker run --rm \
   -v "$BUILD_VOLUME:/opencascade.js/build" \
   -v "$REPLICAD_YAML_ABS:/src/replicad.yml:ro" \
   -v "$OUTPUT_DIR:/output" \
-  "$IMAGE_TAG" full /src/replicad.yml
+  "$IMAGE_TAG" link /src/replicad.yml
 COLD_END=$(date +%s)
 COLD_ELAPSED=$((COLD_END - COLD_START))
 _ok "Cold build wall time: ${COLD_ELAPSED}s"
@@ -220,7 +220,7 @@ docker run --rm \
   -v "$BUILD_VOLUME:/opencascade.js/build" \
   -v "$REPLICAD_YAML_ABS:/src/replicad.yml:ro" \
   -v "$OUTPUT_DIR:/output" \
-  "$IMAGE_TAG" full /src/replicad.yml
+  "$IMAGE_TAG" link /src/replicad.yml
 WARM_END=$(date +%s)
 WARM_ELAPSED=$((WARM_END - WARM_START))
 echo "  Warm wall time: ${WARM_ELAPSED}s (budget ${WARM_BUDGET_S}s)"

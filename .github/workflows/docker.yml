@@ -156,7 +156,7 @@ jobs:
             -e OCJS_CONFIG=debug \
             -v "$PWD/smoke-output:/src" \
             -v "$PWD/build-configs/link-filter-poc.yml:/src/build-config.yml:ro" \
-            ocjs:ci full /src/build-config.yml
+            ocjs:ci link /src/build-config.yml
 
       - name: Assert smoke artefacts present
         run: |
@@ -522,7 +522,7 @@ jobs:
             -v "$PWD/post-publish-output:/src" \
             -v "$PWD/build-configs/link-filter-poc.yml:/src/build-config.yml:ro" \
             "${REGISTRY_IMAGE}:${{ matrix.tag_suffix }}" \
-            full /src/build-config.yml
+            link /src/build-config.yml
           test -s "$PWD/post-publish-output/opencascade_linkfilter_poc.wasm"
         env:
           REGISTRY_IMAGE: ${{ env.REGISTRY_IMAGE }}
