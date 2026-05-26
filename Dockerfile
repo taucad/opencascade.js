@@ -14,7 +14,7 @@
 #   docker run --rm \
 #     -v "$(pwd):/src" \
 #     -u "$(id -u):$(id -g)" \
-#     opencascade-js link /src/my.yml
+#     opencascade-js link my.yml
 #
 # Persistent caching across runs (recommended for iterative work):
 #   docker volume create ocjs-nx-cache ocjs-build-cache
@@ -23,10 +23,14 @@
 #     -v ocjs-build-cache:/opencascade.js/build \
 #     -v "$(pwd):/src" \
 #     -u "$(id -u):$(id -g)" \
-#     opencascade-js link /src/my.yml
+#     opencascade-js link my.yml
 #
 # Environment overrides:
-#   docker run -e OCJS_OPT="-Os" -e OCJS_EXCEPTIONS=1 ... opencascade-js link /src/my.yml
+#   docker run -e OCJS_OPT="-Os" -e OCJS_EXCEPTIONS=1 ... opencascade-js link my.yml
+#
+# YAML path resolution: relative paths (e.g. `link my.yml`) resolve against
+# the bind-mounted WORKDIR (/src). Absolute paths (e.g. `link /src/my.yml`)
+# are honoured as-is. See scripts/docker-entrypoint.sh::show_help for details.
 #
 # ─────────────────────────────────────────────────────────────────────────────
 # Stage architecture (5 logical stages; final-{threading} are thin tag-bearing
@@ -227,7 +231,19 @@ RUN ln -s /opencascade.js/deps/OCCT      /occt && \
 # custom-bindings starting point. Consumers re-run `generate` against their
 # own YAML in the compile-bindings flow.
 # ═════════════════════════════════════════════════════════════════════════════
-FROM deps-base AS bindgen-base
+# bindgen-content holds every heavy build artifact (apply-patches + pch +
+# generate + non-root perm chmod) but does NOT include the runtime entrypoint
+# COPY or OCI labels. The published `:bindgen-base` image and the `compiled-*`
+# stages both derive from this content layer.
+#
+# Splitting the published `bindgen-base` stage off this content layer is the
+# architectural pre-condition for entrypoint patches being a thin terminal-
+# layer change: when scripts/docker-entrypoint.sh changes, the COPY layer in
+# the published `bindgen-base` and the `final-*` stages cache-miss, but
+# `bindgen-content` (and therefore `compiled-single-threaded` /
+# `compiled-multi-threaded`) cache-hit because they don't reference the
+# entrypoint script at all.
+FROM deps-base AS bindgen-content
 
 # Install Nx CLI + project devDeps deterministically from package-lock.json
 COPY package.json package-lock.json nx.json project.json /opencascade.js/
@@ -235,16 +251,24 @@ RUN --mount=type=cache,target=/root/.npm,id=ocjs-npm,sharing=locked \
     npm ci --no-audit --no-fund
 
 # Copy the build system. DEPS.json + scripts/clone-deps.sh were copied above
-# (they are inputs to the dep-fetch RUN); this COPY refreshes scripts/ with
-# the remaining helpers (docker-entrypoint.sh, validate-build.py, etc.) and
-# brings in the rest of the build system.
+# (they are inputs to the dep-fetch RUN); this stage brings in the rest of
+# the build system using an explicit allow-list of build-time scripts so the
+# runtime-only docker-entrypoint.sh can be COPYed late in each ENTRYPOINT-
+# bearing stage. That keeps future entrypoint patches as a thin terminal-
+# layer change instead of invalidating apply-patches/pch/generate and the
+# multi-GB compiled-* layers downstream.
+#
+# scripts/docker-entrypoint.sh   — runtime, late-COPYed in final-* + bindgen-base
+# scripts/docker-e2e-validate.sh — host-only, never enters the image
+# scripts/clone-deps.sh          — already in deps-base (line above), excluded here
 COPY src ./src
 COPY tsconfig.json* ./
 COPY build-configs ./build-configs
 COPY build-wasm.sh ./build-wasm.sh
-COPY scripts ./scripts
+COPY scripts/enumerate-symbols.py scripts/validate-build.py scripts/generate-docs.mjs ./scripts/
+COPY scripts/lib ./scripts/lib
 COPY bindgen-filters.yaml ./bindgen-filters.yaml
-RUN chmod +x build-wasm.sh scripts/*.sh
+RUN chmod +x build-wasm.sh
 
 # ── Default environment ─────────────────────────────────────────────────────
 # The named configuration in build-configs/configurations.json drives every
@@ -318,6 +342,18 @@ RUN npx nx run ocjs:apply-patches && \
     touch /opencascade.js/.venv/.deps-ready && \
     chmod go+w /opencascade.js/.venv/.deps-ready
 
+# ═════════════════════════════════════════════════════════════════════════════
+# Stage 2b: bindgen-base  (published as ghcr.io/taucad/opencascade.js:bindgen-base)
+#
+# Thin published wrapper around `bindgen-content`: adds OCI labels, the
+# late-COPY of the runtime entrypoint, WORKDIR/ENTRYPOINT/CMD. Patching
+# `scripts/docker-entrypoint.sh` invalidates only the COPY + ENTRYPOINT
+# layers here (and the equivalents in `final-single` / `final-multi`); the
+# heavy `bindgen-content` stage and the downstream `compiled-*` stages
+# cache-hit because they never reference the entrypoint script.
+# ═════════════════════════════════════════════════════════════════════════════
+FROM bindgen-content AS bindgen-base
+
 # ── OCI metadata for the published :bindgen-base image ──────────────────────
 ARG REVISION
 ARG VERSION
@@ -335,14 +371,17 @@ LABEL org.opencontainers.image.title="opencascade.js (bindgen-base)" \
 # final-{threading} images so consumers get a consistent UX across all
 # published tags. Consumers wanting interactive shell override the entrypoint:
 #   docker run --rm -it --entrypoint bash ghcr.io/taucad/opencascade.js:bindgen-base
+COPY scripts/docker-entrypoint.sh /opencascade.js/scripts/docker-entrypoint.sh
 WORKDIR /src
 ENTRYPOINT ["/opencascade.js/scripts/docker-entrypoint.sh"]
-CMD ["full", "/src/build-config.yml"]
+CMD ["--help"]
 
 # ═════════════════════════════════════════════════════════════════════════════
 # Stage 3a: compiled-single-threaded
 # ═════════════════════════════════════════════════════════════════════════════
-FROM bindgen-base AS compiled-single-threaded
+# Note the `FROM bindgen-content` (not `bindgen-base`): inheriting from the
+# pre-COPY content layer is what isolates `compiled-*` from entrypoint patches.
+FROM bindgen-content AS compiled-single-threaded
 
 # Reset to /opencascade.js for the build-tree RUNs; final-* will WORKDIR /src.
 WORKDIR /opencascade.js/
@@ -380,7 +419,7 @@ RUN --mount=type=cache,target=/emsdk/upstream/emscripten/cache,id=ocjs-emsdk-${O
 # ═════════════════════════════════════════════════════════════════════════════
 # Stage 3b: compiled-multi-threaded
 # ═════════════════════════════════════════════════════════════════════════════
-FROM bindgen-base AS compiled-multi-threaded
+FROM bindgen-content AS compiled-multi-threaded
 
 WORKDIR /opencascade.js/
 
@@ -434,10 +473,15 @@ LABEL org.opencontainers.image.title="opencascade.js (single-threaded)" \
 # directory at runtime. Combined with `ENV OCJS_OUTPUT_DIR=/src` in
 # bindgen-base, the canonical single-mount Quickstart pattern
 # (`docker run -v "$(pwd):/src" …`) writes artifacts next to the YAML.
+#
+# Late-COPY of docker-entrypoint.sh: see bindgen-base for the rationale —
+# any future entrypoint patch only invalidates this terminal layer, not the
+# multi-GB compiled-single-threaded content above.
+COPY scripts/docker-entrypoint.sh /opencascade.js/scripts/docker-entrypoint.sh
 WORKDIR /src
 
 ENTRYPOINT ["/opencascade.js/scripts/docker-entrypoint.sh"]
-CMD ["full", "/src/build-config.yml"]
+CMD ["--help"]
 
 # ═════════════════════════════════════════════════════════════════════════════
 # Stage 4b: final-multi  (published as ghcr.io/taucad/opencascade.js:multi-threaded)
@@ -456,7 +500,11 @@ LABEL org.opencontainers.image.title="opencascade.js (multi-threaded)" \
       org.opencontainers.image.licenses="LGPL-2.1-only" \
       org.opencontainers.image.vendor="taucad"
 
+# Late-COPY of docker-entrypoint.sh: see bindgen-base for the rationale —
+# any future entrypoint patch only invalidates this terminal layer, not the
+# multi-GB compiled-multi-threaded content above.
+COPY scripts/docker-entrypoint.sh /opencascade.js/scripts/docker-entrypoint.sh
 WORKDIR /src
 
 ENTRYPOINT ["/opencascade.js/scripts/docker-entrypoint.sh"]
-CMD ["full", "/src/build-config.yml"]
+CMD ["--help"]

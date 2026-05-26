@@ -26,7 +26,7 @@ docker run --rm \
   -v "$(pwd):/src" \
   -u "$(id -u):$(id -g)" \
   ghcr.io/taucad/opencascade.js@sha256:abc123... \
-  link /src/mybuild.yml
+  link mybuild.yml
 ```
 
 ## 2. Verify the cosign signature
@@ -127,7 +127,7 @@ jobs:
             -v "$(pwd):/src" \
             -u "$(id -u):$(id -g)" \
             "ghcr.io/taucad/opencascade.js@${DIGEST}" \
-            link /src/build-configs/my-config.yml
+            link build-configs/my-config.yml
 
       - name: Assert wasm hash
         run: |

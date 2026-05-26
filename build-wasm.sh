@@ -842,23 +842,23 @@ if [ -n "$YAML_CONFIG" ]; then
     if [ -f "$wasm" ]; then
       BASENAME="$(basename "$wasm")"
       SIZE=$(stat -f%z "$wasm" 2>/dev/null || stat -c%s "$wasm" 2>/dev/null || echo "0")
-      SIZE_MB=$(echo "scale=2; $SIZE / 1048576" | bc 2>/dev/null || echo "?")
+      SIZE_MB=$(awk -v s="$SIZE" 'BEGIN { printf "%.2f", s / 1048576 }' 2>/dev/null || echo "?")
       GZIP_SIZE=$(gzip -c "$wasm" 2>/dev/null | wc -c | tr -d ' ')
-      GZIP_MB=$(echo "scale=2; $GZIP_SIZE / 1048576" | bc 2>/dev/null || echo "?")
+      GZIP_MB=$(awk -v s="$GZIP_SIZE" 'BEGIN { printf "%.2f", s / 1048576 }' 2>/dev/null || echo "?")
       printf "║  %-14s %s\n" "WASM:" "$BASENAME ($SIZE_MB MB, ${GZIP_MB} MB gzipped) ║"
     fi
   done
   for js in "$OCJS_OUTPUT_DIR"/*.js; do
     if [ -f "$js" ] && [[ "$js" != *.d.ts ]]; then
       SIZE=$(stat -f%z "$js" 2>/dev/null || stat -c%s "$js" 2>/dev/null || echo "0")
-      SIZE_KB=$(echo "scale=1; $SIZE / 1024" | bc 2>/dev/null || echo "?")
+      SIZE_KB=$(awk -v s="$SIZE" 'BEGIN { printf "%.1f", s / 1024 }' 2>/dev/null || echo "?")
       printf "║  %-14s %s\n" "JS:" "$(basename "$js") (${SIZE_KB} KB) ║"
     fi
   done
   for dts in "$OCJS_OUTPUT_DIR"/*.d.ts; do
     if [ -f "$dts" ]; then
       SIZE=$(stat -f%z "$dts" 2>/dev/null || stat -c%s "$dts" 2>/dev/null || echo "0")
-      SIZE_KB=$(echo "scale=1; $SIZE / 1024" | bc 2>/dev/null || echo "?")
+      SIZE_KB=$(awk -v s="$SIZE" 'BEGIN { printf "%.1f", s / 1024 }' 2>/dev/null || echo "?")
       printf "║  %-14s %s\n" "Types:" "$(basename "$dts") (${SIZE_KB} KB) ║"
     fi
   done

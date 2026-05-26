@@ -136,7 +136,7 @@ docker pull ghcr.io/taucad/opencascade.js:single-threaded
 docker run --rm \
   -v "$(pwd):/src" \
   -u "$(id -u):$(id -g)" \
-  ghcr.io/taucad/opencascade.js:single-threaded link /src/my-config.yml
+  ghcr.io/taucad/opencascade.js:single-threaded link my-config.yml
 ```
 
 For cached iterative builds (link-only reruns in ≤ 5 min), see the named-volume recipe in [MAINTAINER.md](MAINTAINER.md#docker-end-to-end-validation). Apple Silicon runs natively from the manifest list — no `--platform` flag required.
@@ -145,17 +145,17 @@ The entrypoint dispatches subcommands (`link`, `compile-bindings`, `compile-sour
 
 ## Tags
 
-| Tag                            | What it points at                                                                  |
-| ------------------------------ | ---------------------------------------------------------------------------------- |
-| `:single-threaded`             | Latest release, single-threaded warm cache (default for browser CAD UIs)           |
-| `:multi-threaded`              | Latest release, multi-threaded warm cache (requires COOP/COEP)                     |
-| `:bindgen-base`                | Latest release, post-PCH/generate but pre-compile (custom-bindings starting point) |
-| `:<version>-single-threaded`   | Pinned release, single-threaded (e.g. `:3.0.0-single-threaded`)                    |
-| `:<version>-multi-threaded`    | Pinned release, multi-threaded                                                     |
-| `:<version>-bindgen-base`      | Pinned release, bindgen-base                                                       |
-| `:branch-<slug>`               | Branch tip, single-threaded (amd64-only, ephemeral — 7-day GHCR retention)         |
-| `:multi-threaded-branch-<slug>`| Branch tip, multi-threaded (amd64-only, ephemeral)                                 |
-| `:bindgen-base-branch-<slug>`  | Branch tip, bindgen-base (amd64-only, ephemeral)                                   |
+| Tag                             | What it points at                                                                  |
+| ------------------------------- | ---------------------------------------------------------------------------------- |
+| `:single-threaded`              | Latest release, single-threaded warm cache (default for browser CAD UIs)           |
+| `:multi-threaded`               | Latest release, multi-threaded warm cache (requires COOP/COEP)                     |
+| `:bindgen-base`                 | Latest release, post-PCH/generate but pre-compile (custom-bindings starting point) |
+| `:<version>-single-threaded`    | Pinned release, single-threaded (e.g. `:3.0.0-single-threaded`)                    |
+| `:<version>-multi-threaded`     | Pinned release, multi-threaded                                                     |
+| `:<version>-bindgen-base`       | Pinned release, bindgen-base                                                       |
+| `:branch-<slug>`                | Branch tip, single-threaded (amd64-only, ephemeral — 7-day GHCR retention)         |
+| `:multi-threaded-branch-<slug>` | Branch tip, multi-threaded (amd64-only, ephemeral)                                 |
+| `:bindgen-base-branch-<slug>`   | Branch tip, bindgen-base (amd64-only, ephemeral)                                   |
 
 On release tags, Docker resolves the right architecture from the manifest list automatically — no `--platform` flag is needed on either `linux/amd64` or `linux/arm64` hosts.
 

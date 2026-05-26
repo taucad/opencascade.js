@@ -316,7 +316,7 @@ OCJS_CONFIG=single-threaded OCJS_YAML=consumer.yml npx nx run ocjs:link
 docker run -e OCJS_CONFIG=single-threaded \
   -v $(pwd)/my-config.yml:/src/config.yml \
   -v $(pwd)/output:/output \
-  opencascade-js link /src/config.yml
+  opencascade-js link config.yml
 ```
 
 ### Checkout-based

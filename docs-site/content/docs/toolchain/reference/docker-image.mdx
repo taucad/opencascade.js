@@ -8,7 +8,7 @@ wasm builds without setting up emsdk, libclang, and Python locally.
 
 ## Pulling
 
-<TagBadge tag="ghcr.io/taucad/opencascade.js:single-threaded" />
+<TagBadge tag='ghcr.io/taucad/opencascade.js:single-threaded' />
 
 ```bash
 docker pull ghcr.io/taucad/opencascade.js:single-threaded
@@ -16,17 +16,17 @@ docker pull ghcr.io/taucad/opencascade.js:single-threaded
 
 ## Tags
 
-| Tag                                                              | Points to                                                                             |
-| ---------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| `:single-threaded`                                               | Latest release, single-threaded warm cache (default for browser CAD UIs)              |
-| `:multi-threaded`                                                | Latest release, multi-threaded warm cache (requires COOP/COEP on consumer pages)      |
-| `:bindgen-base`                                                  | Latest release, post-PCH/generate but pre-compile (custom-bindings starting point)    |
-| `:{{version}}-single-threaded`<br/>`:{{version}}-multi-threaded` | Pinned release (e.g. `:3.0.0-single-threaded`); manifest list of `linux/amd64+arm64`  |
-| `:{{version}}-bindgen-base`                                      | Pinned release, bindgen-base                                                          |
-| `:branch-<slug>` / `:branch-<slug>-<sha>`                        | Branch tip, single-threaded, **`linux/amd64`-only**, 7-day GHCR retention             |
-| `:multi-threaded-branch-<slug>` / `…-<sha>`                      | Branch tip, multi-threaded, amd64-only, 7-day retention                               |
-| `:bindgen-base-branch-<slug>` / `…-<sha>`                        | Branch tip, bindgen-base, amd64-only, 7-day retention                                 |
-| `@sha256:<digest>`                                               | Immutable pin — use in CI                                                             |
+| Tag                                                              | Points to                                                                            |
+| ---------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| `:single-threaded`                                               | Latest release, single-threaded warm cache (default for browser CAD UIs)             |
+| `:multi-threaded`                                                | Latest release, multi-threaded warm cache (requires COOP/COEP on consumer pages)     |
+| `:bindgen-base`                                                  | Latest release, post-PCH/generate but pre-compile (custom-bindings starting point)   |
+| `:{{version}}-single-threaded`<br/>`:{{version}}-multi-threaded` | Pinned release (e.g. `:3.0.0-single-threaded`); manifest list of `linux/amd64+arm64` |
+| `:{{version}}-bindgen-base`                                      | Pinned release, bindgen-base                                                         |
+| `:branch-<slug>` / `:branch-<slug>-<sha>`                        | Branch tip, single-threaded, **`linux/amd64`-only**, 7-day GHCR retention            |
+| `:multi-threaded-branch-<slug>` / `…-<sha>`                      | Branch tip, multi-threaded, amd64-only, 7-day retention                              |
+| `:bindgen-base-branch-<slug>` / `…-<sha>`                        | Branch tip, bindgen-base, amd64-only, 7-day retention                                |
+| `@sha256:<digest>`                                               | Immutable pin — use in CI                                                            |
 
 **Pin by digest in production.** The bare-name tags (`:single-threaded`,
 `:multi-threaded`, `:bindgen-base`) are mutable and roll forward with every
@@ -44,18 +44,18 @@ docker run --rm \
   -v "$(pwd):/src" \
   -u "$(id -u):$(id -g)" \
   ghcr.io/taucad/opencascade.js:single-threaded \
-  link /src/mybuild.yml
+  link mybuild.yml
 ```
 
 The entrypoint dispatches subcommands through `npx nx run ocjs:<target>` so
 runs benefit from Nx's content-addressed cache:
 
-| Subcommand                                          | What it does                                                                              |
-| --------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| `link <yaml>`                                       | End-to-end build. Nx walks `apply-patches → pch → generate → compile-bindings → compile-sources → link` with cache reuse — fresh container = full build, cached re-run = link only. |
-| `compile-bindings`, `compile-sources`, `pch`, …     | Run an individual Nx target                                                                |
-| `validate <yaml>`                                   | Validate YAML without building                                                             |
-| `nx <args…>`                                        | Pass-through to `npx nx` (escape hatch)                                                    |
+| Subcommand                                      | What it does                                                                                                                                                                        |
+| ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `link <yaml>`                                   | End-to-end build. Nx walks `apply-patches → pch → generate → compile-bindings → compile-sources → link` with cache reuse — fresh container = full build, cached re-run = link only. |
+| `compile-bindings`, `compile-sources`, `pch`, … | Run an individual Nx target                                                                                                                                                         |
+| `validate <yaml>`                               | Validate YAML without building                                                                                                                                                      |
+| `nx <args…>`                                    | Pass-through to `npx nx` (escape hatch)                                                                                                                                             |
 
 Outputs land in `/src` next to your YAML (`OCJS_OUTPUT_DIR=/src` default).
 
@@ -70,10 +70,10 @@ docker run --rm -it -v "$(pwd):/src" --entrypoint bash \
 
 ## Multi-arch matrix
 
-| Tag family     | Manifest list                  | Built on                                                       |
-| -------------- | ------------------------------ | -------------------------------------------------------------- |
-| Release tags   | `linux/amd64` + `linux/arm64`  | `ubuntu-latest` (amd64) + `ubuntu-24.04-arm` (arm64), GitHub Actions native runners |
-| Branch tags    | `linux/amd64` only             | `ubuntu-latest`, GitHub Actions                                |
+| Tag family   | Manifest list                 | Built on                                                                            |
+| ------------ | ----------------------------- | ----------------------------------------------------------------------------------- |
+| Release tags | `linux/amd64` + `linux/arm64` | `ubuntu-latest` (amd64) + `ubuntu-24.04-arm` (arm64), GitHub Actions native runners |
+| Branch tags  | `linux/amd64` only            | `ubuntu-latest`, GitHub Actions                                                     |
 
 Releases ship full manifest lists so Apple Silicon and ARM Linux hosts pull
 the native arch transparently. Branch tags are amd64-only by design (R12 in
@@ -84,16 +84,16 @@ the [production-readiness blueprint](https://github.com/taucad/opencascade.js/bl
 
 Inspect via `docker inspect ghcr.io/taucad/opencascade.js:single-threaded`:
 
-| Label                                  | Purpose                                                  |
-| -------------------------------------- | -------------------------------------------------------- |
+| Label                                  | Purpose                                                   |
+| -------------------------------------- | --------------------------------------------------------- |
 | `org.opencontainers.image.title`       | Stage-specific title (single-threaded, multi-threaded, …) |
-| `org.opencontainers.image.description` | Threading model and consumer prerequisites               |
-| `org.opencontainers.image.source`      | https://github.com/taucad/opencascade.js                 |
-| `org.opencontainers.image.url`         | Same as source                                           |
-| `org.opencontainers.image.revision`    | Git commit the image was built from                      |
-| `org.opencontainers.image.version`     | Semver tag                                               |
-| `org.opencontainers.image.licenses`    | LGPL-2.1-only                                            |
-| `org.opencontainers.image.vendor`      | taucad                                                   |
+| `org.opencontainers.image.description` | Threading model and consumer prerequisites                |
+| `org.opencontainers.image.source`      | https://github.com/taucad/opencascade.js                  |
+| `org.opencontainers.image.url`         | Same as source                                            |
+| `org.opencontainers.image.revision`    | Git commit the image was built from                       |
+| `org.opencontainers.image.version`     | Semver tag                                                |
+| `org.opencontainers.image.licenses`    | LGPL-2.1-only                                             |
+| `org.opencontainers.image.vendor`      | taucad                                                    |
 
 ## Cosign signatures
 
@@ -141,15 +141,14 @@ Diff the SBOM across image digests in CI to flag unexpected dep bumps.
 The [Dockerfile](https://github.com/taucad/opencascade.js/blob/main/Dockerfile)
 is multi-stage with five logical stages, three of which are published:
 
-| Stage                       | Published as            | Contents                                                  |
-| --------------------------- | ----------------------- | --------------------------------------------------------- |
-| `deps-base`                 | _(not published)_       | emsdk + apt + Node 24 + uv + Python + OCCT/rapidjson/freetype + LLVM 17 headers |
-| `bindgen-base`              | `:bindgen-base`         | deps + npm ci + patches + PCH + `.d.ts.json` index        |
-| `compiled-single-threaded`  | _(not published)_       | bindgen + compiled `.o` files + OCCT `.a` (single-threaded) |
-| `compiled-multi-threaded`   | _(not published)_       | bindgen + compiled `.o` files + OCCT `.a` (multi-threaded)  |
-| `final-single`              | `:single-threaded`      | compiled-single + OCI labels + entrypoint                 |
-| `final-multi`               | `:multi-threaded`       | compiled-multi  + OCI labels + entrypoint                 |
+| Stage                      | Published as       | Contents                                                                        |
+| -------------------------- | ------------------ | ------------------------------------------------------------------------------- |
+| `deps-base`                | _(not published)_  | emsdk + apt + Node 24 + uv + Python + OCCT/rapidjson/freetype + LLVM 17 headers |
+| `bindgen-base`             | `:bindgen-base`    | deps + npm ci + patches + PCH + `.d.ts.json` index                              |
+| `compiled-single-threaded` | _(not published)_  | bindgen + compiled `.o` files + OCCT `.a` (single-threaded)                     |
+| `compiled-multi-threaded`  | _(not published)_  | bindgen + compiled `.o` files + OCCT `.a` (multi-threaded)                      |
+| `final-single`             | `:single-threaded` | compiled-single + OCI labels + entrypoint                                       |
+| `final-multi`              | `:multi-threaded`  | compiled-multi + OCI labels + entrypoint                                        |
 
-Each stage is independently rebuildable via `docker buildx build --target
-<stage>`. See [Bindgen pipeline](../concepts/bindgen-pipeline) for how the
+Each stage is independently rebuildable via `docker buildx build --target <stage>`. See [Bindgen pipeline](../concepts/bindgen-pipeline) for how the
 stages compose with the build pipeline.

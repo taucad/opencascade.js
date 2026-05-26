@@ -8,7 +8,7 @@ libclang, and Python locally.
 
 ## 1. Pull the image
 
-<TagBadge tag="ghcr.io/taucad/opencascade.js:single-threaded" />
+<TagBadge tag='ghcr.io/taucad/opencascade.js:single-threaded' />
 
 ```bash
 docker pull ghcr.io/taucad/opencascade.js:single-threaded
@@ -76,7 +76,7 @@ docker run --rm \
   -v "$(pwd):/src" \
   -u "$(id -u):$(id -g)" \
   ghcr.io/taucad/opencascade.js:single-threaded \
-  link /src/mybuild.yml
+  link mybuild.yml
 ```
 
 `link` is the end-to-end command. Inside the container Nx's `dependsOn`
@@ -143,14 +143,14 @@ with since publication.
 Typical wall-clock for a 22-50 symbol trim on the GitHub Actions `ubuntu-latest`
 runner (the e2e gate budget; M1 Pro local times are 30-50% faster):
 
-| Step | Warm cache | Cold cache |
-|---|---:|---:|
-| Image pull (compressed ~1.3 GB) | 0 s | 30-60 s |
-| `generate` against your YAML | 5-15 s | 5-15 s |
-| `compile-bindings` (cached `.o` files) | 0 s | 1-3 min |
-| `compile-sources` (cached OCCT `.a`) | 0 s | 5-10 min |
-| Link against precompiled OCCT objects | 30-90 s | 30-90 s |
-| **Total** | **~1-2 min** | **~3-5 min** |
+| Step                                   |   Warm cache |   Cold cache |
+| -------------------------------------- | -----------: | -----------: |
+| Image pull (compressed ~1.3 GB)        |          0 s |      30-60 s |
+| `generate` against your YAML           |       5-15 s |       5-15 s |
+| `compile-bindings` (cached `.o` files) |          0 s |      1-3 min |
+| `compile-sources` (cached OCCT `.a`)   |          0 s |     5-10 min |
+| Link against precompiled OCCT objects  |      30-90 s |      30-90 s |
+| **Total**                              | **~1-2 min** | **~3-5 min** |
 
 The CI e2e gate budgets a hard 5-minute warm-link ceiling and tags get
 published only if both `:single-threaded` and `:multi-threaded` clear that

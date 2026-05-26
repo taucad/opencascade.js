@@ -16,17 +16,29 @@
 #
 # Everything else falls through to build-wasm.sh.
 #
-# OCJS_YAML is set from the YAML positional argument so the Nx `link` target
-# (whose cache key depends on OCJS_YAML + a sha of the file contents) can hash
-# correctly. OCJS_OUTPUT_DIR defaults to /src so the canonical single-mount
-# Quickstart pattern (`docker run -v "$(pwd):/src" …`) writes outputs next to
-# the consumer's YAML automatically; power users override it with
+# YAML path resolution: relative paths (e.g. `link sample.yml` or
+# `link configs/foo.yml`) resolve against the consumer's bind-mounted WORKDIR
+# (= /src in the canonical Quickstart), NOT against the OCJS workspace root
+# at /opencascade.js. Absolute paths (e.g. `link /src/sample.yml`) are honoured
+# as-is. This mirrors the legacy `donalffons/opencascade.js` UX so consumers
+# never type `/src/` in the common case.
+#
+# OCJS_YAML is set from the resolved YAML path so the Nx `link` target (whose
+# cache key depends on OCJS_YAML + a sha of the file contents) hashes correctly.
+# OCJS_OUTPUT_DIR defaults to /src so the canonical single-mount Quickstart
+# pattern (`docker run -v "$(pwd):/src" …`) writes outputs next to the
+# consumer's YAML automatically; power users override it with
 # `-e OCJS_OUTPUT_DIR=<path>` + a matching `-v` mount.
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 OCJS_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# Capture the consumer's WORKDIR (= /src per Dockerfile) BEFORE we cd to the
+# OCJS workspace root, so relative YAML arguments resolve against the
+# bind-mount instead of /opencascade.js.
+HOST_PWD="$PWD"
 
 show_help() {
   cat <<'EOF'
@@ -51,11 +63,20 @@ Subcommands (non-cached):
 
 Anything else is forwarded to /opencascade.js/build-wasm.sh.
 
+YAML path resolution:
+  Relative paths resolve against the bind-mounted WORKDIR (/src). Absolute
+  paths are honoured as-is. Examples below all reach the same file when
+  $(pwd)/sample.yml is mounted:
+
+    link sample.yml          (bare; recommended)
+    link ./sample.yml        (relative)
+    link /src/sample.yml     (absolute; for power users)
+
 Canonical single-mount Quickstart:
   docker run --rm \
     -v "$(pwd):/src" \
     -u "$(id -u):$(id -g)" \
-    ghcr.io/taucad/opencascade.js:single-threaded link /src/my.yml
+    ghcr.io/taucad/opencascade.js:single-threaded link sample.yml
 
 Persistent caches across runs (iterative work):
   docker volume create ocjs-nx-cache ocjs-build-cache
@@ -64,7 +85,7 @@ Persistent caches across runs (iterative work):
     -v ocjs-build-cache:/opencascade.js/build \
     -v "$(pwd):/src" \
     -u "$(id -u):$(id -g)" \
-    ghcr.io/taucad/opencascade.js:single-threaded link /src/my.yml
+    ghcr.io/taucad/opencascade.js:single-threaded link sample.yml
 EOF
 }
 
@@ -85,6 +106,17 @@ esac
 
 cd "$OCJS_ROOT"
 
+# Resolve a YAML positional argument against the consumer's bind-mounted
+# WORKDIR (HOST_PWD) when it is relative, leaving absolute paths untouched.
+# Echoes the resolved path on stdout so callers can capture it.
+resolve_yaml_path() {
+  local yaml="$1"
+  case "$yaml" in
+    /*) printf '%s\n' "$yaml" ;;
+    *)  printf '%s/%s\n' "$HOST_PWD" "$yaml" ;;
+  esac
+}
+
 run_nx_with_yaml() {
   local target="$1"
   local yaml="${2:-}"
@@ -93,6 +125,7 @@ run_nx_with_yaml() {
     show_help
     exit 1
   fi
+  yaml="$(resolve_yaml_path "$yaml")"
   if [ ! -f "$yaml" ]; then
     echo "ERROR: YAML config not found: $yaml" >&2
     exit 1
@@ -124,6 +157,11 @@ case "$cmd" in
       echo "ERROR: validate requires a YAML config path argument" >&2
       exit 1
     fi
+    yaml="$(resolve_yaml_path "$yaml")"
+    if [ ! -f "$yaml" ]; then
+      echo "ERROR: YAML config not found: $yaml" >&2
+      exit 1
+    fi
     exec ./build-wasm.sh validate "$yaml"
     ;;
   nx)
@@ -131,6 +169,9 @@ case "$cmd" in
     ;;
   *)
     # Backwards compatibility: forward anything unrecognised to build-wasm.sh.
+    # Note: the catch-all does NOT apply HOST_PWD-relative resolution, so any
+    # YAML positional after a legacy subcommand needs to be absolute or
+    # /opencascade.js-relative.
     exec ./build-wasm.sh "$cmd" "$@"
     ;;
 esac

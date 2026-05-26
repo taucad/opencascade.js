@@ -88,7 +88,7 @@ docker run --rm \
   -v "$(pwd):/src" \
   -u "$(id -u):$(id -g)" \
   ghcr.io/taucad/opencascade.js:single-threaded \
-  link /src/my-config.yml
+  link my-config.yml
 ```
 
 `link` reuses the precompiled `.o` files baked into the image for every
@@ -118,7 +118,7 @@ docker run --rm \
   -v "$(pwd):/src" \
   -u "$(id -u):$(id -g)" \
   ghcr.io/taucad/opencascade.js:single-threaded \
-  link /src/my-config.yml
+  link my-config.yml
 ```
 
 Cache hits drop subsequent link times to ~10–30 seconds when only the
@@ -181,7 +181,7 @@ docker run --rm \
   -v "$(pwd):/src" \
   -u "$(id -u):$(id -g)" \
   ghcr.io/taucad/opencascade.js@sha256:<digest> \
-  link /src/my-config.yml
+  link my-config.yml
 ```
 
 See [Reproducible CI](./reproducible-ci) for the full pinning recipe.

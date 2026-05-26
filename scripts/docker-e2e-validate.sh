@@ -139,7 +139,7 @@ docker run --rm \
   -v "$BUILD_VOLUME:/opencascade.js/build" \
   -v "$REPLICAD_YAML_ABS:/src/replicad.yml:ro" \
   -v "$OUTPUT_DIR:/output" \
-  "$IMAGE_TAG" link /src/replicad.yml
+  "$IMAGE_TAG" link replicad.yml
 COLD_END=$(date +%s)
 COLD_ELAPSED=$((COLD_END - COLD_START))
 _ok "Cold build wall time: ${COLD_ELAPSED}s"
@@ -220,7 +220,7 @@ docker run --rm \
   -v "$BUILD_VOLUME:/opencascade.js/build" \
   -v "$REPLICAD_YAML_ABS:/src/replicad.yml:ro" \
   -v "$OUTPUT_DIR:/output" \
-  "$IMAGE_TAG" link /src/replicad.yml
+  "$IMAGE_TAG" link replicad.yml
 WARM_END=$(date +%s)
 WARM_ELAPSED=$((WARM_END - WARM_START))
 echo "  Warm wall time: ${WARM_ELAPSED}s (budget ${WARM_BUDGET_S}s)"
