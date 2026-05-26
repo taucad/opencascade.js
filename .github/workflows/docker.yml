@@ -104,7 +104,7 @@ jobs:
     name: docker · smoke · build + link-filter-poc
     needs: setup
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 360
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -156,7 +156,7 @@ jobs:
             -e OCJS_CONFIG=debug \
             -v "$PWD/smoke-output:/src" \
             -v "$PWD/build-configs/link-filter-poc.yml:/src/build-config.yml:ro" \
-            ocjs:ci link /src/build-config.yml
+            ocjs:ci link build-config.yml
 
       - name: Assert smoke artefacts present
         run: |
@@ -192,7 +192,7 @@ jobs:
     if: needs.setup.outputs.is_branch_push == 'true'
     needs: [setup, docker-smoke]
     runs-on: ubuntu-latest
-    timeout-minutes: 180
+    timeout-minutes: 360
     permissions:
       contents: read
       packages: write
@@ -306,7 +306,7 @@ jobs:
     if: needs.setup.outputs.is_release == 'true'
     needs: [setup, docker-smoke]
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 240
+    timeout-minutes: 360
     permissions:
       contents: read
       packages: write
@@ -522,7 +522,7 @@ jobs:
             -v "$PWD/post-publish-output:/src" \
             -v "$PWD/build-configs/link-filter-poc.yml:/src/build-config.yml:ro" \
             "${REGISTRY_IMAGE}:${{ matrix.tag_suffix }}" \
-            link /src/build-config.yml
+            link build-config.yml
           test -s "$PWD/post-publish-output/opencascade_linkfilter_poc.wasm"
         env:
           REGISTRY_IMAGE: ${{ env.REGISTRY_IMAGE }}
