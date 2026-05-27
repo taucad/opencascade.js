@@ -13,17 +13,14 @@ requires-python = ">=3.14,<3.15"
 #                        (mocked libclang cursors via conftest.cursor_mock()).
 #   tests/integration/ — small per-fragment snapshot tests using a frozen
 #                        OCCT input, <30 s wall clock.
-testpaths = [
-  "tests/sentinel",
-  "tests/unit",
-  "tests/integration",
-]
+testpaths = ["tests/sentinel", "tests/unit", "tests/integration"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
 # Quieter default output for the project sentinel suite which prints a lot
 # of incidental Doxygen / build chatter on stdout.
 addopts = ["-ra", "--strict-markers"]
+markers = ["libclang: tests that require a real libclang + emsdk toolchain (vendored LLVM 17 + clone-deps.sh)"]
 filterwarnings = [
   "error::DeprecationWarning",
   # ignore third-party deprecations we don't control
@@ -37,14 +34,14 @@ extend-exclude = [
   "deps/**",
   "build/**",
   "dist/**",
-  "src/patches/**",  # legacy formatting
+  "src/patches/**", # legacy formatting
 ]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP"]
 ignore = [
-  "E501",  # line length handled by formatter / inline noqa
-  "E741",  # ambiguous one-letter names (used by clang AST visitors)
+  "E501", # line length handled by formatter / inline noqa
+  "E741", # ambiguous one-letter names (used by clang AST visitors)
 ]
 
 [tool.pyright]
