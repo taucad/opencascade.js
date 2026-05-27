@@ -177,7 +177,7 @@ See [CHANGELOG.md](CHANGELOG.md) for the full v3.0.0 entry.
 - [BREAKING_CHANGES.md](BREAKING_CHANGES.md) — v3 consumer migration guide
 - [CHANGELOG.md](CHANGELOG.md) — release notes
 - [MAINTAINER.md](MAINTAINER.md) — native build, env vars, customization for fork maintainers
-- [docs/reference/yaml-schema.md](docs/reference/yaml-schema.md) — YAML schema (bindings, emccFlags, additionalCppCode, additionalCppFiles, additionalBindCode, allowedUndefinedSymbols)
+- [docs/reference/yaml-schema.md](docs/reference/yaml-schema.md) — YAML schema (bindings, emccFlags, additionalCppCode, additionalCppFiles, additionalBindCode)
 - [BUILD_SYSTEM.md](BUILD_SYSTEM.md) — `OCJS_*` env-var matrix and configuration authoring
 - [docs/guides/custom-emcc-flags.md](docs/guides/custom-emcc-flags.md) — tuning size, speed, and build time
 - [docs/guides/trim-symbols.md](docs/guides/trim-symbols.md) — trim from `full.yml` to a consumer-sized build

@@ -75,6 +75,47 @@ whatever `os.cpus().length` reports. Each worker costs `STACK_SIZE` (default
 > `full_multi.yml` drops it — constructor evaluation order is
 > non-deterministic under pthread workers. The trade-off is a slightly
 > larger binary in exchange for race-free startup.
+>
+> **Companion observation:** the `wasm-opt` post-link pass reports only
+> ~0.1% size reduction on MT builds vs the 4-7% it achieves on ST. That
+> is **not** a regression — `wasm-opt` would normally fold static
+> ctor calls during the same pass `EVAL_CTORS=2` enables; with that
+> flag dropped, the constructors stay live and wasm-opt has less to
+> eliminate. No action required.
+
+## Browser-only MT build
+
+If you can guarantee your consumers run a recent browser (Chrome / Edge ≥ 144, Firefox ≥ 145, Safari ≥ 26.2 — May 2026 baseline) and you do **not** need to load the binary under Node.js, Bun, or Deno, you can opt into the `multi-threaded-browser` preset for a measurable runtime win on memory-growth-heavy workloads.
+
+The preset layers `-sGROWABLE_ARRAYBUFFERS=1` and `-sENVIRONMENT=web,worker` on top of the standard `multi-threaded` flag set. Internally Emscripten emits JS glue that wraps the pthread `SharedArrayBuffer` in a [resizable `ArrayBuffer` view](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/SharedArrayBuffer/grow) via `WebAssembly.Memory.prototype.toResizableBuffer()`. With that view in place, consumers can hoist `HEAP*` references out of hot loops — they no longer go stale after a memory-growth event, so the `-Wpthreads-mem-growth` link-time advisory disappears entirely and per-call HEAP re-fetches drop out of the inner loop.
+
+Build with:
+
+```bash
+./build-wasm.sh --config multi-threaded-browser full build-configs/full_multi_browser.yml
+```
+
+The shipped recipe lives at [`build-configs/full_multi_browser.yml`](https://github.com/taucad/opencascade.js/blob/main/build-configs/full_multi_browser.yml); diff it against [`full_multi.yml`](https://github.com/taucad/opencascade.js/blob/main/build-configs/full_multi.yml) to see the exact two-flag delta.
+
+> ### Runtime support matrix — `toResizableBuffer()` (May 2026)
+>
+> **Supported** — ship `full_multi_browser` artefacts to:
+>
+> - Chrome / Edge ≥ 144
+> - Firefox ≥ 145
+> - Safari ≥ 26.2 (desktop + iOS)
+>
+> **NOT supported** — fall back to plain `full_multi` for:
+>
+> - Node.js (all current LTS) — throws `TypeError: wasmMemory.toResizableBuffer is not a function` on module init.
+> - Bun and Deno (all current versions).
+> - Samsung Internet and other Chromium derivatives that lag mainline.
+>
+> Because Node.js is the dominant test-harness runtime, the **default**
+> shipped multi-threaded build keeps `-sGROWABLE_ARRAYBUFFERS=0` so it
+> stays loadable under `vitest`, `jest`, and other Node-based test runners.
+> Opt into the browser variant only for production payloads you serve
+> directly to browser clients.
 
 ## After building
 

@@ -186,6 +186,6 @@ const edge = oc.ShapeCast.toEdge(genericShape);
 
 ## Related references
 
-- [YAML Schema Reference](../reference/yaml-schema.md) — schema for `additionalCppCode`, `additionalCppFiles`, `additionalBindCode`, `allowedUndefinedSymbols`
+- [YAML Schema Reference](../reference/yaml-schema.md) — schema for `additionalCppCode`, `additionalCppFiles`, `additionalBindCode`
 - [`build-configs/full.yml`](../../build-configs/full.yml) — concrete examples of inline wrappers in production use (`TopoDS_Cast`, `OCJS_ShapeHasher`, `BRepMesh_IncrementalMeshWrapper`)
 - [Embind reference](https://emscripten.org/docs/porting/connecting_cpp_and_javascript/embind.html) — the upstream `<emscripten/bind.h>` surface that `additionalBindCode` exposes

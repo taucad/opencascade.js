@@ -51,7 +51,7 @@ YAML configs define which OCCT classes are bound to JavaScript:
 
 - `build-configs/full.yml` — all symbols, single-threaded, native WASM exceptions on by default with `getExceptionMessage` runtime helpers
 
-See [docs/reference/yaml-schema.md](docs/reference/yaml-schema.md) for the full YAML schema, including `additionalCppCode`, `additionalCppFiles`, `mainBuild.additionalBindCode`, and `mainBuild.allowedUndefinedSymbols`.
+See [docs/reference/yaml-schema.md](docs/reference/yaml-schema.md) for the full YAML schema, including `additionalCppCode`, `additionalCppFiles`, and `mainBuild.additionalBindCode`.
 
 ### Configurations
 

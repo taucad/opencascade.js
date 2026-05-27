@@ -23,8 +23,6 @@ mainBuild:
     - <flag>
   additionalBindCode: | # Extra embind registration C++ code (optional)
     EMSCRIPTEN_BINDINGS(custom) { ... }
-  allowedUndefinedSymbols: # Symbols to leave unresolved at link time (optional)
-    - <symbol>
 
 extraBuilds: # Additional build variants (optional, same schema as mainBuild)
   - name: <string>
@@ -32,7 +30,6 @@ extraBuilds: # Additional build variants (optional, same schema as mainBuild)
     emccFlags: [...]
     additionalBindCode: |
       ...
-    allowedUndefinedSymbols: [...]
 
 additionalCppCode: | # Inline C++ compiled into the bindings TU (typedefs, wrappers)
   typedef opencascade::handle<Geom_Curve> Handle_Geom_Curve;
@@ -265,42 +262,44 @@ mainBuild:
     }
 ```
 
-## mainBuild.allowedUndefinedSymbols
+## Symbol resolution classes
 
-Per-build allowlist of symbols that the WASM linker is permitted to leave unresolved. The default `emccFlags` set `-sERROR_ON_UNDEFINED_SYMBOLS=1`, which fails-loud on any unresolved reference. `allowedUndefinedSymbols` carves out a per-build exception list that is appended to the link command as `-sERROR_ON_UNDEFINED_SYMBOLS=0`-equivalent suppressions for the listed names only — every other symbol still triggers a link error.
+Every YAML-requested symbol becomes a linked binding through exactly one of four mechanisms. The post-link `build-manifest.json` (schema `build-manifest-v2`) buckets each requested symbol into one of these categories under `symbols`:
 
-### Schema
+1. **Direct compilation.** `bindings: - symbol: gp_Pnt` causes the generator to emit `build/bindings/gp_Pnt.cpp`, which `compileBindings.py` compiles into `build/compiled-bindings/gp_Pnt.cpp.o`. Detected by `ocjs_bindgen.link.manifest_registry.collect_compiled_symbols`. Reported as `satisfied_by_compiled` (count surfaces as `symbols.compiled` for size).
 
-```yaml
-mainBuild:
-  # ...
-  allowedUndefinedSymbols:
-    - <mangled_symbol_name>
-```
+2. **NCollection typedef alias.** `bindings: - symbol: TColgp_Array1OfPnt` resolves via the canonical mangled spelling `NCollection_Array1_gp_Pnt`; the linker substitutes the typedef at link time. The mapping lives in `build/ncollection-manifest.json` (written by `ocjs_bindgen.discover`). Detected by `manifest_registry.load_ncollection_alias_index`. Reported under `symbols.alias_resolved` as `{alias, canonical}` entries.
 
-- Lives **inside** the `mainBuild` (or `extraBuilds[*]`) block.
-- Names use the C++ mangled form as emitted by `emcc`. Find them in the link error output (the diagnostic prints each unresolved symbol on its own line).
-- Each entry is appended once to the link command (deduped); ordering is preserved.
+3. **Embind builtin.** OCJS's `BUILTIN_ADDITIONAL_BIND_CODE` block (`OCJS`, `TopoDS`, `TColStd_IndexedDataMapOfStringString`) registers Embind class wrappers that have no `.cpp.o` of their own. Detected by `manifest_registry.builtin_binding_symbols` reading `build/additional-bind-symbols.json`. Reported under `symbols.builtin`.
 
-### When to use it
+4. **Consumer `additionalBindCode`.** YAML's own `mainBuild.additionalBindCode` block undergoes the same Embind registration pathway. Same mechanism as (3); the link stage compiles `BUILTIN_ADDITIONAL_BIND_CODE + consumer additionalBindCode` into ONE translation unit so the AST producer emits a single `additional-bind-symbols.json` manifest covering both sources. Reported under `symbols.builtin` (no separate bucket).
 
-Most OCCT subsystems are self-contained. Reach for `allowedUndefinedSymbols` only when:
+Anything that survives all four lookups lands in `symbols.missing` and triggers `validation_passed=false`. The link step also raises immediately via `yaml_build.verifyBindings` (no env-var gate) so a YAML asking for a symbol the toolchain cannot provide fails the link, not just the post-link audit.
 
-1. A consumer YAML binds a class that transitively references a thread-local / weak-symbol helper not present in your build (e.g. an OCCT debug-trace symbol that is stripped in `OCCT_NO_DUMP` builds).
-2. You are linking a custom C++ module that calls into a runtime helper resolved by JS-side glue rather than by the WASM linker.
+Auto-discovered NCollection canonicals (entries the YAML never named directly, but that became reachable from the YAML's scope) are tracked separately in `<variant>.provenance.json::nCollectionManifest.{linked, total, dropped}` (schema `wasm-build-provenance-v1.1`). They never appear in `symbols.requested` because they're produced by the discovery pass, not requested by the operator.
 
-Prefer fixing the missing-symbol root cause (binding the upstream class, adding the missing `.cpp` to `additionalCppFiles`, or removing the dead reference) before reaching for this allowlist; every entry is a latent runtime trap if the symbol is actually invoked.
+## Producer-side manifest contract
 
-### Example
+Every mechanism above has exactly one **producer** — a pipeline stage with the semantic knowledge to compute it — that writes a JSON manifest in `build/` or the dist sidecar. Every downstream **consumer** (link-time `verifyBindings`, post-link `validate-build.py`, `generate-docs.mjs`, `docker-e2e-validate.sh`) reads the manifest through the corresponding `manifest_registry` loader. No consumer re-parses C++, runs regex against source, or re-derives set-difference math.
 
-```yaml
-mainBuild:
-  name: my_build
-  emccFlags:
-    - -sERROR_ON_UNDEFINED_SYMBOLS=1
-  allowedUndefinedSymbols:
-    - _ZN15Standard_Atomic5IncrEv
-```
+| Manifest | Producer | Consumer loader |
+|----------|----------|-----------------|
+| `build/ncollection-manifest.json` | `ocjs_bindgen.discover` | `manifest_registry.load_ncollection_alias_index` |
+| `build/additional-bind-symbols.json` | `runBuild::getAdditionalBindCodeO()` (libclang AST via `ocjs_bindgen.ast.parse_additional_bind_code` + `ocjs_bindgen.ast.walker.extract_class_registrations`) | `manifest_registry.builtin_binding_symbols` |
+| `build/compiled-bindings/*.cpp.o` | `compileBindings.py` | `manifest_registry.collect_compiled_symbols` |
+| `build/compiled-bindings/binding-report.json` | `compileBindings.py` | `validate-build.py::validate_binding_report` |
+| `<variant>.provenance.json::nCollectionManifest` | `yaml_build.main` via `provenance.add_linking(ncollection_linked=, ncollection_total=, ncollection_dropped=)` | `generate-docs.mjs`, `scripts/docker-e2e-validate.sh` |
+| `build/any-type-report.json` | `generate.py` | `validate-build.py::merge_any_reasons` |
+
+When a manifest is missing, consumers fail loudly with a pointer at `pnpm nx run ocjs:build`. Stale artifacts are stale by definition; rendering them with degraded math produces docs whose numbers contradict the build that produced them.
+
+## Undefined-symbol policy
+
+The shipped `emccFlags` set `-sERROR_ON_UNDEFINED_SYMBOLS=0` together with `-Wl,--allow-undefined`. `wasm-ld` accepts the broad allow-undefined switch and emits a `-Wjs-compiler` warning for each unresolved reference but does not fail the link. There is **no per-symbol allowlist** — `wasm-ld` doesn't expose `--allow-undefined-symbol=<name>`, only the all-or-nothing `--allow-undefined`.
+
+Every shipped build prints one warning for `mallinfo` (mimalloc's debug-stats reporter). The runtime never calls it; mimalloc strips the stats path at module load. Treat the warning as informational.
+
+If you want a custom build to fail-loud on undefined symbols, override `emccFlags` in your YAML to set `-sERROR_ON_UNDEFINED_SYMBOLS=1` and remove `-Wl,--allow-undefined`. You are then responsible for ensuring every transitively-referenced symbol is present in the linked TUs (bind the upstream class, add the missing `.cpp` to `additionalCppFiles`, or remove the dead reference).
 
 ## Creating a Custom Config
 

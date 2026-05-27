@@ -1,6 +1,6 @@
 ---
 title: YAML schema
-description: Every key the build YAML accepts — mainBuild, extraBuilds, additionalCppCode, additionalCppFiles, additionalBindCode, allowedUndefinedSymbols.
+description: Every key the build YAML accepts — mainBuild, extraBuilds, additionalCppCode, additionalCppFiles, additionalBindCode.
 ---
 
 The build YAML controls which OCCT classes get bound, which C++ wrapper code
@@ -17,8 +17,6 @@ mainBuild:
     - <flag>
   additionalBindCode: |
     EMSCRIPTEN_BINDINGS(custom) { ... }
-  allowedUndefinedSymbols:
-    - <symbol>
 
 extraBuilds:
   - name: <string>
@@ -26,7 +24,6 @@ extraBuilds:
     emccFlags: [...]
     additionalBindCode: |
       ...
-    allowedUndefinedSymbols: [...]
 
 additionalCppCode: |
   typedef opencascade::handle<Geom_Curve> Handle_Geom_Curve;
@@ -75,11 +72,33 @@ for the recommended baseline and per-flag rationale.
 Per-build raw `EMSCRIPTEN_BINDINGS(...)` registrations compiled with
 `<emscripten/bind.h>` already included. See [Extend with C++](../guides/extend-with-cpp).
 
-### `mainBuild.allowedUndefinedSymbols`
+## Symbol resolution classes
 
-A list of symbols the linker is permitted to leave unresolved. Use only when
-you have a deliberate runtime substitution; otherwise an undefined symbol is
-a build error.
+Every YAML-requested symbol becomes a linked binding through exactly one of four mechanisms. The post-link `build-manifest.json` (schema `build-manifest-v2`) buckets each requested symbol into one of these categories under `symbols`:
+
+1. **Direct compilation.** `bindings: - symbol: gp_Pnt` causes the generator to emit `build/bindings/gp_Pnt.cpp`, which `compileBindings.py` compiles into `build/compiled-bindings/gp_Pnt.cpp.o`. Detected by `ocjs_bindgen.link.manifest_registry.collect_compiled_symbols`. Reported as `satisfied_by_compiled` (count surfaces as `symbols.compiled`).
+2. **NCollection typedef alias.** `bindings: - symbol: TColgp_Array1OfPnt` resolves via the canonical mangled spelling `NCollection_Array1_gp_Pnt`; the linker substitutes the typedef at link time. Mapping lives in `build/ncollection-manifest.json`. Detected by `manifest_registry.load_ncollection_alias_index`. Reported under `symbols.alias_resolved` as `{alias, canonical}` entries.
+3. **Embind builtin.** OCJS's `BUILTIN_ADDITIONAL_BIND_CODE` block (`OCJS`, `TopoDS`, `TColStd_IndexedDataMapOfStringString`) registers Embind class wrappers with no `.cpp.o` of their own. Detected by `manifest_registry.builtin_binding_symbols` reading `build/additional-bind-symbols.json`.
+4. **Consumer `additionalBindCode`.** YAML's own `mainBuild.additionalBindCode` block undergoes the same Embind pathway. The link stage compiles `BUILTIN_ADDITIONAL_BIND_CODE + consumer additionalBindCode` into ONE translation unit so the AST producer emits a single `additional-bind-symbols.json` manifest covering both sources. Reported under `symbols.builtin` (no separate bucket).
+
+Anything that survives all four lookups lands in `symbols.missing` and triggers `validation_passed=false`. The link step also raises immediately via `yaml_build.verifyBindings` (no env-var gate) so a YAML asking for a symbol the toolchain cannot provide fails the link, not just the post-link audit.
+
+Auto-discovered NCollection canonicals (entries the YAML never named directly, but that became reachable from the YAML's scope) are tracked separately in `<variant>.provenance.json::nCollectionManifest.{linked, total, dropped}` (schema `wasm-build-provenance-v1.1`). They never appear in `symbols.requested` because they're produced by the discovery pass, not requested by the operator.
+
+## Producer-side manifest contract
+
+Every mechanism above has exactly one **producer** — a pipeline stage with the semantic knowledge to compute it — that writes a JSON manifest in `build/` or the dist sidecar. Every downstream **consumer** (link-time `verifyBindings`, post-link `validate-build.py`, `generate-docs.mjs`, `docker-e2e-validate.sh`) reads the manifest through the corresponding `manifest_registry` loader. No consumer re-parses C++, runs regex against source, or re-derives set-difference math.
+
+| Manifest                                         | Producer                                                                                                                                                      | Consumer loader                                       |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
+| `build/ncollection-manifest.json`                | `ocjs_bindgen.discover`                                                                                                                                       | `manifest_registry.load_ncollection_alias_index`      |
+| `build/additional-bind-symbols.json`             | `runBuild::getAdditionalBindCodeO()` (libclang AST via `ocjs_bindgen.ast.parse_additional_bind_code` + `ocjs_bindgen.ast.walker.extract_class_registrations`) | `manifest_registry.builtin_binding_symbols`           |
+| `build/compiled-bindings/*.cpp.o`                | `compileBindings.py`                                                                                                                                          | `manifest_registry.collect_compiled_symbols`          |
+| `build/compiled-bindings/binding-report.json`    | `compileBindings.py`                                                                                                                                          | `validate-build.py::validate_binding_report`          |
+| `<variant>.provenance.json::nCollectionManifest` | `yaml_build.main` via `provenance.add_linking(ncollection_linked=, ncollection_total=, ncollection_dropped=)`                                                 | `generate-docs.mjs`, `scripts/docker-e2e-validate.sh` |
+| `build/any-type-report.json`                     | `generate.py`                                                                                                                                                 | `validate-build.py::merge_any_reasons`                |
+
+When a manifest is missing, consumers fail loudly with a pointer at `pnpm nx run ocjs:build`. Stale artifacts are stale by definition; rendering them with degraded math produces docs whose numbers contradict the build that produced them.
 
 ## `extraBuilds`
 
