@@ -401,11 +401,8 @@ async function main() {
   // math produces docs whose numbers contradict the build that
   // produced them, which is strictly worse than a clear error message
   // pointing at the regenerate command.
-  const compiledTotal =
-    typeof manifest?.symbols?.compiled === 'number' ? manifest.symbols.compiled : null;
-  const requestedTotal = Array.isArray(manifest?.symbols?.requested)
-    ? manifest.symbols.requested.length
-    : null;
+  const compiledTotal = typeof manifest?.symbols?.compiled === 'number' ? manifest.symbols.compiled : null;
+  const requestedTotal = Array.isArray(manifest?.symbols?.requested) ? manifest.symbols.requested.length : null;
   const provPath = MANIFEST_PATH.replace(/\.build-manifest\.json$/, '.provenance.json');
   let provenanceJson = null;
   try {
@@ -456,14 +453,54 @@ async function main() {
       parseSkipped: parseErrors,
     },
     quickLinks: [
-      { name: 'gp_Pnt', kind: 'class', p: 'FoundationClasses/TKMath/gp', s: shardLookup(modules, 'FoundationClasses', 'TKMath', 'gp') },
-      { name: 'TopoDS_Shape', kind: 'class', p: 'ModelingData/TKBRep/TopoDS', s: shardLookup(modules, 'ModelingData', 'TKBRep', 'TopoDS') },
-      { name: 'BRep_Tool', kind: 'class', p: 'ModelingData/TKBRep/BRep', s: shardLookup(modules, 'ModelingData', 'TKBRep', 'BRep') },
-      { name: 'BRepBuilderAPI_MakeShape', kind: 'class', p: 'ModelingAlgorithms/TKTopAlgo/BRepBuilderAPI', s: shardLookup(modules, 'ModelingAlgorithms', 'TKTopAlgo', 'BRepBuilderAPI') },
-      { name: 'BRepPrimAPI_MakeBox', kind: 'class', p: 'ModelingAlgorithms/TKPrim/BRepPrimAPI', s: shardLookup(modules, 'ModelingAlgorithms', 'TKPrim', 'BRepPrimAPI') },
-      { name: 'BRepAlgoAPI_Fuse', kind: 'class', p: 'ModelingAlgorithms/TKBO/BRepAlgoAPI', s: shardLookup(modules, 'ModelingAlgorithms', 'TKBO', 'BRepAlgoAPI') },
-      { name: 'GeomAPI_Interpolate', kind: 'class', p: 'ModelingAlgorithms/TKGeomBase/GeomAPI', s: shardLookup(modules, 'ModelingAlgorithms', 'TKGeomBase', 'GeomAPI') },
-      { name: 'STEPControl_Reader', kind: 'class', p: 'DataExchange/TKDESTEP/STEPControl', s: shardLookup(modules, 'DataExchange', 'TKDESTEP', 'STEPControl') },
+      {
+        name: 'gp_Pnt',
+        kind: 'class',
+        p: 'FoundationClasses/TKMath/gp',
+        s: shardLookup(modules, 'FoundationClasses', 'TKMath', 'gp'),
+      },
+      {
+        name: 'TopoDS_Shape',
+        kind: 'class',
+        p: 'ModelingData/TKBRep/TopoDS',
+        s: shardLookup(modules, 'ModelingData', 'TKBRep', 'TopoDS'),
+      },
+      {
+        name: 'BRep_Tool',
+        kind: 'class',
+        p: 'ModelingData/TKBRep/BRep',
+        s: shardLookup(modules, 'ModelingData', 'TKBRep', 'BRep'),
+      },
+      {
+        name: 'BRepBuilderAPI_MakeShape',
+        kind: 'class',
+        p: 'ModelingAlgorithms/TKTopAlgo/BRepBuilderAPI',
+        s: shardLookup(modules, 'ModelingAlgorithms', 'TKTopAlgo', 'BRepBuilderAPI'),
+      },
+      {
+        name: 'BRepPrimAPI_MakeBox',
+        kind: 'class',
+        p: 'ModelingAlgorithms/TKPrim/BRepPrimAPI',
+        s: shardLookup(modules, 'ModelingAlgorithms', 'TKPrim', 'BRepPrimAPI'),
+      },
+      {
+        name: 'BRepAlgoAPI_Fuse',
+        kind: 'class',
+        p: 'ModelingAlgorithms/TKBO/BRepAlgoAPI',
+        s: shardLookup(modules, 'ModelingAlgorithms', 'TKBO', 'BRepAlgoAPI'),
+      },
+      {
+        name: 'GeomAPI_Interpolate',
+        kind: 'class',
+        p: 'ModelingAlgorithms/TKGeomBase/GeomAPI',
+        s: shardLookup(modules, 'ModelingAlgorithms', 'TKGeomBase', 'GeomAPI'),
+      },
+      {
+        name: 'STEPControl_Reader',
+        kind: 'class',
+        p: 'DataExchange/TKDESTEP/STEPControl',
+        s: shardLookup(modules, 'DataExchange', 'TKDESTEP', 'STEPControl'),
+      },
     ].filter((q) => q.s),
     modules: orderedModules,
     searchIndex,
@@ -473,9 +510,7 @@ async function main() {
   // Wipe stale shards so deletions in build/bindings are reflected.
   const existing = await fs.readdir(OUTPUT_DIR).catch(() => []);
   await Promise.all(
-    existing
-      .filter((f) => f.endsWith('.json'))
-      .map((f) => fs.unlink(path.join(OUTPUT_DIR, f)).catch(() => {})),
+    existing.filter((f) => f.endsWith('.json')).map((f) => fs.unlink(path.join(OUTPUT_DIR, f)).catch(() => {})),
   );
 
   await emitJson(path.join(OUTPUT_DIR, 'index.json'), index);
