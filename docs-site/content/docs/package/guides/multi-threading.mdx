@@ -129,6 +129,72 @@ parallel flag to flip.
 - **Debuggability** drops — `console.log` from worker threads doesn't always
   reach the main thread.
 
+## Performance notes
+
+Pthread + `-sALLOW_MEMORY_GROWTH=1` carries a documented Emscripten
+performance penalty (the `-Wpthreads-mem-growth` advisory at link time):
+every JS↔WASM memory boundary crossing has to re-resolve `HEAP*` views
+after a potential `memory.grow`, and worker-thread access to `HEAPU8`/
+`HEAPF32` is gated on the views being up-to-date in each worker's
+context. The shipped binaries already mitigate the worst of this:
+
+- **mimalloc** is wired into the WASM allocator so per-thread allocation
+  bypasses the global malloc contention point. The `mallinfo` undefined
+  symbol you'll see in custom-build link logs is mimalloc's debug-stats
+  reporter — `wasm-ld` emits a single `-Wjs-compiler` warning for it
+  (the link permits it via the broad `-Wl,--allow-undefined` flag in
+  the shipped `emccFlags`) and the symbol is dead-code-eliminated at
+  module load. The warning is informational; no runtime call ever
+  resolves to it.
+- **Hoist `HEAP*` references out of hot loops** when calling OCJS from
+  TypeScript. The Emscripten glue re-fetches `Module.HEAPU8` etc. on every
+  access; pulling them into a local once per batch avoids the dispatch
+  penalty:
+
+```typescript
+// Slow — re-resolves HEAPU8 every iteration.
+for (let i = 0; i < n; i++) {
+  Module.HEAPU8[buf + i] = bytes[i];
+}
+
+// Fast — single resolve, then tight loop.
+const heap = Module.HEAPU8;
+for (let i = 0; i < n; i++) {
+  heap[buf + i] = bytes[i];
+}
+```
+
+### `toResizableBuffer()` support matrix (May 2026)
+
+The newer [`WebAssembly.Memory.prototype.toResizableBuffer()`](https://developer.mozilla.org/en-US/docs/WebAssembly/Reference/JavaScript_interface/Memory)
+API lets a pthread-enabled binary avoid the HEAP-view re-fetch dance
+entirely by returning a `SharedArrayBuffer` that automatically tracks
+`memory.grow`. The shipped `@taucad/opencascade.js/multi` binary keeps
+`-sGROWABLE_ARRAYBUFFERS=0` (the default) because the runtime matrix is
+not yet universal:
+
+| Runtime | Supports `toResizableBuffer()` |
+|---|---|
+| Chrome 144+ / Edge 144+ | Yes |
+| Firefox 145+ | Yes |
+| Safari 26.2+ (desktop + iOS) | Yes |
+| Node.js 22 / 24 | **No** — `TypeError: wasmMemory.toResizableBuffer is not a function` |
+| Bun (all current) | **No** |
+| Deno (all current) | **No** |
+| Samsung Internet | **No** (as of May 2026) |
+
+The default `full_multi.yml` therefore keeps `-sGROWABLE_ARRAYBUFFERS=0`
+so the binary stays compatible with Node-based test runners, Bun, Deno,
+and the legacy mobile browser. A **browser-only opt-in** variant ships
+via [`full_multi_browser.yml`](/docs/toolchain/guides/multi-threading#browser-only-mt-build)
+for deployments that have audited their runtime matrix and want the
+no-resize-dance fast path on the supported browsers.
+
+For most consumers the cost is invisible — OCCT's per-call cost on
+mesh/boolean dominates the HEAP-view re-fetch by 2-3 orders of magnitude.
+Reach for `full_multi_browser.yml` only when you've profiled and the
+JS↔WASM boundary is on the hot path.
+
 ## When NOT to ship threaded
 
 - You can't (or won't) set COOP/COEP headers — most CDNs/marketing sites can't.
