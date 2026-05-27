@@ -5,7 +5,7 @@
  * fields backed by std::vector types get concrete array types.
  */
 import { expectTypeOf, it, describe } from 'vitest';
-import type { RWGltf_CafWriter_Mesh } from '../build-configs/opencascade_full';
+import type { RWGltf_CafWriter_Mesh } from '../dist/opencascade_full';
 
 describe('std::vector type resolution in mesh data', () => {
   it('RWGltf_CafWriter_Mesh.NodesVec should not be any', () => {

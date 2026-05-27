@@ -1,12 +1,12 @@
 import { expectTypeOf, it } from 'vitest';
-import type init from '../build-configs/opencascade_full';
+import type init from '../dist/opencascade_full';
 import type {
   gp_Pnt,
   gp_Vec,
   TopoDS_Shape,
   BRepPrimAPI_MakeBox,
   TopAbs_ShapeEnum,
-} from '../build-configs/opencascade_full';
+} from '../dist/opencascade_full';
 
 it('should return correct types for gp_Pnt methods', () => {
   expectTypeOf<gp_Pnt['X']>().returns.toBeNumber();

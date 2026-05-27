@@ -6,7 +6,7 @@
  * to concrete bound types, not `any`.
  */
 import { expectTypeOf, it, describe } from 'vitest';
-import type { BOPDS_DS } from '../build-configs/opencascade_full';
+import type { BOPDS_DS } from '../dist/opencascade_full';
 
 describe('NCollection_Vector types in BOPDS_DS', () => {
   it('BOPDS_DS.InterfVV() should not return any', () => {

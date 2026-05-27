@@ -3,7 +3,7 @@ import type {
   IntSurf_TypeTrans,
   IntSurf_Situation,
   TopAbs_ShapeEnum,
-} from '../build-configs/opencascade_full';
+} from '../dist/opencascade_full';
 
 it('should resolve IntSurf_TypeTrans to a string literal union', () => {
   expectTypeOf<IntSurf_TypeTrans>().toBeString();

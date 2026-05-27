@@ -33,7 +33,7 @@ const BINDINGS_DIR = path.resolve(import.meta.dirname, '../build/bindings');
 const DIST_DTS_PATH = path.resolve(import.meta.dirname, '../dist/opencascade_full.d.ts');
 const BUILD_CONFIGS_DTS_PATH = path.resolve(
   import.meta.dirname,
-  '../build-configs/opencascade_full.d.ts',
+  '../dist/opencascade_full.d.ts',
 );
 const DTS_PATH = fs.existsSync(DIST_DTS_PATH) ? DIST_DTS_PATH : BUILD_CONFIGS_DTS_PATH;
 

@@ -1,13 +1,12 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import type { OpenCascadeInstance } from '../../build-configs/opencascade_full.js';
+import type { OpenCascadeInstance } from '../../dist/opencascade_full.js';
 import type { OpenCascadeInstance as OpenCascadeInstanceMulti } from '../../dist/opencascade_full_multi.js';
-import init from '../../build-configs/opencascade_full.js';
+import init from '../../dist/opencascade_full.js';
 import initMulti from '../../dist/opencascade_full_multi.js';
 
-const BUILD_DIR = path.resolve(import.meta.dirname, '../../build-configs');
-const WASM_PATH = path.join(BUILD_DIR, 'opencascade_full.wasm');
 const DIST_DIR = path.resolve(import.meta.dirname, '../../dist');
+const WASM_PATH = path.join(DIST_DIR, 'opencascade_full.wasm');
 const WASM_MULTI_PATH = path.join(DIST_DIR, 'opencascade_full_multi.wasm');
 
 export const wasmExists = fs.existsSync(WASM_PATH);
@@ -25,7 +24,7 @@ let _ocMulti: OpenCascadeInstanceMulti | undefined;
 export async function initOC(): Promise<OpenCascadeInstance> {
   if (!_oc) {
     _oc = await init({
-      locateFile: (filename: string) => path.join(BUILD_DIR, filename),
+      locateFile: (filename: string) => path.join(DIST_DIR, filename),
     });
   }
   return _oc;

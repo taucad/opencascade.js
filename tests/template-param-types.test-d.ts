@@ -10,7 +10,7 @@
  * correctly identifies the type but it has no Embind class_ binding.
  */
 import { expectTypeOf, it, describe } from 'vitest';
-import type { BRepExtrema_TriangleSet } from '../build-configs/opencascade_full';
+import type { BRepExtrema_TriangleSet } from '../dist/opencascade_full';
 
 describe('Template parameter dependent type resolution', () => {
   it('BRepExtrema_TriangleSet.Box() returns BVH_Box<double,3> (unbound template)', () => {

@@ -1,5 +1,5 @@
 import { expectTypeOf, it } from 'vitest';
-import type { IntSurf_TypeTrans, IntSurf_Situation, OpenCascadeInstance } from '../build-configs/opencascade_full';
+import type { IntSurf_TypeTrans, IntSurf_Situation, OpenCascadeInstance } from '../dist/opencascade_full';
 
 /**
  * Enum-disambiguation subclasses that existed when enums were numeric.

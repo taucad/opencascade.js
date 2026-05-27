@@ -22,7 +22,7 @@ import type {
   NCollection_DataMap_TCollection_AsciiString_TCollection_AsciiString,
   STEPCAFControl_Writer,
   XSControl_Reader,
-} from '../build-configs/opencascade_full';
+} from '../dist/opencascade_full';
 
 describe('Class-scoped using-alias resolution in data exchange classes', () => {
   it('IGESControl_Writer.GetShapeFixParameters() returns concrete DataMap class (R8.1 unblocked)', () => {

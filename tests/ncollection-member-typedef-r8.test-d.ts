@@ -30,7 +30,7 @@ import type {
   NCollection_DynamicArray_BOPDS_Curve,
   NCollection_DynamicArray_BRepGraph_NodeId_Typed_BRepGraph_NodeId_Kind_Occurrence as DynamicArrayOccurrenceId,
   NCollection_DynamicArray_BRepGraph_NodeId_Typed_BRepGraph_NodeId_Kind_Solid as DynamicArraySolidId,
-} from '../build-configs/opencascade_full';
+} from '../dist/opencascade_full';
 
 describe('R8 — typed-id DynamicArray accessors return concrete element type', () => {
   it('DynamicArray<BRepGraph_OccurrenceId>.Value() returns BRepGraph_OccurrenceId (was unknown)', () => {
@@ -114,7 +114,7 @@ describe('R8 — third typed-id instantiation (Wire) cross-checks the diff sampl
   // the full Typed-spelling because the audit's discovered template typedef
   // is the typed-id wrapper, not `BRepGraph_WireId` directly.
   type DynamicArrayWire =
-    import('../build-configs/opencascade_full').NCollection_DynamicArray_BRepGraph_NodeId_Typed_BRepGraph_NodeId_Kind_Wire;
+    import('../dist/opencascade_full').NCollection_DynamicArray_BRepGraph_NodeId_Typed_BRepGraph_NodeId_Kind_Wire;
 
   it('DynamicArray<…Kind_Wire>.Value() returns BRepGraph_WireId (was unknown)', () => {
     expectTypeOf<DynamicArrayWire['Value']>().returns.toEqualTypeOf<BRepGraph_WireId>();

@@ -17,7 +17,7 @@ import type {
   XCAFDoc_ShapeTool,
   NCollection_List_BRepCheck_Status,
   NCollection_Sequence_IntTools_Range,
-} from '../build-configs/opencascade_full';
+} from '../dist/opencascade_full';
 
 describe('NCollection_Sequence container type resolution', () => {
   it('NCollection_Sequence_TDF_Label should exist as a bound class', () => {

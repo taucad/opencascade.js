@@ -16,7 +16,7 @@ import * as path from 'node:path';
 import { describe, it, expect, beforeAll } from 'vitest';
 import { initOC, getOC, wasmExists, buildBoxGraph } from './helpers.js';
 
-const DTS_PATH = path.resolve(import.meta.dirname, '../../build-configs/opencascade_full.d.ts');
+const DTS_PATH = path.resolve(import.meta.dirname, '../../dist/opencascade_full.d.ts');
 
 let _dts: string | null = null;
 function readDts(): string {

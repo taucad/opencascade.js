@@ -42,7 +42,7 @@ import type {
   NCollection_Sequence_handle_TDF_Attribute,
   StepBasic_Approval,
   TDF_Attribute,
-} from '../build-configs/opencascade_full';
+} from '../dist/opencascade_full';
 
 describe('R8.1 — NCollection_Array1<Handle<Geom_Curve>> accessors return Geom_Curve', () => {
   it('Value() returns Geom_Curve (was unknown)', () => {

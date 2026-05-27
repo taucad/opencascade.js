@@ -13,7 +13,7 @@ import { NodeIO } from '@gltf-transform/core';
 import type { InspectReport } from '@gltf-transform/functions';
 import { inspect } from '@gltf-transform/functions';
 import { expect } from 'vitest';
-import type { TopoDS_Shape } from '../../build-configs/opencascade_full.js';
+import type { TopoDS_Shape } from '../../dist/opencascade_full.js';
 import { getOC } from './helpers.js';
 
 // =============================================================================

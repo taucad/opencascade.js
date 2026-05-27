@@ -13,7 +13,7 @@ import * as path from 'node:path';
 
 const FULL_DTS = path.resolve(
   import.meta.dirname,
-  '../build-configs/opencascade_full.d.ts',
+  '../dist/opencascade_full.d.ts',
 );
 
 function parseDts(): ts.SourceFile | null {

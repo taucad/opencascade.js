@@ -19,7 +19,7 @@ import type {
   TDF_Label,
   STEPCAFControl_Writer,
   XCAFDoc_ShapeTool,
-} from '../build-configs/opencascade_full';
+} from '../dist/opencascade_full';
 
 describe('Modern NCollection_Sequence mangled names', () => {
   it('NCollection_Sequence_TDF_Label should exist as a bound class', () => {
