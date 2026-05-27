@@ -1,5 +1,35 @@
+# R12 — Browser-only multi-threaded build (opt-in variant of full_multi.yml).
+#
+# This configuration adds `-sGROWABLE_ARRAYBUFFERS=1` to the multi-threaded
+# base so consumers can avoid the per-call HEAP* re-fetch dance documented
+# in `docs-site/content/docs/package/guides/multi-threading.mdx` (search
+# for "Performance notes"). The flag tells Emscripten to emit JS glue that
+# calls `WebAssembly.Memory.prototype.toResizableBuffer()` to wrap the
+# pthread `SharedArrayBuffer` as a resizable view — eliminating the
+# `-Wpthreads-mem-growth` advisory entirely.
+#
+# Runtime support matrix (May 2026 baseline):
+#   Supported:
+#     - Chrome / Edge >= 144
+#     - Firefox     >= 145
+#     - Safari      >= 26.2 (desktop + iOS)
+#   NOT supported (do NOT ship this build to these runtimes):
+#     - Node.js (all current LTS) — runtime TypeError on init:
+#         `TypeError: wasmMemory.toResizableBuffer is not a function`
+#     - Bun  (all current versions)
+#     - Deno (all current versions)
+#     - Samsung Internet (lags behind upstream Chromium)
+#
+# Use `full_multi.yml` if you need to support any of the unsupported
+# runtimes; the default multi-threaded build keeps `-sGROWABLE_ARRAYBUFFERS=0`
+# precisely so it stays compatible with Node-based test harnesses, Bun,
+# Deno, and legacy mobile browsers.
+#
+# Rollback recipe — to revert a consumer to the broadly-compatible build,
+# swap their YAML's `link full_multi_browser.yml` for `link full_multi.yml`
+# (no other changes needed; the artefact names are identical).
 mainBuild:
-  name: opencascade_full.js
+  name: opencascade_full_multi_browser.js
   bindings:
   - symbol: APIHeaderSection_EditHeader
   - symbol: APIHeaderSection_MakeHeader
@@ -4494,6 +4524,28 @@ mainBuild:
   - --emit-symbol-map
   - -sSTACK_SIZE=8388608
   - -sWASM_BIGINT
-  - -sEVAL_CTORS=2
   - -msimd128
   - -O3
+  # ── Multi-threading additions (delta from full.yml) ─────────────
+  # Recipe: docs-site/content/docs/package/guides/multi-threading.mdx (published /multi subpath).
+  # -sEVAL_CTORS=2 (present in full.yml) is DROPPED -- ctor evaluation
+  # order is non-deterministic under pthread workers.
+  - -pthread
+  - -sUSE_PTHREADS=1
+  # Pre-spawn one worker per logical CPU on the host. The expression is evaluated by the
+  # generated JS glue at module-instantiation time, so a single binary adapts to whatever
+  # hardware loads it. See BENCHMARKS.md — Impact of R1 (PTHREAD_POOL_SIZE bump).
+  - -sPTHREAD_POOL_SIZE=navigator.hardwareConcurrency
+  - -sSHARED_MEMORY=1
+  # R12 — browser-only ENVIRONMENT (no `node`). Node.js lacks
+  # `WebAssembly.Memory.prototype.toResizableBuffer()` (May 2026), so the
+  # generated JS glue for -sGROWABLE_ARRAYBUFFERS=1 below throws on
+  # module init under Node. Stripping `node` from ENVIRONMENT makes that
+  # incompatibility explicit at build time.
+  - -sENVIRONMENT=web,worker
+  # R12 — enable resizable SharedArrayBuffer views so consumers can hoist
+  # HEAP* references out of hot loops without re-fetching them after
+  # every growth event. Eliminates the `-Wpthreads-mem-growth` advisory.
+  # Requires Chrome/Edge >= 144, Firefox >= 145, Safari >= 26.2.
+  # See `full_multi_browser.yml` header for the full support matrix.
+  - -sGROWABLE_ARRAYBUFFERS=1

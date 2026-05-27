@@ -854,7 +854,6 @@ mainBuild:
   - symbol: Blend_SurfCurvFuncInv
   - symbol: Blend_SurfPointFuncInv
   - symbol: Blend_SurfRstFunction
-  - symbol: BndBox2dTreeFiller
   - symbol: BndLib
   - symbol: BndLib_Add2dCurve
   - symbol: BndLib_Add3dCurve
@@ -923,7 +922,6 @@ mainBuild:
   - symbol: ChFiDS_SurfData
   - symbol: ChFiDS_TypeOfConcavity
   - symbol: ChFiKPart_ComputeData
-  - symbol: CircleCellFilter
   - symbol: Contap_ArcFunction
   - symbol: Contap_ContAna
   - symbol: Contap_Contour
@@ -2176,14 +2174,56 @@ mainBuild:
   - symbol: IGESToBRep_Reader
   - symbol: IGESToBRep_ToolContainer
   - symbol: IGESToBRep_TopoCurve
+  - symbol: IMeshData_Array1OfInteger
+  - symbol: IMeshData_Array1OfVertexOfDelaun
+  - symbol: IMeshData_BndBox2dTree
+  - symbol: IMeshData_BndBox2dTreeFiller
+  - symbol: IMeshData_CircleCellFilter
   - symbol: IMeshData_Curve
+  - symbol: IMeshData_DMapOfIFacePtrsListOfInteger
+  - symbol: IMeshData_DMapOfIFacePtrsMapOfIEdgePtrs
+  - symbol: IMeshData_DMapOfIntegerListOfInteger
+  - symbol: IMeshData_DMapOfShapeInteger
+  - symbol: IMeshData_ICurveArrayAdaptorHandle
+  - symbol: IMeshData_ICurveHandle
+  - symbol: IMeshData_IDMapOfIFacePtrsListOfIPCurves
+  - symbol: IMeshData_IDMapOfLink
+  - symbol: IMeshData_IEdgeHandle
+  - symbol: IMeshData_IFaceHandle
+  - symbol: IMeshData_IMapOfReal
+  - symbol: IMeshData_IPCurveHandle
+  - symbol: IMeshData_IWireHandle
+  - symbol: IMeshData_ListOfIPCurves
+  - symbol: IMeshData_ListOfInteger
+  - symbol: IMeshData_ListOfPnt2d
+  - symbol: IMeshData_MapOfIEdgePtr
+  - symbol: IMeshData_MapOfIFacePtr
+  - symbol: IMeshData_MapOfInteger
+  - symbol: IMeshData_MapOfIntegerInteger
+  - symbol: IMeshData_MapOfOrientedEdges
+  - symbol: IMeshData_MapOfReal
   - symbol: IMeshData_Model
   - symbol: IMeshData_PCurve
   - symbol: IMeshData_ParametersList
+  - symbol: IMeshData_SequenceOfBndB2d
+  - symbol: IMeshData_SequenceOfInteger
+  - symbol: IMeshData_SequenceOfReal
   - symbol: IMeshData_Shape
   - symbol: IMeshData_Status
   - symbol: IMeshData_StatusOwner
   - symbol: IMeshData_TessellatedShape
+  - symbol: IMeshData_VectorOfBoolean
+  - symbol: IMeshData_VectorOfCircle
+  - symbol: IMeshData_VectorOfElements
+  - symbol: IMeshData_VectorOfIEdgeHandles
+  - symbol: IMeshData_VectorOfIEdgePtrs
+  - symbol: IMeshData_VectorOfIFaceHandles
+  - symbol: IMeshData_VectorOfIPCurveHandles
+  - symbol: IMeshData_VectorOfIWireHandles
+  - symbol: IMeshData_VectorOfInteger
+  - symbol: IMeshData_VectorOfOrientation
+  - symbol: IMeshData_VectorOfVertex
+  - symbol: IMeshData_VertexCellFilter
   - symbol: IMeshTools_Context
   - symbol: IMeshTools_CurveTessellator
   - symbol: IMeshTools_MeshAlgo
@@ -2407,9 +2447,11 @@ mainBuild:
   - symbol: LDOM_XmlWriter
   - symbol: LProp_BadContinuity
   - symbol: LProp_CIType
+  - symbol: LProp_CLProps3d
   - symbol: LProp_CurAndInf
   - symbol: LProp_CurveUtils_DirectAccess
   - symbol: LProp_NotDefined
+  - symbol: LProp_SLProps3d
   - symbol: LProp_Status
   - symbol: LProp_SurfaceUtils_DirectAccess
   - symbol: Law
@@ -2899,6 +2941,7 @@ mainBuild:
   - symbol: Standard_ErrorHandler_Callback
   - symbol: Standard_Failure
   - symbol: Standard_GUID
+  - symbol: Standard_HMutex
   - symbol: Standard_JsonKey
   - symbol: Standard_MultiplyDefined
   - symbol: Standard_Mutex
@@ -4202,7 +4245,6 @@ mainBuild:
   - symbol: Units_UnitsDictionary
   - symbol: Units_UnitsLexicon
   - symbol: Units_UnitsSystem
-  - symbol: VertexCellFilter
   - symbol: XCAFApp_Application
   - symbol: XCAFDimTolObjects_AngularQualifier
   - symbol: XCAFDimTolObjects_DatumModifWithValue
@@ -4286,6 +4328,7 @@ mainBuild:
   - symbol: XSControl_Utils
   - symbol: XSControl_Vars
   - symbol: XSControl_WorkSession
+  - symbol: XSControl_WorkSessionMap
   - symbol: XSControl_Writer
   - symbol: gce_ErrorType
   - symbol: gce_MakeCirc

@@ -53,6 +53,24 @@
     "OCJS_MALLOC": "mimalloc",
     "BINARYEN_EXTRA_PASSES": ""
   },
+  "multi-threaded-browser": {
+    "OCJS_OPT": "-O3",
+    "OCJS_LTO": "0",
+    "OCJS_EXCEPTIONS": "1",
+    "OCJS_EH_MODE": "wasm",
+    "OCJS_SIMD": "1",
+    "THREADING": "multi-threaded",
+    "OCJS_DEFINES": "OCCT_NO_DUMP",
+    "OCJS_UNDEFINES": "OCC_CONVERT_SIGNALS",
+    "OCJS_WASM_OPT_LEVEL": "-O4",
+    "OCJS_CLOSURE": "true",
+    "OCJS_EVAL_CTORS": "true",
+    "OCJS_EVAL_CTORS_LEVEL": "2",
+    "OCJS_CONVERGE": "true",
+    "OCJS_BIGINT": "1",
+    "OCJS_MALLOC": "mimalloc",
+    "BINARYEN_EXTRA_PASSES": ""
+  },
   "debug": {
     "OCJS_OPT": "-O0",
     "OCJS_LTO": "0",
