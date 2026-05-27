@@ -2,9 +2,11 @@
 """Post-build validation for opencascade.js WASM builds.
 
 Validates that a completed build matches the requested YAML configuration:
-- All requested symbols have compiled .o files
+- All requested symbols have compiled .o files (or resolve via NCollection
+  typedef alias / BUILTIN_ADDITIONAL_BIND_CODE / consumer additionalBindCode
+  via the shared `manifest_registry` consumer chain)
 - The .wasm output exists and has a reasonable size
-- Produces a machine-readable build manifest (JSON)
+- Produces a machine-readable build manifest (JSON, schema `build-manifest-v2`)
 
 Usage:
   python3 scripts/validate-build.py <yaml-config> <build-output-dir>
@@ -25,7 +27,19 @@ from argparse import ArgumentParser
 OCJS_ROOT = os.environ.get("OCJS_ROOT", os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.join(OCJS_ROOT, "src"))
 
+# V2 — single source of truth for symbol resolution. Both link-time
+# (`yaml_build.verifyBindings`) and post-link (this script) read through
+# the same loaders so the two views of "missing" can never disagree.
+from ocjs_bindgen.link.manifest_registry import (  # noqa: E402
+    builtin_binding_symbols,
+    collect_compiled_symbols,
+    load_ncollection_alias_index,
+    resolve_requested_symbols,
+)
+
 MIN_WASM_SIZE_BYTES = 1024 * 100  # 100 KB — any real OCCT build should be much larger
+
+BUILD_MANIFEST_SCHEMA = "build-manifest-v2"
 
 
 def load_yaml_config(yaml_path):
@@ -43,44 +57,55 @@ def load_yaml_config(yaml_path):
     return v.normalized(config)
 
 
-def find_compiled_bindings(build_dir):
-    """Scan the compiled-bindings directory for compiled .o files, returning a set of symbol names.
-
-    Source `.cpp` files live under build/bindings/, but `compileBindings.py` writes
-    object files to build/compiled-bindings/ (see _cpp_to_object_path).
-    """
-    candidates = [
-        os.path.join(build_dir, "compiled-bindings"),
-        os.path.join(build_dir, "bindings"),
-    ]
-    compiled = set()
-    for root in candidates:
-        if not os.path.isdir(root):
-            continue
-        for dirpath, _, filenames in os.walk(root):
-            for f in filenames:
-                if f.endswith(".cpp.o"):
-                    compiled.add(f[:-6])  # strip ".cpp.o" → symbol name
-    return compiled
+def _all_requested_bindings(config):
+    """Return every YAML-requested binding (mainBuild + every extraBuild)."""
+    bindings = list(config["mainBuild"].get("bindings", []))
+    for extra in config.get("extraBuilds", []):
+        bindings.extend(extra.get("bindings", []))
+    return bindings
 
 
 def validate_symbols(config, build_dir):
-    """Check that every symbol in the YAML config has a compiled .o file."""
-    compiled = find_compiled_bindings(build_dir)
-    all_bindings = list(config["mainBuild"].get("bindings", []))
-    for extra in config.get("extraBuilds", []):
-        all_bindings.extend(extra.get("bindings", []))
+    """Bucket every YAML-requested symbol via `manifest_registry`.
 
-    requested = {b["symbol"] for b in all_bindings}
-    missing = sorted(requested - compiled)
-    extra = sorted(compiled - requested) if requested else []
+    V2 — replaces the original `requested - compiled` arithmetic that
+    silently reported NCollection typedef aliases and Embind builtins
+    as "missing". Each requested symbol now falls into exactly one of
+    four buckets (`SymbolResolution`):
+
+    * ``satisfied_by_compiled`` — direct ``build/compiled-bindings/<sym>.cpp.o``.
+    * ``alias_resolved`` — typedef alias in ``build/ncollection-manifest.json``
+      whose canonical IS compiled; linker substitutes at link time.
+    * ``builtin`` — Embind registration name in
+      ``build/additional-bind-symbols.json`` (canonical
+      BUILTIN_ADDITIONAL_BIND_CODE + consumer YAML additionalBindCode
+      unioned by the Phase 2 AST producer).
+    * ``truly_missing`` — neither compiled, nor an alias to something
+      compiled, nor a builtin registration. Triggers `pass=False`.
+
+    Returns the manifest-shaped dict consumed by main() to populate
+    `manifest["symbols"]`.
+    """
+    compiled = collect_compiled_symbols(build_dir)
+    alias_index = load_ncollection_alias_index(build_dir)
+    builtins = builtin_binding_symbols(build_dir)
+    requested = {b["symbol"] for b in _all_requested_bindings(config)}
+    resolution = resolve_requested_symbols(requested, compiled, alias_index, builtins)
+
+    alias_canonicals = {canonical for canonical in resolution.alias_resolved.values()}
+    extra_compiled = len(compiled - requested - alias_canonicals)
 
     return {
         "requested": sorted(requested),
         "compiled": len(compiled),
-        "missing": missing,
-        "extra_compiled": len(extra),
-        "pass": len(missing) == 0,
+        "missing": sorted(resolution.truly_missing),
+        "alias_resolved": [
+            {"alias": a, "canonical": c}
+            for a, c in sorted(resolution.alias_resolved.items())
+        ],
+        "builtin": sorted(resolution.builtin),
+        "extra_compiled": extra_compiled,
+        "pass": not resolution.truly_missing,
     }
 
 
@@ -122,12 +147,56 @@ def validate_wasm_outputs(config, output_dir):
 
 
 def validate_binding_report(build_dir):
-    """Load and summarize the binding-report.json if it exists."""
-    report_path = os.path.join(build_dir, "binding-report.json")
+    """Load and summarize ``compiled-bindings/binding-report.json`` if present.
+
+    V4 — fixes the previously-incorrect path that pointed at
+    ``build/binding-report.json``. The report is written by
+    `compileBindings.py` next to the per-symbol object files in
+    ``build/compiled-bindings/`` (see `_cpp_to_object_path`); the old
+    path always returned ``None`` so the manifest's ``binding_report``
+    field was permanently null.
+    """
+    report_path = os.path.join(build_dir, "compiled-bindings", "binding-report.json")
     if not os.path.exists(report_path):
         return None
     with open(report_path) as f:
         return json.load(f)
+
+
+def merge_any_reasons(build_dir):
+    """V6 — slim summary of ``build/any-type-report.json`` (M5).
+
+    The generator's any-type report enumerates every ``: any`` declaration
+    by reason category (templated method, unsupported parameter type,
+    unresolved typedef, etc.). Surfacing the per-reason count + a few
+    examples in the build manifest gives downstream consumers (docs
+    generator, dts validator, future CI dashboards) a single place to
+    read the structural shape of remaining ``any`` decay without
+    re-loading the full any-type-report.
+
+    Returns ``None`` when the report is absent (clean build that never
+    emitted an any-type-report yet — not a failure). Returns a dict
+    keyed by reason → ``{count, examples}`` with at most 5 examples per
+    reason to keep the manifest reasonable.
+    """
+    report_path = os.path.join(build_dir, "any-type-report.json")
+    if not os.path.exists(report_path):
+        return None
+    try:
+        with open(report_path) as f:
+            report = json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return None
+    summary = {}
+    entries = report.get("entries") or report.get("any_decays") or []
+    for entry in entries:
+        reason = entry.get("reason") or entry.get("category") or "unknown"
+        example = entry.get("location") or entry.get("symbol") or entry.get("name")
+        bucket = summary.setdefault(reason, {"count": 0, "examples": []})
+        bucket["count"] += 1
+        if example and len(bucket["examples"]) < 5:
+            bucket["examples"].append(example)
+    return summary
 
 
 def validate_runtime_helpers(config, output_dir):
@@ -198,10 +267,22 @@ def main():
 
     # 1. Symbol validation
     sym_result = validate_symbols(config, build_dir)
+    n_aliased = len(sym_result["alias_resolved"])
+    n_builtin = len(sym_result["builtin"])
     if sym_result["pass"]:
-        print(f"  [PASS] Symbols: {len(sym_result['requested'])} requested, {sym_result['compiled']} compiled")
+        bucket_summary = (
+            f"{len(sym_result['requested'])} requested, "
+            f"{sym_result['compiled']} compiled, "
+            f"{n_aliased} alias-resolved, "
+            f"{n_builtin} builtin"
+        )
+        print(f"  [PASS] Symbols: {bucket_summary}")
     else:
-        print(f"  [FAIL] Symbols: {len(sym_result['missing'])} missing out of {len(sym_result['requested'])} requested")
+        print(
+            f"  [FAIL] Symbols: {len(sym_result['missing'])} truly missing out of "
+            f"{len(sym_result['requested'])} requested "
+            f"(alias-resolved: {n_aliased}, builtin: {n_builtin})"
+        )
         for s in sym_result["missing"][:20]:
             print(f"         - {s}")
         if len(sym_result["missing"]) > 20:
@@ -233,15 +314,22 @@ def main():
                 print(f"         - {name}")
         all_pass = False
 
-    # 4. Binding report (informational)
+    # 4. Binding report (informational, path-corrected by V4)
     binding_report = validate_binding_report(build_dir)
     if binding_report:
         print(f"  [INFO] Binding report: {binding_report.get('succeeded', '?')} succeeded, "
               f"{binding_report.get('failed', '?')} failed, "
               f"{binding_report.get('cached', '?')} cached")
 
-    # Build manifest
+    # 5. Any-type reasons summary (V6 — sourced from build/any-type-report.json)
+    any_reasons = merge_any_reasons(build_dir)
+    if any_reasons:
+        total_any = sum(b["count"] for b in any_reasons.values())
+        print(f"  [INFO] Any-type decay: {total_any} entries across {len(any_reasons)} reason(s)")
+        sym_result["any_reasons"] = any_reasons
+
     manifest = {
+        "schema": BUILD_MANIFEST_SCHEMA,
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "yaml_config": os.path.basename(args.yaml_config),
         "yaml_hash": config_hash,

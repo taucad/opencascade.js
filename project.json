@@ -19,6 +19,7 @@
         "patchScripts",
         "buildScript",
         "depsVersion",
+        { "env": "OCJS_CONFIG" },
         { "runtime": "git -C deps/OCCT rev-parse HEAD 2>/dev/null || echo missing" }
       ],
       "outputs": ["{projectRoot}/build/patches-applied"],
@@ -38,6 +39,7 @@
         "patchScripts",
         "generatorCode",
         "depsVersion",
+        { "env": "OCJS_CONFIG" },
         { "runtime": "git -C deps/OCCT rev-parse HEAD 2>/dev/null || echo missing" },
         { "runtime": "git -C deps/OCCT diff HEAD --stat 2>/dev/null | shasum -a 256 || echo clean" },
         { "dependentTasksOutputFiles": "**/patches-applied", "transitive": false }
@@ -61,6 +63,7 @@
         "generatorCode",
         "buildScript",
         "depsVersion",
+        { "env": "OCJS_CONFIG" },
         { "runtime": "git -C deps/OCCT rev-parse HEAD 2>/dev/null || echo missing" }
       ],
       "outputs": ["{projectRoot}/build/bindings/", "{projectRoot}/build/ncollection-manifest.json"],
@@ -78,6 +81,7 @@
         "toolchain",
         "buildScript",
         "compileBindingsScript",
+        { "env": "OCJS_CONFIG" },
         { "dependentTasksOutputFiles": "**/*.cpp", "transitive": false }
       ],
       "outputs": ["{projectRoot}/build/compiled-bindings/"],
@@ -96,6 +100,7 @@
         "buildScript",
         "patchScripts",
         "depsVersion",
+        { "env": "OCJS_CONFIG" },
         { "runtime": "git -C deps/OCCT rev-parse HEAD 2>/dev/null || echo missing" },
         { "runtime": "git -C deps/OCCT diff HEAD --stat 2>/dev/null | shasum -a 256 || echo clean" }
       ],
@@ -114,10 +119,29 @@
         "cwd": "{projectRoot}"
       }
     },
+    "bind-symbols": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "dependsOn": ["pch"],
+      "inputs": [
+        "bindSymbolsScript",
+        "buildScript",
+        "toolchain",
+        { "env": "OCJS_YAML" },
+        { "env": "OCJS_CONFIG" },
+        { "runtime": "shasum -a 256 \"${OCJS_YAML:-/dev/null}\" 2>/dev/null || echo no-yaml" },
+        { "runtime": "git -C deps/OCCT rev-parse HEAD 2>/dev/null || echo missing" }
+      ],
+      "outputs": ["{projectRoot}/build/additional-bind-symbols.json"],
+      "options": {
+        "command": "./build-wasm.sh bind-symbols \"${OCJS_YAML}\"",
+        "cwd": "{projectRoot}"
+      }
+    },
     "link": {
       "executor": "nx:run-commands",
       "cache": true,
-      "dependsOn": ["compile-bindings", "compile-sources", "generate"],
+      "dependsOn": ["compile-bindings", "compile-sources", "generate", "bind-symbols"],
       "inputs": [
         "compileConfig",
         "linkConfig",

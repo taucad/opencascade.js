@@ -17,6 +17,7 @@ libclang shapes.
 from __future__ import annotations
 
 import clang.cindex
+import pytest
 
 from ocjs_bindgen.discover import (
   _build_typedef_alias_map,
@@ -29,6 +30,34 @@ from ocjs_bindgen.discover import (
 )
 
 from tests.conftest import _MockType, cursor_mock
+
+
+# V1 RE-SHIP — `discover_ncollection_types` now internally consults a
+# second libclang TU (`TypedefDiscoveryTuInfo`) that ALSO parses
+# `Deprecated/NCollectionAliases/*.hxx` for OCCT V8 historic alias
+# resolution. The unit-test stub `_StubTuInfo` only mocks the codegen
+# TU, so without this autouse fixture the real OCCT parse leaks in and
+# pollutes the `out` set with hundreds of real typedefs. The fixture
+# replaces the discovery-TU singleton with an empty stub so test
+# expectations of `out == set()` remain meaningful.
+class _EmptyDiscoveryTu:
+  templateTypedefs = []
+  classDict = {}
+  typedefs = []
+  typedefUnderlyingMultimap = {}
+  templateTypedefUnderlyingMultimap = {}
+
+
+@pytest.fixture(autouse=True)
+def _stub_discovery_tu(monkeypatch):
+  from ocjs_bindgen.ast import cursors as _cursors
+  monkeypatch.setattr(
+    _cursors.TypedefDiscoveryTuInfo,
+    "instance",
+    classmethod(lambda cls: _EmptyDiscoveryTu()),
+  )
+  yield
+  _cursors.TypedefDiscoveryTuInfo._instance = None
 
 
 # ----------------------------------------------------------------------------

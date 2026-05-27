@@ -109,10 +109,11 @@ def test_gate_warns_when_env_var_unset(capsys) -> None:
   captured = capsys.readouterr()
   assert "OCJS_STRICT_TYPES WARNING: missing types in .d.ts" in captured.err
   assert "rewrites to 'unknown': 42" in captured.err
-  # Warn-mode footer points at the same fix as strict-mode AND tells the
-  # operator how to escalate.
+  # Warn-mode footer points at the structural fix surface (R1 / W10) and
+  # tells the operator how to escalate.
   assert "OCJS_STRICT_TYPES=1" in captured.err
-  assert "_compute_yaml_class_scope" in captured.err
+  assert "TypescriptBindings.resolve_type" in captured.err
+  assert "referenced_classes" in captured.err
   # Nothing on stdout -- diagnostic goes to stderr.
   assert captured.out == ""
 
@@ -143,8 +144,11 @@ def test_gate_warning_footer_mentions_strict_mode_opt_in(capsys) -> None:
   captured = capsys.readouterr()
   # The literal env-var setting must be present, not paraphrased.
   assert "OCJS_STRICT_TYPES=1" in captured.err
-  # And the recovery action must point at the same function as strict mode.
-  assert "_compute_yaml_class_scope" in captured.err
+  # And the recovery action must point at the structural fix surface
+  # (codegen `referenced_classes` lift, R1 / W10) — not the legacy
+  # `_compute_yaml_class_scope` regex extension that we've retired.
+  assert "TypescriptBindings.resolve_type" in captured.err
+  assert "referenced_classes" in captured.err
   # And it must be clearly labelled a WARNING, not an ERROR.
   assert "WARNING" in captured.err
 
@@ -174,8 +178,15 @@ def test_gate_raises_on_unknown_rewrite_above_budget(monkeypatch) -> None:
   msg = str(exc_info.value)
   assert "OCJS_STRICT_TYPES=1" in msg
   assert "rewritten to bare 'unknown'" in msg
+  # Points at the structural-lift surface (R1 / W10), which still
+  # references both `TypescriptBindings.resolve_type` (the recording
+  # call) AND `_compute_yaml_class_scope` (the lift consumer) so
+  # operators can navigate either direction of the fix.
+  assert "TypescriptBindings.resolve_type" in msg
+  assert "referenced_classes" in msg
   assert "_compute_yaml_class_scope" in msg
   assert "ocjs_bindgen.link.yaml_build" in msg
+  assert "ocjs_bindgen.codegen.bindings" in msg
 
 
 def test_gate_raises_on_unbound_reference_diagnostic(monkeypatch) -> None:
@@ -191,6 +202,9 @@ def test_gate_raises_on_unbound_reference_diagnostic(monkeypatch) -> None:
     )
   msg = str(exc_info.value)
   assert "unbound class references" in msg
+  # Points at both ends of the structural fix surface (R1 / W10).
+  assert "TypescriptBindings.resolve_type" in msg
+  assert "referenced_classes" in msg
   assert "_compute_yaml_class_scope" in msg
 
 
@@ -211,7 +225,11 @@ def test_gate_error_message_is_path_agnostic_and_actionable(monkeypatch) -> None
   assert "/tmp/" not in msg
   assert "/output/" not in msg
   assert "/opencascade.js/" not in msg
-  # Actionable: names the function to fix.
+  # Actionable: names both ends of the structural fix surface (R1 / W10)
+  # so the operator can navigate from the link-time failure back to the
+  # codegen-time recording call that should have populated the lift.
+  assert "TypescriptBindings.resolve_type" in msg
+  assert "referenced_classes" in msg
   assert "_compute_yaml_class_scope" in msg
   # Names the failure mode by category, not by build artifact name.
   assert "method signature" in msg or "method signatures" in msg

@@ -252,7 +252,7 @@ def init() -> None:
     ]
 
     provenance = {
-        "schema": "wasm-build-provenance-v1",
+        "schema": "wasm-build-provenance-v1.1",
         "buildId": build_id,
         "timestamp": datetime.now(timezone.utc).isoformat(),
 
@@ -323,7 +323,32 @@ def add_linking(
     pre_opt_size: int = 0,
     post_opt_size: int = 0,
     wasm_opt_duration: float = 0,
+    ncollection_linked: int = 0,
+    ncollection_total: int = 0,
+    ncollection_dropped: int = 0,
 ) -> None:
+    """V5 — record link-stage facts including the auto-linked NCollection
+    count.
+
+    The ``ncollection_*`` kwargs are written into a new top-level
+    ``nCollectionManifest`` block on the provenance document. Their
+    semantics mirror what
+    ``yaml_build.main::_filter_auto_symbols_by_scope`` already computes:
+
+      * ``linked``  — auto-discovered NCollection canonicals the link
+        actually pulled in (size of the kept set).
+      * ``total``   — full discovery set before YAML-scope filtering
+        (size of the raw manifest).
+      * ``dropped`` — entries the scope filter eliminated
+        (``total - linked``; written explicitly so consumers don't
+        re-derive it).
+
+    Schema bumps to ``wasm-build-provenance-v1.1`` (additive change;
+    pre-1.1 readers continue to parse). The fields are reachable only
+    via this in-process call; ``provenance.py main()`` deliberately
+    does NOT expose CLI flags for them so an out-of-band caller can't
+    write values that contradict what the link actually produced.
+    """
     prov = _load()
     if not prov:
         return
@@ -348,6 +373,12 @@ def add_linking(
         "postOptSize": post_opt_size,
         "optReduction": opt_reduction,
         "wasmOptDuration_s": round(wasm_opt_duration, 1),
+    }
+
+    prov["nCollectionManifest"] = {
+        "linked": ncollection_linked,
+        "total": ncollection_total,
+        "dropped": ncollection_dropped,
     }
 
     _save(prov)

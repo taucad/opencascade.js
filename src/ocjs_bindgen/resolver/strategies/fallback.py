@@ -19,6 +19,12 @@ def resolve_canonical_fallback(self, t, decl, canonical, kind, templateDecl=None
     Mirrors the tail of the legacy ``resolve_type``. Returns the resolved
     TypeScript type string. Always returns a value (the final sink is
     ``"unknown"``).
+
+    R1 (W10 structural fix) — every C++ class identifier we attempt to
+    emit (`resolved`, `canonical_spelling`, `decl.spelling`, and the
+    unknown-sink spellings) is routed through
+    ``self._record_referenced_class`` BEFORE the known-export filter so
+    cross-class references converge on the next link cycle.
     """
     from ocjs_bindgen.codegen.bindings import TypescriptBindings
 
@@ -29,6 +35,11 @@ def resolve_canonical_fallback(self, t, decl, canonical, kind, templateDecl=None
 
     if resolved in ("number", "string", "boolean", "void"):
         return resolved
+    # R1 — record BEFORE the filter so unresolved candidates still seed
+    # the next link's scope. `_record_referenced_class` is itself a
+    # strict single-identifier filter; structured spellings (qualified,
+    # templated, function-signature) are dropped by the helper.
+    self._record_referenced_class(resolved)
     if (
         resolved
         and resolved != ""
@@ -49,6 +60,7 @@ def resolve_canonical_fallback(self, t, decl, canonical, kind, templateDecl=None
     canonical_spelling = self.convertBuiltinTypes(canonical_spelling)
     if canonical_spelling in ("number", "string", "boolean", "void"):
         return canonical_spelling
+    self._record_referenced_class(canonical_spelling)
     if (
         canonical_spelling
         and "(" not in canonical_spelling
@@ -61,6 +73,8 @@ def resolve_canonical_fallback(self, t, decl, canonical, kind, templateDecl=None
         ):
             return canonical_spelling
 
+    if decl and decl.spelling:
+        self._record_referenced_class(decl.spelling)
     if (
         decl
         and decl.spelling
@@ -68,5 +82,11 @@ def resolve_canonical_fallback(self, t, decl, canonical, kind, templateDecl=None
     ):
         return decl.spelling
 
+    # Unknown sink — still record the raw spellings so the next link can
+    # decide whether they belong in scope. The strict-types gate already
+    # logs these via `_collect_any("unbound_reference", …)`; recording
+    # here ensures the structured lift sees them too.
+    self._record_referenced_class(self._strip_type_qualifiers_str(t.spelling))
+    self._record_referenced_class(self._strip_type_qualifiers_str(canonical.spelling))
     self._collect_any("unbound_reference", f"{t.spelling} (canonical: {canonical.spelling})")
     return "unknown"

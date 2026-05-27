@@ -330,6 +330,30 @@ ocIncludeStatements = os.linesep.join(
 ocAllIncludeStatements = ocIncludeStatements
 
 
+# V1 RE-SHIP — separate include statement stream for Deprecated/NCollectionAliases
+# headers (pure typedef forwarders like
+# `typedef NCollection_Array1<gp_Pnt> TColgp_Array1OfPnt;` moved out
+# of the main include set in OCCT V8).
+#
+# Kept OUT of `ocAllIncludeStatements` on purpose: pulling them into
+# the main translation unit triggers codegen to emit a
+# `class_<TColgp_Array1OfPnt>("TColgp_Array1OfPnt")` binding for every
+# alias, which then fails compile-bindings because the underlying
+# type's args (e.g. `IntRes2d_IntersectionSegment`) are forward-
+# declared but never bound. Discovery (`discover.py`) does a separate
+# libclang parse that *does* include these headers, populates the
+# typedef alias map (`ncollection-manifest.json::template_typedefs`),
+# and the validator (`validate-build.py`) consults that map to
+# downgrade YAML symbols like `TColgp_Array1OfPnt` from
+# `truly_missing` to `alias_resolved` without ever needing them in
+# the compile/link path.
+ocDeprecatedNCollectionAliasIncludeStatements = os.linesep.join(
+    '#include "' + os.path.basename(x) + '"'
+    for x in sorted(ocDeprecatedIncludeFiles)
+    if "/NCollectionAliases/" in x
+)
+
+
 def buildFlatIncludes() -> str:
     """Materialise a flat directory of symlinks to every OCCT header.
 
@@ -376,6 +400,50 @@ def getFlatIncludePaths() -> list[str]:
     paths = [FLAT_INCLUDE_DIR] + additionalIncludePaths
     if cmake_inc:
         paths.insert(0, cmake_inc)
+    return paths
+
+
+_PARSE_STUBS_DIR = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    "..",
+    "ast",
+    "parse_stubs",
+)
+
+
+def getAdditionalBindCodeParseIncludePaths() -> list[str]:
+    """Return the full -I path set for libclang to parse the link-stage
+    `BUILTIN_ADDITIONAL_BIND_CODE + consumer additionalBindCode` TU.
+
+    Combines (in deliberate path-search order):
+      1. ``ast/parse_stubs/`` — minimal parse-only Embind / em_js / val
+         stubs that shadow ``<emscripten/bind.h>``, ``<emscripten/em_js.h>``,
+         ``<emscripten/val.h>``. See ``ast/parse_stubs/README.md``.
+         libclang 18 cannot consume emsdk's bundled libcxx-23 (needs
+         Clang 19+ builtins like ``__builtin_ctzg``); the stub Embind
+         declarations parse on any target so the AST walker still
+         surfaces every ``class_<T>("Name")`` CALL_EXPR. The real
+         ``emcc -c`` compile preceding the parse uses the real headers
+         — the stubs are AST-extraction-only.
+      2. The flat OCCT/freetype/rapidjson include set used by ``emcc -c``
+         (``getFlatIncludePaths``) so OCCT headers (``<TopoDS.hxx>`` etc.)
+         referenced from the snippet still resolve.
+      3. The vendored libc++ 17 + clang 17 resource + host libc paths
+         (``_get_parse_libcxx_include_paths``) — the matching stdlib
+         for libclang 18, identical to the main bindgen parse pass.
+
+    Distinct from the bindgen's main ``includePathArgs`` (used by
+    :func:`parse` for the OCCT ``myMain.h`` TU): the link-stage TU has
+    Embind code that the bindgen's main parse never touches.
+    """
+    parse_stubs = os.path.abspath(_PARSE_STUBS_DIR)
+    paths: list[str] = []
+    if os.path.isdir(parse_stubs):
+        paths.append(parse_stubs)
+    paths.extend(getFlatIncludePaths())
+    for p in _get_parse_libcxx_include_paths():
+        if p not in paths:
+            paths.append(p)
     return paths
 
 

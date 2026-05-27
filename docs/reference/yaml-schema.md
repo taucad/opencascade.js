@@ -282,14 +282,14 @@ Auto-discovered NCollection canonicals (entries the YAML never named directly, b
 
 Every mechanism above has exactly one **producer** — a pipeline stage with the semantic knowledge to compute it — that writes a JSON manifest in `build/` or the dist sidecar. Every downstream **consumer** (link-time `verifyBindings`, post-link `validate-build.py`, `generate-docs.mjs`, `docker-e2e-validate.sh`) reads the manifest through the corresponding `manifest_registry` loader. No consumer re-parses C++, runs regex against source, or re-derives set-difference math.
 
-| Manifest | Producer | Consumer loader |
-|----------|----------|-----------------|
-| `build/ncollection-manifest.json` | `ocjs_bindgen.discover` | `manifest_registry.load_ncollection_alias_index` |
-| `build/additional-bind-symbols.json` | `runBuild::getAdditionalBindCodeO()` (libclang AST via `ocjs_bindgen.ast.parse_additional_bind_code` + `ocjs_bindgen.ast.walker.extract_class_registrations`) | `manifest_registry.builtin_binding_symbols` |
-| `build/compiled-bindings/*.cpp.o` | `compileBindings.py` | `manifest_registry.collect_compiled_symbols` |
-| `build/compiled-bindings/binding-report.json` | `compileBindings.py` | `validate-build.py::validate_binding_report` |
-| `<variant>.provenance.json::nCollectionManifest` | `yaml_build.main` via `provenance.add_linking(ncollection_linked=, ncollection_total=, ncollection_dropped=)` | `generate-docs.mjs`, `scripts/docker-e2e-validate.sh` |
-| `build/any-type-report.json` | `generate.py` | `validate-build.py::merge_any_reasons` |
+| Manifest                                         | Producer                                                                                                                                                      | Consumer loader                                       |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
+| `build/ncollection-manifest.json`                | `ocjs_bindgen.discover`                                                                                                                                       | `manifest_registry.load_ncollection_alias_index`      |
+| `build/additional-bind-symbols.json`             | `runBuild::getAdditionalBindCodeO()` (libclang AST via `ocjs_bindgen.ast.parse_additional_bind_code` + `ocjs_bindgen.ast.walker.extract_class_registrations`) | `manifest_registry.builtin_binding_symbols`           |
+| `build/compiled-bindings/*.cpp.o`                | `compileBindings.py`                                                                                                                                          | `manifest_registry.collect_compiled_symbols`          |
+| `build/compiled-bindings/binding-report.json`    | `compileBindings.py`                                                                                                                                          | `validate-build.py::validate_binding_report`          |
+| `<variant>.provenance.json::nCollectionManifest` | `yaml_build.main` via `provenance.add_linking(ncollection_linked=, ncollection_total=, ncollection_dropped=)`                                                 | `generate-docs.mjs`, `scripts/docker-e2e-validate.sh` |
+| `build/any-type-report.json`                     | `generate.py`                                                                                                                                                 | `validate-build.py::merge_any_reasons`                |
 
 When a manifest is missing, consumers fail loudly with a pointer at `pnpm nx run ocjs:build`. Stale artifacts are stale by definition; rendering them with degraded math produces docs whose numbers contradict the build that produced them.
 

@@ -336,6 +336,132 @@ def discover_ncollection_types(tuInfo, filter_classes_fn, source_override=None):
             source_override=source_override,
         )
 
+    # V1 RE-SHIP — add NCollection container instantiations referenced as
+    # the underlying of any template typedef in the OCCT V8 include set
+    # (e.g. ``typedef NCollection_Array1<gp_Dir> TColgp_Array1OfDir;``).
+    # Without this, the alias map's ``TColgp_Array1OfDir →
+    # NCollection_Array1_gp_Dir`` entry resolves at validate time but
+    # the canonical was never compiled (codegen only emitted
+    # ``class_<>`` for entries in ``discovered``), so the alias
+    # downgrade chain still terminates at "missing canonical". Each
+    # typedef-underlying NCollection is tagged with the typedef name as
+    # its source for reachability-filter scoping.
+    #
+    # Uses a SEPARATE libclang TU (``TypedefDiscoveryTuInfo``) that
+    # parses ``Deprecated/NCollectionAliases/*.hxx`` in addition to
+    # the main OCCT header set. The codegen ``tuInfo`` deliberately
+    # excludes those headers because they emit Deprecated-named
+    # binding stubs whose template args can reference forward-only
+    # declarations the bindgen never compiles
+    # (``IntRes2d_IntersectionSegment``, ``ChFiDS_Stripe``, …). Two
+    # disjoint TUs is the architecturally correct separation:
+    # codegen sees a "live" OCCT class surface, discovery sees the
+    # full alias map for validator-time resolution.
+    from ocjs_bindgen.ast import TypedefDiscoveryTuInfo
+    from filter.filterPackages import filterPackages
+    discovery_tu = TypedefDiscoveryTuInfo.instance()
+
+    def _type_is_reachable(arg_type, _depth: int = 0) -> bool:
+        """Recursively reject a template type whose declaring class (or
+        any nested template argument's declaring class) lives in a
+        package excluded by ``bindgen-filters.yaml``. The codegen TU
+        only ``#include``s headers from non-excluded packages, so a
+        ``using = NCollection_X<…, NCollection_List<TopOpeBRepBuild_*>, …>``
+        block would fail compile-bindings with "use of undeclared
+        identifier" — the type is reachable through libclang's parse
+        (Deprecated/NCollectionAliases headers transitively pull it in)
+        but absent from the compile unit (TopOpe* is filtered out for
+        binary size). Depth-cap of 8 matches ``_normalize_arg``'s
+        defensive bound against pathological cycles.
+
+        Resolves through ``os.path.realpath`` because OCCT headers
+        appear via the flat ``build/occt-includes/`` symlink farm; the
+        symlink target points back into the real
+        ``deps/OCCT/src/<Tier>/<TK>/<Package>/`` tree where the
+        per-package filter applies.
+        """
+        if _depth > 8:
+            return True
+        decl = arg_type.get_declaration()
+        if decl is not None and decl.location.file is not None:
+            real_path = os.path.realpath(decl.location.file.name)
+            pkg = os.path.basename(os.path.dirname(real_path))
+            if not filterPackages(pkg):
+                return False
+        try:
+            num_inner = arg_type.get_num_template_arguments()
+        except Exception:
+            num_inner = -1
+        if num_inner > 0:
+            for j in range(num_inner):
+                inner_t = arg_type.get_template_argument_type(j)
+                if not _type_is_reachable(inner_t, _depth + 1):
+                    return False
+        return True
+
+    for td in discovery_tu.templateTypedefs:
+        alias = (td.spelling or "").strip()
+        if not alias:
+            continue
+        try:
+            canonical = td.underlying_typedef_type.get_canonical()
+        except Exception:
+            continue
+        if canonical.kind not in (
+            clang.cindex.TypeKind.RECORD,
+            clang.cindex.TypeKind.UNEXPOSED,
+        ):
+            continue
+        decl = canonical.get_declaration()
+        if decl is None or decl.kind not in (
+            clang.cindex.CursorKind.CLASS_DECL,
+            clang.cindex.CursorKind.STRUCT_DECL,
+            clang.cindex.CursorKind.CLASS_TEMPLATE,
+            clang.cindex.CursorKind.CLASS_TEMPLATE_PARTIAL_SPECIALIZATION,
+        ):
+            continue
+        canonical_spelling = canonical.spelling
+        parsed = _parse_template_spelling(canonical_spelling)
+        if parsed is None:
+            continue
+        container, args = parsed
+        canonical_container = CONTAINER_ALIASES.get(container, container)
+        if canonical_container not in NCOLLECTION_CONTAINERS:
+            continue
+        # Reject if any template arg references a type in an excluded
+        # package (see _type_is_reachable docstring for the OCCT V8
+        # TopOpe* / HeaderSection / Deprecated-package scenario).
+        try:
+            num_args = canonical.get_num_template_arguments()
+            arg_types = [canonical.get_template_argument_type(i) for i in range(num_args)]
+        except Exception:
+            arg_types = []
+        if arg_types and not all(_type_is_reachable(t) for t in arg_types):
+            continue
+        # Reject if any template arg is a pointer (e.g.
+        # ``NCollection_Sequence<void *>`` or
+        # ``NCollection_DataMap<TopoDS_Shape, TNaming_RefShape *, …>``).
+        # Embind cannot register pointer-instantiated NCollections —
+        # ``emscripten::val::as<const void * &>`` substitutes-fail and
+        # the per-arity ``select_overload<Sig, Class>`` template
+        # rejects ``Class = NCollection_*<… *, …>`` shapes. The
+        # main-pass ``_scan_type_for_ncollection`` already filters
+        # pointer template args (line ~151); the typedef-alias pass
+        # mirrors that filter so deprecated aliases never sneak past
+        # the package-reachability gate.
+        pointer_arg = False
+        for at in arg_types:
+            canonical_at = at.get_canonical()
+            if canonical_at.kind == clang.cindex.TypeKind.POINTER:
+                pointer_arg = True
+                break
+        if pointer_arg:
+            continue
+        mangled = mangle_template_name(canonical_container, args)
+        if mangled is None or mangled in _BUILTIN_BIND_CONFLICTS:
+            continue
+        needed.add((mangled, canonical_container, tuple(args), source_override or alias))
+
     augmented = set()
     for mangled_name, container, arg_spellings, source_class in needed:
         if mangled_name in _BUILTIN_BIND_CONFLICTS:
@@ -462,21 +588,130 @@ def generate_using_declarations(discovered):
     return "\n".join(sorted(lines))
 
 
-def write_manifest(discovered, build_dir):
+NCOLLECTION_MANIFEST_SCHEMA = "ncollection-manifest-v2"
+
+
+def _parse_template_spelling(spelling):
+    """Parse `Container<arg1, arg2>` spellings into `(container, args)`.
+
+    Comma-splits at the top angle-bracket depth so nested templates
+    (`NCollection_DataMap<X, NCollection_List<Y>, Hasher>`) survive. Returns
+    `None` for anything that doesn't have a `<...>` suffix at all.
+    """
+    spelling = spelling.strip()
+    lt = spelling.find("<")
+    if lt < 0 or not spelling.endswith(">"):
+        return None
+    container = spelling[:lt].strip()
+    inner = spelling[lt + 1 : -1].strip()
+    args = []
+    depth = 0
+    current = []
+    for ch in inner:
+        if ch == "<":
+            depth += 1
+            current.append(ch)
+        elif ch == ">":
+            depth -= 1
+            current.append(ch)
+        elif ch == "," and depth == 0:
+            args.append("".join(current).strip())
+            current = []
+        else:
+            current.append(ch)
+    if current:
+        args.append("".join(current).strip())
+    return container, args
+
+
+def _serialise_template_typedef_aliases(tuInfo, discovered):
+    """Build the `{alias_name: canonical_mangled}` map serialised into the
+    manifest's `template_typedefs` field — the producer side of the link-time
+    typedef-alias resolution contract V1/V3 enforces.
+
+    Walks a discovery-only TU's ``templateTypedefs`` (which ALSO sees
+    ``Deprecated/NCollectionAliases/*.hxx`` for OCCT V8 historic
+    forwarders like ``TColgp_Array1OfPnt``), resolves each underlying
+    spelling through `_normalize_arg` (handles multi-step chains
+    `using A = B; using B = NCollection_X<Y>;`), parses into
+    `(container, args)` via `_parse_template_spelling`, normalises the
+    container through `CONTAINER_ALIASES` (so `NCollection_Vector`
+    aliases fold into the canonical `NCollection_DynamicArray`), then
+    mangles via `mangle_template_name`.
+
+    **Filter:** only emit entries whose canonical mangled IS present in
+    the `discovered` set. An alias whose canonical wasn't discovered
+    cannot be satisfied at link time; emitting it would re-introduce
+    the false-positive class the audit was created to fix.
+
+    ``tuInfo`` is kept on the signature for API symmetry, but the
+    typedef walk uses :class:`TypedefDiscoveryTuInfo` so the
+    deprecated-alias headers are visible to libclang during the
+    typedef collection — without that, OCCT V8's historic aliases
+    (``TColgp_Array1OfPnt``, ``TopTools_ListOfShape``, …) never
+    appear in the manifest and validator-time resolution falls
+    through to ``truly_missing``.
+    """
+    from ocjs_bindgen.ast import TypedefDiscoveryTuInfo
+    discovered_mangled = {entry[0] for entry in discovered}
+    # Pick whichever TU exposes more typedefs — discovery TU in
+    # production (parses Deprecated/NCollectionAliases for OCCT V8
+    # historic aliases), the test's mock tuInfo in unit tests
+    # (which never instantiates the real discovery TU).
+    discovery_tu = TypedefDiscoveryTuInfo.instance()
+    tu_typedefs = list(getattr(tuInfo, "templateTypedefs", []) or [])
+    discovery_typedefs = list(getattr(discovery_tu, "templateTypedefs", []) or [])
+    typedef_source = discovery_tu if len(discovery_typedefs) >= len(tu_typedefs) else tuInfo
+    alias_map = _build_typedef_alias_map(typedef_source)
+    out = {}
+    for alias, underlying in alias_map.items():
+        normalized = _normalize_arg(underlying, alias_map)
+        parsed = _parse_template_spelling(normalized)
+        if parsed is None:
+            continue
+        container, args = parsed
+        container = CONTAINER_ALIASES.get(container, container)
+        mangled = mangle_template_name(container, args)
+        if mangled is None:
+            continue
+        if mangled in discovered_mangled:
+            out[alias] = mangled
+    return out
+
+
+def write_manifest(discovered, build_dir, tuInfo=None):
     """Write the NCollection manifest JSON for the link step.
 
-    Every declaration carries `source_classes: list[str]` (sorted,
-    deduped) listing the bound class names whose method/field signatures
-    caused the NCollection to be discovered. The link step reads this to
-    intersect against the consumer YAML's reachable class scope; entries
-    with empty intersection are dropped from the per-YAML link command.
+    Schema (v2):
+
+    - ``schema``: ``"ncollection-manifest-v2"`` — discriminator consumed by
+      ``manifest_registry.load_ncollection_alias_index``; pre-v2 manifests
+      are rejected hard-fail.
+    - ``symbols``: sorted list of every canonical mangled NCollection name.
+    - ``declarations``: per-entry metadata with ``source_classes`` (the list
+      of bound class names whose method/field signatures caused the
+      NCollection to be discovered — a **reachability tag**, NOT an alias
+      list; consumed by ``_filter_auto_symbols_by_scope``).
+    - ``template_typedefs``: ``{alias_name: canonical_mangled}`` — the
+      producer-side typedef alias map (e.g. ``TColgp_Array1OfPnt ->
+      NCollection_Array1_gp_Pnt``), serialised from ``tuInfo.templateTypedefs``
+      via ``_serialise_template_typedef_aliases``. Pre-v2 callers had to
+      consult this in-process; v2 makes it a first-class manifest field so
+      both ``yaml_build.verifyBindings`` and ``scripts/validate-build.py``
+      can resolve typedef aliases identically (the V1 contract).
+
+    Passing ``tuInfo=None`` is allowed only for callers that don't need the
+    typedef map (legacy paths); the field is then emitted as ``{}`` and
+    downstream consumers hard-fail with a regenerate-pointer error. Every
+    pipeline entry point should pass ``tuInfo``.
     """
     manifest = {
+        "schema": NCOLLECTION_MANIFEST_SCHEMA,
         "symbols": sorted(entry[0] for entry in discovered),
         "declarations": [],
+        "template_typedefs": {},
     }
     for entry in sorted(discovered):
-        # Entries are 4-tuples: (mangled, container, args, sources).
         mangled, container, args, sources = entry
         manifest["declarations"].append({
             "mangled_name": mangled,
@@ -484,9 +719,24 @@ def write_manifest(discovered, build_dir):
             "args": list(args),
             "source_classes": list(sources),
         })
+    if tuInfo is not None:
+        typedef_aliases = _serialise_template_typedef_aliases(tuInfo, discovered)
+        manifest["template_typedefs"] = dict(sorted(typedef_aliases.items()))
+        # Diagnostic: surface the producer-side counts so silent drops
+        # (e.g. headers unparseable in this env) are visible in the
+        # generate log without having to instrument downstream.
+        print(
+            f"  template_typedefs producer: {len(tuInfo.templateTypedefs)} typedefs in TU, "
+            f"{len(typedef_aliases)} kept (alias→canonical resolution)"
+        )
     os.makedirs(build_dir, exist_ok=True)
     manifest_path = os.path.join(build_dir, "ncollection-manifest.json")
     with open(manifest_path, "w") as f:
         json.dump(manifest, f, indent=2)
-    print(f"NCollection manifest: {len(discovered)} types -> {manifest_path}", flush=True)
+    typedef_count = len(manifest["template_typedefs"])
+    print(
+        f"NCollection manifest: {len(discovered)} types, "
+        f"{typedef_count} typedef alias(es) -> {manifest_path}",
+        flush=True,
+    )
     return manifest_path

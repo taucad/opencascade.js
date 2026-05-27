@@ -171,8 +171,8 @@ def _output_basename(child) -> str:
   """Filename stem for a generated binding fragment.
 
   Aligns with the JS public name emitted by `bindings.py` so the verifier
-  in `buildFromYaml._collect_compiled_symbols` (which strips `.cpp.o` from
-  the basename and uses it as the symbol key) can match YAML entries like
+  in `manifest_registry.collect_compiled_symbols` (which strips `.cpp.o`
+  from the basename and uses it as the symbol key) can match YAML entries like
   `ExtremaPC_Status` against namespace-scoped declarations whose bare
   `child.spelling` is just `Status`. Top-level types fall through to the
   bare spelling for backward-compatible filenames.
@@ -435,6 +435,14 @@ def typescriptGenerationFuncClasses(tuInfo: TuInfo, preamble, child) -> str:
     "kind": "class",
     "exports": sorted(typescript.exports),
     "ancestors": typescript.ancestorChains,
+    # R1 (W10 structural fix) — every C++ class identifier the resolver
+    # attempted to emit (whether or not it resolved to a known export) is
+    # serialised here so `link/yaml_build.py:_compute_yaml_class_scope`
+    # can lift cross-class references into the next link's scope.
+    # Replaces the legacy `_NCOLLECTION_TOKEN_RE` regex scrape of the
+    # rendered `.d.ts` payload — the codegen layer holds the structured
+    # truth one function call before serialisation.
+    "referenced_classes": sorted(typescript.referenced_classes),
   })
 
 def typescriptGenerationFuncTemplates(tuInfo: TuInfo, preamble, child) -> str:
@@ -447,6 +455,8 @@ def typescriptGenerationFuncTemplates(tuInfo: TuInfo, preamble, child) -> str:
     "kind": "class",
     "exports": sorted(typescript.exports),
     "ancestors": typescript.ancestorChains,
+    # R1 (W10 structural fix) — see `typescriptGenerationFuncClasses`.
+    "referenced_classes": sorted(typescript.referenced_classes),
   })
 
 def typescriptGenerationFuncEnums(tuInfo: TuInfo, preamble, child) -> str:
@@ -552,7 +562,7 @@ if __name__ == "__main__":
   discovered = discover_ncollection_types(scan_tuInfo, filterClasses)
   using_decls = generate_using_declarations(discovered)
   if discovered:
-    write_manifest(discovered, BUILD_DIR)
+    write_manifest(discovered, BUILD_DIR, tuInfo=scan_tuInfo)
 
   # Phase 2: Re-parse with using declarations
   tuInfo = TuInfo(using_decls)

@@ -46,14 +46,6 @@
         "type": "string",
         "default": "",
       },
-      "allowedUndefinedSymbols": {
-        "required": False,
-        "type": "list",
-        "schema": {
-          "type": "string",
-        },
-        "default": [],
-      },
     },
   },
   "extraBuilds": {
@@ -98,14 +90,6 @@
         "required": False,
         "type": "string",
         "default": "",
-      },
-      "allowedUndefinedSymbols": {
-        "required": False,
-        "type": "list",
-        "schema": {
-          "type": "string",
-        },
-        "default": [],
       },
       "name": {
         "required": True,

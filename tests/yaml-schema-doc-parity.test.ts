@@ -80,67 +80,68 @@ const REQUIRED_DOCUMENTED_KEYS = [
   'additionalCppCode',
   'additionalCppFiles',
   'mainBuild.additionalBindCode',
-  'mainBuild.allowedUndefinedSymbols',
   'generateTypescriptDefinitions',
 ] as const;
 
 // Keys that have a dedicated H2/H3 heading in `yaml-schema.md`. Validates that
 // the doc structure (not just inline mention) carries the high-traffic keys.
-const REQUIRED_HEADING_KEYS = [
-  'additionalCppCode',
-  'additionalCppFiles',
-  'mainBuild.additionalBindCode',
-  'mainBuild.allowedUndefinedSymbols',
-] as const;
+const REQUIRED_HEADING_KEYS = ['additionalCppCode', 'additionalCppFiles', 'mainBuild.additionalBindCode'] as const;
+
+// Section headings introduced by V11 of the validation-manifest plan. Both the
+// markdown reference and the docs-site mdx mirror these — the manifest-
+// registry / producer-contract documentation must stay discoverable by
+// heading lookup so future surface changes notice the doc requirement.
+const REQUIRED_FREEFORM_HEADINGS = ['Symbol resolution classes', 'Producer-side manifest contract'] as const;
+
+const MDX_PATH = path.join(REPO_ROOT, 'docs-site', 'content', 'docs', 'toolchain', 'reference', 'yaml-schema.mdx');
 
 describe('customBuildSchema.py ↔ docs/reference/yaml-schema.md parity', () => {
   it('extracts the canonical top-level, mainBuild, and extraBuilds keys from the Python AST', () => {
     const extracted = extractSchemaKeys(SCHEMA_PATH);
     expect(extracted.top.sort()).toEqual(
-      [
-        'additionalCppCode',
-        'additionalCppFiles',
-        'extraBuilds',
-        'generateTypescriptDefinitions',
-        'mainBuild',
-      ].sort(),
+      ['additionalCppCode', 'additionalCppFiles', 'extraBuilds', 'generateTypescriptDefinitions', 'mainBuild'].sort(),
     );
-    expect(extracted.mainBuild.sort()).toEqual(
-      ['additionalBindCode', 'allowedUndefinedSymbols', 'bindings', 'emccFlags', 'name'].sort(),
-    );
-    expect(extracted.extraBuilds.sort()).toEqual(
-      [
-        'additionalBindCode',
-        'allowedUndefinedSymbols',
-        'bindings',
-        'emccFlags',
-        'name',
-      ].sort(),
-    );
+    expect(extracted.mainBuild.sort()).toEqual(['additionalBindCode', 'bindings', 'emccFlags', 'name'].sort());
+    expect(extracted.extraBuilds.sort()).toEqual(['additionalBindCode', 'bindings', 'emccFlags', 'name'].sort());
   });
 
-  it.each(REQUIRED_DOCUMENTED_KEYS)(
-    'documents the %s key in docs/reference/yaml-schema.md',
-    (key) => {
-      const doc = READ_DOC();
-      expect(
-        doc.includes(key),
-        `Key "${key}" is in customBuildSchema.py but is not mentioned anywhere in docs/reference/yaml-schema.md. Add a section describing this key.`,
-      ).toBe(true);
-    },
-  );
+  it.each(REQUIRED_DOCUMENTED_KEYS)('documents the %s key in docs/reference/yaml-schema.md', (key) => {
+    const doc = READ_DOC();
+    expect(
+      doc.includes(key),
+      `Key "${key}" is in customBuildSchema.py but is not mentioned anywhere in docs/reference/yaml-schema.md. Add a section describing this key.`,
+    ).toBe(true);
+  });
 
   it.each(REQUIRED_HEADING_KEYS)(
     'has a dedicated H2/H3 heading for the %s key in docs/reference/yaml-schema.md',
     (key) => {
       const doc = READ_DOC();
-      const headingRe = new RegExp(
-        `^#{2,3}\\s+${key.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&')}\\b`,
-        'm',
-      );
+      const headingRe = new RegExp(`^#{2,3}\\s+${key.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&')}\\b`, 'm');
       expect(
         headingRe.test(doc),
         `Key "${key}" needs a dedicated "## ${key}" or "### ${key}" heading in docs/reference/yaml-schema.md but none was found.`,
+      ).toBe(true);
+    },
+  );
+
+  it.each(REQUIRED_FREEFORM_HEADINGS)('has a "## %s" heading in docs/reference/yaml-schema.md', (heading) => {
+    const doc = READ_DOC();
+    const headingRe = new RegExp(`^##\\s+${heading}\\s*$`, 'm');
+    expect(
+      headingRe.test(doc),
+      `Heading "## ${heading}" must appear in docs/reference/yaml-schema.md per V11 of the validation-manifest plan.`,
+    ).toBe(true);
+  });
+
+  it.each(REQUIRED_FREEFORM_HEADINGS)(
+    'has a "## %s" heading in docs-site/content/docs/toolchain/reference/yaml-schema.mdx',
+    (heading) => {
+      const mdx = fs.readFileSync(MDX_PATH, 'utf8');
+      const headingRe = new RegExp(`^##\\s+${heading}\\s*$`, 'm');
+      expect(
+        headingRe.test(mdx),
+        `Heading "## ${heading}" must appear in yaml-schema.mdx so the docs-site mirrors the markdown reference.`,
       ).toBe(true);
     },
   );
@@ -158,9 +159,8 @@ describe('customBuildSchema.py ↔ docs/reference/yaml-schema.md parity', () => 
     for (const key of extracted.extraBuilds) {
       if (!doc.includes(key)) missing.push(`extraBuilds[].${key}`);
     }
-    expect(
-      missing,
-      `Schema keys not mentioned in docs/reference/yaml-schema.md: ${missing.join(', ')}`,
-    ).toHaveLength(0);
+    expect(missing, `Schema keys not mentioned in docs/reference/yaml-schema.md: ${missing.join(', ')}`).toHaveLength(
+      0,
+    );
   });
 });

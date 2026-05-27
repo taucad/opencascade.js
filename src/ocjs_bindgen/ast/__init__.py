@@ -16,8 +16,8 @@ function unchanged via the `src/TuInfo.py` shim. Phase 1 PR 1.8 removes the
 shim once every caller has migrated.
 """
 
-from .cursors import TuInfo  # noqa: F401
-from .parse import parse  # noqa: F401
+from .cursors import TuInfo, TypedefDiscoveryTuInfo  # noqa: F401
+from .parse import parse, parse_with_deprecated_ncollection_aliases  # noqa: F401
 from .template_args import (  # noqa: F401
     TemplateArgMap,
     augment_template_args_with_canonical,

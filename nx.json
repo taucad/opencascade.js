@@ -38,6 +38,12 @@
     "linkScript": [
       "{projectRoot}/src/ocjs_bindgen/link/**/*.py",
       "{projectRoot}/src/ocjs_bindgen/config/**/*.py"
+    ],
+    "bindSymbolsScript": [
+      "{projectRoot}/src/ocjs_bindgen/bind_symbols/**/*.py",
+      "{projectRoot}/src/ocjs_bindgen/embind_builtins.py",
+      "{projectRoot}/src/ocjs_bindgen/ast/**/*",
+      "{projectRoot}/src/ocjs_bindgen/config/**/*.py"
     ]
   }
 }

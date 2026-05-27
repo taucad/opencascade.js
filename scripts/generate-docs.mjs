@@ -387,16 +387,47 @@ async function main() {
     0,
   );
 
-  // Manifest "extras" represent NCollection auto-discovered template
-  // instantiations that DON'T have a separate .d.ts.json (they're folded into
-  // the consolidated dist/.d.ts). Surface their count for the welcome page.
+  // V7 — NCollection auto-linked count for the welcome page sources
+  // from the provenance sidecar's `nCollectionManifest.linked` field
+  // (written by `yaml_build.main` via `provenance.add_linking` after
+  // `_filter_auto_symbols_by_scope`). The link stage is the only
+  // entity that knows the real auto-linked set; reconstructing it
+  // post-hoc from `compiled - requested` arithmetic was wrong (it
+  // counted `extra_compiled`, not auto-linked NCollections — see
+  // audit C7) so that fallback is gone.
+  //
+  // Hard-fail when the sidecar is missing OR lacks the field. Stale
+  // artifacts are stale by definition; rendering them with degraded
+  // math produces docs whose numbers contradict the build that
+  // produced them, which is strictly worse than a clear error message
+  // pointing at the regenerate command.
   const compiledTotal =
     typeof manifest?.symbols?.compiled === 'number' ? manifest.symbols.compiled : null;
   const requestedTotal = Array.isArray(manifest?.symbols?.requested)
     ? manifest.symbols.requested.length
     : null;
-  const ncollectionExtras =
-    compiledTotal != null && requestedTotal != null ? compiledTotal - requestedTotal : null;
+  const provPath = MANIFEST_PATH.replace(/\.build-manifest\.json$/, '.provenance.json');
+  let provenanceJson = null;
+  try {
+    provenanceJson = JSON.parse(await fs.readFile(provPath, 'utf8'));
+  } catch (err) {
+    throw new Error(
+      `[ocjs-docs] missing provenance sidecar at ${provPath} (${err.code ?? err.message}). ` +
+        `Regenerate the docs inputs with \`pnpm nx run ocjs:build\`. ` +
+        `No fallback to compiled-requested arithmetic — that math always counted ` +
+        `extra_compiled, not auto-linked NCollections (audit C7).`,
+    );
+  }
+  const ncoll = provenanceJson?.nCollectionManifest;
+  if (!ncoll || typeof ncoll.linked !== 'number' || typeof ncoll.total !== 'number') {
+    throw new Error(
+      `[ocjs-docs] provenance at ${provPath} lacks nCollectionManifest.{linked,total}. ` +
+        `This means the link stage was run with an older provenance schema ` +
+        `(< wasm-build-provenance-v1.1). Rebuild via \`pnpm nx run ocjs:build\`.`,
+    );
+  }
+  const ncollectionAutoLinked = ncoll.linked;
+  const ncollectionAutoTotal = ncoll.total;
 
   const index = {
     schema: 2,
@@ -410,7 +441,8 @@ async function main() {
           validation_passed: manifest.validation_passed === true,
           requested: requestedTotal,
           compiled: compiledTotal,
-          ncollection_auto: ncollectionExtras,
+          ncollection_auto: ncollectionAutoLinked,
+          ncollection_auto_total: ncollectionAutoTotal,
           occt_yaml: manifest.yaml_config ?? null,
           built_at: manifest.timestamp ?? null,
         }

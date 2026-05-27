@@ -17,6 +17,7 @@ from ocjs_bindgen.link.yaml_build import (
   _CUSTOM_CODE_SOURCE_TAG,
   _compute_yaml_class_scope,
   _filter_auto_symbols_by_scope,
+  verifyBindings,
 )
 
 
@@ -25,8 +26,16 @@ from ocjs_bindgen.link.yaml_build import (
 # ----------------------------------------------------------------------------
 
 
-def _write_dts_fragment(library_base, package, stem, ancestors):
-  """Write a synthetic `.d.ts.json` fragment with the given ancestor chains."""
+def _write_dts_fragment(library_base, package, stem, ancestors, referenced_classes=None):
+  """Write a synthetic `.d.ts.json` fragment with the given ancestor chains.
+
+  R1 (W10 structural fix) — `referenced_classes` is the structurally
+  serialised set of every C++ class identifier the resolver attempted to
+  emit while rendering the fragment. The link-time scope computer lifts
+  it into the YAML scope so cross-class references converge on the next
+  link cycle. Defaults to ``None`` so the legacy fixtures keep working
+  without retrofitting every callsite.
+  """
   dirpath = os.path.join(library_base, "bindings", package)
   os.makedirs(dirpath, exist_ok=True)
   payload = {
@@ -35,6 +44,8 @@ def _write_dts_fragment(library_base, package, stem, ancestors):
     "exports": [stem],
     "ancestors": ancestors,
   }
+  if referenced_classes is not None:
+    payload["referenced_classes"] = sorted(referenced_classes)
   with open(os.path.join(dirpath, f"{stem}.d.ts.json"), "w") as f:
     json.dump(payload, f)
 
@@ -122,6 +133,60 @@ def test_scope_ignores_bindings_dir_when_absent(tmp_path) -> None:
   the scope falls back to direct bindings + sentinel only."""
   scope = _compute_yaml_class_scope(_build_config(["gp_Pnt"]), str(tmp_path))
   assert scope == {"gp_Pnt", _CUSTOM_CODE_SOURCE_TAG}
+
+
+def test_compute_yaml_class_scope_lifts_referenced_classes_field(tmp_path) -> None:
+  """R1 / W10 structural fix — the structurally-serialised
+  `referenced_classes` field on each in-scope fragment must be lifted into
+  scope, replacing the legacy `_NCOLLECTION_TOKEN_RE` regex scrape.
+
+  Smoking-gun assertion: `Geom_Plane` is neither an ancestor of
+  `Poly_Triangulation` nor an `NCollection_*` token, so the legacy regex
+  could never have lifted it; the structural lift via the `referenced_classes`
+  list MUST. This pins the contract that any C++ class identifier the
+  resolver attempted to emit lands in scope on the next link cycle.
+  """
+  _write_dts_fragment(
+    str(tmp_path),
+    "ModelingData/TKMath/Poly",
+    "Poly_Triangulation",
+    ancestors={"Poly_Triangulation": ["Standard_Transient"]},
+    referenced_classes=[
+      "Geom_Plane",
+      "NCollection_HArray1_gp_Pnt",
+      "TColgp_Array1OfPnt",
+    ],
+  )
+  scope = _compute_yaml_class_scope(
+    _build_config(["Poly_Triangulation"]), str(tmp_path)
+  )
+  assert "Geom_Plane" in scope, (
+    "structural referenced_classes lift regression: non-NCollection "
+    "non-ancestor identifier Geom_Plane must be lifted into scope "
+    "from the fragment's serialised referenced_classes list"
+  )
+  assert "NCollection_HArray1_gp_Pnt" in scope
+  assert "TColgp_Array1OfPnt" in scope
+  assert "Standard_Transient" in scope, (
+    "ancestor lift must keep working alongside the new structural lift"
+  )
+
+
+def test_compute_yaml_class_scope_tolerates_missing_referenced_classes(tmp_path) -> None:
+  """Backwards-compat: pre-R1 fragments (no `referenced_classes` key) must
+  not crash the link. The lift no-ops cleanly when the field is absent —
+  the rest of the scope (direct bindings, ancestor chains, custom sentinel)
+  is unaffected. Required so a partial rebuild against an older bindings
+  tree degrades gracefully instead of failing the link with a KeyError.
+  """
+  _write_dts_fragment(
+    str(tmp_path),
+    "FoundationClasses/TKMath/gp",
+    "gp_Pnt",
+    ancestors={"gp_Pnt": []},
+  )
+  scope = _compute_yaml_class_scope(_build_config(["gp_Pnt"]), str(tmp_path))
+  assert {"gp_Pnt", _CUSTOM_CODE_SOURCE_TAG} <= scope
 
 
 # ----------------------------------------------------------------------------
@@ -243,3 +308,160 @@ def test_filter_returns_empty_when_manifest_missing(tmp_path) -> None:
   assert _filter_auto_symbols_by_scope(
     os.path.join(str(tmp_path), "no-manifest.json"), {"gp_Pnt"}
   ) == set()
+
+
+# ----------------------------------------------------------------------------
+# R5 — `verifyBindings` demotion: alias-resolved missing-binding WARNING
+# should fire as INFO instead, with the canonical mangled name appended.
+# ----------------------------------------------------------------------------
+
+
+def _write_compiled_bindings_tree(tmp_path, compiled_symbols) -> str:
+  """Lay out a minimal `compiled-bindings/<sym>.cpp.o` tree the way
+  `manifest_registry.collect_compiled_symbols` expects. Returns the
+  libraryBasePath that `verifyBindings` accepts.
+  """
+  compiled_dir = os.path.join(str(tmp_path), "compiled-bindings")
+  os.makedirs(compiled_dir, exist_ok=True)
+  for sym in compiled_symbols:
+    # Touch a 0-byte `.cpp.o` so the walker counts the stem.
+    with open(os.path.join(compiled_dir, f"{sym}.cpp.o"), "wb"):
+      pass
+  return str(tmp_path)
+
+
+def _write_bind_symbols_manifest(tmp_path, symbols=()) -> None:
+  """Write a stub `additional-bind-symbols.json` next to `compiled-bindings/`.
+
+  V3 RE-SHIP made the bind-symbols stage a hard prerequisite for any
+  link/validate path — `builtin_binding_symbols` now raises
+  `ManifestSchemaError` when the file is missing. Tests that exercise
+  `verifyBindings` must therefore stand up a v1 manifest in their tmp
+  fixture even when the test itself doesn't care about builtin
+  registrations.
+  """
+  from ocjs_bindgen.link.manifest_registry import ADDITIONAL_BIND_SYMBOLS_SCHEMA
+
+  manifest_path = os.path.join(str(tmp_path), "additional-bind-symbols.json")
+  with open(manifest_path, "w") as f:
+    json.dump(
+      {
+        "schema": ADDITIONAL_BIND_SYMBOLS_SCHEMA,
+        "symbols": sorted(symbols),
+      },
+      f,
+    )
+
+
+def _write_ncollection_manifest(tmp_path, declarations) -> None:
+  """Write `ncollection-manifest.json` next to `compiled-bindings/` so
+  `manifest_registry.load_ncollection_alias_index` can build the
+  typedef-alias index.
+
+  V1 RE-SHIP: serialises the v2 schema with the explicit
+  ``template_typedefs`` alias map derived from each declaration's
+  ``source_classes``. Without the v2 discriminator,
+  ``load_ncollection_alias_index`` hard-fails.
+  """
+  from ocjs_bindgen.discover import NCOLLECTION_MANIFEST_SCHEMA
+
+  template_typedefs: dict[str, str] = {}
+  for decl in declarations:
+    mangled = decl["mangled_name"]
+    for alias in decl.get("source_classes", []):
+      template_typedefs[alias] = mangled
+
+  manifest_path = os.path.join(str(tmp_path), "ncollection-manifest.json")
+  with open(manifest_path, "w") as f:
+    json.dump(
+      {
+        "schema": NCOLLECTION_MANIFEST_SCHEMA,
+        "symbols": sorted(d["mangled_name"] for d in declarations),
+        "declarations": declarations,
+        "template_typedefs": dict(sorted(template_typedefs.items())),
+      },
+      f,
+    )
+
+
+def test_verify_bindings_demotes_alias_resolved_to_info(tmp_path, capsys) -> None:
+  """R5 — when a missing binding is an NCollection typedef alias whose
+  canonical mangled spelling IS compiled, `verifyBindings` must emit an
+  INFO line (not WARNING) so operators see the link-time alias
+  substitution without the warning stream blowing up.
+
+  Smoking-gun fixture: `TColgp_Array1OfPnt` is a typedef for
+  `NCollection_Array1<gp_Pnt>`; the manifest's `source_classes` field
+  records that mapping; the canonical `NCollection_Array1_gp_Pnt.cpp.o`
+  exists; the user's YAML asks for `TColgp_Array1OfPnt`. Verifier must
+  recognise this and not warn.
+  """
+  library_base = _write_compiled_bindings_tree(
+    tmp_path, ["NCollection_Array1_gp_Pnt", "gp_Pnt"]
+  )
+  _write_ncollection_manifest(
+    tmp_path,
+    [
+      {
+        "mangled_name": "NCollection_Array1_gp_Pnt",
+        "container": "NCollection_Array1",
+        "args": ["gp_Pnt"],
+        "source_classes": ["TColgp_Array1OfPnt"],
+      },
+    ],
+  )
+  _write_bind_symbols_manifest(tmp_path)
+  verifyBindings(
+    [{"symbol": "TColgp_Array1OfPnt"}, {"symbol": "gp_Pnt"}],
+    library_base,
+  )
+  captured = capsys.readouterr()
+  combined = captured.out + captured.err
+  assert "INFO" in combined
+  assert "alias-resolved" in combined
+  assert "TColgp_Array1OfPnt -> NCollection_Array1_gp_Pnt" in combined
+  # WARNING must NOT fire for the alias-resolved case — every missing
+  # binding either resolved via alias OR is truly missing, never both.
+  assert "WARNING" not in combined
+
+
+def test_verify_bindings_raises_for_truly_missing(tmp_path, capsys) -> None:
+  """V10 — when a missing binding has no canonical alias resolution and
+  no Embind builtin registration, `verifyBindings` must hard-fail
+  unconditionally. The earlier behaviour (WARNING + optional raise
+  gated by `OCJS_STRICT_VERIFY=1`) is gone: the env-var was a silent
+  CI regression vector and the alias/builtin filters now bucket every
+  legitimate false positive out of `truly_missing` by construction.
+  """
+  library_base = _write_compiled_bindings_tree(tmp_path, ["gp_Pnt"])
+  _write_ncollection_manifest(tmp_path, [])
+  _write_bind_symbols_manifest(tmp_path)
+  with pytest.raises(RuntimeError, match="SomeClass_That_Was_Never_Compiled"):
+    verifyBindings(
+      [{"symbol": "SomeClass_That_Was_Never_Compiled"}],
+      library_base,
+    )
+  captured = capsys.readouterr()
+  combined = captured.out + captured.err
+  assert "ERROR" in combined
+  assert "SomeClass_That_Was_Never_Compiled" in combined
+  # No alias resolution for this entry — INFO must NOT fire.
+  assert "alias-resolved" not in combined
+
+
+def test_verify_bindings_clean_input_emits_nothing(tmp_path, capsys) -> None:
+  """Sanity — every requested binding has a compiled `.o`; the verifier
+  is silent (no INFO, no WARNING). Pins the no-op contract so future
+  refactors don't accidentally chatter on clean builds.
+  """
+  library_base = _write_compiled_bindings_tree(
+    tmp_path, ["gp_Pnt", "TopoDS_Shape"]
+  )
+  _write_ncollection_manifest(tmp_path, [])
+  verifyBindings(
+    [{"symbol": "gp_Pnt"}, {"symbol": "TopoDS_Shape"}],
+    library_base,
+  )
+  captured = capsys.readouterr()
+  assert captured.out == ""
+  assert captured.err == ""

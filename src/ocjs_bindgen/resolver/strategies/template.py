@@ -56,6 +56,9 @@ def resolve_template_type(self, clang_type, templateDecl=None, templateArgs=None
                 or orig_decl.spelling in self._BOOLEAN_TYPES
             )
             if not is_primitive_typedef:
+                # R1 — record BEFORE the export filter so unresolved typedef
+                # aliases still seed the next link's scope.
+                self._record_referenced_class(orig_decl.spelling)
                 if orig_decl.spelling in self.exports:
                     return orig_decl.spelling
                 # Do NOT return a typedef name that isn't actually emitted as
@@ -114,6 +117,9 @@ def resolve_template_type(self, clang_type, templateDecl=None, templateArgs=None
     # Typedef names like `XCAFDoc_PartId` (alias for TCollection_AsciiString)
     # are NOT emitted, so returning them produces TS2304 dangling references.
     # Fall through to the canonical-fallback resolution path instead.
+    # R1 — record BEFORE the export filter so unresolved containers
+    # (e.g. NCollection_* aliases not yet bound) seed the next link.
+    self._record_referenced_class(container)
     if container in self.exports or container in TypescriptBindings._known_export_names:
         return container
 
@@ -121,9 +127,61 @@ def resolve_template_type(self, clang_type, templateDecl=None, templateArgs=None
     if stl_result is not None:
         return stl_result
 
-    typedef_name = self._find_typedef_for_container(container, t)
-    if typedef_name:
-        return typedef_name
+    # V1 RE-SHIP — compute and record the mangled NCollection spelling
+    # BEFORE the typedef-alias resolution path. The structural-lift
+    # consumer (`link/yaml_build.py::_compute_yaml_class_scope`)
+    # consumes `referenced_classes` straight from the fragment, and
+    # the YAML-scope filter
+    # (`link/yaml_build.py::_filter_auto_symbols_by_scope`) matches
+    # the manifest's `mangled_name` field against that set.
+    #
+    # The previous flow returned the typedef alias name early (line
+    # 132 below) and skipped the mangled-record loop entirely, so an
+    # in-scope class whose method signature referenced
+    # `XSAlgo_ShapeProcessor::ParameterMap` (a `using` for
+    # `NCollection_DataMap<TCollection_AsciiString, TCollection_AsciiString>`)
+    # would never seed
+    # `NCollection_DataMap_TCollection_AsciiString_TCollection_AsciiString`
+    # into `referenced_classes`. The lift then couldn't reach it
+    # through method signatures, the YAML-scope intersection dropped
+    # the manifest entry, and the link silently omitted the binding —
+    # the smoking gun of the May-2026 regression that
+    # `test_stepcaf_writer_keeps_shapefix_parameter_map` pins down.
+    # V1 RE-SHIP — seed `referenced_classes` with the manifest-aligned
+    # mangled spelling FIRST, derived from libclang's canonical type
+    # spelling. This mirrors `discover._parse_template_spelling` exactly
+    # so the mangled name we record matches `ncollection-manifest.json::
+    # symbols` byte-for-byte (manifest mangling reads the same
+    # canonical spelling — defaulted template params like
+    # NCollection_DataMap's 3rd `Hasher` arg are omitted by libclang
+    # when the source used the short form
+    # `NCollection_DataMap<AsciiString, AsciiString>`).
+    #
+    # Doing this BEFORE the all-args-resolved loop ensures the lift
+    # picks up the mangled even when one arg (typically the defaulted
+    # hasher in 3-param NCollection_DataMap / NCollection_IndexedDataMap)
+    # resolves to `any` and short-circuits the loop. Without this seed
+    # the YAML-scope filter would drop the manifest entry the moment a
+    # consumer method's signature recursed through an unresolvable arg
+    # — the exact smoking gun behind
+    # `test_stepcaf_writer_keeps_shapefix_parameter_map`.
+    mangled = None
+    try:
+        from ocjs_bindgen.discover import (
+            _parse_template_spelling,
+            mangle_template_name,
+        )
+        parsed = _parse_template_spelling(t.spelling) or _parse_template_spelling(
+            t.get_canonical().spelling
+        )
+        if parsed is not None:
+            _, canonical_args = parsed
+            candidate = mangle_template_name(container, canonical_args)
+            if candidate:
+                mangled = candidate
+                self._record_referenced_class(mangled)
+    except Exception:
+        mangled = None
 
     numArgs_resolve = t.get_num_template_arguments()
     if numArgs_resolve > 0:
@@ -142,9 +200,22 @@ def resolve_template_type(self, clang_type, templateDecl=None, templateArgs=None
                 break
             resolved_args.append(resolved_arg)
         if all_resolved and resolved_args:
-            mangled = container + "_" + "_".join(resolved_args)
-            if mangled in self.exports or mangled in TypescriptBindings._known_export_names:
-                return mangled
+            resolver_mangled = container + "_" + "_".join(resolved_args)
+            if resolver_mangled != mangled:
+                # Fallback path: resolver-side mangling differs from the
+                # canonical-spelling-based one (rare — happens when the
+                # canonical spelling carries qualifications libclang's
+                # arg-iteration form strips, e.g. `::` namespace prefixes).
+                self._record_referenced_class(resolver_mangled)
+                if mangled is None:
+                    mangled = resolver_mangled
+
+    typedef_name = self._find_typedef_for_container(container, t)
+    if typedef_name:
+        return typedef_name
+
+    if mangled and (mangled in self.exports or mangled in TypescriptBindings._known_export_names):
+        return mangled
 
     self._collect_any("unrecognized_template", t.spelling)
     return "any"

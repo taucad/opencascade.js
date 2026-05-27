@@ -99,7 +99,20 @@ def main() -> int:
     print(f"Refreshing baseline at {BASELINE_DIR.relative_to(REPO_ROOT)}/")
     _refresh_per_header()
     _refresh_full_tree()
-    _refresh_dist()
+    # V1 RE-SHIP — refresh dist_artifacts only when `opencascade_full.*`
+    # is reachable (i.e. the user just ran a `pnpm nx run ocjs:build`
+    # with `OCJS_YAML=build-configs/full.yml`). The replicad-driven
+    # validation path uses `replicad_single.*` which is the canonical
+    # smoke target post-RE-SHIP; the opencascade_full baselines are
+    # only meaningful when refreshed alongside a matching full build.
+    if all((_DIST / n).is_file() for n in _DIST_ARTIFACTS):
+        _refresh_dist()
+    else:
+        print(
+            "  dist: skipped — opencascade_full.* not present in dist/. "
+            "Run `OCJS_YAML=build-configs/full.yml pnpm nx run ocjs:build` "
+            "before refreshing dist baselines."
+        )
     print("Done. Review `git diff tests/sentinel/baseline/` and commit.")
     return 0
 

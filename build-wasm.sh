@@ -52,9 +52,10 @@ show_help() {
 Usage: ./build-wasm.sh <command> [options] [<yaml-config>]
 
 Commands:
-  full <yaml>           Full pipeline: apply-patches + pch + generate + bindings + sources + link
+  full <yaml>           Full pipeline: apply-patches + pch + generate + bindings + sources + bind-symbols + link
   apply-patches         Apply OCCT source patches (idempotent — all 4 OCCT patches + libembind patch are hard requirements)
   link <yaml>           Link only (reuses compiled .o files, fastest)
+  bind-symbols <yaml>   Extract Embind registrations to build/additional-bind-symbols.json (run before link)
   pch                   Rebuild flat includes + precompiled header
   generate              Generate binding .cpp files from OCCT headers
   bindings              Compile bindings only
@@ -256,10 +257,22 @@ for (( _i=0; _i<${#_prescan_args[@]}; _i++ )); do
   fi
 done
 
-# Default named configuration — matches what `project.json:link` used to inject
-# before Nx env overrides were removed, and what the shipped @taucad/opencascade.js
-# tarball is built with. Override by exporting OCJS_CONFIG=<name> or passing
-# --config <name>.
+# OCJS_CONFIG inheritance contract (R6 / W1 fix) — cached Nx subtasks
+# (`apply-patches`, `pch`, `generate`, `compile-bindings`, `compile-sources`,
+# `link`) all declare `{ "env": "OCJS_CONFIG" }` in their `inputs` so the
+# cache key bifurcates on the named configuration. That means a parent
+# `OCJS_CONFIG=multi-threaded nx run ocjs:link` will NOT reuse a
+# single-threaded `pch` cache entry. Within this script we simply
+# inherit whatever the parent process exported; the explicit `:-` default
+# only fires on direct CLI invocation, not on the Nx-driven path.
+#
+# To override:
+#   OCJS_CONFIG=multi-threaded ./build-wasm.sh link <yaml>
+#   ./build-wasm.sh --config multi-threaded link <yaml>
+#
+# To inspect:
+#   echo "$OCJS_CONFIG"   # current named configuration
+#   cat build-configs/configurations.json | jq 'keys'  # available configurations
 export OCJS_CONFIG="${OCJS_CONFIG:-single-threaded}"
 
 if [ -n "${OCJS_CONFIG:-}" ]; then
@@ -568,6 +581,27 @@ step_dts() {
   echo ""
 }
 
+step_bind_symbols() {
+  local yaml="$1"
+  if [ ! -f "$yaml" ]; then
+    echo "ERROR: YAML config not found: $yaml" >&2
+    exit 1
+  fi
+  local yaml_abs
+  yaml_abs="$(cd "$(dirname "$yaml")" && pwd)/$(basename "$yaml")"
+  echo "═══ Extracting Embind registration manifest from $yaml_abs ═══"
+  # Dedicated NX-graph stage between `generate` and `link` — writes
+  # `build/additional-bind-symbols.json` so the link-time `verifyBindings`
+  # consumer (and the post-link `validate-build.py` consumer) can both
+  # resolve Embind builtins without depending on the link stage having
+  # opened libclang first. NX `link.dependsOn` ordering enforces the
+  # producer/consumer contract; running this manually is fine too (e.g.
+  # for local diagnostics or smoke-test driven invocations).
+  PYTHONPATH="$OCJS_ROOT/src" "$OCJS_PYTHON" -m ocjs_bindgen.bind_symbols \
+    --build-dir "$BUILD_DIR" "$yaml_abs"
+  echo ""
+}
+
 step_link() {
   local yaml="$1"
   if [ ! -f "$yaml" ]; then
@@ -701,6 +735,7 @@ if [ $# -eq 0 ]; then
   echo "  bindings         Compile bindings only"
   echo "  sources          Compile OCCT sources only"
   echo "  dts <yaml>       Regenerate .d.ts only from existing fragments (no compile/link)"
+  echo "  bind-symbols <yaml> Extract Embind registrations -> build/additional-bind-symbols.json"
   echo "  link <yaml>      Link WASM binary from YAML config"
   echo "  full <yaml>      Full pipeline (apply-patches + pch + generate + bindings + sources + link)"
   echo "  clean-generated  Remove generated .d.ts.json and .cpp (handles symlinks)"
@@ -739,7 +774,7 @@ while [ $# -gt 0 ]; do
       YAML_CONFIG="$(cd "$(dirname "$1")" && pwd)/$(basename "$1")"
       shift
       ;;
-    dts|link|full|provenance)
+    dts|link|full|provenance|bind-symbols)
       COMMANDS+=("$1")
       shift
       if [ $# -eq 0 ]; then
@@ -774,7 +809,36 @@ for cmd in "${COMMANDS[@]}"; do
     bindings)  validate_build_flags && step_bindings ;;
     sources)   step_sources ;;
     dts)       step_dts "$YAML_CONFIG" ;;
-    link)      validate_build_flags && step_link "$YAML_CONFIG" ;;
+    bind-symbols) step_bind_symbols "$YAML_CONFIG" ;;
+    link)
+      # `link` must be self-contained when invoked as the Docker
+      # ENTRYPOINT — no separate `provenance`/`validate` runs precede
+      # it. `provenance.py init` seeds `build/provenance.json` so the
+      # `prov.add_linking(...)` call inside `step_link` (which guards
+      # on `_load()` returning a non-empty dict) actually records the
+      # link section; the end-of-script `finalize` then promotes the
+      # scratchpad to `<output>/<variant>.provenance.json`.
+      # `validate-build.py` writes the companion `<variant>.build-manifest.json`
+      # so CI smoke + downstream consumers (replicad, examples) can
+      # round-trip the build-flag fingerprint without reaching back
+      # into the build cache.
+      validate_build_flags
+      "$OCJS_PYTHON" "$OCJS_ROOT/src/provenance.py" init
+      # V3 RE-SHIP: extract Embind registrations into
+      # `build/additional-bind-symbols.json` BEFORE `step_link` runs the
+      # link-time `verifyBindings` consumer. NX's own dep-graph enforces
+      # this ordering when invoked via `nx run`; the shell entry mirrors
+      # the contract for direct `./build-wasm.sh link <yaml>` invocations
+      # so the producer never lags its consumer.
+      step_bind_symbols "$YAML_CONFIG"
+      step_link "$YAML_CONFIG"
+      echo "═══ Post-link validation ═══"
+      # V10 — unconditional hard-fail. Alias-resolved + builtin buckets
+      # absorb every historical false positive in validate-build.py; any
+      # surviving failure is a real link gap and must fail the wrapper.
+      "$OCJS_PYTHON" "$OCJS_ROOT/scripts/validate-build.py" "$YAML_CONFIG" "$OCJS_OUTPUT_DIR" --build-dir "$BUILD_DIR"
+      echo ""
+      ;;
     validate)
       echo "═══ Validating YAML config: $YAML_CONFIG ═══"
       "$OCJS_PYTHON" -c "
@@ -802,20 +866,43 @@ else:
       echo ""
       ;;
     provenance)
+      # V5 RE-SHIP — preserve the scratchpad written by the prior `link`
+      # subcommand. Calling `provenance.py init` here wiped the
+      # `linking{}`, `postProcessing{}`, and `nCollectionManifest{}`
+      # blocks `step_link` populates via `prov.add_linking(...)`; the
+      # subsequent `finalize` then promoted the *empty* scratchpad to
+      # `<dist>/<variant>.provenance.json`, dropping every link-time
+      # fact downstream consumers (audit doc V5/V9 contracts,
+      # `test_provenance_carries_ncollection_manifest_with_invariant`)
+      # depend on. The NX task graph guarantees `link` runs first
+      # (`provenance` `dependsOn: ["link"]`), so the scratchpad
+      # already exists when this subcommand fires — `init` only re-
+      # seeded for standalone CLI use, which we now serve by having
+      # `finalize` no-op cleanly when the scratchpad is absent.
       echo "═══ Generating build provenance ═══"
-      "$OCJS_PYTHON" src/provenance.py init
       "$OCJS_PYTHON" src/provenance.py finalize --wasm-dir "$OCJS_OUTPUT_DIR" --yaml "${YAML_CONFIG:-}" --duration 0
       echo ""
       ;;
     full)
+      # Same self-contained-`init` contract as `link` (see comment
+      # there). Without it, `prov.add_linking(...)` inside `step_link`
+      # silently no-ops and the end-of-script `finalize` writes
+      # nothing — published artefacts only had a `.provenance.json`
+      # because the host NX pipeline ran the `provenance` subcommand
+      # in a separate invocation beforehand.
+      "$OCJS_PYTHON" "$OCJS_ROOT/src/provenance.py" init
       step_apply_patches
       step_pch
       step_generate
       step_bindings
       step_sources_cmake
+      # Same producer-before-consumer contract as the `link` subcommand —
+      # see comment there for full rationale.
+      step_bind_symbols "$YAML_CONFIG"
       step_link "$YAML_CONFIG"
       echo "═══ Post-build validation ═══"
-      "$OCJS_PYTHON" "$OCJS_ROOT/scripts/validate-build.py" "$YAML_CONFIG" "$OCJS_OUTPUT_DIR" --build-dir "$BUILD_DIR" || true
+      # V10 — unconditional hard-fail. See `link` subcommand for rationale.
+      "$OCJS_PYTHON" "$OCJS_ROOT/scripts/validate-build.py" "$YAML_CONFIG" "$OCJS_OUTPUT_DIR" --build-dir "$BUILD_DIR"
       echo ""
       ;;
   esac
@@ -825,9 +912,19 @@ END_TIME=$(date +%s)
 ELAPSED=$((END_TIME - START_TIME))
 
 # ── Finalize provenance ──────────────────────────────────────────────
+#
+# Promotes the `build/provenance.json` scratchpad seeded by `init` (in
+# either `link` or `full`) and updated by `step_link` (`add_linking`)
+# into `<output>/<variant>.provenance.json`. Stderr is no longer
+# suppressed — when finalize fails (missing scratchpad, unwritable
+# output dir, etc.) it now surfaces instead of silently dropping the
+# artefact and tripping the CI smoke `Assert smoke artefacts present`
+# step later. `|| true` is retained so non-YAML-driven commands
+# (`pch`, `apply-patches`, `bindings`) that legitimately have nothing
+# to finalize don't fail the wrapper.
 
 if [ -n "$YAML_CONFIG" ]; then
-  "$OCJS_PYTHON" src/provenance.py finalize --wasm-dir "$OCJS_OUTPUT_DIR" --yaml "$YAML_CONFIG" --duration "$ELAPSED" 2>/dev/null || true
+  "$OCJS_PYTHON" src/provenance.py finalize --wasm-dir "$OCJS_OUTPUT_DIR" --yaml "$YAML_CONFIG" --duration "$ELAPSED" || true
 fi
 
 echo ""

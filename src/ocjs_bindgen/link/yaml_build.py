@@ -15,6 +15,12 @@ from cerberus import Validator
 from argparse import ArgumentParser
 from ocjs_bindgen.config.paths import OCJS_ROOT, BUILD_DIR, getFlatIncludePaths, PCH_FILE
 from ocjs_bindgen.config.flags import WASM_EXCEPTION_FLAGS, USE_WASM_EXCEPTIONS, SIMD_FLAGS, EXTRA_COMPILE_FLAGS, validate_build_flags, BuildFlagMismatch
+from ocjs_bindgen.link.manifest_registry import (
+  builtin_binding_symbols as _builtin_binding_symbols,
+  collect_compiled_symbols as _collect_compiled_symbols,
+  load_ncollection_alias_index as _load_ncollection_alias_index,
+  resolve_requested_symbols as _resolve_requested_symbols,
+)
 from filter.filterPackages import filterPackages
 try:
     import provenance as prov
@@ -22,6 +28,18 @@ except ImportError:
     prov = None
 
 _yaml_config_hash = ""
+
+# Populated by `main()` immediately after `_filter_auto_symbols_by_scope`
+# finishes. `runBuild::prov.add_linking(...)` reads these so the
+# per-variant provenance sidecar carries the NCollection auto-discovery
+# linked/total/dropped triple. Module-level (not threaded through
+# runBuild kwargs) because the link stage already shares this module's
+# global state — `_yaml_config_hash` follows the same pattern.
+_ncollection_link_stats: dict[str, int] = {
+  "linked": 0,
+  "total": 0,
+  "dropped": 0,
+}
 
 # Strict-types gate — when the link-time `.d.ts` post-processor rewrites any
 # method signature to bare `unknown` (because a referenced class is reachable
@@ -139,9 +157,11 @@ def _enforce_strict_types_gate(
       flush=True,
     )
     print(
-      "  Action: extend `_compute_yaml_class_scope` in "
-      "ocjs_bindgen.link.yaml_build to include every class referenced by an "
-      "in-scope class's method signatures.",
+      "  Action: ensure `TypescriptBindings.resolve_type` records the "
+      "missing class identifier into `referenced_classes` "
+      "(see ocjs_bindgen.codegen.bindings + ocjs_bindgen.resolver.strategies) "
+      "so the structural lift in `_compute_yaml_class_scope` picks it up "
+      "on the next link cycle.",
       file=sys.stderr,
       flush=True,
     )
@@ -152,38 +172,27 @@ def _enforce_strict_types_gate(
     f"detected {rewrites_to_unknown} method signatures whose types were "
     f"rewritten to bare 'unknown', and {len(unbound)} unbound class "
     "references collected during link-time codegen. This is the silent "
-    "failure mode where the NCollection link-time filter excludes a "
+    "failure mode where the link-time filter excludes a "
     "class that is genuinely reachable through an in-scope class's method "
     "signature, and the d.ts post-processor neutralises the dangling "
     "reference to keep TS valid — leaving consumers with TypeScript that "
     "compiles cleanly but crashes at runtime.\n"
     "\n"
-    "Action: extend `_compute_yaml_class_scope` in "
-    "ocjs_bindgen.link.yaml_build to include every class referenced by an "
-    "in-scope class's method signatures, then re-run. The most common cause "
-    "is a NCollection mangled name (e.g. NCollection_HArray1_gp_Pnt) "
-    "appearing in the d.ts of an in-scope class but missing from the YAML "
-    "scope's method-signature lift pass; the existing _NCOLLECTION_TOKEN_RE "
-    "lift covers NCollection_ types but other reachable class families may "
-    "need the same treatment. Set OCJS_STRICT_TYPES=0 (or unset it, which "
-    "is the new default) to demote this failure to a warning for "
-    "diagnostic non-shipping builds only — DO NOT ship the resulting "
+    "Action: ensure `TypescriptBindings.resolve_type` records the missing "
+    "class identifier into `referenced_classes` (see "
+    "ocjs_bindgen.codegen.bindings + ocjs_bindgen.resolver.strategies) "
+    "so the structural lift in `_compute_yaml_class_scope` "
+    "(ocjs_bindgen.link.yaml_build) picks it up on the next link cycle, "
+    "then re-run. The most common cause is a freshly-introduced resolver "
+    "code path that emits a C++ class spelling without routing it through "
+    "`_record_referenced_class` — every emission point in "
+    "`resolver.strategies.{fallback,template}` already does this; mirror "
+    "the pattern in any new strategy. Set OCJS_STRICT_TYPES=0 (or unset "
+    "it, which is the new default) to demote this failure to a warning "
+    "for diagnostic non-shipping builds only — DO NOT ship the resulting "
     "artifacts to consumers."
   )
 
-
-# Identifier-bounded regex used by `_compute_yaml_class_scope` to lift NCollection
-# mentions out of in-scope class fragments' TypeScript signatures. Token must
-# start with `NCollection_` on a word boundary and contain only word characters;
-# matches stop at template angle brackets, parentheses, whitespace, or
-# punctuation. The trailing `\b` allows the existing mangled spellings like
-# `NCollection_DataMap_TCollection_AsciiString_TCollection_AsciiString` to be
-# captured wholesale, including the auto-discovered nested forms
-# (`NCollection_Array1_NCollection_Vec3_float`) — both shapes appear verbatim
-# in the d.ts fragments and both are valid manifest mangled_name values that
-# the link-time NCollection filter must keep when reachable through a
-# method signature.
-_NCOLLECTION_TOKEN_RE = re.compile(r"\bNCollection_[A-Za-z0-9_]+\b")
 
 # PR 2.6 — link rewriter pipeline lives in ocjs_bindgen.link.rewrite.
 # Re-export the legacy entry point so the merge driver below keeps its
@@ -204,135 +213,88 @@ from ocjs_bindgen.link.rewrite import (  # noqa: E402
 # preamble, every binding that references `::ocjs::getRbvDispose()` fails to
 # compile with "no member named 'ocjs' in the global namespace" and the
 # linker dead-code-eliminates the EM_JS symbol from the final JS glue.
-OCJS_RBV_PREAMBLE = r"""
-#include <emscripten/val.h>
-
-extern "C" void ocjs_register_rbv_dispose();
-
-namespace ocjs {
-  // Magic-static + cached val: registration runs exactly once per TU on first
-  // call, after the emscripten runtime is up. Subsequent calls return the
-  // cached val handle directly — no JS<->WASM crossings per RBV call.
-  // `ocjs_register_rbv_dispose` is idempotent (assigns to Module), so multiple
-  // TU-local registrations are safe.
-  inline ::emscripten::val getRbvDispose() {
-    static const auto _init = []() { ocjs_register_rbv_dispose(); return 0; }();
-    (void)_init;
-    static ::emscripten::val cached = ::emscripten::val::module_property("__ocjsRbvDispose__");
-    return cached;
-  }
-  inline ::emscripten::val getSymbolDispose() {
-    static ::emscripten::val cached = ::emscripten::val::global("Symbol")["dispose"];
-    return cached;
-  }
-}
-"""
-
-BUILTIN_ADDITIONAL_BIND_CODE = r"""
-#include <TopoDS.hxx>
-#include <TopoDS_Vertex.hxx>
-#include <TopoDS_Edge.hxx>
-#include <TopoDS_Wire.hxx>
-#include <TopoDS_Face.hxx>
-#include <TopoDS_Shell.hxx>
-#include <TopoDS_Solid.hxx>
-#include <TopoDS_CompSolid.hxx>
-#include <TopoDS_Compound.hxx>
-#include <TColStd_IndexedDataMapOfStringString.hxx>
-#include <Standard_Failure.hxx>
-#include <emscripten/em_js.h>
-""" + OCJS_RBV_PREAMBLE + r"""
-
-// Shared disposer for val::object() RBV containers. Authored via EM_JS so the
-// JS body is emitted at link time (CSP-strict / -sDYNAMIC_EXECUTION=0 compatible).
-// The disposer is UNBOUND — `using` invokes it as a method call so `this` is
-// naturally the container, sidestepping the V8 13.6 Function.prototype.bind
-// `using` rejection.
-//
-// Idempotency and alias-safety: Embind retains the `.delete` method on the
-// prototype after the underlying instance is destroyed, so a naïve
-// `typeof v.delete === 'function'` guard does NOT prevent a second call from
-// throwing `BindingError: <T> instance already deleted`. Two cases hit this
-// in practice: (a) a caller invokes `result[Symbol.dispose]()` manually and
-// then `using` re-disposes at scope exit; (b) Input-Passthrough RBV legitimately
-// produces aliased handles across sibling containers that disposed earlier.
-// We make the disposer truly one-shot by (1) swallowing a redundant `.delete()`
-// throw and (2) clearing the slot via `this[k] = undefined` so subsequent
-// iterations find nothing to delete.
-EM_JS(void, ocjs_register_rbv_dispose, (), {
-  Module["__ocjsRbvDispose__"] = function () {
-    for (const k in this) {
-      if (Object.prototype.hasOwnProperty.call(this, k)) {
-        const v = this[k];
-        if (v && typeof v.delete === 'function') {
-          try { v.delete(); } catch {}
-          this[k] = undefined;
-        }
-      }
-    }
-  };
-});
-
-struct TopoDS_Bind_ {};
-class OCJS {
-public:
-  static Standard_Failure* getStandard_FailureData(intptr_t exceptionPtr) {
-    return reinterpret_cast<Standard_Failure*>(exceptionPtr);
-  }
-  static bool exceptionsEnabled() {
-#ifdef OCJS_EXCEPTIONS_ENABLED
-    return true;
-#else
-    return false;
-#endif
-  }
-};
-using namespace emscripten;
-EMSCRIPTEN_BINDINGS(ocjs_builtins) {
-  class_<OCJS>("OCJS")
-    .class_function("getStandard_FailureData", &OCJS::getStandard_FailureData, allow_raw_pointers())
-    .class_function("exceptionsEnabled", &OCJS::exceptionsEnabled)
-    ;
-  class_<NCollection_IndexedDataMap<TCollection_AsciiString, TCollection_AsciiString>>("TColStd_IndexedDataMapOfStringString")
-    .constructor<>()
-    ;
-  class_<TopoDS_Bind_>("TopoDS")
-    .class_function("Edge", optional_override([](const TopoDS_Shape& s) -> TopoDS_Edge { return TopoDS::Edge(s); }))
-    .class_function("Wire", optional_override([](const TopoDS_Shape& s) -> TopoDS_Wire { return TopoDS::Wire(s); }))
-    .class_function("Face", optional_override([](const TopoDS_Shape& s) -> TopoDS_Face { return TopoDS::Face(s); }))
-    .class_function("Vertex", optional_override([](const TopoDS_Shape& s) -> TopoDS_Vertex { return TopoDS::Vertex(s); }))
-    .class_function("Shell", optional_override([](const TopoDS_Shape& s) -> TopoDS_Shell { return TopoDS::Shell(s); }))
-    .class_function("Solid", optional_override([](const TopoDS_Shape& s) -> TopoDS_Solid { return TopoDS::Solid(s); }))
-    .class_function("Compound", optional_override([](const TopoDS_Shape& s) -> TopoDS_Compound { return TopoDS::Compound(s); }))
-    ;
-}
-"""
-
-
-def _collect_compiled_symbols(libraryBasePath) -> set:
-  compiled = set()
-  compiled_dir = libraryBasePath + "/compiled-bindings"
-  if not os.path.isdir(compiled_dir):
-    compiled_dir = libraryBasePath + "/bindings"
-  for dirpath, dirnames, filenames in os.walk(compiled_dir):
-    for item in filenames:
-      if item.endswith(".cpp.o"):
-        compiled.add(item[:-6])
-  return compiled
+#
+# Source of truth lives in `ocjs_bindgen.embind_builtins`; both this module
+# and the dedicated `ocjs_bindgen.bind_symbols` NX stage import the constants
+# from there so the link compile and the bind-symbols extractor always see
+# byte-identical source.
+from ocjs_bindgen.embind_builtins import (  # noqa: E402
+  BUILTIN_ADDITIONAL_BIND_CODE,
+  OCJS_RBV_PREAMBLE,
+)
 
 def verifyBindings(bindings, libraryBasePath) -> bool:
+  """Verify every requested binding has a compiled `.o`, an NCollection
+  typedef alias resolving to a compiled canonical, or an Embind builtin
+  registration in `build/additional-bind-symbols.json`.
+
+  Behaviour now delegates to `ocjs_bindgen.link.manifest_registry` so the
+  link-time and post-link `validate-build.py` views of "missing" stay
+  byte-identical (the manifest_registry consumer is the same loader chain
+  for both paths). Truly-missing entries always raise — no env-var gate
+  — because Phase 1/2/3 manifest-aware resolution buckets every false
+  positive (typedef aliases, builtins) out of `truly_missing` by
+  construction.
+  """
   compiled = _collect_compiled_symbols(libraryBasePath)
-  missing = [b for b in bindings if b["symbol"] not in compiled]
-  if missing:
-    missing_names = [b["symbol"] for b in missing]
-    print(f"WARNING: {len(missing)} of {len(bindings)} requested bindings have no compiled .o file:", flush=True)
-    for name in sorted(missing_names)[:20]:
+  requested = {b["symbol"] for b in bindings}
+  missing = requested - compiled
+  if not missing:
+    return
+  alias_index = _load_ncollection_alias_index(libraryBasePath)
+  builtins = _builtin_binding_symbols(libraryBasePath)
+  resolution = _resolve_requested_symbols(missing, compiled, alias_index, builtins)
+  alias_resolved = resolution.alias_resolved
+  builtin_hits = resolution.builtin
+  truly_missing = resolution.truly_missing
+
+  if alias_resolved:
+    print(
+      f"INFO: {len(alias_resolved)} of {len(bindings)} requested bindings "
+      f"resolve via NCollection typedef alias to a compiled canonical "
+      f"(linker will substitute at link-time):",
+      flush=True,
+    )
+    for alias, canonical in sorted(alias_resolved.items())[:20]:
+      print(f"  - {alias} -> {canonical} (alias-resolved)", flush=True)
+    if len(alias_resolved) > 20:
+      print(f"  ... and {len(alias_resolved) - 20} more", flush=True)
+
+  if builtin_hits:
+    print(
+      f"INFO: {len(builtin_hits)} of {len(bindings)} requested bindings "
+      f"resolve via Embind builtin registration in the link-stage "
+      f"additionalBindCode TU:",
+      flush=True,
+    )
+    for name in sorted(builtin_hits)[:20]:
+      print(f"  - {name} (builtin)", flush=True)
+    if len(builtin_hits) > 20:
+      print(f"  ... and {len(builtin_hits) - 20} more", flush=True)
+
+  if truly_missing:
+    # V10 — hard-fail unconditionally. Phase 1's `resolve_requested_symbols`
+    # already partitions every false positive (NCollection typedef alias,
+    # Embind builtin) out of `truly_missing`, so anything that survives
+    # both filters is a genuine link-stage gap. No env-var escape hatch:
+    # the pre-existing `OCJS_STRICT_VERIFY` flag was a temporary safety
+    # net from before the alias/builtin filters existed, and it was the
+    # canonical CI mechanism for silently regressing to soft-fall-through.
+    print(
+      f"ERROR: {len(truly_missing)} of {len(bindings)} requested bindings "
+      f"have no compiled .o file, no canonical alias resolution, and no "
+      f"Embind builtin registration:",
+      flush=True,
+    )
+    for name in sorted(truly_missing)[:20]:
       print(f"  - {name}", flush=True)
-    if len(missing_names) > 20:
-      print(f"  ... and {len(missing_names) - 20} more", flush=True)
-    strict = os.environ.get("OCJS_STRICT_VERIFY", "0") == "1"
-    if strict:
-      raise Exception(f"{len(missing)} requested bindings missing. Set OCJS_STRICT_VERIFY=0 to proceed with available bindings.")
+    if len(truly_missing) > 20:
+      print(f"  ... and {len(truly_missing) - 20} more", flush=True)
+    raise RuntimeError(
+      f"verifyBindings: {len(truly_missing)} unresolved symbol(s) after "
+      f"alias + builtin resolution: {sorted(truly_missing)[:10]}"
+      + ("..." if len(truly_missing) > 10 else "")
+    )
 
 # `_auto_symbols` is now a per-build set computed inside `main()` from
 # the intersection of the global manifest with the consumer YAML's reachable
@@ -367,6 +329,58 @@ def _load_full_manifest_symbols(build_dir) -> set:
 _CUSTOM_CODE_SOURCE_TAG = "__custom__"
 
 
+# R10 — OCCT-internal deprecation pragmas fired transitively via
+# `BUILTIN_ADDITIONAL_BIND_CODE`. Headers `NCollection_Vector.hxx` and
+# `TColStd_IndexedDataMapOfStringString.hxx` emit `#pragma message(...)` on
+# every include (clang reports them under `[-W#pragma-messages]`). The
+# headers are OCCT-internal and not actionable from OCJS — filter the
+# noise out of stderr and collapse into a single INFO summary per link so
+# the warning stream surfaces genuine issues.
+_DEPRECATED_OCCT_HEADERS = (
+  "NCollection_Vector.hxx",
+  "TColStd_IndexedDataMapOfStringString.hxx",
+)
+
+
+def _filter_occt_deprecation_pragmas(stderr_text: str) -> tuple[str, int]:
+  """Return `(remaining_stderr, filtered_count)`.
+
+  A "filtered" line matches BOTH (a) a deprecated OCCT header name AND
+  (b) the `pragma message` substring. Multi-line clang diagnostics for
+  these pragmas group `In file included from …` context lines followed
+  by the `pragma message` line itself; we drop the matching `pragma
+  message` line plus any contiguous preceding `In file included from`
+  context lines that resolve to the same diagnostic. Anything else
+  (real warnings/errors, pragmas from other headers, build progress)
+  passes through verbatim.
+  """
+  if not stderr_text:
+    return ("", 0)
+  lines = stderr_text.split("\n")
+  filtered_count = 0
+  output_lines = []
+  context_buffer = []
+  for line in lines:
+    if "In file included from " in line:
+      # Hold context lines until we see the actual diagnostic — they
+      # belong to either a filtered pragma or a passthrough warning.
+      context_buffer.append(line)
+      continue
+    is_deprecation_pragma = (
+      "pragma message" in line
+      and any(hdr in line for hdr in _DEPRECATED_OCCT_HEADERS)
+    )
+    if is_deprecation_pragma:
+      filtered_count += 1
+      context_buffer = []
+      continue
+    output_lines.extend(context_buffer)
+    context_buffer = []
+    output_lines.append(line)
+  output_lines.extend(context_buffer)
+  return ("\n".join(output_lines), filtered_count)
+
+
 def _compute_yaml_class_scope(buildConfig, libraryBasePath) -> set:
   """Return the set of class names reachable from the consumer YAML.
 
@@ -378,6 +392,12 @@ def _compute_yaml_class_scope(buildConfig, libraryBasePath) -> set:
       brings in `BRepBuilderAPI_MakeShape` and `BRepBuilderAPI_Command` —
       classes whose NCollection-touching methods are inherited and therefore
       reachable from JS),
+    - the structurally-serialised `referenced_classes` set on each in-scope
+      fragment (R1 / W10 structural fix — every C++ class identifier the
+      `TypescriptBindings.resolve_type` resolver attempted to emit lands
+      here, BEFORE the known-export filter, so cross-class references
+      converge on the next link cycle; replaces the legacy
+      `_NCOLLECTION_TOKEN_RE` regex scrape of the rendered `.d.ts`),
     - every custom-code class compiled into `build/bindings/myMain.h/`
       (these classes are linked into the bundle by the additionalCppCode
       pipeline, so any NCollection they reference is reachable),
@@ -397,16 +417,17 @@ def _compute_yaml_class_scope(buildConfig, libraryBasePath) -> set:
   # whole tree once (O(|fragments|)) rather than per-symbol because the
   # bindings tree has no symbol→path index.
   #
-  # Method-signature lift — in the same pass, scan each in-scope fragment's
-  # TS payload for `NCollection_*` mentions and union them into scope. This
-  # catches the failure mode where an in-scope class has a method returning
-  # or taking an NCollection whose `source_classes` tag
-  # does NOT include the in-scope class (the typedef-alias-origin is some
-  # other OCCT class like `TColgp_HArray1OfPnt`), which the source-only
-  # intersection in `_filter_auto_symbols_by_scope` would otherwise drop —
-  # silently downgrading the method's TS signature to `: number` / `: unknown`.
-  # The token regex is identifier-bounded so embedded NCollection mentions
-  # inside parameter spellings (e.g. `Handle_NCollection_...`) are caught.
+  # Method-signature lift (R1 / W10 structural fix) — in the same pass, read
+  # the structurally-serialised `referenced_classes` field on each in-scope
+  # fragment and union it into scope. The codegen layer
+  # (`TypescriptBindings.resolve_type` → `_record_referenced_class`) emits
+  # every C++ class identifier it attempted to resolve BEFORE the
+  # `_is_known_export_name` filter rejects unresolved candidates, so the set
+  # surfaces both the now-resolved mangled NCollection names (the canonical
+  # `NCollection_HArray1_gp_Pnt` family) AND the cross-class references
+  # that are currently rewritten to bare `unknown`. The latter become
+  # in-scope on the next link cycle, eliminating the convergence gap that
+  # the deleted `_NCOLLECTION_TOKEN_RE` regex tried to patch over.
   scope_at_start = frozenset(scope)
   if os.path.isdir(bindings_root):
     for dirpath, _dirnames, filenames in os.walk(bindings_root):
@@ -424,9 +445,9 @@ def _compute_yaml_class_scope(buildConfig, libraryBasePath) -> set:
         for ancestor_chain in (frag.get("ancestors") or {}).values():
           if isinstance(ancestor_chain, list):
             scope.update(ancestor_chain)
-        dts_payload = frag.get(".d.ts", "") or ""
-        if "NCollection_" in dts_payload:
-          scope.update(_NCOLLECTION_TOKEN_RE.findall(dts_payload))
+        referenced = frag.get("referenced_classes")
+        if isinstance(referenced, list):
+          scope.update(referenced)
 
   # Custom-code classes — every `build/bindings/myMain.h/*.d.ts.json` was
   # produced by the consumer's `additionalCppCode` pipeline OR by the
@@ -626,10 +647,55 @@ def runBuild(build, libraryBasePath):
       *["-I" + p for p in getFlatIncludePaths()],
       "-c", additionalBindCodeFileName,
     ]
-    subprocess.check_call([
-      *command,
-      "-o", additionalBindCodeFileName + ".o",
-    ])
+    # R10 — capture stderr so we can filter the OCCT-internal
+    # deprecation-pragma noise (see `_filter_occt_deprecation_pragmas`),
+    # then re-emit the cleaned stream + a single INFO summary. The
+    # `BUILTIN_ADDITIONAL_BIND_CODE` block above includes
+    # `<TColStd_IndexedDataMapOfStringString.hxx>` directly which
+    # transitively pulls `NCollection_Vector.hxx` — both fire a
+    # `#pragma message` on every TU that includes them; collapsing the
+    # noise here is purely cosmetic but keeps the link log readable.
+    _bindcode_cmd = [*command, "-o", additionalBindCodeFileName + ".o"]
+    _bindcode_result = subprocess.run(
+      _bindcode_cmd,
+      capture_output=True,
+      text=True,
+    )
+    if _bindcode_result.stdout:
+      sys.stdout.write(_bindcode_result.stdout)
+      sys.stdout.flush()
+    cleaned_stderr, dropped = _filter_occt_deprecation_pragmas(
+      _bindcode_result.stderr or ""
+    )
+    if cleaned_stderr.strip():
+      sys.stderr.write(cleaned_stderr)
+      if not cleaned_stderr.endswith("\n"):
+        sys.stderr.write("\n")
+      sys.stderr.flush()
+    if dropped > 0:
+      print(
+        f"INFO: filtered {dropped} OCCT-internal deprecation pragma(s) "
+        f"from {', '.join(_DEPRECATED_OCCT_HEADERS)} "
+        f"(transitive includes via BUILTIN_ADDITIONAL_BIND_CODE; not "
+        f"actionable from OCJS)",
+        flush=True,
+      )
+    if _bindcode_result.returncode != 0:
+      raise subprocess.CalledProcessError(
+        _bindcode_result.returncode, _bindcode_cmd
+      )
+    # V3 RE-SHIP: producer is no longer in-process here. The dedicated
+    # `ocjs_bindgen.bind_symbols` NX stage writes
+    # `build/additional-bind-symbols.json` BEFORE this `link` target runs
+    # (enforced by `link.dependsOn = [..., "bind-symbols", ...]` in
+    # `project.json` and mirrored in `build-wasm.sh link` for direct
+    # shell invocations). Keeping a second producer here would re-introduce
+    # the bootstrap-ordering bug the audit exposed and create two writers
+    # for the same manifest — the consumer (`verifyBindings` below) would
+    # see the link-stage producer's view, while post-link validators
+    # invoked from a separate process would see the bind-symbols stage's
+    # view, and the two could legitimately differ if any code path edited
+    # one but not the other.
     return additionalBindCodeFileName + ".o"
   additionalBindCodeO = getAdditionalBindCodeO()
   print("Running build: " + build["name"], flush=True)
@@ -681,10 +747,6 @@ def runBuild(build, libraryBasePath):
           continue
         if item.endswith(".o"):
           sourcesO.append(dirpath + "/" + item)
-  allowed_undef_flags = []
-  for sym in build.get("allowedUndefinedSymbols", []):
-    allowed_undef_flags.extend(["-Wl,--allow-undefined-symbol=" + sym])
-
   emcc_flags = build.get("emccFlags", [])
   has_opt = any(f.startswith("-O") for f in emcc_flags)
   has_lto = "-flto" in emcc_flags
@@ -708,7 +770,6 @@ def runBuild(build, libraryBasePath):
     *(["-pthread"] if os.environ["THREADING"] == "multi-threaded" else []),
     *fill_flags,
     *emcc_flags,
-    *allowed_undef_flags,
   ]
   if os.environ.get("OCJS_CLOSURE", "false") == "true":
     linkCmd.extend(["--closure", "1"])
@@ -774,6 +835,9 @@ def runBuild(build, libraryBasePath):
       pre_opt_size=sizeBefore,
       post_opt_size=sizeAfter,
       wasm_opt_duration=wasm_opt_duration,
+      ncollection_linked=_ncollection_link_stats["linked"],
+      ncollection_total=_ncollection_link_stats["total"],
+      ncollection_dropped=_ncollection_link_stats["dropped"],
     )
 
   print("Build finished", flush=True)
@@ -878,6 +942,12 @@ def main():
     yaml_scope = _compute_yaml_class_scope(buildConfig, libraryBasePath)
     manifest_path = os.path.join(BUILD_DIR, "ncollection-manifest.json")
     _auto_symbols = _filter_auto_symbols_by_scope(manifest_path, yaml_scope)
+    # V5 — surface the NCollection auto-discovery linked/total/dropped
+    # triple to runBuild's prov.add_linking() call via module state.
+    # The link stage owns this set; this is the canonical write path.
+    _ncollection_link_stats["linked"] = len(_auto_symbols)
+    _ncollection_link_stats["total"] = len(full_set)
+    _ncollection_link_stats["dropped"] = len(full_set) - len(_auto_symbols)
     print(
       f"NCollection link filter: kept {len(_auto_symbols)} / "
       f"{len(full_set)} auto-discovered entries "

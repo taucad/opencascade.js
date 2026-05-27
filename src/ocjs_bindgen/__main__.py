@@ -99,7 +99,7 @@ def _run_full_pipeline(gen):
     discovered = discover_ncollection_types(scan_tuInfo, gen.filterClasses)
     using_decls = generate_using_declarations(discovered)
     if discovered:
-        write_manifest(discovered, BUILD_DIR)
+        write_manifest(discovered, BUILD_DIR, tuInfo=scan_tuInfo)
 
     # Phase 2: Re-parse TU with auto-generated using declarations so the AST
     # sees the new type aliases

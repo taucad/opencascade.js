@@ -68,6 +68,183 @@ def _collect_from_cursor(cursor, predicate):
     return result
 
 
+# Embind template-function spellings that register a named binding. The
+# first string-literal argument of the call is the JS-visible "Name". This
+# set covers the public Embind 5.0 registration surface used by OCJS's
+# `BUILTIN_ADDITIONAL_BIND_CODE` block and consumer YAML `additionalBindCode`
+# snippets; any future Embind registration entry point would be added here
+# rather than re-parsed via regex.
+_EMBIND_REGISTRATION_SPELLINGS: frozenset[str] = frozenset(
+    {
+        "class_",
+        "enum_",
+        "value_object",
+        "value_array",
+        "register_vector",
+        "register_map",
+        "register_optional",
+    }
+)
+
+
+def _first_string_literal_descendant(cursor):
+    """Depth-first walk of `cursor` returning the first STRING_LITERAL
+    cursor encountered, or None.
+
+    Used to dig through the `UNEXPOSED_EXPR` wrappers libclang emits
+    around literal arguments of templated Embind calls so the registered
+    name (e.g. ``"TopoDS"`` in ``class_<TopoDS_Bind_>("TopoDS")``) is
+    retrieved structurally from the AST instead of via regex over the
+    source string. Comments and arbitrary substrings inside other string
+    literals never reach this walker — libclang stripped them at parse
+    time.
+    """
+    stack = [cursor]
+    while stack:
+        cur = stack.pop()
+        if cur.kind == clang.cindex.CursorKind.STRING_LITERAL:
+            return cur
+        stack.extend(cur.get_children())
+    return None
+
+
+def _walk_all(cursor):
+    """Depth-first generator over every descendant cursor of ``cursor``.
+
+    Unlike :func:`_collect_from_cursor` which prunes everything outside
+    namespaces, this walker visits every node — function bodies,
+    compound statements, call expressions, casts, the lot — because
+    Embind registrations (``class_<T>("Name")``) appear inside the
+    ``EMSCRIPTEN_BINDINGS(...)`` function body, several levels deep
+    under ``FUNCTION_DECL → COMPOUND_STMT → CXX_FUNCTIONAL_CAST_EXPR →
+    CALL_EXPR``. A namespace-only walk would never reach them.
+    """
+    stack = [cursor]
+    while stack:
+        cur = stack.pop()
+        yield cur
+        stack.extend(cur.get_children())
+
+
+def extract_class_registrations(tu) -> set[str]:
+    """Return every JS-visible Name registered by an Embind call in `tu`.
+
+    Walks a translation unit (built by
+    :func:`ocjs_bindgen.ast.parse.parse_additional_bind_code` on the
+    combined ``BUILTIN_ADDITIONAL_BIND_CODE + consumer additionalBindCode``
+    source) and collects the first string-literal argument of every
+    Embind registration call — ``class_<T>("Name")``, ``enum_<T>("Name")``,
+    ``value_object<T>("Name")``, ``register_vector<T>("Name")``,
+    ``register_map<K,V>("Name")``, ``register_optional<T>("Name")``,
+    ``value_array<T>("Name")``.
+
+    Implementation visits every cursor in the TU (via :func:`_walk_all`)
+    and matches by:
+
+    1. ``CALL_EXPR`` whose ``spelling`` is one of the Embind registration
+       template names — this covers free function templates like
+       ``register_vector<int>("VectorInt")`` whose call cursor reports
+       the template name directly.
+
+    2. ``CXX_FUNCTIONAL_CAST_EXPR`` whose first ``TEMPLATE_REF`` child
+       names one of the registration templates — this covers the
+       constructor-call form ``class_<T>("Name")`` /
+       ``value_object<T>("Name")`` etc. that libclang represents as
+       ``CXX_FUNCTIONAL_CAST_EXPR(TEMPLATE_REF, TYPE_REF...,
+       CALL_EXPR(STRING_LITERAL))``. Crucially, only the OUTER
+       ``CXX_FUNCTIONAL_CAST_EXPR`` knows which template was named; the
+       inner ``CALL_EXPR`` reports the same spelling but the structural
+       distinction matters for builder-chain expressions like
+       ``class_<X>("X").constructor<>().function("f", ...)`` where the
+       method calls have their own ``.spelling`` collisions.
+
+    For each match, descends into the first runtime argument and pulls
+    the first ``STRING_LITERAL`` cursor (via
+    :func:`_first_string_literal_descendant`), stripping surrounding
+    quotes to recover the JS-visible Name.
+
+    Architectural note: this function is the single AST-side producer of
+    the `build/additional-bind-symbols.json` manifest consumed by
+    `manifest_registry.builtin_binding_symbols`. No regex is used here
+    or in the consumer — the bindgen's "single libclang entry point"
+    contract (see :mod:`ocjs_bindgen.ast.parse`) extends to every form
+    of C++ structural extraction the toolchain needs.
+    """
+    registered: set[str] = set()
+    seen_call_locations: set = set()
+
+    for cur in _walk_all(tu.cursor):
+        target_call = None
+        if cur.kind == clang.cindex.CursorKind.CXX_FUNCTIONAL_CAST_EXPR:
+            template_ref = next(
+                (
+                    ch
+                    for ch in cur.get_children()
+                    if ch.kind == clang.cindex.CursorKind.TEMPLATE_REF
+                ),
+                None,
+            )
+            if (
+                template_ref is None
+                or template_ref.spelling not in _EMBIND_REGISTRATION_SPELLINGS
+            ):
+                continue
+            target_call = next(
+                (
+                    ch
+                    for ch in cur.get_children()
+                    if ch.kind == clang.cindex.CursorKind.CALL_EXPR
+                ),
+                None,
+            )
+            if target_call is None:
+                continue
+            literal_source = list(target_call.get_arguments())
+        elif (
+            cur.kind == clang.cindex.CursorKind.CALL_EXPR
+            and cur.spelling in _EMBIND_REGISTRATION_SPELLINGS
+        ):
+            # Free-function template registration (register_vector,
+            # register_map, register_optional). The constructor form
+            # also produces a CALL_EXPR but it lives inside a
+            # CXX_FUNCTIONAL_CAST_EXPR we will have already handled;
+            # skip it by location-dedup so the inner CALL_EXPR is not
+            # double-counted on builders like
+            # ``class_<X>("X").constructor<>().function(...)`` where the
+            # ``.function`` call also has spelling ``class_`` is false —
+            # but the outer ``class_<X>("X")`` already registered "X".
+            target_call = cur
+            literal_source = list(target_call.get_arguments())
+        else:
+            continue
+
+        if target_call is None or not literal_source:
+            continue
+
+        loc = target_call.location
+        loc_key = (
+            loc.file.name if loc.file else None,
+            loc.line,
+            loc.column,
+        )
+        if loc_key in seen_call_locations:
+            continue
+        seen_call_locations.add(loc_key)
+
+        literal = _first_string_literal_descendant(literal_source[0])
+        if literal is None:
+            continue
+        # `STRING_LITERAL.spelling` is the source-form literal INCLUDING
+        # surrounding quotes. Embind names are always plain identifiers
+        # (verified across OCJS canonical builtins + replicad's full
+        # additionalBindCode surface), so stripping both ends recovers
+        # the JS-visible Name without needing `ast.literal_eval`.
+        value = literal.spelling.strip('"')
+        if value:
+            registered.add(value)
+    return registered
+
+
 def templateTypedefGenerator(tu):
     return _collect_from_cursor(
         tu.cursor,

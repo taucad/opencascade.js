@@ -196,11 +196,15 @@ python3 - "$PROV_FILE" "$FILTER_RATIO_MAX" <<'PY' || _fail "NCollection filter r
 import json, sys
 prov_path, max_ratio = sys.argv[1], float(sys.argv[2])
 data = json.load(open(prov_path))
-mani = data.get('nCollectionManifest') or data.get('nCollection') or {}
-linked = mani.get('linked') or mani.get('linkedCount')
-total = mani.get('total') or mani.get('totalCount')
-if linked is None or total is None or total == 0:
-    print(f"  WARNING: provenance.json missing nCollectionManifest.linked/total (linked={linked}, total={total}); skipping ratio check.")
+mani = data.get('nCollectionManifest') or {}
+linked = mani.get('linked')
+total = mani.get('total')
+if linked is None or total is None:
+    print(f"  ERROR: provenance.json missing nCollectionManifest.linked/total (linked={linked}, total={total}).", file=sys.stderr)
+    print(f"  Rebuild with `pnpm nx run ocjs:build` to produce wasm-build-provenance-v1.1.", file=sys.stderr)
+    sys.exit(1)
+if total == 0:
+    print(f"  WARNING: nCollectionManifest.total is 0 (no auto-discovered NCollections); skipping ratio check.")
     sys.exit(0)
 ratio = linked / total
 print(f"  Linked: {linked} / Total: {total} = {ratio:.3f}")
