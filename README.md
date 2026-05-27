@@ -166,16 +166,17 @@ On release tags, Docker resolves the right architecture from the manifest list a
 - **Native WASM Exceptions** — `-fwasm-exceptions` replaces JS invoke trampolines; decodable end-to-end via `getExceptionMessage`
 - **ESM-only distribution** — `"type": "module"`; default export is single-threaded `opencascade_full.{js,wasm,d.ts}`; multi-threaded `opencascade_full_multi.{js,wasm,d.ts}` ships under `@taucad/opencascade.js/multi` and `/multi/wasm`
 - **Full TypeScript bindings** — Doxygen-derived JSDoc rendered correctly in Monaco IntelliSense
-- **Suffix-free overloads** — single symbol per class with val-based dispatcher, no more `_2`/`_3` subclasses
+- **Suffix-free overloads** — single symbol per class with val-based dispatcher, no more `_2`/`_3` subclasses (measured at ~264 ns/call, <0.011% of wall time on typical CAD models — see [BENCHMARKS.md](BENCHMARKS.md))
 - **Reproducible builds** — `DEPS.json` pins every dependency to an exact commit; per-build `provenance.json` sidecar
 - **Cached, incremental builds** — content-addressed compilation cache turns 10-30 minute clean builds into seconds on hit
 
-See [CHANGELOG.md](CHANGELOG.md) for the full v3.0.0 entry.
+See [CHANGELOG.md](CHANGELOG.md) for the full v3.0.0 entry. For empirical evidence of every measurable fork change (wall-clock CAD perf vs native C++, multi-threading speedup, embind dispatch cost, RBV overhead), see **[BENCHMARKS.md](BENCHMARKS.md)**.
 
 ## Documentation
 
 - [BREAKING_CHANGES.md](BREAKING_CHANGES.md) — v3 consumer migration guide
 - [CHANGELOG.md](CHANGELOG.md) — release notes
+- **[BENCHMARKS.md](BENCHMARKS.md)** — empirical evidence hub: wall-clock CAD perf vs native C++, multi-threading speedup, embind dispatch cost, RBV overhead
 - [MAINTAINER.md](MAINTAINER.md) — native build, env vars, customization for fork maintainers
 - [docs/reference/yaml-schema.md](docs/reference/yaml-schema.md) — YAML schema (bindings, emccFlags, additionalCppCode, additionalCppFiles, additionalBindCode)
 - [BUILD_SYSTEM.md](BUILD_SYSTEM.md) — `OCJS_*` env-var matrix and configuration authoring

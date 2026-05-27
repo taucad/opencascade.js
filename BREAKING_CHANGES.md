@@ -113,6 +113,8 @@ v2 exposed each C++ overload as its own `_N`-suffixed subclass (`gp_Pnt_2`, `gp_
 
 Reference smoke test: [`tests/smoke/smoke-suffix-free.test.ts`](tests/smoke/smoke-suffix-free.test.ts).
 
+> **Perf note.** The val-based dispatcher's per-call cost is quantified in [BENCHMARKS.md §3 — Embind overload dispatch](BENCHMARKS.md#3--embind-overload-dispatch): ~264 ns per same-arity call, totalling ~5 µs per typical CAD render (0.003–0.011% of wall time).
+
 **Before**
 
 ```ts
@@ -524,6 +526,8 @@ const key = map.FindKey(1); // ✅ dispatches to the size_t overload
 ```
 
 **Action**: existing call sites that already used the unsuffixed name now succeed where they previously threw. If your code path explicitly references a `_1` / `_2` suffix on one of the JS-indistinguishable primitive-pair overloads (notably the V8 `int`/`size_t` NCollection accessors), drop the suffix — the bare name resolves to the `size_t` overload.
+
+> **Perf note.** The unified val-dispatcher imposes ~264 ns per same-arity call (~6 ns on methods with no overload ambiguity), totalling ~5 µs of dispatch overhead per typical CAD render — 0.003–0.011% of wall time. Full matrix and reproducibility: [BENCHMARKS.md §3.2](BENCHMARKS.md#32--per-call-cost-same-arity-dispatch-tax-poc-overload-dispatch-cost).
 
 ---
 
