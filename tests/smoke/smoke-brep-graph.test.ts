@@ -92,8 +92,8 @@ describe.skipIf(!wasmExists)('Smoke: BRepGraph', () => {
         'Geometry',
       ] as const;
       for (const name of accessors) {
-        expect(typeof (topo as unknown as Record<string, unknown>)[name]).toBe('function');
-        const view = (topo as unknown as Record<string, () => unknown>)[name]();
+        expect(typeof topo[name]).toBe('function');
+        using view = topo[name]();
         expect(view).toBeDefined();
       }
     });
@@ -119,30 +119,22 @@ describe.skipIf(!wasmExists)('Smoke: BRepGraph', () => {
         const oc = getOC();
         using graph = buildBoxGraph().graph;
         using topo = graph.Topo();
-        const view = (topo as unknown as Record<string, () => unknown>)[accessor]() as {
-          Nb: () => number;
-          NbActive: () => number;
-          delete: () => void;
-        };
-        try {
-          expect(view).toBeDefined();
-          expect((oc as unknown as Record<string, unknown>)[opsClassName]).toBeDefined();
-          expect(typeof view.Nb).toBe('function');
-          expect(typeof view.NbActive).toBe('function');
-          const total = view.Nb();
-          const active = view.NbActive();
-          expect(typeof total).toBe('number');
-          expect(typeof active).toBe('number');
-          // A box does not contain compounds or compsolids, so the
-          // active-count assertion only holds for the topology kinds
-          // a box actually carries (Faces/Edges/Wires/Vertices/CoEdges/
-          // Shells/Solids/Products/Occurrences). The general invariant
-          // we can always assert: total ≥ active ≥ 0.
-          expect(total).toBeGreaterThanOrEqual(active);
-          expect(active).toBeGreaterThanOrEqual(0);
-        } finally {
-          view.delete();
-        }
+        using view = topo[accessor]();
+        expect(view).toBeDefined();
+        expect(oc[opsClassName]).toBeDefined();
+        expect(typeof view.Nb).toBe('function');
+        expect(typeof view.NbActive).toBe('function');
+        const total = view.Nb();
+        const active = view.NbActive();
+        expect(typeof total).toBe('number');
+        expect(typeof active).toBe('number');
+        // A box does not contain compounds or compsolids, so the
+        // active-count assertion only holds for the topology kinds
+        // a box actually carries (Faces/Edges/Wires/Vertices/CoEdges/
+        // Shells/Solids/Products/Occurrences). The general invariant
+        // we can always assert: total ≥ active ≥ 0.
+        expect(total).toBeGreaterThanOrEqual(active);
+        expect(active).toBeGreaterThanOrEqual(0);
       });
     });
 
@@ -196,7 +188,7 @@ describe.skipIf(!wasmExists)('Smoke: BRepGraph', () => {
         'NbActiveCurves2D',
       ] as const;
       for (const name of accessors) {
-        const fn = (geom as unknown as Record<string, () => number>)[name];
+        const fn = geom[name];
         expect(typeof fn).toBe('function');
         expect(typeof fn.call(geom)).toBe('number');
       }
@@ -232,7 +224,7 @@ describe.skipIf(!wasmExists)('Smoke: BRepGraph', () => {
         'Occurrences',
       ] as const;
       for (const name of accessors) {
-        expect(typeof (refs as unknown as Record<string, unknown>)[name]).toBe('function');
+        expect(typeof refs[name]).toBe('function');
       }
     });
 
@@ -265,7 +257,7 @@ describe.skipIf(!wasmExists)('Smoke: BRepGraph', () => {
       using mesh = graph.Mesh();
       expect(mesh).toBeDefined();
       for (const name of ['Faces', 'Edges', 'CoEdges', 'Poly'] as const) {
-        expect(typeof (mesh as unknown as Record<string, unknown>)[name]).toBe('function');
+        expect(typeof mesh[name]).toBe('function');
       }
     });
 
@@ -289,7 +281,7 @@ describe.skipIf(!wasmExists)('Smoke: BRepGraph', () => {
       using cache = graph.Cache();
       expect(cache).toBeDefined();
       for (const name of ['Set', 'Get', 'Has', 'Remove', 'Invalidate'] as const) {
-        expect(typeof (cache as unknown as Record<string, unknown>)[name]).toBe('function');
+        expect(typeof cache[name]).toBe('function');
       }
     });
 

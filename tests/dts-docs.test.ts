@@ -29,7 +29,9 @@ function parseDts(): ts.SourceFile | null {
 }
 
 function getJSDocText(node: ts.Node): string {
-  const jsDocNodes = (node as any).jsDoc;
+  // `jsDoc` is a TS compiler-internal property not surfaced on the public
+  // `ts.Node` type; narrow to a typed shape rather than `as any`.
+  const jsDocNodes = (node as ts.Node & { jsDoc?: ts.JSDoc[] }).jsDoc;
   if (!jsDocNodes || !Array.isArray(jsDocNodes)) return '';
   return jsDocNodes
     .map((jd: ts.JSDoc) => jd.getFullText())
@@ -41,7 +43,7 @@ function hasJSDoc(node: ts.Node): boolean {
 }
 
 function getJSDocComment(node: ts.Node): string {
-  const jsDocNodes = (node as any).jsDoc;
+  const jsDocNodes = (node as ts.Node & { jsDoc?: ts.JSDoc[] }).jsDoc;
   if (!jsDocNodes || !Array.isArray(jsDocNodes)) return '';
   return jsDocNodes
     .map((jd: ts.JSDoc) => (jd.comment ? (typeof jd.comment === 'string' ? jd.comment : '') : ''))

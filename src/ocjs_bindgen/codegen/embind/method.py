@@ -361,7 +361,38 @@ def emit_suffixed_method(b, theClass, m, suffix, className, templateDecl, templa
 
 
 def process_method_group(b, theClass, methods, templateDecl=None, templateArgs=None):
-  """Process a group of methods with the same name, using dispatch for same-arity groups."""
+  """Process a group of methods with the same name, using dispatch for same-arity groups.
+
+  Phase 3 architecture (post-gate-refactor): this function owns
+  multi-overload dispatch (RBV, val-dispatch, arity-grouped). The
+  trailing-default expansion lives DOWNSTREAM in
+  ``ocjs_bindgen.codegen.bindings.Bindings.processMethodOrProperty``,
+  which routes EACH overload independently through the classifier ➜
+  strategy router. The classifier reads ``sibling_count`` on the
+  ``OverloadDescriptor`` (populated from ``numOverloads - 1``) and
+  returns ``matrix_row == 34, primitive == 'val'`` for multi-overload
+  trailing defaults. The router then dispatches to
+  ``val_default.emit_method_with_val_default`` per overload — each
+  lambda owns its arity range, the distinct ``overload_postfix``
+  values keep the embind registrations separate, and the val unwrap
+  applies the C++ default per slot.
+
+  Matrix row 27 (JS-effective arity range overlap, post-RBV +
+  post-default-expansion) is enforced here via the
+  ``_jsEffectiveArityCollisions`` precondition below: when the
+  colliding overloads can be JS-resolved by per-slot type the
+  diagnostic is logged and the existing val-dispatch path takes the
+  group; when they CAN'T be resolved, ``SkipException`` aborts
+  emission (T1 emit-time rejection). The R6 emit-time guard
+  (non-const ref in optional/val-default) is enforced downstream
+  inside ``processMethodOrProperty``; R4 / T1 are unreachable here
+  because the classifier owns the primitive choice and the router
+  declines val-default emission when the return-side wrappers
+  dominate. See
+  ``docs/research/ocjs-optional-overload-resolution-blueprint.md`` —
+  Emit-Time Guards, and
+  ``docs/research/ocjs-phase-3-val-dispatch-completion.md`` § Row 34.
+  """
   output = ""
   className = getClassTypeName(theClass, templateDecl)
   if className == "":
@@ -442,6 +473,49 @@ def process_method_group(b, theClass, methods, templateDecl=None, templateArgs=N
   by_js_arity = defaultdict(list)
   for m in bindable:
     by_js_arity[b._getJsArity(m)].append(m)
+
+  # Rule 3 precondition (matrix row 27): surface every same-name overload
+  # pair whose JS-effective arity RANGES (post-RBV-elision +
+  # post-default-expansion) intersect, beyond the strict same-max-JS-arity
+  # collisions detected immediately below.
+  #
+  # Phase 2 upgrade: when the colliding overloads are NOT resolvable via
+  # val-discrimination (i.e. they have IDENTICAL JS-distinguishable
+  # types at every overlapping arity), this raises ``SkipException``
+  # to abort emission for the group — matrix row 27 unresolvable case.
+  # Resolvable collisions still log the diagnostic and route through
+  # the existing JS-effective dedup / val-dispatch paths below.
+  rule3_collisions = b._jsEffectiveArityCollisions(bindable, templateDecl, templateArgs)
+  for m_a, m_b, lo, hi in rule3_collisions:
+    if b._getJsArity(m_a) == b._getJsArity(m_b):
+      # The strict same-max-arity case is handled by the existing
+      # ``js_collisions`` dispatcher immediately below; suppress the
+      # diagnostic noise so the build log only surfaces NEW overlaps
+      # that the existing path misses.
+      continue
+    resolvable = _rbv.is_collision_resolvable_via_val(
+      b, m_a, m_b, lo, hi, templateDecl, templateArgs,
+    )
+    if not resolvable:
+      raise SkipException(
+        f"[rule 3 / matrix row 27] {className}.{m_a.spelling}: "
+        f"JS-effective arity ranges intersect at [{lo}..{hi}] between "
+        f"raw-arity-{len(list(m_a.get_arguments()))} and raw-arity-"
+        f"{len(list(m_b.get_arguments()))} overloads AND the JS-type "
+        f"signatures are identical at every overlapping arity — "
+        f"val-discrimination cannot resolve. Defaults composed with "
+        f"RBV elision produced an unresolvable dispatch ambiguity; "
+        f"either dedup the source-level overloads or annotate one "
+        f"with the matrix row 11 / row 35 marker. Skipping group."
+      )
+    print(
+      f"[rule 3 / matrix row 27] {className}.{m_a.spelling}: "
+      f"JS-effective arity ranges intersect at [{lo}..{hi}] "
+      f"between overloads with raw C++ arities "
+      f"{len(list(m_a.get_arguments()))} and {len(list(m_b.get_arguments()))}; "
+      f"defaults span composes with RBV elision. "
+      f"Routing to val-discrimination (resolvable via per-slot JS types)."
+    )
 
   js_collisions = {
     js_arity: group

@@ -83,6 +83,16 @@ def process_class(b, theClass, templateDecl=None, templateArgs=None):
   for reg in b._result_struct_registrations:
     output += reg
 
+  # Register every distinct std::optional<T> inner type discovered during
+  # this class's emission. The libembind v2 dispatcher routes optional
+  # bindings via the registered converter; without these calls the runtime
+  # raises `Cannot construct ... due to unbound types` for the first
+  # method/ctor invocation. The `register_optional<T>` thread-local guard
+  # makes repeated calls safe across multiple TUs. See
+  # docs/research/ocjs-optional-overload-resolution-blueprint.md.
+  for inner in b._optional_inner_types:
+    output += "  emscripten::register_optional<" + inner + ">();\n"
+
   output += "  class_<" + classCpp + baseClassBinding + ">(\"" + className + "\")\n"
 
   if isTransientDerived(theClass, b.tuInfo.classDict):

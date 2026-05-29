@@ -153,6 +153,25 @@ exclude:
     # property-of-shape API (`BRepGProp_Vinert`, etc.) does not surface
     # `Inertia` directly.
     - BRepGProp_Gauss_Inertia
+    # OCCT V8 internal `Approx_ComputeLine` template instantiations — the
+    # Walking-Line surface/surface intersection (`GeomInt`) and B-Rep
+    # approximation (`BRepApprox`) helpers. Every constructor overload takes
+    # a `const math_Vector&` parameter, whose underlying type is
+    # `math_VectorBase<double>` (mangled `15math_VectorBaseIdE`). That base
+    # is NOT bound: template-typedef discovery is gated on the
+    # `NCOLLECTION_CONTAINERS` allowlist and the generic-discovery follow-up
+    # never landed, so `math_VectorBase<double>` is never emitted. As a
+    # result every JS call shape throws `Cannot construct ... due to unbound
+    # types` — these classes are unreachable from JS and only surface as dead
+    # `class_<>` registrations. The public capabilities they back are still
+    # exposed via higher-level APIs (`GeomInt`/`GeomAPI` surface-surface
+    # intersection; `BRepApprox`/`BRepBuilderAPI` approximation), so no
+    # modeling surface is lost. Re-include only if direct TKMath vector
+    # access (generic template-typedef discovery) ever lands.
+    - BRepApprox_TheComputeLineOfApprox
+    - BRepApprox_TheComputeLineBezierOfApprox
+    - GeomInt_TheComputeLineOfWLApprox
+    - GeomInt_TheComputeLineBezierOfWLApprox
     # Misc compilation errors
     - DsgPrs_RadiusPresentation
     - Standard_Dump

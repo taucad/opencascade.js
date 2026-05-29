@@ -3,6 +3,27 @@
  *
  * BRepMesh_FaceChecker depends on IMeshData_Face handles that are not part of the
  * generated JS surface; this test still exercises incremental meshing + BRep_Tool.
+ *
+ * Canary marker (replicad bug fix): per the replicad post-migration
+ * audit (`docs/research/ocjs-replicad-post-migration-simplifications.md`,
+ * `Shape._mesh` bug-fix finding), replicad currently calls
+ * `new BRepMesh_IncrementalMesh(shape, tolerance, false, angularTolerance, false)`
+ * — the explicit 5-arg fan-out variant — to dodge the sub-2a (matrix
+ * row 7) cross-arity dispatch confusion documented in the policy doc.
+ * BRepMesh_IncrementalMesh is the canonical row-7 example: an arity-3
+ * `(Shape, IMeshTools_Parameters, ProgressRange)` ctor and an arity-5
+ * `(Shape, double, bool, double, bool)` ctor share the same Shape
+ * first parameter and have to be discriminated by JS-type of the
+ * second argument.
+ *
+ * This file pins the 5-arg fan-out variant pre-Phase-4 (the call shape
+ * replicad uses today). Post-Phase-4 the val-merged single ctor at the
+ * larger arity will route both shapes correctly and the explicit 5-arg
+ * form continues to work as a superset (per the policy rule 5 strict-
+ * null semantics — explicit `false` is honoured verbatim; only `null`
+ * would route through the rule-5 strict branch).
+ *
+ * Policy pin: matrix rows 1 + 7 + 24 + rule 5.
  */
 import { describe, it, expect, beforeAll } from 'vitest';
 import { initOC, getOC, wasmExists } from './helpers.js';

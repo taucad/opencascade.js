@@ -148,11 +148,13 @@
         "toolchain",
         "buildScript",
         "linkScript",
+        "patchScripts",
         { "env": "OCJS_YAML" },
         { "env": "OCJS_OUTPUT_DIR" },
         { "env": "OCJS_CONFIG" },
         { "env": "OCJS_STRICT_TYPES" },
         { "runtime": "shasum -a 256 \"${OCJS_YAML:-/dev/null}\" 2>/dev/null || echo no-yaml" },
+        { "runtime": "shasum -a 256 \"{projectRoot}/src/vendor/pristine-libembind.js\" 2>/dev/null || echo no-pristine" },
         { "dependentTasksOutputFiles": "**/*", "transitive": false }
       ],
       "outputs": ["{projectRoot}/dist/"],

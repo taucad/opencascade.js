@@ -19,6 +19,9 @@ from ocjs_bindgen.predicates.classes import (
   _isDefaultConstructibleClass, _isCopyConstructibleClass, _ctor_is_copy,
   _findClassTemplateByName, _COPY_CTOR_CACHE, _CLASS_TEMPLATE_INDEX,
 )
+from ocjs_bindgen.predicates.optional_emission_guards import (
+  assert_no_nonconst_ref_in_optional,
+)
 from ocjs_bindgen.predicates.args import (
   _isHandleType, isClassOutputParam, isOutputParam,
   isHandleOutputParam, isPrimitiveOutputParam, shouldStripParam,
@@ -52,6 +55,18 @@ from ocjs_bindgen.codegen.embind import (
   method as _embind_method,
   enum as _embind_enum,
   preamble as _embind_preamble,
+)
+# Phase 2 — per-row val-with-default emission for the trailing-default
+# matrix rows that policy rule 9 routes to ``emscripten::val``
+# (currently rows 33 + 34 — wire-in for rows 1, 2, 7, 23, 30, 37 is
+# tracked in the Phase 2 research doc as deferred pending per-row
+# bench fixture data).
+from ocjs_bindgen.codegen import val_default as _val_default
+from ocjs_bindgen.predicates.overload_classification import (
+  GroupClassificationInputs,
+  OverloadDescriptor,
+  ParameterDescriptor,
+  classify_overload_group,
 )
 # PR 2.4 — TypescriptBindings JSDoc cluster, inheritance walk, and enum
 # emission decomposed into ocjs_bindgen/codegen/typescript/. Methods on
@@ -561,6 +576,243 @@ def getClassQualifiedName(theClass, templateDecl = None):
     parent = parent.semantic_parent
   return "::".join(reversed(parts))
 
+# ---------------------------------------------------------------------------
+# Phase 3 — per-parameter classification helpers (rule 9 routing).
+#
+# These free functions are used by ``processMethodOrProperty`` to populate
+# the per-position metadata that the overload classifier reads. The
+# functions are intentionally pure (no instance state) so the classifier
+# tests can reproduce the exact descriptor that production emits.
+# ---------------------------------------------------------------------------
+
+
+# Heuristic class name suffix set for handle-typed null-meaningful slots
+# (matrix row 30 — null IS a valid value). The OCCT convention names
+# progress reporters and message handlers with these suffixes; the surface
+# audit (``tau:docs/research/ocjs-occt-surface-audit.md``) notes the row-30
+# population is empirically small (the cross-cutting policy question is
+# unsettled in current OCCT V8). For Phase 3 we ship the plumbing and
+# detect a conservative seed set; future surface audits can extend the
+# set without touching the val-default helper.
+_ROW_30_REPORTER_HANDLE_SUFFIXES = (
+    "Message_ProgressIndicator",
+    "Message_ProgressRange",
+    "Message_Report",
+    "ShapeExtend_BasicMsgRegistrator",
+)
+
+
+def _is_canonical_optional_default(b, arg, theClass, classCpp, templateDecl, templateArgs):
+    """Decide whether a trailing-default parameter belongs to the canonical
+    ``std::optional<T>`` matrix domain {3, 4, 5}.
+
+    Returns True when one of the following holds (matrix-row anchors):
+
+    * **Row 3** — handle type ``const Handle<T>&`` with default ``Handle()``
+      (i.e. the null-handle default). The surface audit shows ~210
+      production instances of this shape, dominated by
+      ``NCollection_BaseAllocator`` allocator defaults.
+    * **Row 5** — scoped-constant default ``= NS::Const`` or
+      ``= Class::CONST``. The default expression contains ``::`` and is
+      not a function-call expression (gate-excluded by the bindgen for
+      multi-overload methods per matrix row 5's documented behaviour).
+
+    Returns False for every other trailing-default shape — scalar
+    defaults (row 1), value-class defaults (row 2), const-ref-temp
+    defaults (row 4 — narrowed out of canonical optional per rule 5),
+    ``T{}`` defaults (row 36), non-null handle sentinels (row 23,
+    speculative), and reference-default singletons (row 37, speculative).
+    All of those route to ``emscripten::val`` per policy rule 9 +
+    rule 5 (strict-by-default null/undefined).
+
+    Phase 4 update (2026-05-29): Row 4 was previously routed via
+    canonical ``std::optional<T>``; that path emitted Embind's native
+    "Expected null or instance of T" error on explicit ``null``, which
+    does NOT satisfy the rule-5 contract pinned by
+    ``smoke-rule-5-strict-null-rejection.test.ts``. To uniformly enforce
+    rule 5 across the trailing-default surface, row 4 was reclassified
+    into the val-default lane. ``CANONICAL_OPTIONAL_ROWS`` is narrowed
+    to ``{3, 5, 21, 22}`` in
+    ``predicates/overload_classification.py``.
+
+    The function is conservative: when in doubt (e.g. an unparseable
+    default expression), it returns False so the val emission path
+    handles the slot. The val path is the safe default per policy
+    rule 9 — only the canonical {3, 4, 5} surface keeps
+    ``std::optional<T>``.
+    """
+    default_expr = b._extractDefaultExpr(arg, owning_class=theClass, class_scope=classCpp)
+    if default_expr is None:
+        return False
+
+    expr_compact = "".join(default_expr.split())
+    canonical = arg.type.get_canonical()
+
+    # Row 3 — handle type with ``Handle()`` (null) default. The default
+    # expression normalises to ``Handle()`` or ``opencascade::handle<T>()``
+    # via clang's token reproduction; we anchor on the literal trailing
+    # ``()`` substring after the ``Handle`` identifier to keep the test
+    # robust against namespace-spelling variation.
+    arg_type_spelling = arg.type.spelling
+    pointee = arg.type.get_pointee()
+    is_handle_param = False
+    if pointee.kind != clang.cindex.TypeKind.INVALID and _isHandleType(pointee):
+        is_handle_param = True
+    elif _isHandleType(arg.type):
+        is_handle_param = True
+    elif "handle<" in arg_type_spelling.lower() or "Handle(" in arg_type_spelling:
+        is_handle_param = True
+
+    if is_handle_param:
+        # The canonical row 3 default is the null Handle. Spellings
+        # observed in production: ``Handle()``, ``opencascade::handle<T>()``,
+        # ``Handle_T()``. Any of these collapses to a parenthesis pair
+        # immediately preceded by the ``Handle`` identifier or a
+        # template instantiation.
+        if expr_compact.endswith("()"):
+            return True
+        return False
+
+    # Row 4 — const-ref to anonymous temporary. Per policy rule 5
+    # (strict-by-default null/undefined) every defaulted slot, including
+    # const-ref-temp, must reject explicit `null` with the structured
+    # rule-5 message. The std::optional<T> wrapper's native error
+    # ("Expected null or instance of T") does NOT satisfy that contract,
+    # so row 4 routes through val-default (alongside rows 1, 2, 36)
+    # rather than canonical std::optional<T>. The canonical
+    # std::optional<T> domain is therefore narrowed to rows {3, 5, 21, 22}.
+    #
+    # Returning False here for const-ref-temp pushes the trailing slot
+    # through ``emit_constructor_with_val_default`` /
+    # ``emit_method_with_val_default``, which emits the rule-5 throw
+    # expression uniformly.
+    return False
+
+    # Row 5 — scoped-constant default. The default expression contains
+    # ``::`` AND is not a function-call expression (no trailing ``()``).
+    # Per the surface audit: "value_or((NCollection_IncAllocator::THE_DEFAULT_BLOCK_SIZE))"
+    # is canonical row 5; "value_or((Precision::Confusion()))" is
+    # gate-excluded so does not reach this code path in production.
+    if "::" in default_expr and not expr_compact.endswith(")"):
+        return True
+
+    return False
+
+
+def _accepts_meaningful_null(b, arg, theClass, classCpp, templateDecl, templateArgs):
+    """Decide whether a trailing-default slot's ``null`` JS value should be
+    treated as a meaningful C++ value (matrix row 30) rather than
+    rejected per the strict-by-default null/undefined policy (rule 5).
+
+    Phase 3 plumbs the per-position opt-in through the classifier and
+    the val-default emitter; the OPT-IN SOURCE itself is a small
+    heuristic seed (the OCCT handle-reporter suffix set in
+    ``_ROW_30_REPORTER_HANDLE_SUFFIXES``). A future PR can layer a
+    YAML allow-list on top without touching the val-default helper.
+
+    The conservative default (False) routes the slot through the
+    rule-5 strict-by-default path — ``null`` argument rejects with a
+    structured ``BindingError`` rather than silently materialising
+    the default. This preserves caller intent on the row-30-disqualified
+    majority surface.
+    """
+    pointee = arg.type.get_pointee()
+    if pointee.kind == clang.cindex.TypeKind.INVALID or not _isHandleType(pointee):
+        return False
+
+    canonical = pointee.get_canonical().spelling
+    for suffix in _ROW_30_REPORTER_HANDLE_SUFFIXES:
+        if suffix in canonical:
+            return True
+    return False
+
+
+def _select_emission_strategy(
+    *,
+    classification,
+    n_defaults,
+    n_optional_wraps,
+    has_output_params,
+    has_cstring_args,
+    return_is_cstring,
+    return_requires_value_wrapper,
+):
+    """Pick the emission strategy for a single method based on the
+    classifier verdict and the unavoidable return-side concerns.
+
+    Returns one of:
+
+    * ``"val_default"`` — emit via
+      :func:`ocjs_bindgen.codegen.val_default.emit_method_with_val_default`.
+      Matrix rows 1, 2, 23, 30, 33, 34, 36, 37 (anything the classifier
+      tags as ``primitive == 'val'`` with at least one trailing default).
+    * ``"optional_default"`` — emit via the existing optional-override
+      ``std::optional<T> + .value_or(D)`` lambda body. Matrix rows 3,
+      4, 5, 22 (anything the classifier tags as ``primitive == 'optional'``
+      with at least one trailing default).
+    * ``"legacy"`` — fall through to the existing ``functionBinding``
+      path (cstring-wrapper / value-wrapper / plain ``&Cls::method``).
+      Used when no defaults are emitable, when every trailing default
+      is a raw pointer (cannot be wrapped in ``std::optional<T*>`` per
+      embind's ``wire.h:124`` static_assert), or when the return-side
+      concerns dominate (cstring return + value-wrapper return).
+
+    Gates dropped vs Phase 2:
+
+    * ``numOverloads == 1`` — the classifier now consults
+      ``sibling_count`` on the descriptor; row 34 (multi-overload
+      trailing default) is the classifier's responsibility, not a
+      gate-exclusion at the emission site.
+    * ``hasCStringArgs`` — row 33 (cstring trailing default)
+      composes the cstring conversion inline in the val-default
+      helper. The cstring INPUT case (non-trailing-default cstring
+      args) still routes through the legacy wrapper because cstring
+      inputs and val trailing defaults can interleave; that
+      composition is row-33-specific and emerges from the classifier
+      verdict.
+
+    Gates preserved:
+
+    * ``has_output_params`` — output params route to RBV (matrix
+      rows 16-19, 25) before this strategy router runs. The classifier
+      also returns ``primitive == 'rbv'`` for this case, but the
+      production code path emits RBV via ``_emitOutputParamBinding``
+      earlier in ``processMethodOrProperty``.
+    * ``return_is_cstring`` / ``return_requires_value_wrapper`` —
+      the val-default helper does not (yet) compose with cstring
+      return wrapping or non-copyable value-wrapper return. When
+      either fires, the legacy wrapper takes the binding and the
+      method's trailing defaults are not expanded (partial-arity JS
+      calls remain unreachable for this surface, matching pre-Phase-3
+      behaviour). A future PR can extend the val-default helper to
+      compose these return-side wrappers.
+    """
+    if n_defaults <= 0:
+        return "legacy"
+    if n_optional_wraps <= 0:
+        # Every trailing default is a raw pointer — embind rejects
+        # ``std::optional<T*>`` and the val-default helper would
+        # produce no semantic value over the plain pointer binding.
+        return "legacy"
+    if has_output_params:
+        # Should have been handled by the RBV path earlier; defensive.
+        return "legacy"
+    if return_is_cstring or return_requires_value_wrapper:
+        # Return-side wrapper still owns the binding shape.
+        return "legacy"
+
+    if classification.primitive == "val":
+        return "val_default"
+    if classification.primitive == "optional":
+        # Optional path cannot compose with non-trailing cstring input
+        # params (the cstring conversion lambda already owns the
+        # binding); fall through.
+        if has_cstring_args:
+            return "legacy"
+        return "optional_default"
+    return "legacy"
+
+
 class Bindings:
   def __init__(self, tuInfo):
     self.tuInfo = tuInfo
@@ -862,12 +1114,82 @@ class Bindings:
       return overloads
     return [ov for ov in overloads if not self._is_wider_string_ctor(ov)]
 
+  def _is_single_char_only_variant(self, ctor):
+    """True iff this overload's sole positional argument is a primitive ``char``
+    (``CHAR_S`` / ``SCHAR`` / ``CHAR_U`` / ``UCHAR``) — i.e. the C++ overload
+    that accepts a single byte interpreted as a character code.
+
+    Embind registers primitive ``char`` as a JS ``number`` at runtime. When a
+    sibling overload accepts ``int`` or ``double`` at the same arity, JS has
+    no way to disambiguate ``new T(42)`` between "construct from char-code 42"
+    (1-character string) and "construct from integer 42" (multi-character
+    decimal representation). The ``char`` overload is therefore unreachable
+    from JS without ambiguity; we drop it here so the integer overload wins.
+
+    Anchors:
+    * ``smoke-cstring-dispatch.test.ts`` (``TCollection_ExtendedString``)
+      pins the post-fix behaviour: ``new TCollection_ExtendedString(42)`` must
+      construct from ``const int`` (length 2 — string "42"), NOT from
+      ``const char`` (length 1 — string with char code 42).
+    * Same arity check as ``_dedupe_float_double``; the ``char`` shape is the
+      identical pattern at the ``CHAR_*`` Type-Kind level rather than the
+      ``FLOAT`` Type-Kind.
+    """
+    args = list(ctor.get_arguments())
+    if len(args) != 1:
+      return False
+    canonical = args[0].type.get_canonical()
+    return canonical.kind in self._JS_CHAR_KINDS
+
+  def _has_int_or_double_only_variant(self, group):
+    """True iff ``group`` contains an arity-1 overload whose sole arg is a
+    JS-numeric primitive (``int``/``double``/etc) — the JS-indistinguishable
+    sibling whose presence makes a ``char`` overload at the same arity
+    unreachable. See :meth:`_is_single_char_only_variant` for context.
+    """
+    for ov in group:
+      args = list(ov.get_arguments())
+      if len(args) != 1:
+        continue
+      canonical = args[0].type.get_canonical()
+      if canonical.kind in self._JS_NUMERIC_KINDS:
+        return True
+    return False
+
+  def _dedupe_char_vs_int(self, overloads):
+    """Remove primitive ``char`` overloads when an ``int``/``double`` sibling
+    exists at the same arity.
+
+    See :meth:`_is_single_char_only_variant` and
+    :meth:`_has_int_or_double_only_variant` for the rationale. This filter
+    mirrors :meth:`_dedupe_float_double` in shape: arity-grouped, and only
+    drops when the JS-distinguishable sibling is present.
+    """
+    if len(overloads) <= 1:
+      return overloads
+    by_arity = defaultdict(list)
+    for ov in overloads:
+      by_arity[len(list(ov.get_arguments()))].append(ov)
+    result = []
+    for group in by_arity.values():
+      if len(group) <= 1:
+        result.extend(group)
+        continue
+      if self._has_int_or_double_only_variant(group):
+        result.extend(ov for ov in group if not self._is_single_char_only_variant(ov))
+      else:
+        result.extend(group)
+    return result
+
   def _filter_overloads(self, overloads):
-    """Apply all safe filters: deleted ctors, move ctors, float/double dedup, string encoding dedup."""
+    """Apply all safe filters: deleted ctors, move ctors, float/double dedup,
+    string encoding dedup, char-vs-int dedup.
+    """
     filtered = [c for c in overloads if not self._is_deleted_method(c)]
     filtered = [c for c in filtered if not self._is_move_constructor(c)]
     filtered = self._dedupe_float_double(filtered)
     filtered = self._dedupe_string_encodings(filtered)
+    filtered = self._dedupe_char_vs_int(filtered)
     return filtered
 
   def _isWireSafeFieldType(self, clang_type):
@@ -905,6 +1227,164 @@ class Bindings:
       else:
         break
     return count
+
+  def _extractDefaultExpr(self, arg, owning_class=None, class_scope=None):
+    """Extract the C++ default-value expression for an argument from clang tokens.
+
+    Returns the source text after ``=`` joined token-by-token, or ``None`` if
+    no default. Multi-token defaults like ``Standard_NullObject()`` or
+    ``BRepOffset_Skin`` survive intact. Callers wrap the result in parens
+    when emitting ``value_or(...)`` so the expression's textual identity is
+    preserved through C++ parsing. See
+    docs/research/ocjs-optional-overload-resolution-blueprint.md
+    (mechanical translation rules).
+
+    When ``owning_class`` is provided, references to **class-scoped**
+    declarations inside the default expression are textually qualified with
+    ``<ClassName>::``. Without this, identifiers like ``DefaultBlockSize``
+    (a class static referenced unqualified in the OCCT header) become
+    undefined when emitted inside an ``optional_override`` lambda body —
+    the lambda runs at global scope, not class scope. AST inspection finds
+    every ``DECL_REF_EXPR`` whose referenced declaration's
+    ``semantic_parent`` is ``owning_class`` and rewrites it via
+    whole-word regex substitution on the joined token text.
+    """
+    tokens = list(arg.get_tokens())
+    eq_idx = -1
+    for i, tok in enumerate(tokens):
+      if tok.spelling == "=":
+        eq_idx = i
+        break
+    if eq_idx == -1:
+      return None
+    default_tokens = tokens[eq_idx + 1:]
+    expr = " ".join(t.spelling for t in default_tokens).strip()
+    if not expr:
+      return None
+
+    if owning_class is None:
+      return expr
+
+    default_cursor = None
+    for child in arg.get_children():
+      if child.kind in (
+        clang.cindex.CursorKind.TYPE_REF,
+        clang.cindex.CursorKind.NAMESPACE_REF,
+        clang.cindex.CursorKind.TEMPLATE_REF,
+      ):
+        continue
+      default_cursor = child
+
+    if default_cursor is None:
+      return expr
+
+    owning_usr = owning_class.get_usr()
+    class_kinds = (
+      clang.cindex.CursorKind.CLASS_DECL,
+      clang.cindex.CursorKind.STRUCT_DECL,
+      clang.cindex.CursorKind.CLASS_TEMPLATE,
+      clang.cindex.CursorKind.CLASS_TEMPLATE_PARTIAL_SPECIALIZATION,
+    )
+    members_to_qualify = set()
+
+    def _topmost_owning_class_member(referenced):
+      """Walk up ``referenced``'s semantic-parent chain. Return the topmost
+      cursor whose direct semantic parent is ``owning_class``; otherwise
+      ``None``.
+
+      For ``Kind::Solid`` referenced in ``BRepGraph_NodeId``, the chain is
+      ``Solid -> Kind -> BRepGraph_NodeId``; we return ``Kind`` (the
+      identifier that must be qualified in the lambda body).
+      For ``DefaultBlockSize`` referenced in ``NCollection_AccAllocator``,
+      the chain is ``DefaultBlockSize -> NCollection_AccAllocator``;
+      we return ``DefaultBlockSize``.
+      """
+      if referenced is None:
+        return None
+      cur = referenced
+      while cur is not None:
+        parent = cur.semantic_parent
+        if parent is None:
+          return None
+        if parent.kind in class_kinds and owning_usr and parent.get_usr() == owning_usr:
+          return cur
+        cur = parent
+      return None
+
+    def _walk(c):
+      # Class-scoped statics and constexpr members appear as DECL_REF_EXPR.
+      # Nested enum/class references (e.g. `Kind::Solid` where `Kind` is a
+      # nested enum) appear as TYPE_REF cursors. Both must be qualified
+      # with the owning class so the lambda body — which runs at global
+      # scope, not class scope — resolves them correctly.
+      if c.kind in (clang.cindex.CursorKind.DECL_REF_EXPR, clang.cindex.CursorKind.TYPE_REF):
+        target = _topmost_owning_class_member(c.referenced)
+        if target is not None:
+          members_to_qualify.add(target.spelling)
+      for sub in c.get_children():
+        _walk(sub)
+
+    _walk(default_cursor)
+
+    if not members_to_qualify:
+      return expr
+
+    import re
+    # Prefer the caller-supplied fully-qualified scope (e.g.
+    # ``BRepGraph::EditorView`` for a class nested under ``BRepGraph``).
+    # ``owning_class.spelling`` is the local class name only — for nested
+    # classes that yields ``EditorView`` and the lambda body still fails
+    # to resolve the identifier. The qualified form must come from
+    # ``getClassQualifiedName`` at the call site.
+    scope = class_scope if class_scope else owning_class.spelling
+    for name in members_to_qualify:
+      pattern = rf"(?<![\w:]){re.escape(name)}(?!\w)"
+      expr = re.sub(pattern, f"{scope}::{name}", expr)
+    return expr
+
+  def _getOptionalInnerType(self, arg, templateDecl=None, templateArgs=None):
+    """Return the C++ type to place inside ``std::optional<...>`` for ``arg``.
+
+    Per the blueprint's four mechanical shapes:
+
+      ``T arg = D``              -> ``T``
+      ``const T arg = D``        -> ``T``
+      ``const T& arg = D``       -> ``T``
+      ``Handle_T arg = D``       -> ``Handle_T``
+      ``const Handle_T& arg = D`` -> ``Handle_T``
+
+    Non-const ``T&`` is rejected by the R6 guard upstream; this helper
+    therefore does not need to defend against it.
+    """
+    t = arg.type
+    if t.kind == clang.cindex.TypeKind.LVALUEREFERENCE:
+      pointee = t.get_pointee()
+      spelling = pointee.spelling
+    else:
+      spelling = t.spelling
+      pointee = t
+    if spelling.startswith("const "):
+      spelling = spelling[len("const "):]
+    resolved = self.resolveWithCanonicalFallback(spelling, pointee, templateDecl, templateArgs)
+    # std::optional<T> requires T to be a non-const, non-reference, non-array
+    # object type. resolveWithCanonicalFallback may re-introduce a leading
+    # `const ` qualifier (e.g. when the canonical type spelling of a typedef
+    # like `Standard_Boolean` resolves to `const bool` for a parameter typed
+    # `const Standard_Boolean`). Strip it from the final output so the wrapper
+    # is well-formed; the call site re-binds to the const-qualified parameter
+    # via implicit conversion.
+    if resolved.startswith("const "):
+      resolved = resolved[len("const "):]
+    # Track every distinct inner spelling so the class's EMSCRIPTEN_BINDINGS
+    # block can emit one `register_optional<T>()` call per unique type.
+    # Without this, embind has no converter for `std::optional<T>` and the
+    # binding raises `Cannot construct ... due to unbound types` at the
+    # first ctor/method invocation. The buffer is reset per class by
+    # `preamble.reset_struct_buffers`.
+    inner_types = getattr(self, "_optional_inner_types", None)
+    if inner_types is not None and resolved not in inner_types:
+      inner_types.append(resolved)
+    return resolved
 
   # ---------------------------------------------------------------------------
   # JS type classification for dispatch
@@ -946,6 +1426,27 @@ class Bindings:
       t = t.get_pointee()
     return t
 
+  def _mangle_template_js_name(self, clang_type, container_name):
+    """Compute the auto-generated JS-side typedef name for a templated class.
+
+    The bindgen synthesises a typedef like ``using NCollection_Array1_gp_Pnt
+    = NCollection_Array1<gp_Pnt>`` (see :func:`ocjs_bindgen.discover.mangle_template_name`)
+    and registers the class as ``class_<NCollection_Array1_gp_Pnt>("NCollection_Array1_gp_Pnt")``.
+    JS-side ``instanceof`` checks against ``Module["NCollection_Array1_gp_Pnt"]``
+    only succeed when the val-dispatch discriminator names the typedef
+    spelling rather than the bare template spelling (``NCollection_Array1``).
+    Mirrors the same mangling algorithm used by the discover phase so the
+    discriminator and the registered class name stay in lock-step.
+    """
+    from ocjs_bindgen.discover import mangle_template_name, _extract_template_args
+    try:
+      arg_spellings = _extract_template_args(clang_type)
+    except Exception:
+      return None
+    if not arg_spellings:
+      return None
+    return mangle_template_name(container_name, arg_spellings)
+
   def _resolve_template_typedef(self, type_spelling):
     """Resolve a template instantiation like NCollection_Array1<gp_Pnt> to its typedef name like TColgp_Array1OfPnt."""
     if Bindings._reverse_typedef_cache is None:
@@ -976,7 +1477,19 @@ class Bindings:
     if kind == clang.cindex.TypeKind.ENUM:
       decl = canonical.get_declaration()
       if decl and decl.spelling:
-        return JsType('string_enum', decl.spelling)
+        # Nested enums (e.g. ``BRepGraph_NodeId::Kind``) are registered
+        # under the mangled ``Parent_Child`` JS name
+        # (``BRepGraph_NodeId_Kind``), NOT the bare leaf spelling
+        # (``Kind``). The val-dispatch discriminator does a
+        # ``module_property("<name>")[arg]`` membership test, so it must
+        # name the registered JS identifier or the branch is dead code
+        # (the bare-name lookup resolves to ``undefined`` and the check
+        # never fires). Mirror the registration naming via
+        # ``resolve_nested_type``; top-level enums return ``None`` →
+        # fall back to the bare spelling, which IS their registered name.
+        from ocjs_bindgen.naming import ENCODER
+        nested = ENCODER.resolve_nested_type(decl)
+        return JsType('string_enum', nested or decl.spelling)
       return JsType('string', 'string')
 
     if kind in self._JS_INTEGER_KINDS:
@@ -996,7 +1509,15 @@ class Bindings:
         typedef_name = self._resolve_template_typedef(t.spelling)
         if typedef_name:
           return JsType('object', typedef_name)
-      return JsType('object', decl.spelling)
+        mangled = self._mangle_template_js_name(t, decl.spelling)
+        if mangled:
+          return JsType('object', mangled)
+      # Nested classes/structs (e.g. ``BRepGraph_ParentExplorer::Config``)
+      # register under the mangled ``Parent_Child`` JS name; the
+      # ``instanceof module_property("<name>")`` discriminator must match.
+      from ocjs_bindgen.naming import ENCODER
+      nested = ENCODER.resolve_nested_type(decl)
+      return JsType('object', nested or decl.spelling)
 
     decl = canonical.get_declaration()
     if decl and decl.spelling:
@@ -1004,7 +1525,12 @@ class Bindings:
         typedef_name = self._resolve_template_typedef(canonical.spelling)
         if typedef_name:
           return JsType('object', typedef_name)
-      return JsType('object', decl.spelling)
+        mangled = self._mangle_template_js_name(canonical, decl.spelling)
+        if mangled:
+          return JsType('object', mangled)
+      from ocjs_bindgen.naming import ENCODER
+      nested = ENCODER.resolve_nested_type(decl)
+      return JsType('object', nested or decl.spelling)
 
     if templateArgs and "type-parameter-" in canonical.spelling:
       import re
@@ -1398,6 +1924,20 @@ class EmbindBindings(Bindings):
   def _envelope_richness(self, method):
     return _rbv.envelope_richness(self, method)
 
+  def _jsEffectiveArityRange(self, method):
+    """Rule 3 helper: return ``(min_arity, max_arity)`` post-RBV-elision +
+    post-default-expansion. See :func:`ocjs_bindgen.codegen.rbv.js_effective_arity_range`.
+    """
+    return _rbv.js_effective_arity_range(self, method)
+
+  def _jsEffectiveArityCollisions(self, group, templateDecl=None, templateArgs=None):
+    """Rule 3 precondition: return a list of
+    ``(method_a, method_b, intersection_lo, intersection_hi)`` tuples for
+    every same-name overload pair in ``group`` whose JS-effective arity
+    ranges overlap. See :func:`ocjs_bindgen.codegen.rbv.js_effective_arity_collisions`.
+    """
+    return _rbv.js_effective_arity_collisions(self, group, templateDecl, templateArgs)
+
   def _ensureResultStruct(self, method, args, className, overloadPostfix, templateDecl, templateArgs, theClass=None):
     return _rbv.ensure_result_struct(self, method, args, className, overloadPostfix, templateDecl, templateArgs, theClass=theClass)
 
@@ -1421,6 +1961,78 @@ class EmbindBindings(Bindings):
     shape contract — this method is a thin delegator (PR 2.2).
     """
     return _rbv.emit_output_param_binding(self, theClass, method, args, className, classTypeName, overloadPostfix, templateDecl, templateArgs)
+
+  def _buildValueWrapperLambda(self, method, classCpp, templateDecl, templateArgs, use_arg_count, storage):
+    """Build ONE ``optional_override`` value-wrapper lambda for a non-copyable
+    return method, using only the first ``use_arg_count`` parameters.
+
+    The non-copyable-return path (rule 17/TR-RBV) wraps the C++ return in a
+    ``thread_local`` staging slot (by-value) or ``val(&ref)`` (by-ref) so
+    embind's copy-marshalling (``wire.h:391``) is bypassed. When the method
+    carries trailing defaults, the caller emits one lambda per JS-callable
+    arity (full arity plus one truncation per trailing default). Each
+    truncation lambda declares only its first ``use_arg_count`` parameters and
+    calls the C++ function with exactly those — so the C++ source defaults
+    (NOT JS-undefined-coerced ``false``/``0``/``null``) fill the omitted
+    trailing slots. Without the truncations a 2-arg ``Perform(graph, trsf)``
+    call silently applies the WRONG defaults (see
+    ``tests/smoke/smoke-rbv-trailing-defaults.test.ts``).
+    """
+    args_m = list(method.get_arguments())[:use_arg_count]
+    arg_decl = []
+    fwd = []
+    for i, a in enumerate(args_m):
+      typ = self.getOriginalArgumentType(a, templateDecl, templateArgs)
+      nm = a.spelling if a.spelling else f"a{i}"
+      arg_decl.append(f"{typ} {nm}")
+      fwd.append(nm)
+    decls = ", ".join(arg_decl)
+    call_fwd = ", ".join(fwd)
+    rt = method.result_type
+    return_by_ref = rt.kind in (
+      clang.cindex.TypeKind.LVALUEREFERENCE,
+      clang.cindex.TypeKind.RVALUEREFERENCE,
+    )
+    ret_clang_type = rt.get_pointee() if return_by_ref else rt
+    ret_cpp = self.resolveWithCanonicalFallback(
+      ret_clang_type.spelling, ret_clang_type, templateDecl, templateArgs)
+    if method.is_static_method():
+      call_expr = f"{classCpp}::{method.spelling}({call_fwd})"
+      self_prefix = ""
+    else:
+      call_expr = f"self.{method.spelling}({call_fwd})"
+      const_self = "const " if method.is_const_method() else ""
+      self_decl = f"{const_self}{classCpp}& self"
+      self_prefix = self_decl + (", " if decls else "")
+    if return_by_ref:
+      return merge("",
+        " optional_override([](",
+        self_prefix,
+        decls,
+        ") -> emscripten::val {\n",
+        indent(3),
+        "auto& ret = ",
+        call_expr,
+        ";\n",
+        indent(3),
+        "return emscripten::val(&ret, allow_raw_pointers());\n",
+        indent(2),
+        "})",
+      )
+    return merge("",
+      " optional_override([](",
+      self_prefix,
+      decls,
+      ") -> emscripten::val {\n",
+      indent(3),
+      f"thread_local {ret_cpp} {storage};\n",
+      indent(3),
+      f"{storage} = {call_expr};\n",
+      indent(3),
+      f"return emscripten::val(&{storage}, allow_raw_pointers());\n",
+      indent(2),
+      "})",
+    )
 
   def processMethodOrProperty(self, theClass, method, templateDecl = None, templateArgs = None, overload_index = 0, override_postfix = None):
     output = ""
@@ -1582,100 +2194,43 @@ class EmbindBindings(Bindings):
             f"{indent(3)}}}\n",
             f"{indent(2)})",
           )
+      # Truncation lambdas for the non-copyable value-wrapper return path
+      # (TR-RBV). Populated below when the method has trailing defaults so
+      # the emission site can register one binding per JS-callable arity.
+      _value_wrapper_truncations = []
       if functionBinding is None:
         if self._returnTypeRequiresValueWrapper(method):
+          # TR-RBV trailing-default fan-out: emit the full-arity value-wrapper
+          # lambda PLUS one truncation per trailing default. embind's
+          # `optional_override` lambda registration is permissive about
+          # missing JS args (they arrive as `undefined`, silently coerced to
+          # the JS-undefined C++ default — `false`/`0`/`null`), so a single
+          # full-arity envelope would apply the WRONG defaults for partial
+          # calls. Registering a distinct lambda at each shorter arity routes
+          # partial calls to a body that calls the C++ function with only the
+          # supplied args, letting the C++ SOURCE defaults fill the rest.
+          # See `tests/smoke/smoke-rbv-trailing-defaults.test.ts`.
+          n_value_wrapper_args = len(list(method.get_arguments()))
+          n_value_wrapper_defaults = self._countTrailingDefaults(method)
           self._ret_wrapper_serial += 1
-          storage = f"__ocjs_ret_{self._ret_wrapper_serial}"
-          args_m = list(method.get_arguments())
-          arg_decl = []
-          fwd = []
-          for i, a in enumerate(args_m):
-            typ = self.getOriginalArgumentType(a, templateDecl, templateArgs)
-            nm = a.spelling if a.spelling else f"a{i}"
-            arg_decl.append(f"{typ} {nm}")
-            fwd.append(nm)
-          decls = ", ".join(arg_decl)
-          call_fwd = ", ".join(fwd)
-          rt = method.result_type
-          return_by_ref = rt.kind in (
-            clang.cindex.TypeKind.LVALUEREFERENCE,
-            clang.cindex.TypeKind.RVALUEREFERENCE,
+          functionBinding = self._buildValueWrapperLambda(
+            method, classCpp, templateDecl, templateArgs,
+            use_arg_count=n_value_wrapper_args,
+            storage=f"__ocjs_ret_{self._ret_wrapper_serial}",
           )
-          ret_clang_type = rt.get_pointee() if return_by_ref else rt
-          ret_cpp = self.resolveWithCanonicalFallback(
-            ret_clang_type.spelling, ret_clang_type, templateDecl, templateArgs)
-          if method.is_static_method():
-            call_expr = f"{classCpp}::{method.spelling}({call_fwd})"
-          else:
-            call_expr = f"self.{method.spelling}({call_fwd})"
-          if return_by_ref:
-            if method.is_static_method():
-              functionBinding = merge("",
-                " optional_override([](",
-                decls,
-                ") -> emscripten::val {\n",
-                indent(3),
-                "auto& ret = ",
-                call_expr,
-                ";\n",
-                indent(3),
-                "return emscripten::val(&ret, allow_raw_pointers());\n",
-                indent(2),
-                "})",
+          for truncate_to in range(
+            n_value_wrapper_args - 1,
+            n_value_wrapper_args - n_value_wrapper_defaults - 1,
+            -1,
+          ):
+            self._ret_wrapper_serial += 1
+            _value_wrapper_truncations.append(
+              self._buildValueWrapperLambda(
+                method, classCpp, templateDecl, templateArgs,
+                use_arg_count=truncate_to,
+                storage=f"__ocjs_ret_{self._ret_wrapper_serial}",
               )
-            else:
-              const_self = "const " if method.is_const_method() else ""
-              self_and = f"{const_self}{classCpp}& self"
-              sep = ", " if decls else ""
-              functionBinding = merge("",
-                " optional_override([](",
-                self_and,
-                sep,
-                decls,
-                ") -> emscripten::val {\n",
-                indent(3),
-                "auto& ret = ",
-                call_expr,
-                ";\n",
-                indent(3),
-                "return emscripten::val(&ret, allow_raw_pointers());\n",
-                indent(2),
-                "})",
-              )
-          else:
-            if method.is_static_method():
-              functionBinding = merge("",
-                " optional_override([](",
-                decls,
-                ") -> emscripten::val {\n",
-                indent(3),
-                f"thread_local {ret_cpp} {storage};\n",
-                indent(3),
-                f"{storage} = {call_expr};\n",
-                indent(3),
-                f"return emscripten::val(&{storage}, allow_raw_pointers());\n",
-                indent(2),
-                "})",
-              )
-            else:
-              const_self = "const " if method.is_const_method() else ""
-              self_and = f"{const_self}{classCpp}& self"
-              sep = ", " if decls else ""
-              functionBinding = merge("",
-                " optional_override([](",
-                self_and,
-                sep,
-                decls,
-                ") -> emscripten::val {\n",
-                indent(3),
-                f"thread_local {ret_cpp} {storage};\n",
-                indent(3),
-                f"{storage} = {call_expr};\n",
-                indent(3),
-                f"return emscripten::val(&{storage}, allow_raw_pointers());\n",
-                indent(2),
-                "})",
-              )
+            )
         elif numOverloads == 1:
           functionBinding = " &" + classCpp + "::" + method.spelling
         else:
@@ -1693,7 +2248,224 @@ class EmbindBindings(Bindings):
       else:
         functionCommand = "function"
 
-      output += f"{indent(2)}.{functionCommand}(\"{method.spelling}{overloadPostfix}\",{functionBinding}, allow_raw_pointers())\n"
+      # Optional-overload migration: collapse trailing-default arity fan-out
+      # into a single `optional_override` lambda whose last `nDefaults`
+      # parameters are `std::optional<T>` with `.value_or(D)` recovery,
+      # paired with the libembind v2 dispatcher's arity-pad + wildcard
+      # logic. See
+      # docs/research/ocjs-optional-overload-resolution-blueprint.md.
+      # R4 / T1 guards are unreachable here because the `numOverloads == 1`
+      # gate below already excludes same-arity siblings; only R6 needs
+      # checking at this emission site.
+      nDefaults = self._countTrailingDefaults(method)
+      original_args_for_count = list(method.get_arguments())
+      n_args_for_count = len(original_args_for_count)
+      trailing_for_count = original_args_for_count[n_args_for_count - nDefaults:] if nDefaults > 0 else []
+      # Effective optional count = trailing defaults that we actually wrap in
+      # std::optional<T>. Raw-pointer trailing defaults stay unwrapped (embind
+      # static_assert rejects std::optional<T*>). If every trailing default
+      # is a raw pointer, the lambda would add no dispatch value over the
+      # direct ``&Cls::method`` binding — and the lambda's parameter-type
+      # string would re-introduce nested-name resolution failures that the
+      # plain-pointer binding sidesteps. Fall through in that case.
+      n_optional_wraps = sum(
+        1 for a in trailing_for_count
+        if not (a.type.kind == clang.cindex.TypeKind.POINTER and not isCString(a.type))
+      )
+      # Per-row classification (policy rules 1, 4, 9).
+      #
+      # The classifier is the SINGLE SOURCE OF TRUTH for primitive
+      # choice. We build per-position metadata that lets it pick the
+      # precise matrix row — most importantly ``is_canonical_optional_default``
+      # which distinguishes the canonical ``std::optional<T>`` domain
+      # (rows 3, 4, 5 — handle null defaults, const-ref temps,
+      # scoped-constant defaults) from the val-owned defaults (rows 1,
+      # 2, 23, 30, 33, 34, 36, 37) per policy rule 9 — "Rows {3, 4, 5,
+      # 21, 22} keep ``std::optional<T>``; all other default-bearing
+      # rows use ``emscripten::val`` discrimination".
+      #
+      # Sibling-count metadata propagates through the descriptor so
+      # the classifier can detect row 34 (multi-overload trailing
+      # default) even though ``processMethodOrProperty`` only sees
+      # one method cursor at a time — the method-group dispatcher
+      # (``embind/method.py::process_method_group``) routes each
+      # overload through this function with the full sibling tally
+      # available via ``getMethodOverloadPostfix``.
+      _row_overload = OverloadDescriptor(
+        parameters=tuple(
+          ParameterDescriptor(
+            type_name=self.getOriginalArgumentType(a, templateDecl, templateArgs),
+            is_trailing_default=(i >= n_args_for_count - nDefaults),
+            is_cstring=isCString(a.type),
+            is_raw_pointer=isRawPointerParam(a.type) and not isCString(a.type),
+            is_canonical_optional_default=(
+              i >= n_args_for_count - nDefaults
+              and _is_canonical_optional_default(self, a, theClass, classCpp, templateDecl, templateArgs)
+            ),
+            accepts_meaningful_null=(
+              i >= n_args_for_count - nDefaults
+              and _accepts_meaningful_null(self, a, theClass, classCpp, templateDecl, templateArgs)
+            ),
+          )
+          for i, a in enumerate(original_args_for_count)
+        ),
+        is_constructor=False,
+        is_static=method.is_static_method(),
+        sibling_count=max(0, numOverloads - 1),
+      )
+      _row_inputs = GroupClassificationInputs(
+        overloads=(_row_overload,),
+        has_sibling_aliasing=False,
+        has_output_params=hasOutputParams,
+      )
+      _row_classification = classify_overload_group(_row_inputs)
+
+      # Strategy router — picks the emission helper based on the
+      # classifier's primitive and the return-side concerns that
+      # cannot yet compose with val/optional default-bearing lambdas
+      # (cstring return, non-copyable value-wrapper return). Returns
+      # one of: ``"val_default"``, ``"optional_default"``, ``"legacy"``.
+      #
+      # ``"legacy"`` means "fall through to the existing
+      # ``functionBinding`` path" (cstring-wrapper lambda for cstring
+      # I/O, value-wrapper lambda for non-copyable return, plain
+      # ``&Cls::method`` / ``select_overload<>`` otherwise). The
+      # legacy path does NOT expand trailing defaults — partial-arity
+      # JS calls are unreachable for those methods, which matches the
+      # pre-Phase-3 behaviour for output-param / cstring-return /
+      # non-copyable-return methods.
+      _strategy = _select_emission_strategy(
+        classification=_row_classification,
+        n_defaults=nDefaults,
+        n_optional_wraps=n_optional_wraps,
+        has_output_params=hasOutputParams,
+        has_cstring_args=hasCStringArgs,
+        return_is_cstring=returnIsCString,
+        return_requires_value_wrapper=self._returnTypeRequiresValueWrapper(method),
+      )
+      can_emit_val_default = _strategy == "val_default"
+      use_optional_emit = _strategy == "optional_default"
+
+      if can_emit_val_default:
+        # Row 33 — emit a val-discrimination lambda with strict
+        # null/undefined unwrap (policy rule 5). The legacy cstring
+        # wrapper is bypassed for this row.
+        function_command = "class_function" if method.is_static_method() else "function"
+        try:
+          assert_no_nonconst_ref_in_optional(
+            theClass.spelling,
+            f"{theClass.spelling}.{method.spelling}",
+            original_args_for_count[n_args_for_count - nDefaults:],
+          )
+        except SkipException as e:
+          print(str(e))
+          output += f"{indent(2)}.{function_command}(\"{method.spelling}{overloadPostfix}\",{functionBinding}, allow_raw_pointers())\n"
+        else:
+          print(_row_classification.diagnostic(f"{theClass.spelling}.{method.spelling}"))
+          # Row 30 — when any trailing-default position is tagged
+          # ``accepts_meaningful_null``, plumb the set of positions
+          # through to the val-default helper so its strict-vs-permissive
+          # dispatch (rule 5) honours the row-30 carve-out per slot.
+          accepts_null_set = {
+            i for i, p in enumerate(_row_overload.parameters)
+            if p.accepts_meaningful_null
+          }
+          # TR-MO truncation fan-out for row 34 — when the method has
+          # sibling overloads (e.g. BRepOffsetAPI_MakeFilling.Add) the
+          # full-arity val-default lambda alone is insufficient because
+          # libembind's argCount dispatcher only consults registrations
+          # whose registered arity matches the JS call arity. Emitting
+          # truncation lambdas at each shorter arity (with trailing
+          # defaults baked in) lets libembind dispatch by arg0 type at
+          # those intermediate arities, so ``Add(edge, GeomAbs_C0)``
+          # routes to the Edge variant even though the Face variant
+          # also registers at arity 2.
+          emit_truncations = numOverloads > 1
+          output += _val_default.emit_method_with_val_default(
+            self,
+            theClass,
+            method,
+            template_decl=templateDecl,
+            template_args=templateArgs,
+            function_command=function_command,
+            overload_postfix=overloadPostfix,
+            class_cpp=classCpp,
+            accepts_null_per_position=accepts_null_set,
+            emit_truncations=emit_truncations,
+          )
+      elif use_optional_emit:
+        original_args = list(method.get_arguments())
+        nArgs = len(original_args)
+        try:
+          assert_no_nonconst_ref_in_optional(
+            theClass.spelling,
+            f"{theClass.spelling}.{method.spelling}",
+            original_args[nArgs - nDefaults:],
+          )
+        except SkipException as e:
+          print(str(e))
+          # Fall back to the unwrapped binding so we still expose the method;
+          # the unsafe trailing-default shape is rejected but the full-arity
+          # call remains usable.
+          output += f"{indent(2)}.{functionCommand}(\"{method.spelling}{overloadPostfix}\",{functionBinding}, allow_raw_pointers())\n"
+        else:
+          result_cpp = self.resolveWithCanonicalFallback(
+            method.result_type.spelling, method.result_type, templateDecl, templateArgs)
+          lambda_decls = []
+          call_arg_names = []
+          for i, a in enumerate(original_args):
+            nm = a.spelling if a.spelling else f"a{i}"
+            is_raw_pointer_trailing = (
+              i >= nArgs - nDefaults
+              and a.type.kind == clang.cindex.TypeKind.POINTER
+              and not isCString(a.type)
+            )
+            if is_raw_pointer_trailing:
+              # Raw-pointer trailing defaults can't be wrapped in
+              # std::optional<T*>: embind's wire.h:124 static_assert rejects
+              # raw pointer types inside std::optional even when
+              # `allow_raw_pointers()` is applied at the binding level.
+              # Keep the slot as a raw pointer; JS callers must pass an
+              # explicit value or null when invoking this method.
+              typ = self.getOriginalArgumentType(a, templateDecl, templateArgs)
+              lambda_decls.append(f"{typ} {nm}")
+              call_arg_names.append(nm)
+            elif i >= nArgs - nDefaults:
+              inner = self._getOptionalInnerType(a, templateDecl, templateArgs)
+              default_expr = self._extractDefaultExpr(a, owning_class=theClass, class_scope=classCpp) or "{}"
+              lambda_decls.append(f"std::optional<{inner}> {nm}")
+              call_arg_names.append(f"{nm}.value_or(({default_expr}))")
+            else:
+              typ = self.getOriginalArgumentType(a, templateDecl, templateArgs)
+              lambda_decls.append(f"{typ} {nm}")
+              call_arg_names.append(nm)
+          decls_str = ", ".join(lambda_decls)
+          names_str = ", ".join(call_arg_names)
+          if method.is_static_method():
+            full_decls = decls_str
+            call_expr = f"{classCpp}::{method.spelling}({names_str})"
+          else:
+            const_self = "const " if method.is_const_method() else ""
+            self_decl = f"{const_self}{classCpp}& self"
+            full_decls = self_decl if not decls_str else f"{self_decl}, {decls_str}"
+            call_expr = f"self.{method.spelling}({names_str})"
+          return_kw = "" if method.result_type.spelling == "void" else "return "
+          optional_binding = (
+            f" optional_override([]({full_decls}) -> {result_cpp} {{\n"
+            f"{indent(3)}{return_kw}{call_expr};\n"
+            f"{indent(2)}}})"
+          )
+          output += (
+            f"{indent(2)}.{functionCommand}(\"{method.spelling}{overloadPostfix}\","
+            f"{optional_binding}, allow_raw_pointers())\n"
+          )
+      else:
+        output += f"{indent(2)}.{functionCommand}(\"{method.spelling}{overloadPostfix}\",{functionBinding}, allow_raw_pointers())\n"
+        # TR-RBV: register the shorter-arity value-wrapper truncations so
+        # partial calls route to a body that lets the C++ source defaults
+        # fill the omitted trailing slots.
+        for _trunc_binding in _value_wrapper_truncations:
+          output += f"{indent(2)}.{functionCommand}(\"{method.spelling}{overloadPostfix}\",{_trunc_binding}, allow_raw_pointers())\n"
     if method.access_specifier == clang.cindex.AccessSpecifier.PUBLIC and method.kind == clang.cindex.CursorKind.FIELD_DECL:
       if method.type.kind == clang.cindex.TypeKind.CONSTANTARRAY:
         print("Cannot handle array properties, skipping " + className + "::" + method.spelling)
@@ -2104,6 +2876,18 @@ class TypescriptBindings(Bindings):
 
     self.exports = set()
     self.ancestorChains = {}
+    # R1 (W10 structural fix) — every C++ class identifier the resolver
+    # attempts to emit as a TS type is recorded here BEFORE the
+    # `_is_known_export_name` filter rejects unresolved candidates.
+    # The set is serialised into each `.d.ts.json` fragment by
+    # `pipeline/generate.py:typescriptGenerationFunc{Classes,Templates}`
+    # and consumed at link time by `link/yaml_build.py:_compute_yaml_class_scope`
+    # so unresolved cross-class references converge on the next link cycle.
+    # Replaces the legacy `_NCOLLECTION_TOKEN_RE` regex scrape over rendered
+    # TS payloads — the codegen layer holds the structured truth one
+    # function call before serialisation, so reaching for regex was a
+    # categorical wrong-abstraction choice.
+    self.referenced_classes: set[str] = set()
     self._docs = self._load_docs()
     # PR 1.6 — Diagnostics moved off TypescriptBindings into a dedicated
     # service. Default to the process-wide singleton so legacy callers in
@@ -2117,6 +2901,48 @@ class TypescriptBindings(Bindings):
     # sets exactly as the in-place implementation did.
     from ocjs_bindgen.resolver import TypeScriptResolver
     self._resolver = TypeScriptResolver(self)
+
+  # ---- R1 (W10 structural fix) helper -----------------------------------
+  # Reserved primitive / sentinel spellings that are NOT C++ class
+  # identifiers and must never enter `referenced_classes`. Kept as a
+  # frozenset so the membership check is O(1).
+  _REFERENCED_CLASS_BLOCKLIST = frozenset({
+    "number", "string", "boolean", "void", "any", "unknown", "never",
+    "object", "null", "undefined", "true", "false", "this",
+  })
+
+  def _record_referenced_class(self, name) -> None:
+    """Record a C++ class identifier candidate seen during type resolution.
+
+    Called from every `resolve_type` strategy *before* the known-export
+    filter rejects unresolved references. The set is serialised into each
+    `.d.ts.json` fragment and consumed at link time by
+    `link/yaml_build.py:_compute_yaml_class_scope` to converge cross-class
+    references on the next link cycle.
+
+    Filters out builtins, function signatures (`(`/`)`), qualified spellings
+    (`::`), templated forms (`<`/`>`), tuple syntax (`[`/`]`/`,`),
+    pointer/reference noise (`&`/`*`), whitespace, and clang's
+    `type-parameter-N-M` sentinels so only single-token C++ class
+    identifiers land in the set. Idempotent — the underlying set
+    deduplicates.
+    """
+    if not isinstance(name, str) or not name:
+      return
+    if name in TypescriptBindings._REFERENCED_CLASS_BLOCKLIST:
+      return
+    if "type-parameter-" in name:
+      return
+    # Single C++ identifier: ASCII letter/underscore start, then
+    # word characters only. Anything else is structured TS syntax that
+    # must not enter the lift set.
+    for ch in name:
+      if not (ch.isalnum() or ch == "_"):
+        return
+    first = name[0]
+    if not (first.isalpha() or first == "_"):
+      return
+    self.referenced_classes.add(name)
 
   def _classify_js_type(self, clang_type, templateDecl=None, templateArgs=None):
     """Override to distinguish bare char from const char* for TypeScript overload resolution.
@@ -2551,12 +3377,26 @@ class TypescriptBindings(Bindings):
     """
     if TypescriptBindings._reverse_typedef_cache is None:
       candidates = {}
+      # V1 RE-SHIP — also consult the discovery TU's underlying maps so
+      # the resolver sees Deprecated/NCollectionAliases typedefs
+      # (`typedef NCollection_DataMap<X,Y,H> XCAFDoc_DataMapOfShapeFix;`)
+      # even though the codegen TU deliberately excludes the Deprecated
+      # headers from class enumeration. Without this merge, OCCT V8's
+      # historic NCollection aliases fall through to generic mangled
+      # spellings, breaking `_resolve_template_arg` → `all_resolved`
+      # in `resolver/strategies/template.py`, which in turn breaks the
+      # YAML-scope structural lift covered by
+      # `test_stepcaf_writer_keeps_shapefix_parameter_map`.
+      from ocjs_bindgen.ast import TypedefDiscoveryTuInfo
+      discovery_tu = TypedefDiscoveryTuInfo.instance()
       # Collect *all* aliases for each underlying type so the priority
       # function below can pick the OCCT-public name (TColStd_*, TColgp_*, …)
       # over the generic NCollection_<TemplateInst>_<T> spelling.
       for src in (
         self.tuInfo.typedefUnderlyingMultimap,
         self.tuInfo.templateTypedefUnderlyingMultimap,
+        discovery_tu.typedefUnderlyingMultimap,
+        discovery_tu.templateTypedefUnderlyingMultimap,
       ):
         for underlying_spelling, typedef_cursors in src.items():
           clean = _normalize_handle_ns(underlying_spelling.replace("const ", "").replace("&", "").strip())
@@ -3085,8 +3925,44 @@ class TypescriptBindings(Bindings):
         args = self._buildKeptArgs(method, allArgs, templateDecl, templateArgs, effective_names=effective_names)
         returnType = outputReturnType
       else:
-        args = ", ".join(self.getTypescriptDefFromArgWithName(arg, effective_names[i], templateDecl, templateArgs)
-                          for i, arg in enumerate(allArgs))
+        # Optional-overload migration: mark trailing parameters with C++
+        # default values as TypeScript optional (`?`). The TS gate mirrors
+        # the C++ optional-emission gate above; the matching `std::optional<T>`
+        # binding accepts both `obj.Build()` (arity-pad) and `obj.Build(undefined)`
+        # call shapes via the libembind v2 dispatcher.
+        # See docs/research/ocjs-optional-overload-resolution-blueprint.md.
+        # `resolve_type` continues to render the inner `T` for the TS arg —
+        # `std::optional<T>` wrapping happens only in the C++ binding layer.
+        def _isCStringPtr(t):
+          return t.get_canonical().kind == clang.cindex.TypeKind.POINTER and isCString(t)
+        hasOutputParams = any(isOutputParam(a.type) for a in allArgs)
+        returnIsCString = _isCStringPtr(method.result_type)
+        # NOTE: `hasCStringArgs` is intentionally NOT an exclusion here. The
+        # Phase-4 val-default cstring branch (`val_default.py::_val_unwrap_expr`)
+        # emits a binding that accepts the trailing-default-omitted call for
+        # cstring params (e.g. `IFSelect_Act.SetGroup(group, file = "")` accepts
+        # the 1-arg call, defaulting `file` to ""). The TS surface must catch up
+        # by rendering the trailing cstring default as optional (`file?: string`).
+        # `returnIsCString` stays excluded — it gates string-RETURNING methods,
+        # not trailing cstring params, and is unrelated to trailing-default arity.
+        ts_default_eligible = (
+          numOverloads == 1
+          and not hasOutputParams
+          and not returnIsCString
+          and not self._returnTypeRequiresValueWrapper(method)
+        )
+        nDefaults = self._countTrailingDefaults(method) if ts_default_eligible else 0
+        nArgs = len(allArgs)
+        parts = []
+        for i, arg in enumerate(allArgs):
+          rendered = self.getTypescriptDefFromArgWithName(arg, effective_names[i], templateDecl, templateArgs)
+          if nDefaults > 0 and i >= nArgs - nDefaults:
+            # rendered is "name: type" — splice in the `?` after `name`.
+            colon = rendered.find(":")
+            if colon != -1:
+              rendered = rendered[:colon] + "?" + rendered[colon:]
+          parts.append(rendered)
+        args = ", ".join(parts)
         returnType = self.getTypescriptDefFromResultType(method.result_type, templateDecl, templateArgs)
 
       className = getClassTypeName(theClass, templateDecl)

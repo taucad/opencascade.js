@@ -138,6 +138,154 @@ def return_is_embind_managed(method):
 # ---------------------------------------------------------------------------
 
 
+def js_effective_arity_range(b, method):
+  """Return ``(min_arity, max_arity)`` — the closed range of JS-callable
+  arities for ``method`` AFTER all bindgen transforms are composed.
+
+  Composes three transforms (per policy rule 3):
+
+  * **primitive-output stripping + RBV elision** — output-param slots
+    that the RBV envelope absorbs do not consume a JS argument slot.
+    Equivalent to ``b._getJsArity(method)`` as the upper bound: the
+    largest number of JS args a caller is ever required to pass.
+  * **default expansion (optional or val)** — each trailing
+    default-bearing slot is omissible from the JS call. The minimum
+    JS-required arity is the upper bound minus the count of trailing
+    JS-visible defaults. Raw-pointer trailing defaults are excluded
+    from the optional count (they remain required because embind's
+    ``wire.h:124`` static_assert rejects ``std::optional<T*>``).
+
+  The range is **closed on both ends** — a JS caller may invoke the
+  method with any arity in ``[min_arity, max_arity]`` (inclusive). The
+  collision check below uses range intersection for that semantics.
+
+  This composition is the rule 3 emit-time precondition: two same-name
+  overloads with intersecting JS-effective arity ranges that would also
+  be JS-type-indistinguishable at the overlapping arities cannot both
+  be registered safely. Either val-discrimination handles them
+  collectively or bindgen must ``SkipException`` one of them.
+  """
+  # Upper bound — post-RBV-elision JS-visible arity.
+  js_arity = b._getJsArity(method)
+
+  # Lower bound — count of JS-visible trailing defaults that the
+  # bindgen would emit via either std::optional<T> wrapping (default
+  # case) or val-discrimination (sub-2b reroute). Raw-pointer trailing
+  # defaults stay required: ``emit_constructor`` /
+  # ``processMethodOrProperty`` keep the slot as a raw pointer because
+  # std::optional<T*> is rejected by embind's wire.h static_assert.
+  args = list(method.get_arguments())
+  n_args = len(args)
+  n_def = b._countTrailingDefaults(method)
+  if n_def <= 0:
+    return (js_arity, js_arity)
+
+  trailing = args[n_args - n_def:]
+  visible_default_count = 0
+  for a in trailing:
+    if isRawPointerParam(a.type) and not isCString(a.type):
+      continue
+    if shouldStripParam(a.type, method):
+      # Stripped output-param slots are removed from the JS-visible
+      # arity entirely; their trailing-default-ness is irrelevant to
+      # the JS-effective range. Skip.
+      continue
+    visible_default_count += 1
+  return (max(0, js_arity - visible_default_count), js_arity)
+
+
+def js_effective_arity_collisions(b, group, template_decl=None, template_args=None):
+  """Find pairs of same-name overloads whose JS-effective arity ranges intersect.
+
+  Implements the rule 3 precondition: returns a list of
+  ``(method_a, method_b, intersection_lo, intersection_hi)`` for every
+  unordered pair in ``group`` whose ranges overlap. Range intersection
+  is computed on the closed-interval semantics returned by
+  :func:`js_effective_arity_range`.
+
+  The caller is responsible for resolving each collision:
+
+  * If the JS types at the overlapping arity differ → val-discrimination
+    (matrix rows 9, 12, 14) is the correct fix.
+  * If the JS types are identical → either rule 2 (sub-2b) catches the
+    same shape from a different angle, or the overload pair must be
+    deduped (row 11) or one of them skipped (row 35).
+
+  Range overlap alone does NOT mandate a hard skip — the bindgen has
+  several legitimate ways to resolve same-arity collisions (val
+  dispatch, JS-effective dedup, RBV-envelope-richness ranking).
+  ``js_effective_arity_collisions`` is the **precondition that surfaces
+  the ambiguity at emit time** so a downstream handler can pick the
+  right resolution. Same-name groups with no overlap are guaranteed
+  collision-free under arity-only dispatch.
+  """
+  ranges = [(m, *js_effective_arity_range(b, m)) for m in group]
+  collisions = []
+  for i in range(len(ranges)):
+    m_a, lo_a, hi_a = ranges[i]
+    for j in range(i + 1, len(ranges)):
+      m_b, lo_b, hi_b = ranges[j]
+      lo = max(lo_a, lo_b)
+      hi = min(hi_a, hi_b)
+      if lo <= hi:
+        collisions.append((m_a, m_b, lo, hi))
+  return collisions
+
+
+def is_collision_resolvable_via_val(b, m_a, m_b, lo, hi, template_decl=None, template_args=None):
+  """Return True iff the JS-type signatures of ``m_a`` and ``m_b`` at
+  the overlapping arity ``[lo..hi]`` differ — i.e. val-discrimination
+  can pick the right overload at every overlapping arity.
+
+  Used by :func:`process_method_group` to decide whether to upgrade a
+  rule 3 collision diagnostic to a hard ``SkipException`` (matrix
+  row 27 unresolvable case) or route the colliding group through
+  val-dispatch (the resolvable case). The decision walks each
+  overlapping arity and asks the binder's ``_classify_js_type`` helper
+  for the JS type at each slot; the collision is resolvable iff
+  AT LEAST ONE slot in AT LEAST ONE overlapping arity has different
+  JS types across the two overloads.
+
+  When ``_classify_js_type`` is not available on ``b`` (e.g. during
+  unit tests with a minimal fake binder), we fall back to comparing
+  raw C++ type spellings at each slot — a conservative proxy that
+  errs on the side of "resolvable" (so the build never raises
+  spuriously) but may miss the row-11 dedup case.
+  """
+  args_a = list(m_a.get_arguments())
+  args_b = list(m_b.get_arguments())
+  classify = getattr(b, '_classify_js_type', None)
+  for arity in range(lo, hi + 1):
+    # Only consider the FIRST ``arity`` slots — beyond that the
+    # remaining slots are defaulted or stripped, so JS callers do not
+    # supply them at this arity.
+    for slot in range(arity):
+      if slot >= len(args_a) or slot >= len(args_b):
+        # Beyond one overload's max raw arity — the other side relies
+        # on default expansion / RBV elision, so JS dispatch sees no
+        # collision at this slot.
+        return True
+      classify_succeeded = False
+      if classify is not None:
+        try:
+          ta = classify(args_a[slot].type, template_decl, template_args)
+          tb = classify(args_b[slot].type, template_decl, template_args)
+          classify_succeeded = True
+          if ta != tb:
+            return True
+        except Exception:  # noqa: BLE001 — defensive fallback
+          pass
+      if not classify_succeeded:
+        # Type-spelling fallback (used by FakeBinder in tests where
+        # ``_classify_js_type`` is absent). Skipped when classify ran
+        # successfully so we don't shadow its JS-equivalence verdict.
+        sp_a = getattr(args_a[slot].type, 'spelling', None)
+        sp_b = getattr(args_b[slot].type, 'spelling', None)
+        if sp_a is not None and sp_b is not None and sp_a != sp_b:
+          return True
+  return False
+
+
 def envelope_richness(b, method):
   """Rank methods that share a JS-effective signature.
 

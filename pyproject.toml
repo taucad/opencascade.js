@@ -13,7 +13,7 @@ requires-python = ">=3.14,<3.15"
 #                        (mocked libclang cursors via conftest.cursor_mock()).
 #   tests/integration/ — small per-fragment snapshot tests using a frozen
 #                        OCCT input, <30 s wall clock.
-testpaths = ["tests/sentinel", "tests/unit", "tests/integration"]
+testpaths = ["tests/sentinel", "tests/unit", "tests/integration", "tests/bindgen"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]

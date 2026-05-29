@@ -669,14 +669,44 @@ step_apply_patches() {
 }
 
 step_patch_embind() {
+  # Patch-hygiene contract (see docs/policy/ocjs-trailing-default-emission-policy.md
+  # rule 6 and docs/research/ocjs-libembind-phase-0-hygiene.md). On EVERY
+  # invocation we:
+  #   1. Verify the vendored pristine snapshot at
+  #      src/vendor/pristine-libembind.js matches its expected SHA256.
+  #   2. Reset deps/emsdk/upstream/emscripten/src/lib/libembind.js from the
+  #      pristine snapshot (overwriting any prior patched / hot-edited state).
+  #   3. Apply src/patches/libembind-overloading.patch.
+  #   4. Verify the patched file's SHA256 matches the expected hash recorded
+  #      at src/patches/libembind-overloading.expected.sha256.
+  #
+  # The prior hash-skip + reverse-apply scheme accumulated five duplicate
+  # `$getSignature` definitions across iterative patch revisions because JS
+  # object-literal duplicate-key semantics silently kept only the last copy,
+  # producing non-deterministic dispatch behaviour across machines. The
+  # pristine-reset + hash-verify pipeline makes the step idempotent at the
+  # file level (not merely at the patch-hash level) and fails loudly if
+  # either the pristine snapshot or the post-patch result drifts.
   echo "═══ Patching emsdk libembind.js (type-based overload dispatch) ═══"
 
   local embind_dir="$EMSDK/upstream/emscripten"
   local embind_file="$embind_dir/src/lib/libembind.js"
   local patch_file="$OCJS_ROOT/src/patches/libembind-overloading.patch"
+  local pristine_file="$OCJS_ROOT/src/vendor/pristine-libembind.js"
+  local pristine_hash_file="$OCJS_ROOT/src/vendor/pristine-libembind.expected.sha256"
+  local expected_hash_file="$OCJS_ROOT/src/patches/libembind-overloading.expected.sha256"
 
-  if [ ! -f "$embind_file" ]; then
-    echo "ERROR: libembind.js not found at $embind_file" >&2
+  if [ ! -d "$embind_dir" ]; then
+    echo "ERROR: emscripten directory not found at $embind_dir" >&2
+    exit 1
+  fi
+  if [ ! -f "$pristine_file" ]; then
+    echo "ERROR: pristine libembind snapshot not found at $pristine_file" >&2
+    echo "       Re-fetch from https://raw.githubusercontent.com/emscripten-core/emscripten/<tag>/src/lib/libembind.js" >&2
+    exit 1
+  fi
+  if [ ! -f "$patch_file" ]; then
+    echo "ERROR: patch file not found at $patch_file" >&2
     exit 1
   fi
 
@@ -687,37 +717,73 @@ step_patch_embind() {
     echo "         The patch may fail or produce incorrect results." >&2
   fi
 
-  local patch_hash_file="$BUILD_DIR/embind-patch-hash"
-  local current_hash
-  current_hash="$(md5sum "$patch_file" 2>/dev/null | cut -d' ' -f1 || md5 -q "$patch_file" 2>/dev/null)"
+  _sha256() {
+    if command -v shasum >/dev/null 2>&1; then
+      shasum -a 256 "$1" | awk '{print $1}'
+    else
+      sha256sum "$1" | awk '{print $1}'
+    fi
+  }
 
-  if [ -f "$patch_hash_file" ] && [ "$(cat "$patch_hash_file")" = "$current_hash" ]; then
-    echo "  libembind.js already patched (hash match) — skipping."
-    return 0
+  if [ -f "$pristine_hash_file" ]; then
+    local pristine_actual pristine_expected
+    pristine_actual="$(_sha256 "$pristine_file")"
+    pristine_expected="$(cat "$pristine_hash_file" | tr -d '[:space:]')"
+    if [ "$pristine_actual" != "$pristine_expected" ]; then
+      echo "ERROR: pristine snapshot SHA256 mismatch." >&2
+      echo "  file:     $pristine_file" >&2
+      echo "  expected: $pristine_expected" >&2
+      echo "  actual:   $pristine_actual" >&2
+      exit 1
+    fi
   fi
 
-  if [ -f "$patch_hash_file" ]; then
-    echo "  Patch content changed — reverting and re-applying..."
-    cd "$embind_dir" && patch -R -p0 --ignore-whitespace --no-backup-if-mismatch < "$patch_file" 2>/dev/null || true
+  echo "  Resetting libembind.js from pristine snapshot..."
+  mkdir -p "$(dirname "$embind_file")"
+  cp "$pristine_file" "$embind_file"
+  local reset_actual reset_expected
+  reset_actual="$(_sha256 "$embind_file")"
+  reset_expected="$(_sha256 "$pristine_file")"
+  if [ "$reset_actual" != "$reset_expected" ]; then
+    echo "ERROR: post-reset SHA256 mismatch (copy failed or destination tampered with)." >&2
+    exit 1
   fi
 
   echo "  Applying libembind-overloading.patch..."
   cd "$embind_dir" || exit 1
-  if patch -p0 -N --ignore-whitespace --no-backup-if-mismatch < "$patch_file"; then
-    :
-  else
+  if ! patch -p0 -N --no-backup-if-mismatch < "$patch_file"; then
     patch_status=$?
-    # macOS patch exits 1 when all hunks are already applied (-N).
-    if grep -q '$getSignature__deps' "$embind_file"; then
-      echo "  libembind overload patch already present (skipping re-apply)."
-    else
-      echo "ERROR: libembind patch failed (exit $patch_status) and overload helpers missing" >&2
+    echo "ERROR: libembind patch failed (exit $patch_status) against pristine snapshot." >&2
+    echo "       Pristine SHA256: $reset_actual" >&2
+    echo "       Patch file:      $patch_file" >&2
+    exit 1
+  fi
+  cd "$OCJS_ROOT" || exit 1
+
+  local patched_actual
+  patched_actual="$(_sha256 "$embind_file")"
+  if [ -f "$expected_hash_file" ]; then
+    local patched_expected
+    patched_expected="$(cat "$expected_hash_file" | tr -d '[:space:]')"
+    if [ "$patched_actual" != "$patched_expected" ]; then
+      echo "ERROR: post-patch SHA256 mismatch." >&2
+      echo "  file:     $embind_file" >&2
+      echo "  expected: $patched_expected (from $expected_hash_file)" >&2
+      echo "  actual:   $patched_actual" >&2
+      echo "  Regenerate via:" >&2
+      echo "    cp <pristine> <embind>; patch -p0 < $patch_file" >&2
+      echo "    shasum -a 256 <embind> | awk '{print \$1}' > $expected_hash_file" >&2
       exit 1
     fi
+  else
+    echo "  WARNING: expected hash file not found at $expected_hash_file" >&2
+    echo "           Skipping post-patch hash verification (run once and seed the hash)." >&2
   fi
-  echo "$current_hash" > "$patch_hash_file"
-  echo "  libembind.js patched successfully."
-  cd "$OCJS_ROOT" || exit 1
+
+  # Retain the hash-stamp file purely for diagnostic visibility — the
+  # decision to reset+reapply no longer depends on it (we ALWAYS reset).
+  echo "$patched_actual" > "$BUILD_DIR/embind-patch-hash"
+  echo "  libembind.js patched successfully (sha256 $patched_actual)."
 }
 
 # (step_compile_all removed -- Nx manages task orchestration and caching)

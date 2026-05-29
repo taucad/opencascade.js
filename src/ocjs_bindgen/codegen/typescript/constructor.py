@@ -63,6 +63,11 @@ def process_simple_constructor(tsb, theClass, templateDecl=None, templateArgs=No
   if len(bindable) == 0:
     return output
 
+  # Optional-overload migration: each ctor emits ONE TypeScript signature
+  # with the trailing `nDefaults` parameters marked optional (`?:` syntax)
+  # — paired with the C++ `std::optional<T>` emission in
+  # `embind/constructor.py`. See
+  # `docs/research/ocjs-optional-overload-resolution-blueprint.md`.
   if len(bindable) == 1:
     args = list(bindable[0].get_arguments())
     nDefaults = tsb._countTrailingDefaults(bindable[0])
@@ -73,37 +78,17 @@ def process_simple_constructor(tsb, theClass, templateDecl=None, templateArgs=No
   for c in bindable:
     by_arity[len(list(c.get_arguments()))].append(c)
 
-  for c in bindable:
-    nDefaults = tsb._countTrailingDefaults(c)
-    nArgs = len(list(c.get_arguments()))
-    for d in range(1, nDefaults + 1):
-      trunc_arity = nArgs - d
-      by_arity[trunc_arity].append(c)
-
   arity_idx_map = {}
   for arity, group in sorted(by_arity.items()):
-    seen_ids = set()
-    deduped = []
-    for c in group:
-      if id(c) not in seen_ids:
-        seen_ids.add(id(c))
-        deduped.append(c)
-    group = deduped
-
     if len(group) == 1:
       c = group[0]
       actual_args = list(c.get_arguments())
       nDefaults = tsb._countTrailingDefaults(c)
-      actual_arity = len(actual_args)
-      trailing_optional = actual_arity - arity if actual_arity > arity else nDefaults
       idx = arity_idx_map.get(arity, 0)
       arity_idx_map[arity] = idx + 1
       output += emit_ts_constructor(
-        tsb, className,
-        actual_args[:arity] if actual_arity > arity else actual_args,
-        templateDecl, templateArgs, tplName,
-        numOptional=trailing_optional if actual_arity == arity else 0,
-        overload_index=idx,
+        tsb, className, actual_args, templateDecl, templateArgs, tplName,
+        numOptional=nDefaults, overload_index=idx,
       )
     else:
       tree = tsb._build_dispatch_tree(group, available_positions=list(range(arity)), templateDecl=templateDecl, templateArgs=templateArgs)
@@ -111,9 +96,13 @@ def process_simple_constructor(tsb, theClass, templateDecl=None, templateArgs=No
       distinguishable = [ov for ov in group if ov not in ambiguous]
       for ov in distinguishable:
         actual_args = list(ov.get_arguments())
+        nDefaults = tsb._countTrailingDefaults(ov)
         idx = arity_idx_map.get(arity, 0)
         arity_idx_map[arity] = idx + 1
-        output += emit_ts_constructor(tsb, className, actual_args[:arity], templateDecl, templateArgs, tplName, overload_index=idx)
+        output += emit_ts_constructor(
+          tsb, className, actual_args, templateDecl, templateArgs, tplName,
+          numOptional=nDefaults, overload_index=idx,
+        )
 
   return output
 

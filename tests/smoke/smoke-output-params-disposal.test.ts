@@ -47,10 +47,15 @@ describe.skipIf(!wasmExists)('Smoke: Symbol.dispose on RBV containers (Handle-el
     using loc = new oc.TopLoc_Location();
 
     using result = oc.BRep_Tool.PolygonOnTriangulation(edge, loc);
-    expect(typeof (result as unknown as { [Symbol.dispose]?: () => void })[Symbol.dispose]).toBe('function');
+    expect(typeof result[Symbol.dispose]).toBe('function');
 
-    result[Symbol.dispose]();
-    expect(true).toBe(true);
+    // The RBV envelope owns embind-managed Handle fields (P, T) before disposal.
+    expect(result.P).toBeDefined();
+    expect(result.T).toBeDefined();
+
+    // Explicit disposal deletes every owned handle field; the trailing `using`
+    // runs the shared disposer again at scope exit (idempotent — see below).
+    expect(() => result[Symbol.dispose]()).not.toThrow();
   });
 
   it('using declaration drives [Symbol.dispose] at scope exit', () => {
@@ -96,7 +101,7 @@ describe.skipIf(!wasmExists)('Smoke: Symbol.dispose on RBV containers (Handle-el
     using edge = oc.TopoDS.Edge(edgeCurrent);
     using loc = new oc.TopLoc_Location();
 
-    using r = oc.BRep_Tool.PolygonOnTriangulation(edge, loc) as unknown as Disposable;
+    using r = oc.BRep_Tool.PolygonOnTriangulation(edge, loc);
     r[Symbol.dispose]();
     expect(() => r[Symbol.dispose]()).not.toThrow();
   });

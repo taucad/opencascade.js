@@ -21,6 +21,12 @@ def init_state(b):
   b._result_struct_registrations = []
   b._emitted_structs = {}
   b._ret_wrapper_serial = 0
+  # std::optional<T> inner types collected during the current class's emit.
+  # Each distinct inner spelling produces a single ``register_optional<T>()``
+  # call inside the class's EMSCRIPTEN_BINDINGS block, ensuring embind has a
+  # registered converter for the optional wrapper at runtime. See
+  # docs/research/ocjs-optional-overload-resolution-blueprint.md.
+  b._optional_inner_types = []
 
 
 def reset_struct_buffers(b):
@@ -28,3 +34,4 @@ def reset_struct_buffers(b):
   b._result_struct_defs = []
   b._result_struct_registrations = []
   b._emitted_structs = {}
+  b._optional_inner_types = []

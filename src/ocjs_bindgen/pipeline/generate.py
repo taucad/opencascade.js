@@ -475,6 +475,7 @@ referenceTypeTemplateDefs = \
   "#include <emscripten/wire.h>\n" + \
   "using namespace emscripten;\n" + \
   "#include <functional>\n" + \
+  "#include <optional>\n" + \
   "#include <stdexcept>\n" + \
   "#include \"ocjs_smart_ptr.h\"\n" + \
   "#include \"ocjs_handle_helpers.h\"\n" + \

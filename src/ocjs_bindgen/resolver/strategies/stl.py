@@ -71,7 +71,14 @@ def resolve_stl_type(self, container, clang_type, templateDecl=None, templateArg
     if container == "optional":
         if numArgs >= 1:
             inner = self.resolve_type(t.get_template_argument_type(0), templateDecl, templateArgs)
-            return f"{inner} | undefined"
+            # Genuine source-level `std::optional<T>` params are bound via
+            # embind's `register_optional<T>`, whose `fromWireType` collapses
+            # BOTH `null` and `undefined` to `std::nullopt`. Mirror that wire
+            # contract on the TS surface. Val-default `DEFAULT_ON_ABSENCE`
+            # slots (rule-5 strict-null) never reach here — their C++ param
+            # type is the bare `T`, rendered `?: T` by the trailing-default
+            # path — so this widening does not touch the strict-null rows.
+            return f"{inner} | null | undefined"
 
     if container == "array":
         decl = t.get_declaration()

@@ -35,6 +35,11 @@ from .classes import (  # noqa: F401
     _isDefaultConstructibleClass,
     shouldProcessClass,
 )
+from .optional_emission_guards import (  # noqa: F401
+    assert_no_multi_all_optional_same_arity,
+    assert_no_nonconst_ref_in_optional,
+    assert_no_val_vs_optional_same_arity,
+)
 from .types import (  # noqa: F401
     builtInTypes,
     cStringTypes,
