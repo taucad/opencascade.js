@@ -3,35 +3,58 @@
 @import 'fumadocs-ui/css/preset.css';
 
 @source '../node_modules/fumadocs-ui/dist/**/*.js';
+@source '../node_modules/streamdown/dist/*.js';
+
+/*
+ * Streamdown ships shadcn/ui token class names (`text-foreground`, `bg-muted`,
+ * `text-muted-foreground`, `text-primary`, `border-border`) on the markdown
+ * elements it renders by default — most visibly its Shiki code blocks and
+ * tables. Fumadocs exposes the same palette under `--color-fd-*` tokens, so we
+ * alias the shadcn names onto the Fumadocs ones. `@theme inline` keeps the
+ * utilities referencing the `--color-fd-*` variables at use-site, so they flip
+ * automatically between light and dark with the rest of the theme.
+ */
+@theme inline {
+  --color-foreground: var(--color-fd-foreground);
+  --color-muted: var(--color-fd-muted);
+  --color-muted-foreground: var(--color-fd-muted-foreground);
+  --color-border: var(--color-fd-border);
+  --color-primary: var(--color-fd-primary);
+}
 
 /**
- * API-reference token palette — sampled directly from the rendered Shiki
- * GitHub Light / GitHub Dark themes used throughout the prose code blocks
- * (see `source.config.ts`). Keeping the structured-API surface on the same
- * token scheme as the surrounding prose makes the signatures read like
- * highlighted code instead of a separate, monotone glyph stream.
+ * API-reference signature token palette — aligned with VSCode's default
+ * TypeScript *semantic* highlighting (Default Light Modern / Default Dark
+ * Modern) so a signature line is coloured the way an editor would colour the
+ * equivalent `.d.ts`. The previous palette painted every OCCT identifier
+ * (class titles, `extends` chips, member names AND type references) with one
+ * purple `fn` hue, which made purple dominate the page.
  *
- * GitHub Light:                    GitHub Dark:
- *   keyword       #D73A49            keyword       #F97583
- *   fn / class    #6F42C1            fn / class    #B392F0
- *   variable      #005CC5            variable      #79B8FF
- *   text          #24292E            text          #E1E4E8
- *   muted         #6A737D            muted         #8B949E
+ * Mapping (VSCode semantic token → token below):
+ *   keyword  (`storage`/`keyword`: extends, readonly, new, constructor) →
+ *            keyword hue   (Light #AF00DB / Dark #C586C0 — VSCode's magenta)
+ *   type     (`entity.name.type`/`class`: OCCT classes, void, boolean,
+ *            number, return + param types) →
+ *            type hue      (Light #267F99 / Dark #4EC9B0 — VSCode's teal)
+ *   variable / `entity.name.function` (param names, method/property names,
+ *            identifiers) → plain foreground (`--color-fd-foreground`)
+ *   punctuation (`()`, `:`, `<>`, `|`, `?`, `...`) →
+ *            muted foreground (`--color-fd-muted-foreground`)
+ *
+ * `--color-api-fn` is retained solely for `{@link}` cross-reference links in
+ * the description prose (`api-markdown.tsx`), where an accent link colour is
+ * conventional and intentional.
  */
 @theme {
-  --color-api-keyword: #d73a49;
+  --color-api-keyword: #af00db;
+  --color-api-type: #267f99;
   --color-api-fn: #6f42c1;
-  --color-api-var: #005cc5;
-  --color-api-text: #24292e;
-  --color-api-muted: #6a737d;
 }
 
 .dark {
-  --color-api-keyword: #f97583;
+  --color-api-keyword: #c586c0;
+  --color-api-type: #4ec9b0;
   --color-api-fn: #b392f0;
-  --color-api-var: #79b8ff;
-  --color-api-text: #e1e4e8;
-  --color-api-muted: #8b949e;
 }
 
 body {

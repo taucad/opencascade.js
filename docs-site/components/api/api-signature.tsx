@@ -7,9 +7,10 @@ const IDENT_RE = /([A-Za-z_]\w*)/g;
 
 /**
  * Splits a raw type string into linkified tokens. Identifiers run through
- * `ApiTypeLink` (which paints keywords red and types purple); everything
- * else (punctuation, generics, whitespace) is preserved verbatim and
- * tinted with the default text colour to match Shiki's GitHub theme.
+ * `ApiTypeLink` (keywords take the keyword hue, types take the type hue);
+ * everything else (punctuation, generics, whitespace) is preserved verbatim
+ * and tinted with the muted foreground, matching VSCode's treatment of
+ * punctuation in a type annotation.
  */
 const renderTypeTokens = (raw: string): ReactNode[] => {
   const out: ReactNode[] = [];
@@ -18,7 +19,7 @@ const renderTypeTokens = (raw: string): ReactNode[] => {
     if (match.index === undefined) continue;
     if (match.index > cursor) {
       out.push(
-        <span key={`t-${cursor}`} className="text-api-text">
+        <span key={`t-${cursor}`} className="text-fd-muted-foreground">
           {raw.slice(cursor, match.index)}
         </span>,
       );
@@ -28,7 +29,7 @@ const renderTypeTokens = (raw: string): ReactNode[] => {
   }
   if (cursor < raw.length) {
     out.push(
-      <span key={`t-${cursor}`} className="text-api-text">
+      <span key={`t-${cursor}`} className="text-fd-muted-foreground">
         {raw.slice(cursor)}
       </span>,
     );
@@ -41,10 +42,10 @@ const renderParameter = (param: ApiParameter, idx: number): ReactNode => {
   const opt = param.optional ? '?' : '';
   return (
     <span key={`p-${idx}-${param.name}`} className="whitespace-nowrap">
-      {prefix ? <span className="text-api-keyword">{prefix}</span> : undefined}
-      <span className="text-api-var">{param.name}</span>
-      {opt ? <span className="text-api-keyword">{opt}</span> : undefined}
-      <span className="text-api-keyword">: </span>
+      {prefix ? <span className="text-fd-muted-foreground">{prefix}</span> : undefined}
+      <span className="text-fd-foreground">{param.name}</span>
+      {opt ? <span className="text-fd-muted-foreground">{opt}</span> : undefined}
+      <span className="text-fd-muted-foreground">: </span>
       {renderTypeTokens(param.type)}
     </span>
   );
@@ -55,30 +56,28 @@ export type ApiSignatureProps = {
 };
 
 /**
- * Overload-aware signature renderer. Every token (parameter names, return
- * types, punctuation) is painted with the Shiki GitHub theme palette so a
- * signature line scans like the highlighted code blocks elsewhere on the
- * site:
+ * Overload-aware signature renderer. Tokens are coloured to match VSCode's
+ * default TypeScript semantic highlighting:
  *
- *   keyword        red       (`:`, `|`, `=>`, `?`, `...`, primitives)
- *   fn / class     purple    (OCCT class identifiers, member names)
- *   variable       blue      (parameter names)
- *   text           default   (punctuation, brackets, separators)
+ *   keyword        magenta     (keywords, via `ApiTypeLink`)
+ *   type / class   teal        (OCCT class identifiers, primitive types)
+ *   variable       foreground  (parameter names)
+ *   punctuation    muted       (brackets, `:`, `,`, `?`, `...`, separators)
  */
 export const ApiSignature = ({ method }: ApiSignatureProps): ReactNode => {
   const params = (method.parameters ?? []).map(renderParameter);
   const ret = method.returnType ?? 'void';
   return (
     <span className="font-mono text-sm">
-      <span className="text-api-text">(</span>
+      <span className="text-fd-muted-foreground">(</span>
       {params.map((node, idx) => (
         <Fragment key={`p-${idx}`}>
-          {idx > 0 ? <span className="text-api-text">, </span> : undefined}
+          {idx > 0 ? <span className="text-fd-muted-foreground">, </span> : undefined}
           {node}
         </Fragment>
       ))}
-      <span className="text-api-text">)</span>
-      <span className="text-api-keyword">: </span>
+      <span className="text-fd-muted-foreground">)</span>
+      <span className="text-fd-muted-foreground">: </span>
       {renderTypeTokens(ret)}
     </span>
   );
