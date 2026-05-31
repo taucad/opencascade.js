@@ -1,6 +1,6 @@
 {
   "name": "@taucad/opencascade.js",
-  "version": "3.0.0-beta.3",
+  "version": "3.0.0-beta.2",
   "description": "Port of the OpenCascade CAD library to JavaScript and WebAssembly via Emscripten.",
   "keywords": [
     "opencascade",
