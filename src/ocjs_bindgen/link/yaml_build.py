@@ -959,6 +959,27 @@ def main():
     runBuild(buildConfig["mainBuild"], libraryBasePath)
     for extraBuild in buildConfig["extraBuilds"]:
       runBuild(extraBuild, libraryBasePath)
+  else:
+    # `--dts-only` re-rolls the `.d.ts` from fragments+manifest that `generate`
+    # already produced, so it skips custom-code regen / compile / link. But it
+    # MUST still reproduce the NCollection link-scope filter the full path
+    # computes above (lines 937-957): `_collect_dts_fragments` →
+    # `shouldProcessSymbol` rejects every auto-discovered `NCollection_*` entry
+    # unless it appears in `_auto_symbols`, whose empty default would otherwise
+    # silently drop the entire auto-discovery surface from the rolled-up types
+    # (e.g. `NCollection_Array1_gp_Pnt`, `NCollection_List_TopoDS_Shape`). The
+    # computation is read-only (manifest + already-written fragments), so it is
+    # safe without the preceding generation steps. (`_auto_symbols` is already
+    # declared `global` for the whole function in the `if` branch above; that
+    # declaration is compile-time and covers this assignment too.)
+    yaml_scope = _compute_yaml_class_scope(buildConfig, libraryBasePath)
+    manifest_path = os.path.join(BUILD_DIR, "ncollection-manifest.json")
+    _auto_symbols = _filter_auto_symbols_by_scope(manifest_path, yaml_scope)
+    print(
+      f"NCollection link filter (dts-only): kept {len(_auto_symbols)} "
+      f"auto-discovered entries (|scope|={len(yaml_scope)})",
+      flush=True,
+    )
 
   typescriptDefinitions = _collect_dts_fragments(buildConfig, libraryBasePath)
 
