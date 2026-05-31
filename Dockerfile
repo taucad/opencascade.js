@@ -340,7 +340,10 @@ RUN npx nx run ocjs:apply-patches && \
     git config --system --add safe.directory '*' && \
     echo "── Marking .venv/.deps-ready (skip uv pip install on non-root rerun) ──" && \
     touch /opencascade.js/.venv/.deps-ready && \
-    chmod go+w /opencascade.js/.venv/.deps-ready
+    chmod go+w /opencascade.js/.venv/.deps-ready && \
+    echo "── Making emsdk libembind.js writable for non-root reset+repatch ──" && \
+    chmod go+w /emsdk/upstream/emscripten/src/lib \
+               /emsdk/upstream/emscripten/src/lib/libembind.js
 
 # ═════════════════════════════════════════════════════════════════════════════
 # Stage 2b: bindgen-base  (published as ghcr.io/taucad/opencascade.js:bindgen-base)
