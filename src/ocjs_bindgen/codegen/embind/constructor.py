@@ -40,7 +40,7 @@ from ocjs_bindgen.predicates.sibling_aliasing import (
     detect_sub2b_pairs,
     extract_ctor_signatures,
 )
-from ocjs_bindgen.predicates.types import isCString, isRawPointerParam
+from ocjs_bindgen.predicates.types import isCString, isRawPointerParam, stringViewOwningType
 
 
 def _check_optional_emission_guards_for_ctor(b, theClass, ctor, all_ctors, template_decl, template_args):
@@ -264,7 +264,12 @@ def _val_to_cpp_arg(b, arg, val_name, has_default, default_expr, template_decl, 
   """
   cpp_type = b.getOriginalArgumentType(arg, template_decl, template_args)
   js_type = b._classify_js_type(arg.type, template_decl, template_args)
-  if js_type.category == 'object':
+  string_view_owning = stringViewOwningType(arg.type)
+  if string_view_owning is not None:
+    # Embind cannot bind a non-owning std::*string_view; lift through the
+    # registered owning std::*string (see stringViewOwningCast).
+    cast = f"{val_name}.as<{string_view_owning}>()"
+  elif js_type.category == 'object':
     cast = f"{val_name}.as<{cpp_type}>(emscripten::allow_raw_pointers())"
   elif js_type.category == 'string' and isCString(arg.type):
     cast = f"{val_name}.as<std::string>().c_str()"
@@ -283,7 +288,12 @@ def _val_to_cpp_arg(b, arg, val_name, has_default, default_expr, template_decl, 
   # call site rather than dangling a reference to a stack-local default.
   from ocjs_bindgen.codegen.val_default import _decay_lambda_return_type
   is_c_string_local = js_type.category == 'string' and isCString(arg.type)
-  type_for_lambda = _decay_lambda_return_type(cpp_type, is_c_string_local)
+  if string_view_owning is not None:
+    # Return the owning std::*string by value so the materialised temporary
+    # (which the string_view param will reference) outlives the call.
+    type_for_lambda = string_view_owning
+  else:
+    type_for_lambda = _decay_lambda_return_type(cpp_type, is_c_string_local)
   return (
     f"([&]() -> {type_for_lambda} {{ "
     f"if ({val_name}.isUndefined()) return ({default_expr}); "
@@ -603,29 +613,259 @@ def _emit_sub2a_coordinator(b, class_cpp, smaller_ctor, larger_ctor, disc_pos, l
   return output
 
 
-def _detect_and_emit_sub2a(b, theClass, class_cpp, bindable, use_handle_override, template_decl, template_args):
+def _merged_default_aware_tree(b, tree, class_cpp, arity, use_handle_override, template_decl, template_args, owning_class, ind):
+  """Render a dispatch ``tree`` (built by :func:`build_dispatch_tree`) into
+  C++ with **default-aware** leaves.
+
+  Unlike :func:`ocjs_bindgen.codegen.dispatch.codegen_dispatch_tree` (which
+  reads every positional slot via a bare ``argN.as<T>()``), every leaf here
+  routes through :func:`_emit_ctor_call_from_val_args`, so trailing-default
+  slots are unwrapped with the rule-5 ``isUndefined()/isNull()`` guard. This
+  is required when a cross-arity ctor is folded into a higher arity bucket
+  (e.g. ``(gp_Ax2, StepData_Factors = default)`` reached at JS-arity 1 with
+  ``arg1`` undefined): the bare cast would throw on the missing slot.
+
+  Reuses :func:`ocjs_bindgen.codegen.dispatch._emit_branch_chain` so the
+  branch ordering / type-check predicates stay identical to the rest of the
+  dispatch pipeline; only the leaf emission differs.
+  """
+  if isinstance(tree, _dispatch.DispatchLeaf):
+    return _emit_ctor_call_from_val_args(
+      b, class_cpp, tree.overload, arity, use_handle_override,
+      template_decl, template_args, owning_class, indent_spaces=ind,
+    )
+  if isinstance(tree, _dispatch.DispatchBranch):
+    sp = " " * ind
+    return _dispatch._emit_branch_chain(
+      lambda subtree, sub_ind: _merged_default_aware_tree(
+        b, subtree, class_cpp, arity, use_handle_override,
+        template_decl, template_args, owning_class, sub_ind,
+      ),
+      tree,
+      sp,
+    )
+  if isinstance(tree, _dispatch.DispatchAmbiguous):
+    return _merged_default_aware_tree(
+      b, _dispatch.DispatchLeaf(tree.overloads[0]), class_cpp, arity,
+      use_handle_override, template_decl, template_args, owning_class, ind,
+    )
+  return ""
+
+
+def _primary_vs_fallback_guard(b, primary_ctor, fallback_ctors, template_decl, template_args):
+  """Return a C++ boolean expression that is true iff the JS args match
+  ``primary_ctor`` specifically (and must therefore NOT route to any of the
+  folded ``fallback_ctors``).
+
+  The fallbacks are lower-arity, all-trailing-defaults overloads folded into
+  this arity bucket; they form the catch-all ``else``. The primary must be
+  selected only when its *distinctive* argument type is present at the first
+  position where it diverges from each fallback — guarding on ``arg0`` alone
+  is wrong whenever the primary and a fallback share their leading argument
+  type (e.g. ``GeomAPI_PointsToBSpline(Points, Parameters, …)`` vs the folded
+  ``(Points, DegMin, …)``: both lead with ``Points``, so a numeric / absent
+  ``arg1`` must fall through to the fallback rather than be cast to the
+  primary's ``Parameters`` array).
+
+  For a pure prefix-shadow fallback (identical leading types, shorter arity)
+  the discriminator is the *presence* (defined-ness) of the first slot beyond
+  the fallback's arity — the primary owns an extra leading slot the fallback
+  does not, so it is selected only when that slot is supplied.
+
+  Returns ``None`` when no fallbacks are supplied (caller keeps the
+  single-branch behaviour).
+  """
+  if not fallback_ctors:
+    return None
+  primary_js = [
+    b._classify_js_type(a.type, template_decl, template_args)
+    for a in primary_ctor.get_arguments()
+  ]
+  clauses = []
+  for fb in fallback_ctors:
+    fb_js = [
+      b._classify_js_type(a.type, template_decl, template_args)
+      for a in fb.get_arguments()
+    ]
+    diff_pos = next(
+      (p for p in range(min(len(primary_js), len(fb_js))) if primary_js[p] != fb_js[p]),
+      None,
+    )
+    if diff_pos is not None:
+      clauses.append(_arg_type_check_expr(f"arg{diff_pos}", primary_js[diff_pos]))
+    elif len(fb_js) < len(primary_js):
+      # Pure prefix-shadow: select the primary only when its first
+      # extra (beyond-fallback) slot is actually supplied.
+      clauses.append(f"!arg{len(fb_js)}.isUndefined()")
+  # Deduplicate while preserving order so a shared discriminator across
+  # multiple fallbacks is not repeated.
+  seen = set()
+  uniq = [c for c in clauses if not (c in seen or seen.add(c))]
+  if not uniq:
+    return None
+  return " && ".join(f"({c})" for c in uniq)
+
+
+def _emit_primary_chain_with_fallback(b, tree, class_cpp, arity, use_handle_override, template_decl, template_args, owning_class, ind, fallback_code, fallback_ctors=None):
+  """Emit the top-level primary dispatch as a fully-conditional
+  ``if / else if`` chain terminated by an explicit ``else { fallback_code }``.
+
+  :func:`ocjs_bindgen.codegen.dispatch._emit_branch_chain` turns the *last*
+  branch into a bare ``else`` (an exhaustive assumption that holds for a
+  same-arity group). When we fold a cross-arity smaller ctor in as the
+  fallback, that assumption breaks: the terminal ``else`` must run the
+  *smaller* ctor (the all-defaults / undefined-arg0 case), not the last
+  primary. So every primary branch gets an explicit type-check predicate and
+  the smaller ctor's dispatch becomes the catch-all ``else``.
+
+  The branch ordering mirrors ``_emit_branch_chain`` (primitives sorted
+  first, objects last) so the generated chain reads consistently with the
+  rest of the pipeline.
+  """
+  sp = " " * ind
+  if not isinstance(tree, _dispatch.DispatchBranch):
+    # The primaries collapsed to a single reachable leaf — either one
+    # genuine primary, or a set of JS-indistinguishable primaries (e.g.
+    # NCollection's ``size_t`` / ``Standard_Integer`` ctor duals, which
+    # are the same ``number`` overload in JS so only one is reachable).
+    # We must STILL guard it so the folded cross-arity fallback stays
+    # reachable. The guard discriminates on the position where the primary
+    # *diverges* from the fallback(s) (NOT blindly ``arg0`` — primary and
+    # fallback frequently share their leading argument type), using the
+    # primary's distinctive type so undefined / non-matching trailing slots
+    # fall through to the all-defaults fallback ``else``.
+    primary_ctor = tree.overload if isinstance(tree, _dispatch.DispatchLeaf) else tree.overloads[0]
+    primary_code = _merged_default_aware_tree(
+      b, tree, class_cpp, arity, use_handle_override,
+      template_decl, template_args, owning_class, ind + 2,
+    )
+    if fallback_code is None:
+      return _merged_default_aware_tree(
+        b, tree, class_cpp, arity, use_handle_override,
+        template_decl, template_args, owning_class, ind,
+      )
+    check = _primary_vs_fallback_guard(b, primary_ctor, fallback_ctors, template_decl, template_args)
+    if check is None:
+      primary_args = list(primary_ctor.get_arguments())
+      arg0_js = b._classify_js_type(primary_args[0].type, template_decl, template_args)
+      check = _arg_type_check_expr("arg0", arg0_js)
+    code = f"{sp}if ({check}) {{\n{primary_code}{sp}}}\n"
+    code += f"{sp}else {{\n{fallback_code}{sp}}}\n"
+    return code
+
+  primitives = []
+  objects = []
+  for js_type, subtree in tree.branches.items():
+    if js_type.category == 'object':
+      objects.append((js_type, subtree))
+    else:
+      primitives.append((js_type, subtree))
+  primitives.sort(key=_dispatch.dispatch_primitive_sort_key)
+  ordered = primitives + objects
+
+  code = ""
+  for idx, (js_type, subtree) in enumerate(ordered):
+    keyword = "if" if idx == 0 else "else if"
+    check = _arg_type_check_expr(f"arg{tree.arg_position}", js_type)
+    code += f"{sp}{keyword} ({check}) {{\n"
+    code += _merged_default_aware_tree(
+      b, subtree, class_cpp, arity, use_handle_override,
+      template_decl, template_args, owning_class, ind + 2,
+    )
+    code += f"{sp}}}\n"
+  if fallback_code is not None:
+    code += f"{sp}else {{\n{fallback_code}{sp}}}\n"
+  return code
+
+
+def _emit_merged_arity_dispatch(b, class_cpp, arity, primaries, fallbacks, use_handle_override, template_decl, template_args, owning_class):
+  """Emit ONE ``optional_override`` val-dispatch constructor at ``arity`` that
+  covers every same-arity ``primaries`` ctor **and** the cross-arity
+  ``fallbacks`` ctors folded down from a deferred sub-2a / sub-2b coordinator.
+
+  This is the collision-safe replacement for emitting a 2-way coordinator
+  *and* a separate per-arity val-dispatch lambda at the same arity (which
+  embind rejects at registration time — "Cannot register multiple
+  constructors with identical javascript types of parameters"). The single
+  lambda dispatches the primaries by argument type (default-aware leaves) and
+  falls through to the smaller ctor(s) for the undefined / non-matching
+  ``arg0`` case.
+
+  ``primaries`` MUST be non-empty (the surviving full-arity-``arity`` ctors);
+  ``fallbacks`` are the cross-arity smaller ctors (full arity < ``arity``)
+  that were relocated here so libembind's arity-padding can no longer
+  mis-route their intermediate-arity calls.
+  """
+  val_args = ", ".join(f"emscripten::val arg{i}" for i in range(arity))
+  ret_type = f"opencascade::handle<{class_cpp}>" if use_handle_override else f"{class_cpp}*"
+
+  if len(primaries) > 1:
+    prim_tree = _dispatch.build_dispatch_tree(
+      b, primaries, available_positions=list(range(arity)),
+      templateDecl=template_decl, templateArgs=template_args,
+    )
+  else:
+    prim_tree = _dispatch.DispatchLeaf(primaries[0])
+
+  if fallbacks:
+    if len(fallbacks) > 1:
+      fb_tree = _dispatch.build_dispatch_tree(
+        b, fallbacks, available_positions=list(range(arity)),
+        templateDecl=template_decl, templateArgs=template_args,
+      )
+    else:
+      fb_tree = _dispatch.DispatchLeaf(fallbacks[0])
+    fallback_code = _merged_default_aware_tree(
+      b, fb_tree, class_cpp, arity, use_handle_override,
+      template_decl, template_args, owning_class, ind=8,
+    )
+  else:
+    fallback_code = None
+
+  output = f"    .constructor(optional_override([]({val_args}) -> {ret_type} {{\n"
+  output += _emit_primary_chain_with_fallback(
+    b, prim_tree, class_cpp, arity, use_handle_override,
+    template_decl, template_args, owning_class, ind=6, fallback_code=fallback_code,
+    fallback_ctors=fallbacks,
+  )
+  if use_handle_override:
+    output += f"      return opencascade::handle<{class_cpp}>();\n"
+  else:
+    output += "      return nullptr;\n"
+  output += "    }))\n"
+  return output
+
+
+def _detect_and_emit_sub2a(b, theClass, class_cpp, bindable, use_handle_override, template_decl, template_args, forbidden_arities=None):
   """Detect sub-2a cross-arity conflicts and emit coordinator ctors.
 
-  Returns ``(emitted_str, paired_indices)`` analogously to
-  :func:`_detect_and_emit_sub2b`. Each emitted coordinator collapses
-  one (smaller, larger) pair into a single val-dispatch lambda at the
-  larger arity. Indices in ``paired_indices`` must be skipped by the
-  regular per-arity emission below.
+  Returns ``(emitted_str, paired_indices, fold_pairs)``. Each emitted
+  coordinator collapses one (smaller, larger) pair into a single
+  val-dispatch lambda at the larger arity. Indices in ``paired_indices``
+  must be skipped by the regular per-arity emission below.
+
+  ``forbidden_arities`` is the set of arities that already host a
+  multi-ctor per-arity group (>= 2 full-arity ctors). Emitting a 2-way
+  coordinator at such an arity would collide with the per-arity
+  val-dispatch lambda (embind rejects duplicate same-arity val-ctor
+  registrations). For those pairs we DEFER the coordinator and instead
+  emit a ``fold_pairs`` entry ``(smaller_ctor, larger_arity)``: the
+  caller relocates the smaller ctor into the larger arity bucket so a
+  single merged :func:`_emit_merged_arity_dispatch` lambda covers both
+  the smaller and the same-arity primaries.
 
   Multi-pair handling: if a single ctor participates in multiple pairs
-  (e.g. three ctors at arities 0/3/5 forming pairs (3,5) AND (0,5)),
   the first emitted coordinator at the larger arity claims that ctor.
-  Subsequent pairs whose smaller has already been claimed are skipped
-  with a diagnostic — the existing emission for the unpaired siblings
-  remains valid because the coordinator at larger_arity absorbs both
-  its dispatch surfaces.
+  Subsequent pairs whose smaller has already been claimed are skipped.
   """
+  forbidden_arities = forbidden_arities or set()
   pairs = _detect_sub2a_cross_arity_pairs(b, bindable, template_decl, template_args)
   if not pairs:
-    return "", set()
+    return "", set(), []
 
   output = ""
   paired = set()
+  folds = []
   class_name = theClass.spelling
   arities_emitted: set[int] = set()
   for short_idx, long_idx, disc_pos, long_js in pairs:
@@ -639,6 +879,17 @@ def _detect_and_emit_sub2a(b, theClass, class_cpp, bindable, use_handle_override
     larger_ctor = bindable[long_idx]
     smaller_ctor = bindable[short_idx]
     n_larger = len(list(larger_ctor.get_arguments()))
+    if n_larger in forbidden_arities:
+      print(
+        f"[sub-2a / cross-arity] {class_name}: folding pair "
+        f"(ctor#{short_idx} / ctor#{long_idx}) into the arity-{n_larger} "
+        f"per-arity dispatch — larger arity hosts a multi-ctor group, so a "
+        f"separate coordinator would duplicate the same-arity val-ctor "
+        f"registration. Smaller ctor relocated as the merged-dispatch fallback."
+      )
+      folds.append((smaller_ctor, n_larger))
+      paired.add(short_idx)
+      continue
     if n_larger in arities_emitted:
       print(
         f"[sub-2a / cross-arity] {class_name}: deferring pair "
@@ -662,17 +913,26 @@ def _detect_and_emit_sub2a(b, theClass, class_cpp, bindable, use_handle_override
     paired.add(short_idx)
     paired.add(long_idx)
     arities_emitted.add(n_larger)
-  return output, paired
+  return output, paired, folds
 
 
-def _detect_and_emit_sub2b(b, theClass, class_cpp, bindable, use_handle_override, template_decl, template_args):
+def _detect_and_emit_sub2b(b, theClass, class_cpp, bindable, use_handle_override, template_decl, template_args, forbidden_arities=None):
   """Run the rule 2 sibling-aliasing detector against ``bindable`` and emit
   a val-discriminated constructor for every flagged conflict pair.
 
-  Returns a tuple ``(emitted_str, paired_indices)`` where ``paired_indices``
-  is the set of indices (into ``bindable``) that have been merged into a
-  val-discrimination ctor and must therefore be skipped by the regular
-  optional-wrapped or arity-fan-out emission below.
+  Returns a tuple ``(emitted_str, paired_indices, fold_pairs)`` where
+  ``paired_indices`` is the set of indices (into ``bindable``) that have
+  been merged into a val-discrimination ctor and must therefore be skipped
+  by the regular optional-wrapped or arity-fan-out emission below.
+
+  ``forbidden_arities`` mirrors :func:`_detect_and_emit_sub2a`: when a
+  conflict pair's larger arity already hosts a multi-ctor per-arity group,
+  emitting the 2-way coordinator there would duplicate the same-arity
+  val-ctor registration (embind rejects this at module init — the failure
+  only surfaces in pthread worker re-registration because the main thread's
+  EVAL_CTORS pass elides the duplicate). For those pairs we DEFER and emit a
+  ``fold_pairs`` entry ``(smaller_ctor, larger_arity)`` so the caller folds
+  the smaller ctor into the merged per-arity dispatch instead.
 
   When a constructor participates in multiple conflict pairs (degenerate;
   not observed in production per the surface audit but possible
@@ -684,6 +944,7 @@ def _detect_and_emit_sub2b(b, theClass, class_cpp, bindable, use_handle_override
   def _get_type_str(arg):
     return b.getOriginalArgumentType(arg, template_decl, template_args)
 
+  forbidden_arities = forbidden_arities or set()
   sigs = extract_ctor_signatures(
     bindable,
     get_arg_type_str=_get_type_str,
@@ -691,10 +952,11 @@ def _detect_and_emit_sub2b(b, theClass, class_cpp, bindable, use_handle_override
   )
   reports = detect_sub2b_pairs(sigs)
   if not reports:
-    return "", set()
+    return "", set(), []
 
   output = ""
   paired = set()
+  folds = []
   class_name = theClass.spelling
   # Per-arity guard: libembind rejects two ctor registrations whose
   # JavaScript-effective signature is identical (same arity + same
@@ -794,6 +1056,18 @@ def _detect_and_emit_sub2b(b, theClass, class_cpp, bindable, use_handle_override
         f"std::optional<T> wrapping."
       )
       continue
+    if n_larger in forbidden_arities:
+      print(
+        f"[rule 2 / matrix row 8] {class_name}: folding sub-2b pair "
+        f"(ctor#{report.smaller_index} / ctor#{report.larger_index}) into the "
+        f"arity-{n_larger} per-arity dispatch — larger arity hosts a multi-ctor "
+        f"group, so a standalone coordinator would duplicate the same-arity "
+        f"val-ctor registration (embind init rejection in pthread workers). "
+        f"Smaller ctor relocated as the merged-dispatch fallback."
+      )
+      folds.append((smaller, n_larger))
+      paired.add(report.smaller_index)
+      continue
     if n_larger in arities_emitted:
       print(
         f"[rule 2 / matrix row 8] {class_name}: deferring sub-2b pair "
@@ -817,7 +1091,7 @@ def _detect_and_emit_sub2b(b, theClass, class_cpp, bindable, use_handle_override
     paired.add(report.smaller_index)
     paired.add(report.larger_index)
     arities_emitted.add(n_larger)
-  return output, paired
+  return output, paired, folds
 
 
 def _find_initializer_list_param(ctor):
@@ -1053,6 +1327,20 @@ def process_simple_constructor(b, theClass, templateDecl=None, templateArgs=None
   if len(bindable) == 0:
     return output
 
+  # Collision-avoidance precondition for sub-2a / sub-2b coordinators:
+  # an arity that already hosts a multi-ctor per-arity group (>= 2
+  # full-arity ctors) cannot ALSO host a standalone 2-way coordinator —
+  # both render as ``(emscripten::val …)`` lambdas at the same arity and
+  # embind rejects the duplicate registration. The failure only manifests
+  # in pthread worker re-registration (the main thread's EVAL_CTORS pass
+  # elides the duplicate at build time). For those arities the detectors
+  # DEFER and return a fold directive so the smaller ctor is relocated
+  # into a single merged per-arity dispatch instead.
+  _arity_counts = defaultdict(int)
+  for _c in bindable:
+    _arity_counts[len(list(_c.get_arguments()))] += 1
+  forbidden_arities = {a for a, n in _arity_counts.items() if n >= 2}
+
   # Rule 2: sibling-aliasing detection (matrix row 8 / sub-2b).
   # Before each candidate ctor would have its trailing-default slots
   # wrapped in ``std::optional<T>``, check whether emitting that wrapper
@@ -1065,10 +1353,14 @@ def process_simple_constructor(b, theClass, templateDecl=None, templateArgs=None
   # The detector scope is bounded to a single class per the policy
   # invariant (surface audit confirms zero production sub-2b instances
   # span inheritance / templates / ADL).
-  conflict_pairs, paired_indices = _detect_and_emit_sub2b(
+  fold_map = {}  # smaller ctor cursor -> larger arity it is folded into
+  conflict_pairs, paired_indices, sub2b_folds = _detect_and_emit_sub2b(
     b, theClass, classCpp, bindable, useHandleOverride, templateDecl, templateArgs,
+    forbidden_arities=forbidden_arities,
   )
   output += conflict_pairs
+  for smaller_ctor, larger_arity in sub2b_folds:
+    fold_map[smaller_ctor] = larger_arity
   bindable = [c for i, c in enumerate(bindable) if i not in paired_indices]
   if len(bindable) == 0:
     return output
@@ -1078,10 +1370,13 @@ def process_simple_constructor(b, theClass, templateDecl=None, templateArgs=None
   # production case (BRepMesh_IncrementalMesh). Sub-2a runs AFTER sub-2b
   # so prefix-shadow pairs are claimed first; sub-2a only fires when the
   # ctors have a divergent positional type that's JS-distinguishable.
-  cross_pairs, cross_paired = _detect_and_emit_sub2a(
+  cross_pairs, cross_paired, sub2a_folds = _detect_and_emit_sub2a(
     b, theClass, classCpp, bindable, useHandleOverride, templateDecl, templateArgs,
+    forbidden_arities=forbidden_arities,
   )
   output += cross_pairs
+  for smaller_ctor, larger_arity in sub2a_folds:
+    fold_map[smaller_ctor] = larger_arity
   bindable = [c for i, c in enumerate(bindable) if i not in cross_paired]
   if len(bindable) == 0:
     return output
@@ -1182,7 +1477,17 @@ def process_simple_constructor(b, theClass, templateDecl=None, templateArgs=None
       underlying_spelling, optional_param_count=nDefaults, owning_class=theClass,
     )
 
-  if len(bindable) == 1:
+  # Cross-arity smaller ctors deferred by sub-2a / sub-2b (because their
+  # larger arity hosts a multi-ctor group) are relocated here: each is
+  # removed from its native arity bucket and folded into the larger
+  # arity's merged dispatch as a fallback branch. This guarantees exactly
+  # ONE ``(emscripten::val …)`` registration per arity.
+  fallbacks_by_arity = defaultdict(list)
+  for smaller_ctor, larger_arity in fold_map.items():
+    fallbacks_by_arity[larger_arity].append(smaller_ctor)
+  bindable = [c for c in bindable if c not in fold_map]
+
+  if len(bindable) == 1 and not fallbacks_by_arity:
     output += _emit_one_ctor(bindable[0], sibling_count=0)
     return output
 
@@ -1192,7 +1497,17 @@ def process_simple_constructor(b, theClass, templateDecl=None, templateArgs=None
 
   total_siblings = max(0, len(bindable) - 1)
   for arity, group in sorted(by_arity.items()):
-    if len(group) == 1:
+    fallbacks = fallbacks_by_arity.pop(arity, [])
+    if fallbacks:
+      # Merged dispatch: same-arity primaries + folded cross-arity
+      # smaller ctor(s). One registration, default-aware leaves, smaller
+      # ctor(s) as the catch-all ``else`` so undefined / non-matching
+      # ``arg0`` routes to the all-defaults overload.
+      output += _emit_merged_arity_dispatch(
+        b, classCpp, arity, group, fallbacks, useHandleOverride,
+        templateDecl, templateArgs, theClass,
+      )
+    elif len(group) == 1:
       output += _emit_one_ctor(group[0], sibling_count=total_siblings)
     else:
       # Same-arity multi-ctor group: emit a SINGLE val-dispatch lambda
@@ -1217,6 +1532,18 @@ def process_simple_constructor(b, theClass, templateDecl=None, templateArgs=None
       output += _dispatch.emit_val_dispatch_constructor(
         b, classCpp, arity, val_tree, useHandleOverride, templateDecl, templateArgs,
       )
+
+  # Defensive: any fold target whose arity had no surviving primaries
+  # (should not occur — the deferred pair's larger ctor is always a
+  # primary at that arity). Emit the fallbacks as their own merged
+  # dispatch so no relocated ctor is silently dropped.
+  for arity, fallbacks in sorted(fallbacks_by_arity.items()):
+    if not fallbacks:
+      continue
+    output += _emit_merged_arity_dispatch(
+      b, classCpp, arity, fallbacks, [], useHandleOverride,
+      templateDecl, templateArgs, theClass,
+    )
 
   return output
 

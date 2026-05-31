@@ -27,7 +27,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Any
 
-from ocjs_bindgen.predicates.types import isCString, isRawPointerParam
+from ocjs_bindgen.predicates.types import isCString, isRawPointerParam, stringViewOwningCast
 
 
 # ---------------------------------------------------------------------------
@@ -169,6 +169,12 @@ def _convert_args(b, args, templateDecl, templateArgs):
   for i, arg in enumerate(args):
     if isRawPointerParam(arg.type) and not isCString(arg.type):
       conversions.append('nullptr')
+      continue
+    string_view_cast = stringViewOwningCast(f'arg{i}', arg.type)
+    if string_view_cast is not None:
+      # Embind has no binding for non-owning std::*string_view; lift through
+      # the registered owning std::*string instead (see stringViewOwningCast).
+      conversions.append(string_view_cast)
       continue
     cpp_type = b.getOriginalArgumentType(arg, templateDecl, templateArgs)
     js_type = b._classify_js_type(arg.type, templateDecl, templateArgs)
