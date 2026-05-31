@@ -386,6 +386,10 @@ FROM bindgen-content AS compiled-single-threaded
 # Reset to /opencascade.js for the build-tree RUNs; final-* will WORKDIR /src.
 WORKDIR /opencascade.js/
 
+# Nx daemon plugin workers fail under Docker+qemu (linux/amd64 on arm64 hosts):
+# "Failed to start plugin worker for plugin nx/core/package-json". Disabling
+# here keeps bindgen-content cacheable while fixing compiled-* + consumer link.
+ENV NX_DAEMON=false
 ENV OCJS_CONFIG=single-threaded
 ENV THREADING=single-threaded
 
@@ -423,6 +427,7 @@ FROM bindgen-content AS compiled-multi-threaded
 
 WORKDIR /opencascade.js/
 
+ENV NX_DAEMON=false
 ENV OCJS_CONFIG=multi-threaded
 ENV THREADING=multi-threaded
 
