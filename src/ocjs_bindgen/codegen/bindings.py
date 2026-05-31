@@ -3556,7 +3556,7 @@ class TypescriptBindings(Bindings):
       allArgs = list(method.get_arguments())
       outputReturnType = self._buildOutputParamReturnType(method, allArgs, None, None, theClass=None)
       if outputReturnType is not None:
-        args = self._buildKeptArgs(method, allArgs, None, None)
+        args = self._buildKeptArgs(method, allArgs, None, None, theClass=None)
         returnType = outputReturnType
       else:
         args = ", ".join(
@@ -3876,39 +3876,141 @@ class TypescriptBindings(Bindings):
 
     return "{ " + "; ".join(fields) + " }"
 
-  def _buildKeptArgs(self, method, allArgs, templateDecl, templateArgs, effective_names=None):
+  def _outputArityIsUnambiguous(self, theClass, method):
+    """True iff a short call omitting this method's trailing primitive outputs
+    pads to a SINGLE registered libembind signature.
+
+    Gates the trailing-primitive-output optionalisation in `_buildKeptArgs`.
+    The libembind arity-pad dispatcher (`libembind-overloading.patch` hunk 1)
+    only resolves a short call unambiguously when the padded target arity has
+    a single registered signature. When two registrations collide at the same
+    kept arity, a short call pads its missing trailing slots with `undefined`,
+    which `$getSignature` cannot match against a `number`-typed slot — the
+    dispatcher throws `invalid signature (undefined,...)` at runtime. Marking
+    such slots optional in the `.d.ts` would type-admit a call that throws, so
+    the optionalisation is suppressed whenever the arity is not unambiguous.
+
+    Two structurally distinct collision sources are rejected:
+
+    1. **Virtual methods.** OCCT declares `virtual`/`= 0` output methods on a
+       base class and `override`/`final` them on every concrete subclass
+       (`Geom_Surface::Bounds` → `Geom_SphericalSurface::Bounds`, ...). The
+       bindgen emits an embind `.function(...)` binding on each declaring
+       class, so a derived instance carries BOTH its own and the inherited
+       registration at the same arity. Verified at runtime:
+       `Geom_SphericalSurface.Bounds()` throws
+       `invalid signature (undefined,undefined,undefined,undefined) — expects
+       one of ((number,number,number,number),(number,number,number,number))`.
+       The collision is visible from neither the base (no ancestor declares
+       `Bounds`) nor an isolated sibling scan, so virtuality is the only
+       locally-decidable signal — and it is the precise structural cause.
+
+    2. **Same-class arity collisions.** A non-virtual same-name sibling on
+       `theClass` that collapses to the same JS-effective (kept) arity also
+       registers a second signature at the padded target.
+
+    The dominant safe shape is a non-virtual method with a unique kept arity
+    (`BRepTools.UVBounds` Face-only overload at arity 5,
+    `GeomAPI_ProjectPointOnSurf.LowerDistanceParameters` at arity 2): it pads
+    to a single signature and dispatches correctly with the trailing primitive
+    outputs omitted.
+    """
+    # (1) Virtual ⟹ overridden across the hierarchy ⟹ multi-registration.
+    # `is_virtual_method()` is True for pure-virtual base declarations AND for
+    # implicit overrides (the derived `final`/`override` redeclaration), so
+    # both ends of the chain stay required.
+    if method.is_virtual_method():
+      return False
+    # (2) Non-virtual same-class kept-arity collision. Synthesized base
+    # overloads (theClass is None) are pulled in precisely because their arity
+    # is unrepresented on the derived class, so they cannot collide here.
+    if theClass is None:
+      return True
+    name = method.spelling
+    target = sum(1 for a in method.get_arguments() if not shouldStripParam(a.type, method))
+    for sibling in theClass.get_children():
+      if sibling.kind != clang.cindex.CursorKind.CXX_METHOD:
+        continue
+      if sibling.spelling != name or sibling == method:
+        continue
+      if sibling.access_specifier != clang.cindex.AccessSpecifier.PUBLIC:
+        continue
+      if sibling.is_static_method() != method.is_static_method():
+        continue
+      sib_arity = sum(1 for a in sibling.get_arguments() if not shouldStripParam(a.type, sibling))
+      if sib_arity == target:
+        return False
+    return True
+
+  def _trailingPrimitiveOutputRun(self, keptList, method):
+    """Index into `keptList` (a list of `(orig_index, arg)` for the method's
+    non-stripped args, in order) at which the trailing contiguous run of
+    primitive/enum output params begins.
+
+    Returns `len(keptList)` when there is no trailing primitive-output run.
+    Only primitive/enum output params (`isPrimitiveOutputParam`) are eligible:
+    they are passed by value (a copy is marshalled in, ignored by pure-output
+    OCCT methods, and the computed value returned via the RBV envelope), so
+    the libembind arity-pad dispatcher tolerates their omission. Class output
+    params (`gp_Pnt&`, `Bnd_Box&`, ...) are NOT eligible — the C++ lambda
+    dereferences the supplied instance (`*arg.as<T*>()`) and would fault on an
+    omitted slot — so they terminate the run and stay required.
+    """
+    start = len(keptList)
+    for pos in range(len(keptList) - 1, -1, -1):
+      _i, arg = keptList[pos]
+      if isPrimitiveOutputParam(arg.type) and not isClassOutputParam(arg.type):
+        start = pos
+        continue
+      break
+    return start
+
+  def _buildKeptArgs(self, method, allArgs, templateDecl, templateArgs, effective_names=None, theClass=None):
     """Build the TS arg list under Input-Passthrough RBV with Approach G
     Handle elision.
 
-    Primitive/enum and default-constructible class output params continue to
-    appear in the JS signature as REQUIRED slots (input-passthrough — the
-    caller supplies the seed and reads the result via the return container).
-    Non-const `Handle<T>&` outputs are ELIDED — per OCCT contract these are
-    output-only, never read by C++, and the JS-facing input was a gratuitous
-    wrapper allocation. `shouldStripParam` is the single source of truth for
-    elision; `_emitOutputParamBinding` declares the matching stack-local null
-    Handle inside the optional_override lambda body.
+    Primitive/enum output params appear in the JS signature as input-passthrough
+    slots — the caller MAY seed the value and reads the result via the return
+    container. They are rendered OPTIONAL (`?`) when they form the method's
+    trailing run AND the method's kept arity is unique within its same-name
+    overload group (see `_outputArityIsUnambiguous`): the libembind arity-pad
+    dispatcher accepts the omitted call and OCCT pure-output methods ignore the
+    (un-marshalled) seed, returning the computed value via the envelope. This
+    matches the verified runtime contract — `BRepTools.UVBounds(face)` and
+    `GeomAPI_ProjectPointOnSurf.LowerDistanceParameters()` both dispatch and
+    return correct values with the trailing primitive outputs omitted.
+
+    Default-constructible class output params stay REQUIRED — the caller must
+    supply the instance the C++ lambda mutates in place. Non-const `Handle<T>&`
+    outputs are ELIDED — per OCCT contract these are output-only, never read by
+    C++, and the JS-facing input was a gratuitous wrapper allocation.
+    `shouldStripParam` is the single source of truth for elision;
+    `_emitOutputParamBinding` declares the matching stack-local null Handle
+    inside the optional_override lambda body.
 
     When `effective_names` is supplied (a list aligned with `allArgs`), each
     kept arg is emitted with that name instead of `arg.spelling`. This is
     the base-override mirroring path — see `_effectiveAllArgNames` for the
     rule and rationale (eliminates input-name vs envelope-field-name drift
     on virtual overrides where the base and derived use different spellings).
-
-    The Handle-output elision strategy: non-const `Handle<T>&` params are
-    output-only by OCCT contract, so the codegen drops them from the JS
-    signature entirely and emits a stack-local null Handle inside the C++
-    lambda. The container surface owns lifetime via `[Symbol.dispose]`.
     """
-    if effective_names is not None:
-      keptArgs = [self.getTypescriptDefFromArgWithName(arg, effective_names[i], templateDecl, templateArgs)
-                  for i, arg in enumerate(allArgs)
-                  if not shouldStripParam(arg.type, method)]
-    else:
-      keptArgs = [self.getTypescriptDefFromArg(arg, i, templateDecl, templateArgs)
-                  for i, arg in enumerate(allArgs)
-                  if not shouldStripParam(arg.type, method)]
-    return ", ".join(keptArgs)
+    kept = [(i, arg) for i, arg in enumerate(allArgs)
+            if not shouldStripParam(arg.type, method)]
+    rendered = []
+    for i, arg in kept:
+      if effective_names is not None:
+        rendered.append(self.getTypescriptDefFromArgWithName(arg, effective_names[i], templateDecl, templateArgs))
+      else:
+        rendered.append(self.getTypescriptDefFromArg(arg, i, templateDecl, templateArgs))
+
+    if self._outputArityIsUnambiguous(theClass, method):
+      optional_from = self._trailingPrimitiveOutputRun(kept, method)
+      for pos in range(optional_from, len(rendered)):
+        colon = rendered[pos].find(":")
+        if colon != -1:
+          rendered[pos] = rendered[pos][:colon] + "?" + rendered[pos][colon:]
+
+    return ", ".join(rendered)
 
   def processMethodOrProperty(self, theClass, method, templateDecl = None, templateArgs = None, overload_index = 0, override_postfix = None):
     output = ""
@@ -3922,7 +4024,7 @@ class TypescriptBindings(Bindings):
       outputReturnType = self._buildOutputParamReturnType(method, allArgs, templateDecl, templateArgs, theClass=theClass)
 
       if outputReturnType is not None:
-        args = self._buildKeptArgs(method, allArgs, templateDecl, templateArgs, effective_names=effective_names)
+        args = self._buildKeptArgs(method, allArgs, templateDecl, templateArgs, effective_names=effective_names, theClass=theClass)
         returnType = outputReturnType
       else:
         # Optional-overload migration: mark trailing parameters with C++
@@ -4106,7 +4208,7 @@ class TypescriptBindings(Bindings):
       effective_names = self._effectiveAllArgNames(theClass, m, allArgs)
       outputReturnType = self._buildOutputParamReturnType(m, allArgs, templateDecl, templateArgs, theClass=theClass)
       if outputReturnType is not None:
-        args = self._buildKeptArgs(m, allArgs, templateDecl, templateArgs, effective_names=effective_names)
+        args = self._buildKeptArgs(m, allArgs, templateDecl, templateArgs, effective_names=effective_names, theClass=theClass)
         returnType = outputReturnType
       else:
         args = ", ".join(self.getTypescriptDefFromArgWithName(arg, effective_names[i], templateDecl, templateArgs)
