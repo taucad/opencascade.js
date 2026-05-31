@@ -161,7 +161,7 @@ On release tags, Docker resolves the right architecture from the manifest list a
 
 ## What's New in v3
 
-- **OCCT 8.0.0 RC5** — 1,085 commits of improvements; 22-31% faster boolean operations
+- **OCCT 8.0.0** — 1,085 commits of improvements; 22-31% faster boolean operations
 - **Emscripten 5.0.1** — LLVM 17, modern WASM features
 - **Native WASM Exceptions** — `-fwasm-exceptions` replaces JS invoke trampolines; decodable end-to-end via `getExceptionMessage`
 - **ESM-only distribution** — `"type": "module"`; default export is single-threaded `opencascade_full.{js,wasm,d.ts}`; multi-threaded `opencascade_full_multi.{js,wasm,d.ts}` ships under `@taucad/opencascade.js/multi` and `/multi/wasm`

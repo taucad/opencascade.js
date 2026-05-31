@@ -339,7 +339,7 @@ Every `.o` file in your build must use the same exception ABI; mixing `-fexcepti
 
 ## Section D — OCCT V8 API breaking changes
 
-OCCT itself moved from V7.6.2 → V8.0.0 RC5 (commit `0ebbbedb`). The classes and methods below are the V8 changes that surface in JavaScript code.
+OCCT itself moved from V7.6.2 → V8.0.0 (commit `d3056ef`). The classes and methods below are the V8 changes that surface in JavaScript code.
 
 ### D1 — `TopoDS` namespace bridge
 

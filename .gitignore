@@ -29,6 +29,12 @@ experiments/**/profiles/*.cpuprofile
 experiments/option-d-boundary-narrowing/experiment.d.ts
 experiments/option-d-comprehensive-poc/experiment.d.ts
 
+# Stray build/smoke/docker logs left in the repo root (regeneration + smoke runs)
+/build-*.log
+/smoke-*.log
+/docker-*.log
+/regression.log
+
 # Nx
 .nx/
 
