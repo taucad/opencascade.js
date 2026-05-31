@@ -65,3 +65,31 @@ body {
     -apple-system,
     sans-serif;
 }
+
+/**
+ * Deep-link highlight. When the page loads with (or navigates to) a
+ * `#Class` / `#Class__kind__idx` hash, `ApiHashHighlight` adds this class to
+ * the target class card / member row to flash a primary-tinted ring that fades
+ * out. Box-shadow only (no background) so the card's `bg-fd-card` is never
+ * momentarily overridden, and the ring respects each element's own rounded
+ * corners. Theme-aware via the Fumadocs `--color-fd-primary` token.
+ */
+@keyframes api-anchor-flash {
+  0%,
+  12% {
+    box-shadow: 0 0 0 2px color-mix(in oklab, var(--color-fd-primary) 65%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 2px transparent;
+  }
+}
+
+.api-anchor-flash {
+  animation: api-anchor-flash 1.6s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .api-anchor-flash {
+    animation-duration: 0.01ms;
+  }
+}

@@ -4,9 +4,10 @@ import { ApiSignature } from './api-signature';
 import { ApiInheritanceChip } from './api-inheritance-chip';
 import { ApiProse } from './api-prose';
 import { ApiTypeLink } from './api-type-link';
+import { ApiAnchor } from './api-anchor';
 import { parseComment, type ParsedComment } from './parse-comment';
-import { memberAnchorId } from './types';
-import type { ApiClass, ApiMethod, ApiProperty, MemberKind } from './types';
+import { buildClassAnchorMap } from './types';
+import type { ApiClass, ApiMethod, ApiProperty } from './types';
 
 const IDENT_RE = /([A-Za-z_]\w*)/g;
 
@@ -181,8 +182,7 @@ const DeprecatedBanner = ({ text }: { readonly text: string | null }): ReactNode
 };
 
 const renderMemberRow = (
-  className: string,
-  kind: MemberKind,
+  anchorId: string,
   arr: readonly ApiMethod[],
   i: number,
 ): ReactNode => {
@@ -192,20 +192,22 @@ const renderMemberRow = (
   const isDeprecated = parsed.deprecated !== null;
   return (
     <li
-      key={memberAnchorId(className, kind, i)}
-      id={memberAnchorId(className, kind, i)}
-      className={`scroll-mt-24 rounded-md border px-3 py-2.5 transition-colors hover:border-fd-border ${
+      key={anchorId}
+      id={anchorId}
+      className={`group scroll-mt-24 rounded-md border px-3 py-2.5 transition-colors hover:border-fd-border ${
         overload ? 'border-dashed border-fd-border/40' : 'border-fd-border/40'
       }`}
     >
       <div className="flex flex-wrap items-baseline gap-x-1 gap-y-1 font-mono text-sm">
-        <span
-          className={`font-semibold ${memberNameClass(member.name)} ${
+        <a
+          href={`#${anchorId}`}
+          className={`font-semibold no-underline decoration-fd-muted-foreground/50 underline-offset-4 hover:underline ${memberNameClass(member.name)} ${
             isDeprecated ? 'line-through decoration-amber-700/50 decoration-1' : ''
           }`}
         >
           {member.name}
-        </span>
+        </a>
+        <ApiAnchor anchorId={anchorId} label={member.name} />
         <ApiSignature method={member} />
       </div>
       {parsed.description ? (
@@ -223,7 +225,7 @@ const renderMemberRow = (
 };
 
 const renderPropertyRow = (
-  className: string,
+  anchorId: string,
   arr: readonly ApiProperty[],
   i: number,
 ): ReactNode => {
@@ -232,18 +234,20 @@ const renderPropertyRow = (
   const isDeprecated = parsed.deprecated !== null;
   return (
     <li
-      key={memberAnchorId(className, 'prop', i)}
-      id={memberAnchorId(className, 'prop', i)}
-      className="scroll-mt-24 rounded-md border border-fd-border/40 px-3 py-2.5 transition-colors hover:border-fd-border"
+      key={anchorId}
+      id={anchorId}
+      className="group scroll-mt-24 rounded-md border border-fd-border/40 px-3 py-2.5 transition-colors hover:border-fd-border"
     >
       <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 font-mono text-sm">
-        <span
-          className={`font-semibold ${memberNameClass(prop.name)} ${
+        <a
+          href={`#${anchorId}`}
+          className={`font-semibold no-underline decoration-fd-muted-foreground/50 underline-offset-4 hover:underline ${memberNameClass(prop.name)} ${
             isDeprecated ? 'line-through decoration-amber-700/50 decoration-1' : ''
           }`}
         >
           {prop.name}
-        </span>
+        </a>
+        <ApiAnchor anchorId={anchorId} label={prop.name} />
         <span className="text-fd-muted-foreground">:</span>
         <span className="font-mono text-sm">{renderTypeTokens(prop.type)}</span>
         {prop.readonly ? (
@@ -296,8 +300,9 @@ export type ApiClassCardProps = {
  * paragraph.
  *
  * Adjacent same-name members are flagged as connected overloads via dashed
- * borders. Anchor IDs follow the `<Class>__<kind>__<idx>` convention; see
- * `memberAnchorId` in `./types.ts`.
+ * borders. Anchor IDs are deterministic, human-readable
+ * `<Class>-<MemberToken>` strings (with a 0-indexed ordinal on overloaded
+ * tokens); see `buildClassAnchorMap` in `./types.ts`.
  *
  * Wrapped in `not-prose` so Tailwind Typography's `prose a` underline-all
  * rule doesn't bleed into the structured layout (member names, chips,
@@ -306,14 +311,21 @@ export type ApiClassCardProps = {
 export const ApiClassCard = ({ cls }: ApiClassCardProps): ReactNode => {
   const chain = collectChain(cls);
   const classDoc = parseComment(cls.summary);
+  const anchors = buildClassAnchorMap(cls);
   return (
     <article
       id={cls.name}
       className="not-prose scroll-mt-24 rounded-xl border border-fd-border bg-fd-card p-5 shadow-sm"
     >
       <header className="flex flex-wrap items-baseline justify-between gap-2">
-        <h3 className="font-mono text-lg font-semibold tracking-tight text-fd-foreground">
-          {cls.name}
+        <h3 className="group flex items-baseline font-mono text-lg font-semibold tracking-tight text-fd-foreground">
+          <a
+            href={`#${cls.name}`}
+            className="text-fd-foreground no-underline decoration-fd-muted-foreground/50 underline-offset-4 hover:underline"
+          >
+            {cls.name}
+          </a>
+          <ApiAnchor anchorId={cls.name} label={cls.name} />
         </h3>
         {chain.length > 0 ? (
           <div className="flex flex-wrap gap-1">
@@ -334,25 +346,25 @@ export const ApiClassCard = ({ cls }: ApiClassCardProps): ReactNode => {
 
       {cls.constructors.length > 0 ? (
         <Section title="Constructors" count={cls.constructors.length}>
-          {cls.constructors.map((_, i) => renderMemberRow(cls.name, 'ctor', cls.constructors, i))}
+          {cls.constructors.map((_, i) => renderMemberRow(anchors.get(`ctor:${i}`)!, cls.constructors, i))}
         </Section>
       ) : undefined}
 
       {cls.staticMethods.length > 0 ? (
         <Section title="Static methods" count={cls.staticMethods.length}>
-          {cls.staticMethods.map((_, i) => renderMemberRow(cls.name, 'static', cls.staticMethods, i))}
+          {cls.staticMethods.map((_, i) => renderMemberRow(anchors.get(`static:${i}`)!, cls.staticMethods, i))}
         </Section>
       ) : undefined}
 
       {cls.instanceMethods.length > 0 ? (
         <Section title="Instance methods" count={cls.instanceMethods.length}>
-          {cls.instanceMethods.map((_, i) => renderMemberRow(cls.name, 'inst', cls.instanceMethods, i))}
+          {cls.instanceMethods.map((_, i) => renderMemberRow(anchors.get(`inst:${i}`)!, cls.instanceMethods, i))}
         </Section>
       ) : undefined}
 
       {cls.properties.length > 0 ? (
         <Section title="Properties" count={cls.properties.length}>
-          {cls.properties.map((_, i) => renderPropertyRow(cls.name, cls.properties, i))}
+          {cls.properties.map((_, i) => renderPropertyRow(anchors.get(`prop:${i}`)!, cls.properties, i))}
         </Section>
       ) : undefined}
     </article>

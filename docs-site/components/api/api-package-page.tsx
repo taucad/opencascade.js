@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { loadShard } from './api-data';
 import { ApiClassCard } from './api-class-card';
+import { ApiHashHighlight } from './api-hash-highlight';
 
 export type ApiPackagePageProps = {
   readonly shardKey: string;
@@ -25,6 +26,7 @@ export const ApiPackagePage = async ({ shardKey }: ApiPackagePageProps): Promise
 
   return (
     <div className="not-prose grid gap-8 md:grid-cols-[200px_minmax(0,1fr)]">
+      <ApiHashHighlight />
       <aside className="hidden md:block">
         <nav
           aria-label="Classes in this package"
