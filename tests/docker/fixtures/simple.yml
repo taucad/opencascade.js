@@ -1,0 +1,40 @@
+# tests/docker/fixtures/simple.yml
+#
+# Minimal custom build exercised by the Docker build-flow test
+# (`tests/docker/docker-build-flow.test.ts`). Modern port of the legacy
+# `test/customBuilds/simple.yml`: a tiny symbol allow-list plus an inline
+# `additionalCppCode` class, proving the published image compiles a custom
+# binding set and that symbol filtering excludes unlisted OCCT classes.
+mainBuild:
+  name: customBuild.simple.js
+  bindings:
+    - symbol: TopoDS_Shape
+    - symbol: Test
+  emccFlags:
+    # Exception flags MUST match the baked .o files (compiled with wasm-eh);
+    # omitting -fwasm-exceptions at link leaves the exception tag import
+    # unsatisfied and instantiation fails with a LinkError.
+    - -fwasm-exceptions
+    - -sEXPORT_EXCEPTION_HANDLING_HELPERS
+    - -sEXPORT_ES6=1
+    - -sMODULARIZE
+    - -sALLOW_MEMORY_GROWTH=1
+    - -sEXPORTED_RUNTIME_METHODS=["FS"]
+    - -sINITIAL_MEMORY=64MB
+    - -sMAXIMUM_MEMORY=2GB
+    - -sERROR_ON_UNDEFINED_SYMBOLS=0
+    - --no-entry
+    - -Wl,--allow-undefined
+    - -sSTACK_SIZE=8388608
+    - -sWASM_BIGINT
+    - -msimd128
+    - -O3
+additionalCppCode: |
+  #include <iostream>
+  class Test {
+  public:
+    static int foo() {
+      std::cout << "foo" << std::endl;
+      return 123;
+    }
+  };

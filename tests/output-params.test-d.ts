@@ -56,8 +56,17 @@ describe('Shape S1 — value_object envelope (primitive T& outputs)', () => {
     expectTypeOf<BoundsReturn>().toHaveProperty('V2');
   });
 
-  it('should require all four output slots for Bounds (no zero-arg shortcut)', () => {
+  it('should require all four output slots for Bounds (virtual — no optional shortcut)', () => {
+    // Geom_Surface::Bounds is `virtual … = 0`, overridden `final` on every
+    // concrete surface. The bindgen emits an embind binding on each declaring
+    // class, so a derived instance carries two arity-4 registrations and a
+    // short call throws at runtime (`invalid signature (undefined,…)`). The
+    // `.d.ts` therefore keeps every slot REQUIRED — see the virtuality gate in
+    // `_outputArityIsUnambiguous`.
     expectTypeOf<Geom_Surface['Bounds']>().toBeCallableWith(0, 0, 0, 0);
+    expectTypeOf<Geom_Surface['Bounds']>().parameters.toEqualTypeOf<
+      [U1: number, U2: number, V1: number, V2: number]
+    >();
   });
 
   it('should not carry Symbol.dispose on Bounds return (primitives only, void native return)', () => {
@@ -75,7 +84,14 @@ describe('Shape S1 — value_object envelope (primitive T& outputs)', () => {
     expectTypeOf<LdpReturn>().toHaveProperty('V');
   });
 
-  it('should require both output slots for LowerDistanceParameters (no zero-arg shortcut)', () => {
+  it('should make both LowerDistanceParameters output slots optional (non-virtual, unique arity)', () => {
+    // GeomAPI_ProjectPointOnSurf::LowerDistanceParameters is non-virtual with a
+    // unique kept arity, so the libembind arity-pad dispatcher resolves the
+    // short call: `ldp()` returns { U, V } at runtime. The `.d.ts` mirrors that
+    // by typing both trailing primitive outputs optional.
+    type Params = Parameters<GeomAPI_ProjectPointOnSurf['LowerDistanceParameters']>;
+    expectTypeOf<Params>().toEqualTypeOf<[U?: number, V?: number]>();
+    expectTypeOf<GeomAPI_ProjectPointOnSurf['LowerDistanceParameters']>().toBeCallableWith();
     expectTypeOf<GeomAPI_ProjectPointOnSurf['LowerDistanceParameters']>().toBeCallableWith(0, 0);
   });
 
@@ -88,13 +104,17 @@ describe('Shape S1 — value_object envelope (primitive T& outputs)', () => {
     expectTypeOf<UvBoundsReturn>().toHaveProperty('VMax');
   });
 
-  it('should keep F and every output slot in the 5-arg UVBounds overload', () => {
-    type UvBoundsOverloads = (typeof BRepTools)['UVBounds'];
-    type FirstOverload = Extract<
-      UvBoundsOverloads,
-      (F: TopoDS_Face, UMin: number, UMax: number, VMin: number, VMax: number) => unknown
+  it('should make the trailing primitive outputs optional on the Face-only UVBounds overload', () => {
+    // BRepTools::UVBounds is a static method whose Face-only overload has a
+    // unique kept arity (5), so `UVBounds(face)` dispatches and returns the
+    // envelope at runtime. The wire signature keeps F required and types the
+    // four trailing outputs optional. (replicad calls `UVBounds(this.wrapped)`.)
+    type FaceOnly = Extract<
+      (typeof BRepTools)['UVBounds'],
+      (F: TopoDS_Face, UMin?: number, UMax?: number, VMin?: number, VMax?: number) => unknown
     >;
-    expectTypeOf<FirstOverload>().not.toBeNever();
+    expectTypeOf<FaceOnly>().not.toBeNever();
+    expectTypeOf<FaceOnly>().toBeCallableWith({} as TopoDS_Face);
   });
 
   it('should not return void from UVBounds', () => {

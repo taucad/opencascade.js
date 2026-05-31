@@ -69,6 +69,7 @@
     "test": "vitest run tests/smoke/",
     "test:smoke": "vitest run tests/smoke/",
     "test:regression": "vitest run tests/regression/",
+    "test:docker": "vitest run --config vitest.docker.config.ts",
     "typecheck": "tsc --project tests/tsconfig.json",
     "lint": "eslint --config eslint.config.mjs tests",
     "lint:fix": "eslint --config eslint.config.mjs --fix tests"

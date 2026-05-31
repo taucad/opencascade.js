@@ -16,7 +16,18 @@ import ocjsLintPlugin from './tools/eslint-plugin/index.js';
 
 export default tseslint.config(
   {
-    ignores: ['build/**', 'build-configs/*.d.ts', 'dist/**', 'deps/**', 'node_modules/**'],
+    ignores: [
+      'build/**',
+      'build-configs/*.d.ts',
+      'dist/**',
+      'deps/**',
+      'node_modules/**',
+      // Per-test Docker build-flow artifacts (gitignored): the custom `link`
+      // builds emit `.d.ts`/`.js` modules here that aren't part of the test
+      // tsconfig project and must not be type-aware linted.
+      'tests/docker/.work/**',
+      'tests/docker/.trial/**',
+    ],
   },
   {
     files: ['tests/**/*.ts'],

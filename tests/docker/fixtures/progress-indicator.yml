@@ -1,0 +1,91 @@
+# tests/docker/fixtures/progress-indicator.yml
+#
+# Custom build exercised by the Docker build-flow test against the
+# `:single-threaded` image. Modern port of the legacy
+# `test/customBuilds/progressIndicator.yml`: it registers a JS-subclassable
+# `Message_ProgressIndicator_JS` via `additionalBindCode` so a test can derive
+# a progress indicator in JavaScript and observe `Show` callbacks during a
+# boolean fuse. This capability is custom-build-only — the published full build
+# does not ship the subclassable wrapper — which is why it is verified through
+# the Docker flow rather than a smoke test.
+mainBuild:
+  name: customBuild.progress-indicator.js
+  bindings:
+    - symbol: BRepAlgoAPI_Fuse
+    - symbol: BRepPrimAPI_MakeBox
+    - symbol: gp_Pnt
+    - symbol: GProp_GProps
+    - symbol: Message_ProgressIndicator
+    - symbol: Standard_Transient
+    - symbol: BRepBuilderAPI_MakeShape
+    - symbol: BRepBuilderAPI_Command
+    - symbol: TopoDS_Shape
+    - symbol: Message_ProgressRange
+    - symbol: Message_ProgressScope
+    - symbol: BRepAlgoAPI_BooleanOperation
+    - symbol: BRepAlgoAPI_BuilderAlgo
+    - symbol: BRepAlgoAPI_Algo
+    - symbol: BRepGProp
+  emccFlags:
+    - -fwasm-exceptions
+    - -sEXPORT_EXCEPTION_HANDLING_HELPERS
+    - -sEXPORT_ES6=1
+    - -sMODULARIZE
+    - -sALLOW_MEMORY_GROWTH=1
+    - -sEXPORTED_RUNTIME_METHODS=["FS"]
+    - -sINITIAL_MEMORY=64MB
+    - -sMAXIMUM_MEMORY=2GB
+    - -sERROR_ON_UNDEFINED_SYMBOLS=0
+    - --no-entry
+    - -Wl,--allow-undefined
+    - -sSTACK_SIZE=8388608
+    - -sWASM_BIGINT
+    - -msimd128
+    - -O3
+  additionalBindCode: |
+    #include "Message_ProgressIndicator.hxx"
+    #include <emscripten/bind.h>
+    #include <utility>
+    #include <iostream>
+    using namespace emscripten;
+
+    struct Message_ProgressIndicator_JS : public Message_ProgressIndicator {
+      using Message_ProgressIndicator::Show;
+      using Message_ProgressIndicator::UserBreak;
+      using Message_ProgressIndicator::Reset;
+    };
+
+    struct Message_ProgressIndicator_JSWrapper : public wrapper<Message_ProgressIndicator_JS> {
+      EMSCRIPTEN_WRAPPER(Message_ProgressIndicator_JSWrapper);
+      void Show(const Message_ProgressScope& theScope, const bool isForce) {
+        // Emscripten 5.x forbids implicitly binding a raw pointer through
+        // val::set, so forward the scalar progress position instead of the
+        // raw Message_ProgressScope pointer the legacy wrapper passed.
+        return call<void>("Show", GetPosition(), isForce);
+      }
+      bool UserBreak() {
+        return call<bool>("UserBreak");
+      }
+      void Reset() {
+        return call<void>("Reset");
+      }
+    };
+
+    EMSCRIPTEN_BINDINGS(Message_ProgressIndicator_JS) {
+      class_<Message_ProgressIndicator_JS, base<Message_ProgressIndicator>>("Message_ProgressIndicator_JS")
+        .class_function("get_type_name", &Message_ProgressIndicator_JS::get_type_name, allow_raw_pointers())
+        .class_function("get_type_descriptor", &Message_ProgressIndicator_JS::get_type_descriptor, allow_raw_pointers())
+        .function("DynamicType", &Message_ProgressIndicator_JS::DynamicType, allow_raw_pointers())
+        .function("Start_1", select_overload<Message_ProgressRange(), Message_ProgressIndicator_JS>(&Message_ProgressIndicator_JS::Start), allow_raw_pointers())
+        .class_function("Start_2", select_overload<Message_ProgressRange(const opencascade::handle<Message_ProgressIndicator> & theProgress)>(&Message_ProgressIndicator_JS::Start), allow_raw_pointers())
+        .function("GetPosition", &Message_ProgressIndicator_JS::GetPosition, allow_raw_pointers())
+        .function("Show", &Message_ProgressIndicator_JS::Show, pure_virtual())
+        .function("UserBreak", optional_override([](Message_ProgressIndicator_JS& self) {
+          return self.Message_ProgressIndicator_JS::UserBreak();
+        }))
+        .function("Reset", optional_override([](Message_ProgressIndicator_JS& self) {
+          return self.Message_ProgressIndicator_JS::Reset();
+        }))
+        .allow_subclass<Message_ProgressIndicator_JSWrapper>("Message_ProgressIndicator_JSWrapper")
+      ;
+    }

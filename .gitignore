@@ -50,3 +50,7 @@ docs-site/data/*.json
 
 # Build output
 /dist/
+
+# Docker build-flow test scratch (per-test workdirs + manual trial dir)
+/tests/docker/.work/
+/tests/docker/.trial/
