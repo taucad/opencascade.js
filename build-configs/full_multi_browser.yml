@@ -214,8 +214,6 @@ mainBuild:
   - symbol: BRepApprox_ParLeastSquareOfMyGradientOfTheComputeLineBezierOfApprox
   - symbol: BRepApprox_ParLeastSquareOfMyGradientbisOfTheComputeLineOfApprox
   - symbol: BRepApprox_SurfaceTool
-  - symbol: BRepApprox_TheComputeLineBezierOfApprox
-  - symbol: BRepApprox_TheComputeLineOfApprox
   - symbol: BRepApprox_TheImpPrmSvSurfacesOfApprox
   - symbol: BRepApprox_TheInt2SOfThePrmPrmSvSurfacesOfApprox
   - symbol: BRepApprox_TheMultiLineOfApprox
@@ -1478,8 +1476,6 @@ mainBuild:
   - symbol: GeomInt_ParameterAndOrientation
   - symbol: GeomInt_ResConstraintOfMyGradientOfTheComputeLineBezierOfWLApprox
   - symbol: GeomInt_ResConstraintOfMyGradientbisOfTheComputeLineOfWLApprox
-  - symbol: GeomInt_TheComputeLineBezierOfWLApprox
-  - symbol: GeomInt_TheComputeLineOfWLApprox
   - symbol: GeomInt_TheImpPrmSvSurfacesOfWLApprox
   - symbol: GeomInt_TheInt2SOfThePrmPrmSvSurfacesOfWLApprox
   - symbol: GeomInt_TheMultiLineOfWLApprox
