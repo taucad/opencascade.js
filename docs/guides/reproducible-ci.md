@@ -44,7 +44,7 @@ Every WASM build (whether published via the tarball or extracted from a GHCR run
   },
   "occt": {
     "commit": "<full SHA>",
-    "version_tag": "V8_0_0_RC5"
+    "version_tag": "V8_0_0"
   },
   "build_config": {
     "yaml": "build-configs/full.yml",
@@ -72,7 +72,7 @@ const sha = crypto.createHash('sha256').update(wasm).digest('hex');
 if (sha !== prov.outputs.wasm.sha256) {
   throw new Error(`opencascade_full.wasm hash mismatch: provenance=${prov.outputs.wasm.sha256} actual=${sha}`);
 }
-if (prov.toolchain.emsdk !== '5.0.1' || prov.occt.version_tag !== 'V8_0_0_RC5') {
+if (prov.toolchain.emsdk !== '5.0.1' || prov.occt.version_tag !== 'V8_0_0') {
   throw new Error('opencascade_full.wasm built with an unexpected toolchain');
 }
 ```
