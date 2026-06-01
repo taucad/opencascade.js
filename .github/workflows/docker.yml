@@ -26,11 +26,14 @@ name: docker
 #    Post-publish smoke pulls the manifest list and re-runs the link-filter
 #    PoC to confirm the published artefact is functional.
 #
-# Cache strategy (R5): all build/push-action invocations use registry-backed
-# cache (`type=registry,ref=…:buildcache-<arch>-<stage>`) — GHA cache
-# backend's 10 GB limit cannot accommodate the four scopes we need (~40 GB
-# combined). Scopes are partitioned by arch + stage so the two architectures
-# and three stages don't poison each other's cache hits.
+# Cache strategy (R5): registry-backed cache (`type=registry,ref=…:buildcache-
+# <arch>-<stage>`) — GHA cache backend's 10 GB limit cannot accommodate the
+# scopes we need (~40 GB combined). Scopes are partitioned by arch + stage so
+# the two architectures and three stages don't poison each other's cache hits.
+# cache-from on all build steps (warm reads); cache-to only on push steps after
+# the e2e gate passes (trusted writes). PR smoke has cache-from only — no PR
+# can poison buildcache-* tags. GHCR package must grant this repo Write under
+# Manage Actions access (packages: write in YAML is not sufficient alone).
 #
 # Disk: free-disk-space (`jlumbroso/free-disk-space@main`) reclaims ~30-40 GB
 # on the GHA runner before BuildKit starts — without it, the compiled-*
@@ -259,7 +262,7 @@ jobs:
             REVISION=${{ github.sha }}
             VERSION=branch-${{ needs.setup.outputs.branch_slug }}
           cache-from: type=registry,ref=${{ env.REGISTRY_IMAGE }}:buildcache-amd64-${{ matrix.stage }}
-          cache-to: type=registry,ref=${{ env.REGISTRY_IMAGE }}:buildcache-amd64-${{ matrix.stage }},mode=max
+          # cache-to omitted: written only on push step after e2e gate passes
           provenance: false
           sbom: false
 
@@ -372,7 +375,7 @@ jobs:
             REVISION=${{ github.sha }}
             VERSION=${{ steps.meta.outputs.version }}
           cache-from: type=registry,ref=${{ env.REGISTRY_IMAGE }}:buildcache-${{ matrix.arch }}-${{ matrix.stage }}
-          cache-to: type=registry,ref=${{ env.REGISTRY_IMAGE }}:buildcache-${{ matrix.arch }}-${{ matrix.stage }},mode=max
+          # cache-to omitted: written only on push step after e2e gate passes
           provenance: false
           sbom: false
 
