@@ -56,6 +56,8 @@ permissions:
 
 env:
   REGISTRY_IMAGE: ghcr.io/taucad/opencascade.js
+  # GitHub Actions Node 20 deprecation (2026-09): opt into Node 24 for action runtimes.
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   # ───────────────────────────────────────────────────────────────────────────
@@ -107,7 +109,7 @@ jobs:
     timeout-minutes: 360
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Free disk space (reclaim ~30-40 GB)
         uses: jlumbroso/free-disk-space@main
@@ -121,18 +123,18 @@ jobs:
           tool-cache: false
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v3.11.1
 
       - name: Log in to GHCR (for registry cache reads)
         if: github.event_name != 'pull_request'
-        uses: docker/login-action@v3
+        uses: docker/login-action@v3.4.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build :bindgen-base + final-single (smoke target, --load)
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v6.18.0
         with:
           context: .
           target: final-single
@@ -175,7 +177,7 @@ jobs:
 
       - name: Upload smoke artefacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v4.6.2
         with:
           name: link-filter-poc-output
           path: smoke-output/
@@ -209,7 +211,7 @@ jobs:
             tag_prefix: bindgen-base-branch
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Free disk space (reclaim ~30-40 GB)
         uses: jlumbroso/free-disk-space@main
@@ -223,27 +225,29 @@ jobs:
           tool-cache: false
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v3.11.1
 
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@v3.4.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install cosign
-        uses: sigstore/cosign-installer@v3
+        uses: sigstore/cosign-installer@v3.8.2
 
       - name: Compute image metadata (labels)
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v5.7.0
         with:
           images: ${{ env.REGISTRY_IMAGE }}
 
+      # load: true uses the docker exporter — incompatible with provenance/sbom
+      # attestations (manifest-list export). Attestations are enabled on push.
       - name: Build ${{ matrix.stage }} (amd64, --load for e2e gate)
         id: build
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v6.18.0
         with:
           context: .
           target: ${{ matrix.stage }}
@@ -256,8 +260,8 @@ jobs:
             VERSION=branch-${{ needs.setup.outputs.branch_slug }}
           cache-from: type=registry,ref=${{ env.REGISTRY_IMAGE }}:buildcache-amd64-${{ matrix.stage }}
           cache-to: type=registry,ref=${{ env.REGISTRY_IMAGE }}:buildcache-amd64-${{ matrix.stage }},mode=max
-          provenance: true
-          sbom: true
+          provenance: false
+          sbom: false
 
       - name: E2E gate — 5-min warm-link budget
         run: |
@@ -268,7 +272,7 @@ jobs:
 
       - name: Build + push ${{ matrix.stage }} to GHCR
         id: push
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v6.18.0
         with:
           context: .
           target: ${{ matrix.stage }}
@@ -324,7 +328,7 @@ jobs:
             platform: linux/arm64
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Free disk space (reclaim ~30-40 GB)
         uses: jlumbroso/free-disk-space@main
@@ -338,10 +342,10 @@ jobs:
           tool-cache: false
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v3.11.1
 
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@v3.4.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -349,12 +353,14 @@ jobs:
 
       - name: Compute image metadata (labels only)
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v5.7.0
         with:
           images: ${{ env.REGISTRY_IMAGE }}
 
+      # load: true uses the docker exporter — incompatible with provenance/sbom
+      # attestations (manifest-list export). Attestations are enabled on push.
       - name: Build ${{ matrix.stage }} (${{ matrix.arch }}, --load for e2e gate)
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v6.18.0
         with:
           context: .
           target: ${{ matrix.stage }}
@@ -367,8 +373,8 @@ jobs:
             VERSION=${{ steps.meta.outputs.version }}
           cache-from: type=registry,ref=${{ env.REGISTRY_IMAGE }}:buildcache-${{ matrix.arch }}-${{ matrix.stage }}
           cache-to: type=registry,ref=${{ env.REGISTRY_IMAGE }}:buildcache-${{ matrix.arch }}-${{ matrix.stage }},mode=max
-          provenance: true
-          sbom: true
+          provenance: false
+          sbom: false
 
       - name: E2E gate — 5-min warm-link budget
         run: |
@@ -379,7 +385,7 @@ jobs:
 
       - name: Build + push by digest
         id: push
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v6.18.0
         with:
           context: .
           target: ${{ matrix.stage }}
@@ -403,7 +409,7 @@ jobs:
           touch "${{ runner.temp }}/digests/${DIGEST#sha256:}"
 
       - name: Upload digest
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v4.6.2
         with:
           name: digests-${{ matrix.stage }}-${{ matrix.arch }}
           path: ${{ runner.temp }}/digests/*
@@ -431,28 +437,28 @@ jobs:
             tag_suffix: bindgen-base
     steps:
       - name: Download digests (${{ matrix.stage }} × all arches)
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v4.3.0
         with:
           path: ${{ runner.temp }}/digests
           pattern: digests-${{ matrix.stage }}-*
           merge-multiple: true
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v3.11.1
 
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@v3.4.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install cosign
-        uses: sigstore/cosign-installer@v3
+        uses: sigstore/cosign-installer@v3.8.2
 
       - name: Compute release tags for ${{ matrix.tag_suffix }}
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v5.7.0
         with:
           images: ${{ env.REGISTRY_IMAGE }}
           # No :latest, no :beta, no :rolling — only versioned + base tags
