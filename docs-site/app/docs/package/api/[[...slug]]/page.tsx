@@ -31,7 +31,15 @@ const renderBody = (resolution: ApiRouteResolution): React.ReactNode => {
         />
       );
     case 'package':
-      return <ApiPackagePage shardKey={resolution.shardKey} />;
+      return (
+        <ApiPackagePage
+          shardKey={resolution.shardKey}
+          basePath={`/docs/package/api/${resolution.moduleSlug}/${resolution.toolkitSlug}/${resolution.packageSlug}`}
+          page={resolution.page}
+          pageCount={resolution.pageCount}
+          classCount={resolution.classCount}
+        />
+      );
   }
 };
 
@@ -44,7 +52,9 @@ const titleFor = (resolution: ApiRouteResolution): string => {
     case 'toolkit':
       return resolution.toolkitName;
     case 'package':
-      return resolution.packageName;
+      return resolution.pageCount > 1
+        ? `${resolution.packageName} (page ${resolution.page} of ${resolution.pageCount})`
+        : resolution.packageName;
     default: {
       const _exhaustive: never = resolution;
       return _exhaustive;

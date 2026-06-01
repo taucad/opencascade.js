@@ -1,5 +1,6 @@
 import 'server-only';
 import { apiTree } from './api-source';
+import { packagePageCount, pageSegmentFor, parsePageSegment } from './api-package-pagination';
 
 export type ApiRouteResolution =
   | { readonly kind: 'root' }
@@ -21,6 +22,9 @@ export type ApiRouteResolution =
       readonly packageSlug: string;
       readonly shardKey: string;
       readonly description: string;
+      readonly classCount: number;
+      readonly page: number;
+      readonly pageCount: number;
     };
 
 /**
@@ -55,11 +59,16 @@ export const resolveApiRoute = (slug: readonly string[] | undefined): ApiRouteRe
     };
   }
 
-  if (slug.length !== 3) return undefined;
+  if (slug.length !== 3 && slug.length !== 4) return undefined;
   const packageSlug = slug[2];
   if (packageSlug === undefined) return undefined;
   const pkg = toolkit.packages.find((p) => p.slug === packageSlug);
   if (!pkg) return undefined;
+
+  const classCount = pkg.classCount ?? pkg.classNames.length;
+  const pages = packagePageCount(classCount);
+  const page = slug.length === 3 ? 1 : parsePageSegment(slug[3]);
+  if (page === undefined || page > pages) return undefined;
 
   return {
     kind: 'package',
@@ -71,6 +80,9 @@ export const resolveApiRoute = (slug: readonly string[] | undefined): ApiRouteRe
     packageSlug: pkg.slug,
     shardKey: pkg.shardKey,
     description: pkg.description,
+    classCount,
+    page,
+    pageCount: pages,
   };
 };
 
@@ -87,7 +99,14 @@ export const enumerateApiRoutes = (): Array<{ readonly slug: string[] }> => {
     for (const toolkit of ocModule.toolkits) {
       out.push({ slug: [ocModule.slug, toolkit.slug] });
       for (const pkg of toolkit.packages) {
-        out.push({ slug: [ocModule.slug, toolkit.slug, pkg.slug] });
+        const classCount = pkg.classCount ?? pkg.classNames.length;
+        const pages = packagePageCount(classCount);
+        for (let page = 1; page <= pages; page++) {
+          const routeSlug = [ocModule.slug, toolkit.slug, pkg.slug];
+          const segment = pageSegmentFor(page);
+          if (segment) routeSlug.push(segment);
+          out.push({ slug: routeSlug });
+        }
       }
     }
   }

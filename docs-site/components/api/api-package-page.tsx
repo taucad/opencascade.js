@@ -1,10 +1,16 @@
 import type { ReactNode } from 'react';
+import { slicePackageClasses } from '../../lib/api-package-pagination';
 import { loadShard } from './api-data';
 import { ApiClassCard } from './api-class-card';
 import { ApiHashHighlight } from './api-hash-highlight';
+import { ApiPackagePagination } from './api-package-pagination';
 
 export type ApiPackagePageProps = {
   readonly shardKey: string;
+  readonly basePath: string;
+  readonly page: number;
+  readonly pageCount: number;
+  readonly classCount: number;
 };
 
 /**
@@ -12,9 +18,15 @@ export type ApiPackagePageProps = {
  * bound class inline, and generates a sidebar class jumplist. Build-time
  * only — no client JS for the class cards themselves.
  */
-export const ApiPackagePage = async ({ shardKey }: ApiPackagePageProps): Promise<ReactNode> => {
+export const ApiPackagePage = async ({
+  shardKey,
+  basePath,
+  page,
+  pageCount,
+  classCount,
+}: ApiPackagePageProps): Promise<ReactNode> => {
   const shard = await loadShard(shardKey);
-  const classes = shard.classes ?? [];
+  const { slice: classes } = slicePackageClasses(shard.classes ?? [], page);
 
   if (classes.length === 0) {
     return (
@@ -25,7 +37,14 @@ export const ApiPackagePage = async ({ shardKey }: ApiPackagePageProps): Promise
   }
 
   return (
-    <div className="not-prose grid gap-8 md:grid-cols-[200px_minmax(0,1fr)]">
+    <div className="not-prose space-y-6">
+      <ApiPackagePagination
+        basePath={basePath}
+        page={page}
+        pageCount={pageCount}
+        classCount={classCount}
+      />
+      <div className="grid gap-8 md:grid-cols-[200px_minmax(0,1fr)]">
       <ApiHashHighlight />
       <aside className="hidden md:block">
         <nav
@@ -55,6 +74,15 @@ export const ApiPackagePage = async ({ shardKey }: ApiPackagePageProps): Promise
           <ApiClassCard key={cls.name} cls={cls} />
         ))}
       </div>
+      </div>
+      {pageCount > 1 ? (
+        <ApiPackagePagination
+          basePath={basePath}
+          page={page}
+          pageCount={pageCount}
+          classCount={classCount}
+        />
+      ) : null}
     </div>
   );
 };

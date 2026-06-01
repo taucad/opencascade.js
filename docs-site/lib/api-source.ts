@@ -24,6 +24,7 @@ type ApiTreePackage = {
   readonly name: string;
   readonly description: string;
   readonly shardKey: string;
+  readonly classCount: number;
   readonly classNames: readonly string[];
 };
 

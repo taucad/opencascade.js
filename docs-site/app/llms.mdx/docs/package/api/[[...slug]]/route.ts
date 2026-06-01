@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation';
 import { resolveApiRoute, enumerateApiRoutes } from '../../../../../../lib/api-route-resolver';
+import { slicePackageClasses } from '../../../../../../lib/api-package-pagination';
 import { loadShard } from '../../../../../../components/api/api-data';
 import { shardToMarkdown } from '../../../../../../lib/shard-to-markdown';
 import { apiTree } from '../../../../../../lib/api-source';
@@ -40,10 +41,15 @@ export const GET = async (_request: Request, { params }: RouteParams): Promise<R
   let body: string;
   if (resolution.kind === 'package') {
     const shard = await loadShard(resolution.shardKey);
-    body = shardToMarkdown(shard, {
-      title: resolution.packageName,
-      url: `/docs/package/api/${resolution.moduleSlug}/${resolution.toolkitSlug}/${resolution.packageSlug}`,
-    });
+    const { slice } = slicePackageClasses(shard.classes ?? [], resolution.page);
+    const title =
+      resolution.pageCount > 1
+        ? `${resolution.packageName} (page ${resolution.page} of ${resolution.pageCount})`
+        : resolution.packageName;
+    const baseUrl = `/docs/package/api/${resolution.moduleSlug}/${resolution.toolkitSlug}/${resolution.packageSlug}`;
+    const url =
+      resolution.page > 1 ? `${baseUrl}/page-${resolution.page}` : baseUrl;
+    body = shardToMarkdown({ ...shard, classes: [...slice] }, { title, url });
   } else if (resolution.kind === 'toolkit') {
     const ocModule = apiTree.modules.find((m) => m.slug === resolution.moduleSlug);
     const toolkit = ocModule?.toolkits.find((t) => t.slug === resolution.toolkitSlug);
