@@ -44,8 +44,8 @@ export const ApiPackagePage = async ({
         pageCount={pageCount}
         classCount={classCount}
       />
-      <div className="grid gap-8 md:grid-cols-[200px_minmax(0,1fr)]">
       <ApiHashHighlight />
+      <div className="grid gap-8 md:grid-cols-[200px_minmax(0,1fr)]">
       <aside className="hidden md:block">
         <nav
           aria-label="Classes in this package"

@@ -51,7 +51,11 @@ export const resolveIcon = (icon: string | undefined): ReactNode => {
       <img
         src={LIB_ICONS[id]}
         alt=""
-        className={className === undefined ? 'size-full object-contain' : `size-full object-contain ${className}`}
+        className={
+          className === undefined
+            ? 'size-4 shrink-0 object-contain'
+            : `size-4 shrink-0 object-contain ${className}`
+        }
       />
     );
   }

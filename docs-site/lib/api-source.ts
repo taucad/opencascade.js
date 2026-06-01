@@ -2,6 +2,7 @@ import 'server-only';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { StaticSource, VirtualFile } from 'fumadocs-core/source';
+import { packagePageCount, pageSegmentFor } from './api-package-pagination';
 
 /**
  * Virtual Fumadocs source for the auto-generated OCCT API reference.
@@ -122,6 +123,9 @@ const buildFiles = (tree: ApiTree): VirtualFile[] => {
       });
 
       for (const pkg of toolkit.packages) {
+        const classCount = pkg.classCount ?? pkg.classNames.length;
+        const pages = packagePageCount(classCount);
+
         files.push({
           type: 'page',
           path: `package/api/${ocModule.slug}/${toolkit.slug}/${pkg.slug}.mdx`,
@@ -130,6 +134,19 @@ const buildFiles = (tree: ApiTree): VirtualFile[] => {
             description: pkg.description,
           },
         });
+
+        for (let page = 2; page <= pages; page++) {
+          const segment = pageSegmentFor(page);
+          if (!segment) continue;
+          files.push({
+            type: 'page',
+            path: `package/api/${ocModule.slug}/${toolkit.slug}/${pkg.slug}/${segment}.mdx`,
+            data: {
+              title: `${pkg.name} (page ${page} of ${pages})`,
+              description: pkg.description,
+            },
+          });
+        }
       }
     }
   }
