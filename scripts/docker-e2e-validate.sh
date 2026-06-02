@@ -28,6 +28,7 @@
 #   OCJS_E2E_STAGE         final-single | final-multi | bindgen-base.
 #   WARM_BUDGET_S          Default: 300
 #   FILTER_RATIO_MAX       Default: 0.20
+#   OCJS_E2E_CPUS          Default: host CPU count (nproc); GHA ubuntu-latest has 4
 
 set -euo pipefail
 
@@ -41,6 +42,7 @@ OCJS_E2E_STAGE="${OCJS_E2E_STAGE:-final-single}"
 OUTPUT_DIR="$REPO_ROOT/docker-e2e-output"
 WARM_BUDGET_S="${WARM_BUDGET_S:-300}"
 FILTER_RATIO_MAX="${FILTER_RATIO_MAX:-0.20}"
+DOCKER_CPUS="${OCJS_E2E_CPUS:-$(nproc 2>/dev/null || echo 4)}"
 SKIP_BUILD=0
 PLATFORM_FLAGS=()
 
@@ -103,7 +105,7 @@ _run_link() {
   yaml_basename="$(basename "$yaml_host_path")"
   docker run --rm \
     "${PLATFORM_FLAGS[@]}" \
-    --memory 8g --cpus 8 \
+    --memory 8g --cpus "$DOCKER_CPUS" \
     -u "$(id -u):$(id -g)" \
     -v "$yaml_host_path:/src/${yaml_basename}:ro" \
     -v "$OUTPUT_DIR:/output" \
