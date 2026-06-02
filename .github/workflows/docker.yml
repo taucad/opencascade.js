@@ -208,10 +208,13 @@ jobs:
         include:
           - stage: final-single
             tag_prefix: branch
+            e2e_build_config: build-configs/full.yml
           - stage: final-multi
             tag_prefix: multi-threaded-branch
+            e2e_build_config: build-configs/full_multi.yml
           - stage: bindgen-base
             tag_prefix: bindgen-base-branch
+            e2e_build_config: build-configs/full.yml
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -267,11 +270,14 @@ jobs:
           sbom: false
 
       - name: E2E gate — 5-min warm-link budget
+        env:
+          OCJS_E2E_IMAGE: ocjs:e2e
+          OCJS_E2E_STAGE: ${{ matrix.stage }}
+          OCJS_E2E_BUILD_CONFIG: ${{ matrix.e2e_build_config }}
         run: |
           set -euo pipefail
           chmod +x scripts/docker-e2e-validate.sh
-          OCJS_E2E_IMAGE=ocjs:e2e \
-            scripts/docker-e2e-validate.sh
+          scripts/docker-e2e-validate.sh
 
       - name: Build + push ${{ matrix.stage }} to GHCR
         id: push
@@ -329,6 +335,12 @@ jobs:
           - arch: arm64
             runner: ubuntu-24.04-arm
             platform: linux/arm64
+          - stage: final-single
+            e2e_build_config: build-configs/full.yml
+          - stage: final-multi
+            e2e_build_config: build-configs/full_multi.yml
+          - stage: bindgen-base
+            e2e_build_config: build-configs/full.yml
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -380,11 +392,14 @@ jobs:
           sbom: false
 
       - name: E2E gate — 5-min warm-link budget
+        env:
+          OCJS_E2E_IMAGE: ocjs:e2e
+          OCJS_E2E_STAGE: ${{ matrix.stage }}
+          OCJS_E2E_BUILD_CONFIG: ${{ matrix.e2e_build_config }}
         run: |
           set -euo pipefail
           chmod +x scripts/docker-e2e-validate.sh
-          OCJS_E2E_IMAGE=ocjs:e2e \
-            scripts/docker-e2e-validate.sh
+          scripts/docker-e2e-validate.sh
 
       - name: Build + push by digest
         id: push
