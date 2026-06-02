@@ -178,6 +178,39 @@ jobs:
           done
           if [ "$missing" -ne 0 ]; then exit 1; fi
 
+      - name: Assert link-filter-poc NCollection trim filter ratio
+        run: |
+          set -euo pipefail
+          python3 - "$PWD/smoke-output/opencascade_linkfilter_poc.provenance.json" <<'PY'
+          import json, sys
+          max_ratio = 0.20
+          data = json.load(open(sys.argv[1]))
+          mani = data.get("nCollectionManifest") or {}
+          linked = mani.get("linked")
+          total = mani.get("total")
+          dropped = mani.get("dropped")
+          if linked is None or total is None or dropped is None:
+              raise SystemExit(
+                  f"provenance.json missing nCollectionManifest "
+                  f"(linked={linked}, total={total}, dropped={dropped})"
+              )
+          if total == 0:
+              print("WARNING: nCollectionManifest.total is 0; skipping trim ratio check.")
+              raise SystemExit(0)
+          if linked + dropped != total:
+              raise SystemExit(
+                  f"invariant violated: linked({linked}) + dropped({dropped}) != total({total})"
+              )
+          ratio = linked / total
+          print(f"link-filter-poc NCollection ratio: {linked}/{total} = {ratio:.3f} (budget ≤ {max_ratio:.2f})")
+          if ratio > max_ratio:
+              raise SystemExit(
+                  f"trim filter ratio {ratio:.3f} exceeds budget {max_ratio:.3f} — "
+                  "link-filter-poc scope should drop ≥80% of auto-discovered NCollections"
+              )
+          print(f"PASS: filter dropped {(1 - ratio) * 100:.1f}% of NCollection symbols")
+          PY
+
       - name: Upload smoke artefacts
         if: always()
         uses: actions/upload-artifact@v4.6.2

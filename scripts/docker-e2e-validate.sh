@@ -11,9 +11,13 @@
 #   Phase 1  Resolve build-config YAML + artefact basename.
 #   Phase 2  Cold link (uses image-baked warm cache; no empty /build volume mount).
 #   Phase 3  Output presence assertions.
-#   Phase 4  NCollection filter ratio from provenance.json.
+#   Phase 4  nCollectionManifest structural provenance (linked+dropped==total).
 #   Phase 5  Warm-cache rerun (budget WARM_BUDGET_S).
 #   Phase 6  JS smoke test.
+#
+# Trim-scope NCollection filter ratio (linked/total ≤ 0.20) is asserted in the
+# docker-smoke job against link-filter-poc.yml — not here. Full builds are
+# kitchen-sink configs; a high linked/total ratio is expected and correct.
 #
 # bindgen-base (OCJS_E2E_STAGE=bindgen-base):
 #   validate build-configs/full.yml and full_multi.yml only (no link — image
@@ -27,7 +31,6 @@
 #   OCJS_E2E_BUILD_CONFIG  YAML under repo root (default: build-configs/full.yml).
 #   OCJS_E2E_STAGE         final-single | final-multi | bindgen-base.
 #   WARM_BUDGET_S          Default: 300
-#   FILTER_RATIO_MAX       Default: 0.20
 #   OCJS_E2E_CPUS          Default: host CPU count (nproc); GHA ubuntu-latest has 4
 
 set -euo pipefail
@@ -41,7 +44,6 @@ BUILD_CONFIG="${OCJS_E2E_BUILD_CONFIG:-$BUILD_CONFIG_DEFAULT}"
 OCJS_E2E_STAGE="${OCJS_E2E_STAGE:-final-single}"
 OUTPUT_DIR="$REPO_ROOT/docker-e2e-output"
 WARM_BUDGET_S="${WARM_BUDGET_S:-300}"
-FILTER_RATIO_MAX="${FILTER_RATIO_MAX:-0.20}"
 DOCKER_CPUS="${OCJS_E2E_CPUS:-$(nproc 2>/dev/null || echo 4)}"
 SKIP_BUILD=0
 PLATFORM_FLAGS=()
@@ -61,7 +63,6 @@ while [ "$#" -gt 0 ]; do
     --output-dir)     OUTPUT_DIR="$2"; shift 2 ;;
     --skip-build)     SKIP_BUILD=1; shift ;;
     --warm-budget)    WARM_BUDGET_S="$2"; shift 2 ;;
-    --filter-ratio-max) FILTER_RATIO_MAX="$2"; shift 2 ;;
     -h|--help)
       sed -n '2,35p' "${BASH_SOURCE[0]}"
       exit 0
@@ -206,27 +207,36 @@ done
 CANDIDATE_JS="$OUTPUT_DIR/${ARTIFACT_BASENAME}.js"
 PROV_FILE="$OUTPUT_DIR/${ARTIFACT_BASENAME}.provenance.json"
 
-_section "Phase 4/6  NCollection filter ratio (linked/total ≤ ${FILTER_RATIO_MAX})"
-python3 - "$PROV_FILE" "$FILTER_RATIO_MAX" <<'PY' || _fail "NCollection filter ratio assertion failed"
+_section "Phase 4/6  nCollectionManifest provenance (structural)"
+python3 - "$PROV_FILE" <<'PY' || _fail "nCollectionManifest provenance assertion failed"
 import json, sys
-prov_path, max_ratio = sys.argv[1], float(sys.argv[2])
-data = json.load(open(prov_path))
-mani = data.get('nCollectionManifest') or {}
-linked = mani.get('linked')
-total = mani.get('total')
-if linked is None or total is None:
-    print(f"  ERROR: provenance.json missing nCollectionManifest.linked/total (linked={linked}, total={total}).", file=sys.stderr)
-    print(f"  Rebuild with `pnpm nx run ocjs:build` to produce wasm-build-provenance-v1.1.", file=sys.stderr)
+data = json.load(open(sys.argv[1]))
+mani = data.get("nCollectionManifest") or {}
+linked = mani.get("linked")
+total = mani.get("total")
+dropped = mani.get("dropped")
+if linked is None or total is None or dropped is None:
+    print(
+        f"  ERROR: provenance.json missing nCollectionManifest fields "
+        f"(linked={linked}, total={total}, dropped={dropped}).",
+        file=sys.stderr,
+    )
     sys.exit(1)
 if total == 0:
-    print(f"  WARNING: nCollectionManifest.total is 0 (no auto-discovered NCollections); skipping ratio check.")
+    print("  WARNING: nCollectionManifest.total is 0; skipping structural check.")
     sys.exit(0)
-ratio = linked / total
-print(f"  Linked: {linked} / Total: {total} = {ratio:.3f}")
-if ratio > max_ratio:
-    print(f"  ratio {ratio:.3f} exceeds budget {max_ratio:.3f}", file=sys.stderr)
+if linked <= 0:
+    print(f"  ERROR: nCollectionManifest.linked must be > 0 (got {linked}).", file=sys.stderr)
     sys.exit(1)
-print(f"  PASS: filter dropped {(1-ratio)*100:.1f}% of NCollection symbols (budget ≥ {(1-max_ratio)*100:.0f}%)")
+if linked + dropped != total:
+    print(
+        f"  ERROR: invariant violated: linked({linked}) + dropped({dropped}) != total({total}).",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+ratio = linked / total
+print(f"  Linked: {linked} / Total: {total} / Dropped: {dropped} (ratio {ratio:.3f}, informational)")
+print("  PASS: nCollectionManifest structural invariants satisfied")
 PY
 
 _section "Phase 5/6  Warm-cache rerun (budget ${WARM_BUDGET_S}s)"
