@@ -7,9 +7,11 @@ name: docker
 #
 # 1. **Branch DAG** (every push to main/master/occt-v8-*):
 #    For each published stage (final-single, final-multi, bindgen-base):
-#      amd64 build (with --load) → smoke (validate YAML) → e2e gate
-#      (20-min warm-link budget) → publish :branch-<slug>* / :*-branch-<slug>*
-#      → keyless cosign sign of the per-arch digest.
+#      amd64 build (with --load) → e2e gate (20-min warm-link budget) → publish
+#      :branch-<slug>* / :*-branch-<slug>* → keyless cosign sign.
+#    branch-publish starts after setup only (parallel with docker-smoke).
+#    Pre-publish e2e on single/multi is the publish gate (R13); smoke is
+#    informational on branch pushes and remains the PR gate for link-filter-poc.
 #    Branch builds are amd64-only by design (R12) — Apple Silicon reviewers
 #    pay the Rosetta tax on branch tags; release tags carry the full
 #    multi-arch manifest list.
@@ -102,8 +104,9 @@ jobs:
           echo "branch_slug=$slug" >> "$GITHUB_OUTPUT"
 
   # ───────────────────────────────────────────────────────────────────────────
-  # Smoke (every PR/push) — fast preflight that validates the Dockerfile + YAML
-  # without paying for the full compile. Independent of branch/release DAG.
+  # Smoke (PR + branch push) — link-filter-poc trim gate + YAML validate.
+  # Runs parallel with branch-publish on branch pushes (no needs edge).
+  # On pull_request, smoke is the sole docker compile gate before merge.
   # ───────────────────────────────────────────────────────────────────────────
   docker-smoke:
     name: docker · smoke · build + link-filter-poc
@@ -200,7 +203,7 @@ jobs:
   branch-publish:
     name: docker · branch · ${{ matrix.stage }}
     if: needs.setup.outputs.is_branch_push == 'true'
-    needs: [setup, docker-smoke]
+    needs: [setup]
     runs-on: ubuntu-latest
     timeout-minutes: 360
     permissions:
