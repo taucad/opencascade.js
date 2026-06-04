@@ -275,28 +275,7 @@ fi
 _ok "Warm rerun within budget"
 
 _section "Phase 6/6  JS smoke test against ${ARTIFACT_BASENAME}.js"
-node - "$CANDIDATE_JS" <<'JS' || _fail "JS smoke test failed"
-const path = require('path');
-const init = require(path.resolve(process.argv[2]));
-(async () => {
-  const oc = await (typeof init === 'function' ? init() : init.default());
-  if (!oc) throw new Error('module init returned falsy');
-  const p = new oc.gp_Pnt(1, 2, 3);
-  if (p.X() !== 1 || p.Y() !== 2 || p.Z() !== 3) {
-    throw new Error(`gp_Pnt round-trip failed: (${p.X()}, ${p.Y()}, ${p.Z()})`);
-  }
-  const q = new oc.gp_Pnt(4, 5, 6);
-  const edge = new oc.BRepBuilderAPI_MakeEdge(p, q);
-  if (!edge.IsDone()) throw new Error('BRepBuilderAPI_MakeEdge.IsDone() returned false');
-  edge.delete();
-  p.delete();
-  q.delete();
-  console.log('  PASS: gp_Pnt + BRepBuilderAPI_MakeEdge round-trip succeeded.');
-})().catch((err) => {
-  console.error('  FAIL:', err && err.stack || err);
-  process.exit(1);
-});
-JS
+node "$SCRIPT_DIR/docker-js-smoke.mjs" "$CANDIDATE_JS" || _fail "JS smoke test failed"
 
 _section "RESULT: Docker E2E validation PASSED"
 echo "  Image:       $IMAGE_TAG"
