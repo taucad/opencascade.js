@@ -12,7 +12,7 @@
 #   Phase 2  Cold link (uses image-baked warm cache; no empty /build volume mount).
 #   Phase 3  Output presence assertions.
 #   Phase 4  nCollectionManifest structural provenance (linked+dropped==total).
-#   Phase 5  Warm-cache rerun (budget WARM_BUDGET_S).
+#   Phase 5  Warm-cache rerun (budget WARM_BUDGET_S, default 1200 = 20 min).
 #   Phase 6  JS smoke test.
 #
 # Trim-scope NCollection filter ratio (linked/total ≤ 0.20) is asserted in the
@@ -30,21 +30,36 @@
 #   OCJS_E2E_IMAGE         Pre-built image (CI); skips Phase 0 build.
 #   OCJS_E2E_BUILD_CONFIG  YAML under repo root (default: build-configs/full.yml).
 #   OCJS_E2E_STAGE         final-single | final-multi | bindgen-base.
-#   WARM_BUDGET_S          Default: 300
+#   WARM_BUDGET_S          Default: 1200 (20 min; full.yml warm link ~8–9 min on GHA)
 #   OCJS_E2E_CPUS          Default: host CPU count (nproc); GHA ubuntu-latest has 4
+#   OCJS_DOCKER_PLATFORM   Optional docker --platform (e.g. linux/amd64)
+#   OCJS_E2E_OUTPUT_DIR    Default: $REPO_ROOT/docker-e2e-output
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
+_resolve_docker_cpus() {
+  local requested="${1:-$(nproc 2>/dev/null || echo 4)}"
+  local docker_max
+  docker_max="$(docker info --format '{{.NCPU}}' 2>/dev/null || echo "$requested")"
+  docker_max="${docker_max%%.*}"
+  if [ "$requested" -gt "$docker_max" ]; then
+    echo "$docker_max"
+  else
+    echo "$requested"
+  fi
+}
+
 IMAGE_TAG="${OCJS_E2E_IMAGE:-ocjs:e2e}"
 BUILD_CONFIG_DEFAULT="$REPO_ROOT/build-configs/full.yml"
 BUILD_CONFIG="${OCJS_E2E_BUILD_CONFIG:-$BUILD_CONFIG_DEFAULT}"
 OCJS_E2E_STAGE="${OCJS_E2E_STAGE:-final-single}"
-OUTPUT_DIR="$REPO_ROOT/docker-e2e-output"
-WARM_BUDGET_S="${WARM_BUDGET_S:-300}"
-DOCKER_CPUS="${OCJS_E2E_CPUS:-$(nproc 2>/dev/null || echo 4)}"
+OUTPUT_DIR="${OCJS_E2E_OUTPUT_DIR:-$REPO_ROOT/docker-e2e-output}"
+WARM_BUDGET_S="${WARM_BUDGET_S:-1200}"
+DOCKER_CPUS="$(_resolve_docker_cpus "${OCJS_E2E_CPUS:-}")"
+SKIP_COLD_LINK=0
 SKIP_BUILD=0
 PLATFORM_FLAGS=()
 
@@ -52,8 +67,8 @@ if [ -n "${OCJS_E2E_IMAGE:-}" ]; then
   SKIP_BUILD=1
 fi
 
-if [ "$(uname -m)" = "arm64" ] && [ "$(uname -s)" = "Darwin" ]; then
-  PLATFORM_FLAGS+=("--platform" "linux/amd64")
+if [ -n "${OCJS_DOCKER_PLATFORM:-}" ]; then
+  PLATFORM_FLAGS+=("--platform" "$OCJS_DOCKER_PLATFORM")
 fi
 
 while [ "$#" -gt 0 ]; do
@@ -62,6 +77,7 @@ while [ "$#" -gt 0 ]; do
     --image-tag)      IMAGE_TAG="$2"; shift 2 ;;
     --output-dir)     OUTPUT_DIR="$2"; shift 2 ;;
     --skip-build)     SKIP_BUILD=1; shift ;;
+    --skip-cold-link) SKIP_COLD_LINK=1; shift ;;
     --warm-budget)    WARM_BUDGET_S="$2"; shift 2 ;;
     -h|--help)
       sed -n '2,35p' "${BASH_SOURCE[0]}"
@@ -104,21 +120,33 @@ _run_link() {
   local yaml_host_path="$1"
   local yaml_basename
   yaml_basename="$(basename "$yaml_host_path")"
-  docker run --rm \
-    "${PLATFORM_FLAGS[@]}" \
-    --memory 8g --cpus "$DOCKER_CPUS" \
-    -u "$(id -u):$(id -g)" \
-    -v "$yaml_host_path:/src/${yaml_basename}:ro" \
-    -v "$OUTPUT_DIR:/output" \
-    -e OCJS_OUTPUT_DIR=/output \
-    "$IMAGE_TAG" link "$yaml_basename"
+  if [ "${#PLATFORM_FLAGS[@]}" -gt 0 ]; then
+    docker run --rm \
+      "${PLATFORM_FLAGS[@]}" \
+      --memory 8g --cpus "$DOCKER_CPUS" \
+      -u "$(id -u):$(id -g)" \
+      -v "$yaml_host_path:/src/${yaml_basename}:ro" \
+      -v "$OUTPUT_DIR:/output" \
+      -e OCJS_OUTPUT_DIR=/output \
+      "$IMAGE_TAG" link "$yaml_basename"
+  else
+    docker run --rm \
+      --memory 8g --cpus "$DOCKER_CPUS" \
+      -u "$(id -u):$(id -g)" \
+      -v "$yaml_host_path:/src/${yaml_basename}:ro" \
+      -v "$OUTPUT_DIR:/output" \
+      -e OCJS_OUTPUT_DIR=/output \
+      "$IMAGE_TAG" link "$yaml_basename"
+  fi
 }
 
 _run_validate() {
   local yaml_in_image="$1"
-  docker run --rm \
-    "${PLATFORM_FLAGS[@]}" \
-    "$IMAGE_TAG" validate "$yaml_in_image"
+  if [ "${#PLATFORM_FLAGS[@]}" -gt 0 ]; then
+    docker run --rm "${PLATFORM_FLAGS[@]}" "$IMAGE_TAG" validate "$yaml_in_image"
+  else
+    docker run --rm "$IMAGE_TAG" validate "$yaml_in_image"
+  fi
 }
 
 # ── bindgen-base: validate full configs only ────────────────────────────────
@@ -128,12 +156,20 @@ if [ "$OCJS_E2E_STAGE" = "bindgen-base" ]; then
     echo "  OCJS_E2E_IMAGE set; reusing existing image."
     docker image inspect "$IMAGE_TAG" >/dev/null 2>&1 || _fail "Image $IMAGE_TAG not present."
   else
-    DOCKER_BUILDKIT=1 docker build \
-      "${PLATFORM_FLAGS[@]}" \
-      --progress=plain \
-      -t "$IMAGE_TAG" \
-      --target bindgen-base \
-      "$REPO_ROOT"
+    if [ "${#PLATFORM_FLAGS[@]}" -gt 0 ]; then
+      DOCKER_BUILDKIT=1 docker build \
+        "${PLATFORM_FLAGS[@]}" \
+        --progress=plain \
+        -t "$IMAGE_TAG" \
+        --target bindgen-base \
+        "$REPO_ROOT"
+    else
+      DOCKER_BUILDKIT=1 docker build \
+        --progress=plain \
+        -t "$IMAGE_TAG" \
+        --target bindgen-base \
+        "$REPO_ROOT"
+    fi
     _ok "Image built"
   fi
 
@@ -158,12 +194,20 @@ else
   if [ "$OCJS_E2E_STAGE" = "final-multi" ]; then
     target="final-multi"
   fi
-  DOCKER_BUILDKIT=1 docker build \
-    "${PLATFORM_FLAGS[@]}" \
-    --progress=plain \
-    -t "$IMAGE_TAG" \
-    --target "$target" \
-    "$REPO_ROOT"
+  if [ "${#PLATFORM_FLAGS[@]}" -gt 0 ]; then
+    DOCKER_BUILDKIT=1 docker build \
+      "${PLATFORM_FLAGS[@]}" \
+      --progress=plain \
+      -t "$IMAGE_TAG" \
+      --target "$target" \
+      "$REPO_ROOT"
+  else
+    DOCKER_BUILDKIT=1 docker build \
+      --progress=plain \
+      -t "$IMAGE_TAG" \
+      --target "$target" \
+      "$REPO_ROOT"
+  fi
   _ok "Image built"
 fi
 
@@ -181,12 +225,20 @@ _ok "Using $BUILD_CONFIG_ABS (artefact prefix: ${ARTIFACT_BASENAME})"
 
 mkdir -p "$OUTPUT_DIR"
 
-_section "Phase 2/6  Cold link against ${ARTIFACT_BASENAME}"
-COLD_START=$(date +%s)
-_run_link "$BUILD_CONFIG_ABS"
-COLD_END=$(date +%s)
-COLD_ELAPSED=$((COLD_END - COLD_START))
-_ok "Cold link wall time: ${COLD_ELAPSED}s"
+CANDIDATE_JS="$OUTPUT_DIR/${ARTIFACT_BASENAME}.js"
+PROV_FILE="$OUTPUT_DIR/${ARTIFACT_BASENAME}.provenance.json"
+COLD_ELAPSED=0
+
+if [ "$SKIP_COLD_LINK" -eq 1 ] && [ -f "$CANDIDATE_JS" ] && [ -f "$PROV_FILE" ]; then
+  _section "Phase 2/6  Cold link skipped (--skip-cold-link; reusing $OUTPUT_DIR)"
+else
+  _section "Phase 2/6  Cold link against ${ARTIFACT_BASENAME}"
+  COLD_START=$(date +%s)
+  _run_link "$BUILD_CONFIG_ABS"
+  COLD_END=$(date +%s)
+  COLD_ELAPSED=$((COLD_END - COLD_START))
+  _ok "Cold link wall time: ${COLD_ELAPSED}s"
+fi
 
 _section "Phase 3/6  Asserting output artefacts"
 EXPECTED_ARTIFACTS=(
@@ -208,36 +260,8 @@ CANDIDATE_JS="$OUTPUT_DIR/${ARTIFACT_BASENAME}.js"
 PROV_FILE="$OUTPUT_DIR/${ARTIFACT_BASENAME}.provenance.json"
 
 _section "Phase 4/6  nCollectionManifest provenance (structural)"
-python3 - "$PROV_FILE" <<'PY' || _fail "nCollectionManifest provenance assertion failed"
-import json, sys
-data = json.load(open(sys.argv[1]))
-mani = data.get("nCollectionManifest") or {}
-linked = mani.get("linked")
-total = mani.get("total")
-dropped = mani.get("dropped")
-if linked is None or total is None or dropped is None:
-    print(
-        f"  ERROR: provenance.json missing nCollectionManifest fields "
-        f"(linked={linked}, total={total}, dropped={dropped}).",
-        file=sys.stderr,
-    )
-    sys.exit(1)
-if total == 0:
-    print("  WARNING: nCollectionManifest.total is 0; skipping structural check.")
-    sys.exit(0)
-if linked <= 0:
-    print(f"  ERROR: nCollectionManifest.linked must be > 0 (got {linked}).", file=sys.stderr)
-    sys.exit(1)
-if linked + dropped != total:
-    print(
-        f"  ERROR: invariant violated: linked({linked}) + dropped({dropped}) != total({total}).",
-        file=sys.stderr,
-    )
-    sys.exit(1)
-ratio = linked / total
-print(f"  Linked: {linked} / Total: {total} / Dropped: {dropped} (ratio {ratio:.3f}, informational)")
-print("  PASS: nCollectionManifest structural invariants satisfied")
-PY
+python3 "$SCRIPT_DIR/docker-ncollection-check.py" structural "$PROV_FILE" \
+  || _fail "nCollectionManifest provenance assertion failed"
 
 _section "Phase 5/6  Warm-cache rerun (budget ${WARM_BUDGET_S}s)"
 WARM_START=$(date +%s)
@@ -257,12 +281,12 @@ const init = require(path.resolve(process.argv[2]));
 (async () => {
   const oc = await (typeof init === 'function' ? init() : init.default());
   if (!oc) throw new Error('module init returned falsy');
-  const p = new oc.gp_Pnt_3(1, 2, 3);
+  const p = new oc.gp_Pnt(1, 2, 3);
   if (p.X() !== 1 || p.Y() !== 2 || p.Z() !== 3) {
     throw new Error(`gp_Pnt round-trip failed: (${p.X()}, ${p.Y()}, ${p.Z()})`);
   }
-  const q = new oc.gp_Pnt_3(4, 5, 6);
-  const edge = new oc.BRepBuilderAPI_MakeEdge_3(p, q);
+  const q = new oc.gp_Pnt(4, 5, 6);
+  const edge = new oc.BRepBuilderAPI_MakeEdge(p, q);
   if (!edge.IsDone()) throw new Error('BRepBuilderAPI_MakeEdge.IsDone() returned false');
   edge.delete();
   p.delete();

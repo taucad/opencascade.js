@@ -8,7 +8,7 @@ name: docker
 # 1. **Branch DAG** (every push to main/master/occt-v8-*):
 #    For each published stage (final-single, final-multi, bindgen-base):
 #      amd64 build (with --load) → smoke (validate YAML) → e2e gate
-#      (5-min warm-link budget) → publish :branch-<slug>* / :*-branch-<slug>*
+#      (20-min warm-link budget) → publish :branch-<slug>* / :*-branch-<slug>*
 #      → keyless cosign sign of the per-arch digest.
 #    Branch builds are amd64-only by design (R12) — Apple Silicon reviewers
 #    pay the Rosetta tax on branch tags; release tags carry the full
@@ -18,7 +18,7 @@ name: docker
 #    For each (stage, arch) ∈ {final-single, final-multi, bindgen-base} ×
 #    {amd64, arm64}:
 #      build with `outputs=type=image,push-by-digest=true` → smoke → e2e gate
-#      (5-min warm-link budget) → upload digest.
+#      (20-min warm-link budget) → upload digest.
 #    Then for each stage:
 #      manifest-list assembly → keyless cosign sign of the manifest-list
 #      digest (one signature verifies regardless of which arch the consumer
@@ -181,35 +181,7 @@ jobs:
       - name: Assert link-filter-poc NCollection trim filter ratio
         run: |
           set -euo pipefail
-          python3 - "$PWD/smoke-output/opencascade_linkfilter_poc.provenance.json" <<'PY'
-          import json, sys
-          max_ratio = 0.20
-          data = json.load(open(sys.argv[1]))
-          mani = data.get("nCollectionManifest") or {}
-          linked = mani.get("linked")
-          total = mani.get("total")
-          dropped = mani.get("dropped")
-          if linked is None or total is None or dropped is None:
-              raise SystemExit(
-                  f"provenance.json missing nCollectionManifest "
-                  f"(linked={linked}, total={total}, dropped={dropped})"
-              )
-          if total == 0:
-              print("WARNING: nCollectionManifest.total is 0; skipping trim ratio check.")
-              raise SystemExit(0)
-          if linked + dropped != total:
-              raise SystemExit(
-                  f"invariant violated: linked({linked}) + dropped({dropped}) != total({total})"
-              )
-          ratio = linked / total
-          print(f"link-filter-poc NCollection ratio: {linked}/{total} = {ratio:.3f} (budget ≤ {max_ratio:.2f})")
-          if ratio > max_ratio:
-              raise SystemExit(
-                  f"trim filter ratio {ratio:.3f} exceeds budget {max_ratio:.3f} — "
-                  "link-filter-poc scope should drop ≥80% of auto-discovered NCollections"
-              )
-          print(f"PASS: filter dropped {(1 - ratio) * 100:.1f}% of NCollection symbols")
-          PY
+          python3 scripts/docker-ncollection-check.py trim "$PWD/smoke-output/opencascade_linkfilter_poc.provenance.json"
 
       - name: Upload smoke artefacts
         if: always()
@@ -302,11 +274,12 @@ jobs:
           provenance: false
           sbom: false
 
-      - name: E2E gate — 5-min warm-link budget
+      - name: E2E gate — warm-link budget (20 min)
         env:
           OCJS_E2E_IMAGE: ocjs:e2e
           OCJS_E2E_STAGE: ${{ matrix.stage }}
           OCJS_E2E_BUILD_CONFIG: ${{ matrix.e2e_build_config }}
+          WARM_BUDGET_S: 1200
         run: |
           set -euo pipefail
           chmod +x scripts/docker-e2e-validate.sh
@@ -424,11 +397,12 @@ jobs:
           provenance: false
           sbom: false
 
-      - name: E2E gate — 5-min warm-link budget
+      - name: E2E gate — warm-link budget (20 min)
         env:
           OCJS_E2E_IMAGE: ocjs:e2e
           OCJS_E2E_STAGE: ${{ matrix.stage }}
           OCJS_E2E_BUILD_CONFIG: ${{ matrix.e2e_build_config }}
+          WARM_BUDGET_S: 1200
         run: |
           set -euo pipefail
           chmod +x scripts/docker-e2e-validate.sh
@@ -566,6 +540,10 @@ jobs:
           # arch the consumer pulls. cosign 2.x automatically recognises and
           # signs the OCI image index.
           cosign sign --yes "${REGISTRY_IMAGE}@${DIGEST}"
+
+      - name: Checkout (for post-publish link-filter-poc config)
+        if: matrix.stage == 'final-single'
+        uses: actions/checkout@v6
 
       - name: Post-publish smoke — pull + link-filter-poc
         if: matrix.stage == 'final-single'

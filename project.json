@@ -229,6 +229,14 @@
         "command": "./scripts/docker-e2e-validate.sh",
         "cwd": "{projectRoot}"
       }
+    },
+    "docker-ci-preflight": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "./scripts/docker-ci-preflight.sh",
+        "cwd": "{projectRoot}"
+      }
     }
   }
 }
