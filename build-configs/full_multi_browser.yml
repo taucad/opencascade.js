@@ -214,6 +214,8 @@ mainBuild:
   - symbol: BRepApprox_ParLeastSquareOfMyGradientOfTheComputeLineBezierOfApprox
   - symbol: BRepApprox_ParLeastSquareOfMyGradientbisOfTheComputeLineOfApprox
   - symbol: BRepApprox_SurfaceTool
+  - symbol: BRepApprox_TheComputeLineBezierOfApprox
+  - symbol: BRepApprox_TheComputeLineOfApprox
   - symbol: BRepApprox_TheImpPrmSvSurfacesOfApprox
   - symbol: BRepApprox_TheInt2SOfThePrmPrmSvSurfacesOfApprox
   - symbol: BRepApprox_TheMultiLineOfApprox
@@ -1199,13 +1201,23 @@ mainBuild:
   - symbol: GProp_UndefinedAxis
   - symbol: GProp_ValueType
   - symbol: GProp_VelGProps
+  - symbol: GccAna_Circ2d2TanOn
+  - symbol: GccAna_Circ2d2TanRad
+  - symbol: GccAna_Circ2d3Tan
   - symbol: GccAna_Circ2dBisec
+  - symbol: GccAna_Circ2dTanCen
+  - symbol: GccAna_Circ2dTanOnRad
   - symbol: GccAna_CircLin2dBisec
   - symbol: GccAna_CircPnt2dBisec
+  - symbol: GccAna_Lin2d2Tan
   - symbol: GccAna_Lin2dBisec
+  - symbol: GccAna_Lin2dTanObl
+  - symbol: GccAna_Lin2dTanPar
+  - symbol: GccAna_Lin2dTanPer
   - symbol: GccAna_LinPnt2dBisec
   - symbol: GccAna_NoSolution
   - symbol: GccAna_Pnt2dBisec
+  - symbol: GccEnt
   - symbol: GccEnt_BadQualifier
   - symbol: GccEnt_Position
   - symbol: GccEnt_QualifiedCirc
@@ -1245,6 +1257,17 @@ mainBuild:
   - symbol: Geom2dEval_SineWaveCurve
   - symbol: Geom2dEval_TBezierCurve
   - symbol: Geom2dGcc
+  - symbol: Geom2dGcc_Circ2d2TanOn
+  - symbol: Geom2dGcc_Circ2d2TanOnGeo
+  - symbol: Geom2dGcc_Circ2d2TanOnIter
+  - symbol: Geom2dGcc_Circ2d2TanRad
+  - symbol: Geom2dGcc_Circ2d2TanRadGeo
+  - symbol: Geom2dGcc_Circ2d3Tan
+  - symbol: Geom2dGcc_Circ2d3TanIter
+  - symbol: Geom2dGcc_Circ2dTanCen
+  - symbol: Geom2dGcc_Circ2dTanCenGeo
+  - symbol: Geom2dGcc_Circ2dTanOnRad
+  - symbol: Geom2dGcc_Circ2dTanOnRadGeo
   - symbol: Geom2dGcc_CurveTool
   - symbol: Geom2dGcc_FunctionTanCirCu
   - symbol: Geom2dGcc_FunctionTanCuCu
@@ -1252,6 +1275,10 @@ mainBuild:
   - symbol: Geom2dGcc_FunctionTanCuPnt
   - symbol: Geom2dGcc_FunctionTanObl
   - symbol: Geom2dGcc_IsParallel
+  - symbol: Geom2dGcc_Lin2d2Tan
+  - symbol: Geom2dGcc_Lin2d2TanIter
+  - symbol: Geom2dGcc_Lin2dTanObl
+  - symbol: Geom2dGcc_Lin2dTanOblIter
   - symbol: Geom2dGcc_QCurve
   - symbol: Geom2dGcc_QualifiedCurve
   - symbol: Geom2dGcc_Type1
@@ -1476,6 +1503,8 @@ mainBuild:
   - symbol: GeomInt_ParameterAndOrientation
   - symbol: GeomInt_ResConstraintOfMyGradientOfTheComputeLineBezierOfWLApprox
   - symbol: GeomInt_ResConstraintOfMyGradientbisOfTheComputeLineOfWLApprox
+  - symbol: GeomInt_TheComputeLineBezierOfWLApprox
+  - symbol: GeomInt_TheComputeLineOfWLApprox
   - symbol: GeomInt_TheImpPrmSvSurfacesOfWLApprox
   - symbol: GeomInt_TheInt2SOfThePrmPrmSvSurfacesOfWLApprox
   - symbol: GeomInt_TheMultiLineOfWLApprox
@@ -2210,9 +2239,15 @@ mainBuild:
   - symbol: IMeshData_DMapOfIFacePtrsMapOfIEdgePtrs
   - symbol: IMeshData_DMapOfIntegerListOfInteger
   - symbol: IMeshData_DMapOfShapeInteger
+  - symbol: IMeshData_ICurveArrayAdaptorHandle
+  - symbol: IMeshData_ICurveHandle
   - symbol: IMeshData_IDMapOfIFacePtrsListOfIPCurves
   - symbol: IMeshData_IDMapOfLink
+  - symbol: IMeshData_IEdgeHandle
+  - symbol: IMeshData_IFaceHandle
   - symbol: IMeshData_IMapOfReal
+  - symbol: IMeshData_IPCurveHandle
+  - symbol: IMeshData_IWireHandle
   - symbol: IMeshData_ListOfIPCurves
   - symbol: IMeshData_ListOfInteger
   - symbol: IMeshData_ListOfPnt2d
@@ -2733,6 +2768,21 @@ mainBuild:
   - symbol: Poly_Triangulation
   - symbol: Poly_TriangulationParameters
   - symbol: Precision
+  - symbol: ProjLib
+  - symbol: ProjLib_CompProjectedCurve
+  - symbol: ProjLib_ComputeApprox
+  - symbol: ProjLib_ComputeApproxOnPolarSurface
+  - symbol: ProjLib_Cone
+  - symbol: ProjLib_Cylinder
+  - symbol: ProjLib_Plane
+  - symbol: ProjLib_PrjFunc
+  - symbol: ProjLib_PrjResolve
+  - symbol: ProjLib_ProjectOnPlane
+  - symbol: ProjLib_ProjectOnSurface
+  - symbol: ProjLib_ProjectedCurve
+  - symbol: ProjLib_Projector
+  - symbol: ProjLib_Sphere
+  - symbol: ProjLib_Torus
   - symbol: Quantity_Color
   - symbol: Quantity_ColorRGBA
   - symbol: Quantity_NameOfColor
