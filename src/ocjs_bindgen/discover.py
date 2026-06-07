@@ -25,6 +25,23 @@ CONTAINER_ALIASES = {
     "NCollection_Vector": "NCollection_DynamicArray",
 }
 
+# TKMath: non-NCollection template containers also admitted into
+# template-instantiation discovery. math_VectorBase<double> (= math_Vector) and
+# math_MatrixBase<double> (= math_Matrix) gate the GeomInt/BRepApprox walking-line
+# approximators — without the base bound, every ctor taking `const math_Vector&`
+# throws "Cannot construct ... due to unbound types" (those approximators were
+# excluded for exactly this reason; see bindgen-filters.yaml). Kept as an explicit
+# allowlist (not a generic denylist) for a low-risk first landing; widen per-package later.
+EXTRA_TEMPLATE_CONTAINERS = frozenset({
+    "math_VectorBase",
+    "math_MatrixBase",
+})
+
+# Containers admitted into discovery: NCollection (always) + the
+# EXTRA_TEMPLATE_CONTAINERS above. Existing behaviour is a strict subset, so
+# widening cannot regress it.
+ADMIT_TEMPLATE_CONTAINERS = NCOLLECTION_CONTAINERS | EXTRA_TEMPLATE_CONTAINERS
+
 
 def mangle_template_name(container, arg_spellings):
     """Convert a template instantiation to a valid C++ identifier.
@@ -133,12 +150,33 @@ def _scan_type_for_ncollection(clang_type, needed, template_typedef_names=None, 
             return
 
     container = CONTAINER_ALIASES.get(decl.spelling, decl.spelling)
-    if container not in NCOLLECTION_CONTAINERS:
-        if t.get_num_template_arguments() > 0:
-            for i in range(t.get_num_template_arguments()):
-                inner = t.get_template_argument_type(i)
-                _scan_type_for_ncollection(inner, needed, template_typedef_names, source_class)
-        return
+    if container not in ADMIT_TEMPLATE_CONTAINERS:
+        # The direct declaration may be a typedef/alias whose CANONICAL is an
+        # admitted template — e.g. `math_Vector` -> `math_VectorBase<double>`
+        # (TKMath). OCCT V8 spells NCollection params as
+        # `NCollection_X<...>` directly, so this branch only newly-resolves
+        # alias-spelled admitted templates (math, and any NCollection referenced
+        # via a deprecated alias in a signature). Rebind `t`/`container` to the
+        # canonical so the arg-extraction below sees the real instantiation;
+        # `_extract_template_args` reads template args positionally
+        # (`get_template_argument_type`), so it recovers `double` even though
+        # libclang renders the canonical spelling as `math_VectorBase<>`.
+        canonical_type = t.get_canonical()
+        canonical_decl = canonical_type.get_declaration()
+        canonical_container = None
+        if canonical_decl and canonical_decl.spelling:
+            canonical_container = CONTAINER_ALIASES.get(
+                canonical_decl.spelling, canonical_decl.spelling
+            )
+        if canonical_container in ADMIT_TEMPLATE_CONTAINERS:
+            t = canonical_type
+            container = canonical_container
+        else:
+            if t.get_num_template_arguments() > 0:
+                for i in range(t.get_num_template_arguments()):
+                    inner = t.get_template_argument_type(i)
+                    _scan_type_for_ncollection(inner, needed, template_typedef_names, source_class)
+            return
 
     arg_spellings = _extract_template_args(t)
     if not arg_spellings:
@@ -427,7 +465,7 @@ def discover_ncollection_types(tuInfo, filter_classes_fn, source_override=None):
             continue
         container, args = parsed
         canonical_container = CONTAINER_ALIASES.get(container, container)
-        if canonical_container not in NCOLLECTION_CONTAINERS:
+        if canonical_container not in ADMIT_TEMPLATE_CONTAINERS:
             continue
         # Reject if any template arg references a type in an excluded
         # package (see _type_is_reachable docstring for the OCCT V8
