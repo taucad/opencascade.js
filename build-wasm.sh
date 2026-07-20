@@ -717,7 +717,7 @@ step_patch_embind() {
   fi
 
   local emsdk_version
-  emsdk_version="$(cat "$embind_dir/emscripten-version.txt" 2>/dev/null | tr -d '"' | tr -d '[:space:]')"
+  emsdk_version="$(tr -d '"[:space:]' 2>/dev/null < "$embind_dir/emscripten-version.txt")"
   if [ "$emsdk_version" != "5.0.1" ]; then
     echo "WARNING: libembind patch was created for emsdk 5.0.1 but found $emsdk_version" >&2
     echo "         The patch may fail or produce incorrect results." >&2
@@ -734,7 +734,7 @@ step_patch_embind() {
   if [ -f "$pristine_hash_file" ]; then
     local pristine_actual pristine_expected
     pristine_actual="$(_sha256 "$pristine_file")"
-    pristine_expected="$(cat "$pristine_hash_file" | tr -d '[:space:]')"
+    pristine_expected="$(tr -d '[:space:]' < "$pristine_hash_file")"
     if [ "$pristine_actual" != "$pristine_expected" ]; then
       echo "ERROR: pristine snapshot SHA256 mismatch." >&2
       echo "  file:     $pristine_file" >&2
@@ -770,7 +770,7 @@ step_patch_embind() {
   patched_actual="$(_sha256 "$embind_file")"
   if [ -f "$expected_hash_file" ]; then
     local patched_expected
-    patched_expected="$(cat "$expected_hash_file" | tr -d '[:space:]')"
+    patched_expected="$(tr -d '[:space:]' < "$expected_hash_file")"
     if [ "$patched_actual" != "$patched_expected" ]; then
       echo "ERROR: post-patch SHA256 mismatch." >&2
       echo "  file:     $embind_file" >&2
