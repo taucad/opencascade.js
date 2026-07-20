@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # docker-ci-preflight.sh — run docker.yml validation gates locally (no GHA).
 #
-# Mirrors docker-smoke + branch-publish e2e steps using a pre-built image so
+# Mirrors the candidate e2e steps using pre-built images so
 # iteration does not require a multi-hour Dockerfile rebuild.
 #
 # Usage:
@@ -18,7 +18,6 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 _resolve_docker_cpus() {
   local requested="${1:-$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)}"
@@ -95,31 +94,7 @@ echo "Preflight image (multi):          $MULTI_IMAGE"
 echo "Warm link budget:                 ${WARM_BUDGET_S}s"
 echo "Docker CPUs:                      $DOCKER_CPUS"
 
-_section "docker-smoke · validate full.yml + link-filter-poc.yml"
-_docker_run "$IMAGE" validate /opencascade.js/build-configs/full.yml
-_docker_run "$IMAGE" validate /opencascade.js/build-configs/link-filter-poc.yml
-echo "  PASS: schema validation"
-
-_section "docker-smoke · link-filter-poc.yml"
-SMOKE_OUT="$REPO_ROOT/docker-preflight-smoke-output"
-rm -rf "$SMOKE_OUT"
-mkdir -p "$SMOKE_OUT"
-_docker_run \
-  --cpus "$DOCKER_CPUS" \
-  -u "$(id -u):$(id -g)" \
-  -e OCJS_CONFIG=debug \
-  -v "$SMOKE_OUT:/src" \
-  -v "$REPO_ROOT/build-configs/link-filter-poc.yml:/src/build-config.yml:ro" \
-  "$IMAGE" link build-config.yml
-
-for ext in wasm js d.ts js.symbols build-manifest.json provenance.json; do
-  f="$SMOKE_OUT/opencascade_linkfilter_poc.${ext}"
-  [ -f "$f" ] || { echo "Missing $f" >&2; exit 1; }
-  echo "  PASS: $(basename "$f")"
-done
-python3 "$SCRIPT_DIR/docker-ncollection-check.py" trim "$SMOKE_OUT/opencascade_linkfilter_poc.provenance.json"
-
-_section "branch-publish · bindgen-base e2e (validate only)"
+_section "candidate · bindgen-base e2e"
 OCJS_E2E_IMAGE="$IMAGE" \
 OCJS_E2E_STAGE=bindgen-base \
 WARM_BUDGET_S="$WARM_BUDGET_S" \
@@ -132,7 +107,7 @@ if [ "$SKIP_FULL_LINK" -eq 1 ]; then
   exit 0
 fi
 
-_section "branch-publish · final-single e2e (full.yml)"
+_section "candidate · final-single e2e (full.yml + link filter)"
 OCJS_E2E_IMAGE="$IMAGE" \
 OCJS_E2E_STAGE=final-single \
 OCJS_E2E_BUILD_CONFIG=build-configs/full.yml \
@@ -142,7 +117,7 @@ OCJS_DOCKER_PLATFORM="${OCJS_DOCKER_PLATFORM:-}" \
   "$SCRIPT_DIR/docker-e2e-validate.sh"
 
 if [ "$MULTI_IMAGE" != "$IMAGE" ] || docker manifest inspect "$MULTI_IMAGE" >/dev/null 2>&1; then
-  _section "branch-publish · final-multi e2e (full_multi.yml)"
+  _section "candidate · final-multi e2e (full_multi.yml)"
   OCJS_E2E_IMAGE="$MULTI_IMAGE" \
   OCJS_E2E_STAGE=final-multi \
   OCJS_E2E_BUILD_CONFIG=build-configs/full_multi.yml \

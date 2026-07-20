@@ -15,13 +15,11 @@
 #   Phase 5  Warm-cache rerun (budget WARM_BUDGET_S, default 1200 = 20 min).
 #   Phase 6  JS smoke test.
 #
-# Trim-scope NCollection filter ratio (linked/total ≤ 0.20) is asserted in the
-# docker-smoke job against link-filter-poc.yml — not here. Full builds are
-# kitchen-sink configs; a high linked/total ratio is expected and correct.
+# final-single also links link-filter-poc.yml from its baked single-threaded
+# objects and asserts the trim ratio; no separate debug candidate is built.
 #
 # bindgen-base (OCJS_E2E_STAGE=bindgen-base):
-#   validate build-configs/full.yml and full_multi.yml only (no link — image
-#   is pre-compile; full link would shadow baked layers with empty volumes).
+#   validate full configs and perform a real trimmed regenerate/compile/link.
 #
 # Usage:
 #   ./scripts/docker-e2e-validate.sh [--build-config <path>] [--image-tag <name>]
@@ -62,6 +60,14 @@ DOCKER_CPUS="$(_resolve_docker_cpus "${OCJS_E2E_CPUS:-}")"
 SKIP_COLD_LINK=0
 SKIP_BUILD=0
 PLATFORM_FLAGS=()
+OCJS_EXPECTED_SHA="${OCJS_EXPECTED_SHA:-$(git -C "$REPO_ROOT" rev-parse HEAD)}"
+SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-$(git -C "$REPO_ROOT" show -s --format=%ct HEAD)}"
+BUILD_VERSION="$(node -p "require('$REPO_ROOT/package.json').version")"
+BUILD_ARGS=(
+  "--build-arg" "REVISION=$OCJS_EXPECTED_SHA"
+  "--build-arg" "SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH"
+  "--build-arg" "VERSION=$BUILD_VERSION"
+)
 
 if [ -n "${OCJS_E2E_IMAGE:-}" ]; then
   SKIP_BUILD=1
@@ -149,7 +155,7 @@ _run_validate() {
   fi
 }
 
-# ── bindgen-base: validate full configs only ────────────────────────────────
+# ── bindgen-base: validate and perform one real custom build ────────────────
 if [ "$OCJS_E2E_STAGE" = "bindgen-base" ]; then
   _section "Phase 0/2  Building image ($IMAGE_TAG)"
   if [ "$SKIP_BUILD" -eq 1 ]; then
@@ -159,12 +165,14 @@ if [ "$OCJS_E2E_STAGE" = "bindgen-base" ]; then
     if [ "${#PLATFORM_FLAGS[@]}" -gt 0 ]; then
       DOCKER_BUILDKIT=1 docker build \
         "${PLATFORM_FLAGS[@]}" \
+        "${BUILD_ARGS[@]}" \
         --progress=plain \
         -t "$IMAGE_TAG" \
         --target bindgen-base \
         "$REPO_ROOT"
     else
       DOCKER_BUILDKIT=1 docker build \
+        "${BUILD_ARGS[@]}" \
         --progress=plain \
         -t "$IMAGE_TAG" \
         --target bindgen-base \
@@ -173,11 +181,24 @@ if [ "$OCJS_E2E_STAGE" = "bindgen-base" ]; then
     _ok "Image built"
   fi
 
-  _section "Phase 1/2  Validating full build-configs (schema only)"
+  _section "Phase 1/3  Validating full build-configs"
   for cfg in /opencascade.js/build-configs/full.yml /opencascade.js/build-configs/full_multi.yml; do
     _run_validate "$cfg"
     _ok "validate $cfg"
   done
+
+  _section "Phase 2/3  Real trimmed regenerate + compile + link"
+  BUILD_CONFIG="$REPO_ROOT/build-configs/link-filter-poc.yml"
+  rm -rf "$OUTPUT_DIR"
+  mkdir -p "$OUTPUT_DIR"
+  _run_link "$BUILD_CONFIG"
+  for ext in wasm js d.ts js.symbols build-manifest.json provenance.json; do
+    test -s "$OUTPUT_DIR/opencascade_linkfilter_poc.$ext" \
+      || _fail "Missing bindgen-base custom-build artefact: opencascade_linkfilter_poc.$ext"
+  done
+  python3 "$SCRIPT_DIR/docker-ncollection-check.py" trim \
+    "$OUTPUT_DIR/opencascade_linkfilter_poc.provenance.json"
+  _ok "bindgen-base custom build"
 
   _section "RESULT: bindgen-base Docker E2E validation PASSED"
   echo "  Image: $IMAGE_TAG"
@@ -197,12 +218,14 @@ else
   if [ "${#PLATFORM_FLAGS[@]}" -gt 0 ]; then
     DOCKER_BUILDKIT=1 docker build \
       "${PLATFORM_FLAGS[@]}" \
+      "${BUILD_ARGS[@]}" \
       --progress=plain \
       -t "$IMAGE_TAG" \
       --target "$target" \
       "$REPO_ROOT"
   else
     DOCKER_BUILDKIT=1 docker build \
+      "${BUILD_ARGS[@]}" \
       --progress=plain \
       -t "$IMAGE_TAG" \
       --target "$target" \
@@ -223,10 +246,27 @@ if [ -z "$ARTIFACT_BASENAME" ]; then
 fi
 _ok "Using $BUILD_CONFIG_ABS (artefact prefix: ${ARTIFACT_BASENAME})"
 
+if [ "$SKIP_COLD_LINK" -eq 0 ]; then
+  rm -rf "$OUTPUT_DIR"
+fi
 mkdir -p "$OUTPUT_DIR"
 
 CANDIDATE_JS="$OUTPUT_DIR/${ARTIFACT_BASENAME}.js"
 PROV_FILE="$OUTPUT_DIR/${ARTIFACT_BASENAME}.provenance.json"
+
+_artifact_digest_manifest() {
+  python3 - "$OUTPUT_DIR" "${EXPECTED_ARTIFACTS[@]}" <<'PY'
+import hashlib
+import pathlib
+import sys
+
+root = pathlib.Path(sys.argv[1])
+for name in sorted(sys.argv[2:]):
+    print(f"{hashlib.sha256((root / name).read_bytes()).hexdigest()}  {name}")
+PY
+}
+
+COLD_DIGESTS="$(_artifact_digest_manifest)"
 COLD_ELAPSED=0
 
 if [ "$SKIP_COLD_LINK" -eq 1 ] && [ -f "$CANDIDATE_JS" ] && [ -f "$PROV_FILE" ]; then
@@ -255,6 +295,9 @@ for f in "${EXPECTED_ARTIFACTS[@]}"; do
   fi
   _ok "$f ($(_stat_size "$OUTPUT_DIR/$f") bytes)"
 done
+if [ "$(find "$OUTPUT_DIR" -maxdepth 1 -type f | wc -l | tr -d ' ')" -ne 6 ]; then
+  _fail "Expected exactly six artefacts in $OUTPUT_DIR"
+fi
 
 CANDIDATE_JS="$OUTPUT_DIR/${ARTIFACT_BASENAME}.js"
 PROV_FILE="$OUTPUT_DIR/${ARTIFACT_BASENAME}.provenance.json"
@@ -263,16 +306,60 @@ _section "Phase 4/6  nCollectionManifest provenance (structural)"
 python3 "$SCRIPT_DIR/docker-ncollection-check.py" structural "$PROV_FILE" \
   || _fail "nCollectionManifest provenance assertion failed"
 
+if [ -n "${OCJS_EXPECTED_SHA:-}" ]; then
+  python3 - "$PROV_FILE" "${OCJS_EXPECTED_SHA}" "${SOURCE_DATE_EPOCH:-}" <<'PY'
+import datetime
+import json
+import sys
+
+path, expected_sha, epoch = sys.argv[1:]
+with open(path) as source:
+    provenance = json.load(source)
+actual_sha = provenance.get("source", {}).get("opencascadejsCommit")
+if actual_sha != expected_sha:
+    raise SystemExit(f"{path}: expected source SHA {expected_sha}, got {actual_sha}")
+if epoch:
+    expected_time = datetime.datetime.fromtimestamp(int(epoch), datetime.timezone.utc)
+    actual_time = datetime.datetime.fromisoformat(provenance["timestamp"])
+    if actual_time != expected_time:
+        raise SystemExit(f"{path}: expected timestamp {expected_time.isoformat()}, got {actual_time.isoformat()}")
+PY
+  _ok "source SHA + deterministic timestamp"
+fi
+
+if [ "$OCJS_E2E_STAGE" = "final-single" ]; then
+  _section "Phase 4b/6  Link-filter trim gate from baked single-threaded objects"
+  FULL_OUTPUT_DIR="$OUTPUT_DIR"
+  OUTPUT_DIR="${FULL_OUTPUT_DIR}-link-filter"
+  rm -rf "$OUTPUT_DIR"
+  mkdir -p "$OUTPUT_DIR"
+  _run_link "$REPO_ROOT/build-configs/link-filter-poc.yml"
+  for ext in wasm js d.ts js.symbols build-manifest.json provenance.json; do
+    test -s "$OUTPUT_DIR/opencascade_linkfilter_poc.$ext" \
+      || _fail "Missing link-filter artefact: opencascade_linkfilter_poc.$ext"
+  done
+  python3 "$SCRIPT_DIR/docker-ncollection-check.py" trim \
+    "$OUTPUT_DIR/opencascade_linkfilter_poc.provenance.json"
+  OUTPUT_DIR="$FULL_OUTPUT_DIR"
+  _ok "link-filter trim gate"
+fi
+
 _section "Phase 5/6  Warm-cache rerun (budget ${WARM_BUDGET_S}s)"
 WARM_START=$(date +%s)
 _run_link "$BUILD_CONFIG_ABS"
 WARM_END=$(date +%s)
 WARM_ELAPSED=$((WARM_END - WARM_START))
+WARM_DIGESTS="$(_artifact_digest_manifest)"
 echo "  Warm wall time: ${WARM_ELAPSED}s (budget ${WARM_BUDGET_S}s)"
 if [ "$WARM_ELAPSED" -gt "$WARM_BUDGET_S" ]; then
   _fail "Warm rerun (${WARM_ELAPSED}s) exceeded budget (${WARM_BUDGET_S}s)."
 fi
 _ok "Warm rerun within budget"
+if [ "$COLD_DIGESTS" != "$WARM_DIGESTS" ]; then
+  diff -u <(printf '%s\n' "$COLD_DIGESTS") <(printf '%s\n' "$WARM_DIGESTS") || true
+  _fail "Warm rerun changed candidate artifact bytes."
+fi
+_ok "Warm rerun reproduced all six candidate artifacts byte-for-byte"
 
 _section "Phase 6/6  JS smoke test against ${ARTIFACT_BASENAME}.js"
 node "$SCRIPT_DIR/docker-js-smoke.mjs" "$CANDIDATE_JS" || _fail "JS smoke test failed"

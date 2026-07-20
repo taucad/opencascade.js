@@ -188,12 +188,14 @@ if [ -z "${EMSDK:-}" ] || [ ! -d "${EMSDK:-}" ]; then
   if [ -d "$SCRIPT_DIR/deps/emsdk" ]; then
     export EMSDK="$SCRIPT_DIR/deps/emsdk"
   elif [ -d "$SCRIPT_DIR/../assimpjs/emsdk" ]; then
-    export EMSDK="$(cd "$SCRIPT_DIR/../assimpjs/emsdk" && pwd)"
+    EMSDK="$(cd "$SCRIPT_DIR/../assimpjs/emsdk" && pwd)"
+    export EMSDK
   else
     echo "ERROR: EMSDK not found. Run scripts/clone-deps.sh or set EMSDK=" >&2
     exit 1
   fi
 fi
+# shellcheck source=/dev/null
 source "$EMSDK/emsdk_env.sh" 2>/dev/null
 
 # Project-local Python venv is the canonical interpreter for every build script.
@@ -456,9 +458,13 @@ step_sources() {
 step_sources_cmake() {
   local cmake_build_dir="$OCJS_ROOT/build/occt-cmake"
   local lib_dir="$cmake_build_dir/lin32/clang/lib"
+  local existing_lib_count=0
 
-  if [ -d "$lib_dir" ] && [ "$(ls "$lib_dir"/*.a 2>/dev/null | wc -l)" -gt 0 ]; then
-    echo "  CMake build directory exists with $(ls "$lib_dir"/*.a | wc -l | tr -d ' ') libraries, checking if rebuild needed..."
+  if [ -d "$lib_dir" ]; then
+    existing_lib_count="$(find "$lib_dir" -maxdepth 1 -type f -name '*.a' -print | wc -l | tr -d ' ')"
+  fi
+  if [ "$existing_lib_count" -gt 0 ]; then
+    echo "  CMake build directory exists with $existing_lib_count libraries, checking if rebuild needed..."
   fi
 
   local cmake_flags=(
@@ -560,7 +566,7 @@ step_sources_cmake() {
   cmake --build "$cmake_build_dir" -j"$nproc" 2>&1 | tail -5
 
   local lib_count
-  lib_count=$(ls "$lib_dir"/*.a 2>/dev/null | wc -l | tr -d ' ')
+  lib_count="$(find "$lib_dir" -maxdepth 1 -type f -name '*.a' -print | wc -l | tr -d ' ')"
   echo "  CMake produced $lib_count static libraries in $lib_dir"
 
   echo "$lib_dir" > "$OCJS_ROOT/build/.cmake-lib-dir"
@@ -664,7 +670,7 @@ step_apply_patches() {
 
   step_patch_embind
 
-  echo "$(date +%s)" > "$BUILD_DIR/patches-applied"
+  date +%s > "$BUILD_DIR/patches-applied"
   echo ""
 }
 

@@ -22,7 +22,6 @@ build/
 dist/
 docker-e2e-output/
 docs-site/
-website/
 tarballs/
 tmp/
 tools/
@@ -37,8 +36,7 @@ build-configs/opencascade_full.js.symbols
 build-configs/opencascade_full.provenance.json
 build-configs/provenance.json
 
-# Legacy / pre-V8 directories (excluded so the build context stays minimal)
-test/
+# Pre-V8 source checkout (excluded so the build context stays minimal)
 occt-src/
 
 # Packaging artifacts and logs

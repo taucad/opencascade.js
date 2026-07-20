@@ -4,7 +4,7 @@
 #
 #   - OCCT, rapidjson, freetype  → git clone + checkout at DEPS.json commits
 #   - emsdk                       → git clone + install + activate
-#   - Python virtualenv (.venv)   → created from requirements.txt
+#   - Python virtualenv (.venv)   → synced from pyproject.toml + uv.lock
 #
 # Idempotent: re-running the script on an already-prepared tree fast-paths
 # every step (no clones, no installs).
@@ -130,43 +130,15 @@ fi
 VENV_DIR="$REPO_ROOT/.venv"
 REQUIRED_PYTHON_MINOR="3.14"
 
+if ! command -v uv >/dev/null 2>&1; then
+  echo "ERROR: uv is required to sync the locked Python environment." >&2
+  echo "Install it from https://docs.astral.sh/uv/ and rerun clone-deps." >&2
+  exit 1
+fi
+
 if [ ! -x "$VENV_DIR/bin/python" ]; then
-  if command -v uv >/dev/null 2>&1; then
-    echo "Creating project-local venv at $VENV_DIR (Python $REQUIRED_PYTHON_MINOR via uv)..."
-    uv venv --python "${REQUIRED_PYTHON_MINOR}" "$VENV_DIR"
-  else
-    BOOTSTRAP_PY="$(command -v "python${REQUIRED_PYTHON_MINOR}" || true)"
-    if [ -z "$BOOTSTRAP_PY" ]; then
-      cat >&2 <<EOF
-ERROR: python${REQUIRED_PYTHON_MINOR} not found on PATH and 'uv' is not installed.
-
-The opencascade.js build pins its Python toolchain to ${REQUIRED_PYTHON_MINOR}.
-Install one of:
-
-  Any OS (uv — recommended):  https://docs.astral.sh/uv/getting-started/installation/
-                              uv python install ${REQUIRED_PYTHON_MINOR}
-  macOS (Homebrew):           brew install python@${REQUIRED_PYTHON_MINOR}
-  Any OS (pyenv):             pyenv install ${REQUIRED_PYTHON_MINOR}
-
-Then re-run scripts/clone-deps.sh.
-EOF
-      exit 1
-    fi
-    echo "Creating project-local venv at $VENV_DIR (Python $REQUIRED_PYTHON_MINOR)..."
-    if ! "$BOOTSTRAP_PY" -m venv "$VENV_DIR"; then
-      cat >&2 <<EOF
-ERROR: python -m venv failed (common on macOS when ensurepip/pyexpat is broken).
-
-Install uv and re-run clone-deps (uv downloads a portable CPython wheel):
-
-  curl -LsSf https://astral.sh/uv/install.sh | sh
-  uv python install ${REQUIRED_PYTHON_MINOR}
-
-Or use pyenv-installed Python 3.14 instead of Homebrew python@3.14.
-EOF
-      exit 1
-    fi
-  fi
+  echo "Creating project-local venv at $VENV_DIR (Python $REQUIRED_PYTHON_MINOR via uv)..."
+  uv venv --python "${REQUIRED_PYTHON_MINOR}" "$VENV_DIR"
 fi
 
 echo "Installing Python build requirements (libclang, cerberus, pyyaml)..."
@@ -174,18 +146,13 @@ echo "Installing Python build requirements (libclang, cerberus, pyyaml)..."
 # requirements during build (as root). At runtime, when the container runs
 # under `-u "$(id -u):$(id -g)"`, the non-root user has no $HOME and uv's
 # default cache dir (~/.cache/uv) fails with EACCES on `/.cache/uv`. Re-running
-# `uv pip install` would also try to write into a root-owned .venv. Skipping
+# `uv sync` would also try to write into a root-owned .venv. Skipping
 # entirely when the sentinel `$VENV_DIR/.deps-ready` is present sidesteps both
 # issues with no behavioural change for already-prepared trees.
 if [ -f "$VENV_DIR/.deps-ready" ]; then
   echo "Python deps already installed in $VENV_DIR (sentinel: .deps-ready), skipping pip install"
-elif command -v uv >/dev/null 2>&1; then
-  uv pip install --python "$VENV_DIR/bin/python" --upgrade pip setuptools wheel
-  uv pip install --python "$VENV_DIR/bin/python" -r "$REPO_ROOT/requirements.txt"
-  touch "$VENV_DIR/.deps-ready"
 else
-  "$VENV_DIR/bin/python" -m pip install --quiet --upgrade pip setuptools wheel
-  "$VENV_DIR/bin/python" -m pip install --quiet -r "$REPO_ROOT/requirements.txt"
+  UV_PROJECT_ENVIRONMENT="$VENV_DIR" uv sync --frozen --all-groups
   touch "$VENV_DIR/.deps-ready"
 fi
 

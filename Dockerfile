@@ -160,22 +160,19 @@ WORKDIR /opencascade.js/
 
 # Pre-create the venv with the pinned Python so /opencascade.js/.venv/bin/python3
 # lands on PATH BEFORE clone-deps.sh runs (its line 53 requires python3 to parse
-# DEPS.json). The script's §3 fast-paths past an already-created venv and still
-# runs `uv pip install -r requirements.txt`, so this does NOT re-duplicate the
-# pip-install logic — it just bootstraps the python3 binary the script needs to
-# function. The base image intentionally has no system python3 (see uv-only
-# note above).
+# DEPS.json). The script's §3 fast-paths past an already-created venv and syncs
+# the exact uv lock; this only bootstraps the python3 binary needed to parse it.
 RUN uv venv --python 3.14.4 /opencascade.js/.venv
 
 RUN mkdir -p /opencascade.js/deps && \
     ln -s /emsdk /opencascade.js/deps/emsdk
 
-COPY DEPS.json requirements.txt /opencascade.js/
+COPY DEPS.json pyproject.toml uv.lock /opencascade.js/
 COPY scripts/clone-deps.sh /opencascade.js/scripts/clone-deps.sh
 
 # ── Dependency fetch + LLVM 17 trim + cache purge (mega-RUN, R10) ───────────
 # clone-deps.sh §1-§4 fetches: OCCT/rapidjson/freetype git checkouts,
-# Python .venv pip install, LLVM 17 tarball extract (~5.6 GB).
+# Python .venv lock sync, LLVM 17 tarball extract (~5.6 GB).
 #
 # LLVM 17 trim: src/ocjs_bindgen/config/paths.py consumes only:
 #   - deps/llvm-17/include/c++/v1/                  (libc++ generic headers)
@@ -244,6 +241,11 @@ RUN ln -s /opencascade.js/deps/OCCT      /occt && \
 # `compiled-multi-threaded`) cache-hit because they don't reference the
 # entrypoint script at all.
 FROM deps-base AS bindgen-content
+
+ARG REVISION
+ARG SOURCE_DATE_EPOCH
+ENV OCJS_SOURCE_COMMIT="${REVISION}"
+ENV SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH}"
 
 # Install Nx CLI + project devDeps deterministically from package-lock.json
 COPY package.json package-lock.json nx.json project.json /opencascade.js/
