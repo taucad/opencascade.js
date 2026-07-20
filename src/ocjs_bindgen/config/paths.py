@@ -424,9 +424,12 @@ def getAdditionalBindCodeParseIncludePaths() -> list[str]:
          surfaces every ``class_<T>("Name")`` CALL_EXPR. The real
          ``emcc -c`` compile preceding the parse uses the real headers
          — the stubs are AST-extraction-only.
-      2. The flat OCCT/freetype/rapidjson include set used by ``emcc -c``
-         (``getFlatIncludePaths``) so OCCT headers (``<TopoDS.hxx>`` etc.)
-         referenced from the snippet still resolve.
+      2. The OCCT/freetype/rapidjson include set used by ``emcc -c``. A
+         built tree uses the CMake-collected or flat OCCT include directory;
+         a clean checkout falls back to the source package include
+         directories discovered by :func:`getGlobalIncludes`. The fallback
+         lets quality tests exercise this parser after ``setup`` without
+         manufacturing the ``pch`` target's build output first.
       3. The vendored libc++ 17 + clang 17 resource + host libc paths
          (``_get_parse_libcxx_include_paths``) — the matching stdlib
          for libclang 18, identical to the main bindgen parse pass.
@@ -439,7 +442,18 @@ def getAdditionalBindCodeParseIncludePaths() -> list[str]:
     paths: list[str] = []
     if os.path.isdir(parse_stubs):
         paths.append(parse_stubs)
-    paths.extend(getFlatIncludePaths())
+
+    materialized_occt_paths = [
+        path
+        for path in (_get_cmake_include_dir(), FLAT_INCLUDE_DIR)
+        if path and os.path.isdir(path)
+    ]
+    if materialized_occt_paths:
+        paths.extend(materialized_occt_paths)
+    else:
+        paths.extend(ocIncludePaths)
+    paths.extend(additionalIncludePaths)
+
     for p in _get_parse_libcxx_include_paths():
         if p not in paths:
             paths.append(p)

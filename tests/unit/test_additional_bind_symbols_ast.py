@@ -211,6 +211,22 @@ def test_empty_translation_unit_returns_empty_set() -> None:
   assert registered == set()
 
 
+def test_parse_errors_fail_instead_of_emitting_an_empty_manifest() -> None:
+  """A missing header must surface the libclang diagnostic immediately.
+
+  Before this guard, a clean checkout without ``build/occt-includes`` could
+  parse the canonical built-in block into an empty AST and only fail later as
+  a set mismatch (or, outside tests, write an incomplete symbol manifest).
+  """
+  parse_additional_bind_code, _, include_paths = _skip_if_no_toolchain()
+  source = '#include <ocjs_header_that_does_not_exist.hxx>\n'
+  with pytest.raises(
+    RuntimeError,
+    match="refusing to emit an incomplete registration manifest",
+  ):
+    parse_additional_bind_code(source, include_paths)
+
+
 def test_builtin_plus_consumer_unions_in_single_tu() -> None:
   """The link stage concatenates ``BUILTIN_ADDITIONAL_BIND_CODE`` with
   the consumer's ``additionalBindCode`` and compiles them as ONE TU.

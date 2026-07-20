@@ -141,13 +141,14 @@ def parse_additional_bind_code(cpp_source: str, include_paths: list[str]):
     every registration name. The real ``emcc -c`` compile preceding
     this parse uses the real headers.
 
-    Diagnostics are NOT printed here — the same source was already
-    compiled by the link's ``emcc -c`` invocation; its diagnostics are
-    surfaced through the build wrapper. Re-printing them on the parse
-    side would double the noise.
+    Warnings are not printed here — the same source is compiled by the
+    link's ``emcc -c`` invocation, which owns ordinary compiler diagnostics.
+    Errors are different: continuing after a failed AST parse can silently
+    produce an empty registration manifest, so fatal parse diagnostics abort
+    this producer with the original libclang messages.
     """
     index = clang.cindex.Index.create()
-    return index.parse(
+    translation_unit = index.parse(
         "additionalBindCode.cpp",
         [
             "-x",
@@ -173,3 +174,15 @@ def parse_additional_bind_code(cpp_source: str, include_paths: list[str]):
         ],
         [["additionalBindCode.cpp", cpp_source]],
     )
+    errors = [
+        diagnostic
+        for diagnostic in translation_unit.diagnostics
+        if diagnostic.severity >= clang.cindex.Diagnostic.Error
+    ]
+    if errors:
+        formatted = "\n".join(diagnostic.format() for diagnostic in errors)
+        raise RuntimeError(
+            "libclang failed to parse additionalBindCode; refusing to "
+            f"emit an incomplete registration manifest:\n{formatted}"
+        )
+    return translation_unit
