@@ -29,6 +29,6 @@ unexplained parity failure.
 
 Published candidate binaries are not compared with a historical digest:
 source identity and intentional generator changes legitimately change those
-bytes. `scripts/docker-e2e-validate.sh` instead hashes all six current
-candidate artifacts before and after its warm rerun and requires exact
-same-source reproducibility.
+bytes. Each native amd64/arm64 push candidate instead hashes all six current
+ST/MT artifacts, and the cross-architecture parity gate requires exact
+same-source bytes before promotion.

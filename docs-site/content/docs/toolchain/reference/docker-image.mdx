@@ -23,9 +23,9 @@ docker pull ghcr.io/taucad/opencascade.js:single-threaded
 | `:bindgen-base`                                                  | Latest release, post-PCH/generate but pre-compile (custom-bindings starting point)   |
 | `:{{version}}-single-threaded`<br/>`:{{version}}-multi-threaded` | Pinned release (e.g. `:3.0.0-single-threaded`); manifest list of `linux/amd64+arm64` |
 | `:{{version}}-bindgen-base`                                      | Pinned release, bindgen-base                                                         |
-| `:branch-<slug>` / `:branch-<slug>-<sha>`                        | Branch tip, single-threaded, **`linux/amd64`-only**, 7-day GHCR retention            |
-| `:multi-threaded-branch-<slug>` / `…-<sha>`                      | Branch tip, multi-threaded, amd64-only, 7-day retention                              |
-| `:bindgen-base-branch-<slug>` / `…-<sha>`                        | Branch tip, bindgen-base, amd64-only, 7-day retention                                |
+| `:branch-<slug>` / `:branch-<slug>-<sha>`                        | Branch tip, single-threaded, `linux/amd64+arm64`, 7-day GHCR retention                |
+| `:multi-threaded-branch-<slug>` / `…-<sha>`                      | Branch tip, multi-threaded, `linux/amd64+arm64`, 7-day retention                      |
+| `:bindgen-base-branch-<slug>` / `…-<sha>`                        | Branch tip, bindgen-base, `linux/amd64+arm64`, 7-day retention                        |
 | `@sha256:<digest>`                                               | Immutable pin — use in CI                                                            |
 
 **Pin by digest in production.** The bare-name tags (`:single-threaded`,
@@ -70,14 +70,14 @@ docker run --rm -it -v "$(pwd):/src" --entrypoint bash \
 
 ## Multi-arch matrix
 
-| Tag family   | Manifest list                 | Built on                                                                            |
-| ------------ | ----------------------------- | ----------------------------------------------------------------------------------- |
-| Release tags | `linux/amd64` + `linux/arm64` | `ubuntu-latest` (amd64) + `ubuntu-24.04-arm` (arm64), GitHub Actions native runners |
-| Branch tags  | `linux/amd64` only            | `ubuntu-latest`, GitHub Actions                                                     |
+| Tag family                  | Manifest list                 | Built on                                                                            |
+| --------------------------- | ----------------------------- | ----------------------------------------------------------------------------------- |
+| Branch, master, and release | `linux/amd64` + `linux/arm64` | `ubuntu-latest` (amd64) + `ubuntu-24.04-arm` (arm64), GitHub Actions native runners |
 
-Releases ship full manifest lists so Apple Silicon and ARM Linux hosts pull
-the native arch transparently. Branch tags are amd64-only to keep feedback
-fast; ARM hosts run under Rosetta or QEMU for branch tags.
+Every push ships full manifest lists so Apple Silicon and ARM Linux hosts pull
+the native architecture transparently. CI links and smokes each image natively,
+then requires byte-identical ST/MT package outputs across architectures before
+promotion.
 
 ## OCI labels
 
@@ -100,7 +100,7 @@ Every published image is signed with [cosign](https://github.com/sigstore/cosign
 via OIDC keyless signing — no rotating private keys, signatures published to
 the Sigstore Rekor transparency log. Release tags carry **one signature on
 the manifest-list digest** that verifies regardless of which arch the
-consumer pulls; branch tags carry **per-arch image-digest signatures**.
+consumer pulls.
 
 ```bash
 cosign verify ghcr.io/taucad/opencascade.js:single-threaded \

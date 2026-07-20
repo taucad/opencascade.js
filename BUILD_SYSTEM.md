@@ -121,6 +121,26 @@ The output set per consumer YAML. Names come from the YAML's `mainBuild.name` (h
 | **`my_build.d.ts`** | TypeScript declarations emitted by the bindgen's codegen. Type fidelity here depends on the discover pass having enumerated every reachable NCollection instantiation; gaps surface as `: number` or `: unknown` downgrades. |
 | **`my_build.js.symbols`** | Symbol table emitted by `wasm-ld`. Useful for diffing two builds to see which symbols were retained or dropped. |
 
+### CI validation boundaries
+
+Every push builds `final-single`, `final-multi`, and `bindgen-base` natively on both amd64 and arm64. The final stages each perform one bounded consumer link and runtime smoke. Bindgen-base instead exercises the smallest source-generation boundary with `tests/docker/fixtures/simple.yml`. The ST and MT six-file outputs are hashed and compared across architectures before the amd64 copies are assembled into the npm candidate.
+
+The packed candidate is the sole package-test input. Node runtime, declarations, docs, and starter templates run independently; a dedicated COOP/COEP server then validates ST and MT under Chromium, Firefox, and WebKit. Template render tests remain Chromium-only because they own bundler, WebGL, and compositor behavior rather than browser-engine runtime compatibility.
+
+For direct image validation, invoke the same script CI uses rather than a second orchestration wrapper:
+
+```bash
+OCJS_E2E_IMAGE=<image> \
+OCJS_E2E_STAGE=final-single \
+OCJS_E2E_BUILD_CONFIG=build-configs/full.yml \
+OCJS_DOCKER_PLATFORM=linux/amd64 \
+OCJS_EXPECTED_SHA=<full-commit-sha> \
+SOURCE_DATE_EPOCH=<commit-epoch> \
+./scripts/docker-e2e-validate.sh
+```
+
+Use `final-multi` with `build-configs/full_multi.yml`, or `bindgen-base` without a full-build config. `LINK_BUDGET_S` controls the one consumer-link ceiling. Build timing and cache observations stay in logs; the published provenance and build-manifest sidecars deliberately exclude execution-local state so their bytes can prove host independence.
+
 ### How the components flow together
 
 A single end-to-end build, with each step labelled by which component does the work:

@@ -116,14 +116,14 @@ The bare-default column is only relevant if you invoke `build-wasm.sh` without `
 
 Only `ci-required` is suitable as an always-present required check. The dedicated docs workflow is path-filtered; its `docs-required` aggregate is evidence for docs changes, not a repository-wide required check.
 
-The candidate workflow deliberately builds once, tests the exact ST and MT outputs, packs one immutable tarball, and gives the no-checkout npm job only that tarball plus its hashes and identity record. Pull requests and manual runs validate without publishing. Push runs queue and are never canceled; superseded pull-request runs may be canceled.
+The candidate workflow builds every Docker stage natively on amd64 and arm64 for pushes, compares the six-file ST/MT outputs byte-for-byte across architectures, packs the tested amd64 outputs into one immutable tarball, and gives the no-checkout npm job only that tarball plus its hashes and identity record. The exact tarball then runs as ST and MT in Chromium, Firefox, and WebKit; the broader starter-template integration suite remains Chromium-only. Pull requests and manual runs use the amd64 candidate matrix without publication or cross-architecture parity. Push runs queue and are never canceled; superseded pull-request runs may be canceled.
 
 ### Publication Channels
 
 | Event | npm version and dist-tag | GHCR |
 | --- | --- | --- |
-| Feature-branch push | `3.0.0-beta-<sha8>-<UTC commit date>` under `canary` | amd64 branch and full-SHA tags |
-| `master` push | Same immutable beta-shaped version under `beta` | amd64 branch and full-SHA tags |
+| Feature-branch push | `3.0.0-beta-<sha8>-<UTC commit date>` under `canary` | signed amd64+arm64 branch and full-SHA manifests |
+| `master` push | Same immutable beta-shaped version under `beta` | signed amd64+arm64 branch and full-SHA manifests |
 | Annotated `vX.Y.Z-prerelease` tag | Exact `X.Y.Z-prerelease` under its first prerelease identifier, such as `rc` | signed amd64+arm64 version manifests |
 | Annotated stable `vX.Y.Z` tag | Exact `X.Y.Z` under `latest` | signed amd64+arm64 version manifests |
 
@@ -195,13 +195,42 @@ nohup env ./build-wasm.sh full <yaml> > build.log 2>&1 &
 
 ## Docker End-to-End Validation
 
-`scripts/docker-e2e-validate.sh` builds the image, links a consumer YAML, asserts byte-size delta versus a locally-built baseline, and runs a JS smoke test. Driven via Nx:
+`scripts/docker-e2e-validate.sh` is the canonical local and CI image gate. It performs one bounded consumer link, requires exactly six outputs, validates structural provenance, and runs a JS smoke. `final-single` additionally retains the link-filter trim gate; `bindgen-base` regenerates, compiles, links, and runs the minimal `tests/docker/fixtures/simple.yml` build.
+
+Build and test the default local single-threaded image through Nx:
 
 ```bash
-pnpm nx run ocjs:docker-e2e
+npm exec nx -- run ocjs:docker-e2e
 ```
 
-The script verifies image build success, consumer link, wasm byte-size delta against a local baseline, and a JS-side smoke test.
+To validate existing images directly, pass the stage, matching YAML, platform, and source identity explicitly:
+
+```bash
+OCJS_E2E_IMAGE=ghcr.io/taucad/opencascade.js:branch-my-branch \
+OCJS_E2E_STAGE=final-single \
+OCJS_E2E_BUILD_CONFIG=build-configs/full.yml \
+OCJS_DOCKER_PLATFORM=linux/amd64 \
+OCJS_EXPECTED_SHA=<full-commit-sha> \
+SOURCE_DATE_EPOCH=<commit-epoch> \
+./scripts/docker-e2e-validate.sh
+
+OCJS_E2E_IMAGE=ghcr.io/taucad/opencascade.js:multi-threaded-branch-my-branch \
+OCJS_E2E_STAGE=final-multi \
+OCJS_E2E_BUILD_CONFIG=build-configs/full_multi.yml \
+OCJS_DOCKER_PLATFORM=linux/arm64 \
+OCJS_EXPECTED_SHA=<full-commit-sha> \
+SOURCE_DATE_EPOCH=<commit-epoch> \
+./scripts/docker-e2e-validate.sh
+
+OCJS_E2E_IMAGE=ghcr.io/taucad/opencascade.js:bindgen-base-branch-my-branch \
+OCJS_E2E_STAGE=bindgen-base \
+OCJS_DOCKER_PLATFORM=linux/amd64 \
+OCJS_EXPECTED_SHA=<full-commit-sha> \
+SOURCE_DATE_EPOCH=<commit-epoch> \
+./scripts/docker-e2e-validate.sh
+```
+
+The single `LINK_BUDGET_S` environment variable controls the full consumer-link ceiling. Timing remains in logs; distributable provenance and build-manifest sidecars contain reproducible build facts only.
 
 ## Additional Documentation
 

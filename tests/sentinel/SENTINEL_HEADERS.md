@@ -86,11 +86,12 @@ one sentinel header:
   Runs `nx run ocjs:generate` and SHA-256s the *entire* `build/bindings/` tree
   against `baseline/full_tree.sha256`. Catches regressions that escape the
   ten-header sample.
-* **Candidate reproducibility — `scripts/docker-e2e-validate.sh`**
-  Hashes all six ST/MT outputs before and after the warm link and requires
-  byte-for-byte equality for the same source/configuration identity. This
-  replaces the obsolete historical dist digest, which could not remain valid
-  across intentional source and provenance changes.
+* **Candidate reproducibility — cross-architecture CI parity**
+  Each native amd64/arm64 candidate performs one ST or MT consumer link and
+  hashes its six outputs. The push-only parity gate requires byte-for-byte
+  equality across architectures for the same source/configuration identity.
+  This replaces both the obsolete historical dist digest and the redundant
+  same-run warm relink.
 
 ## Maintenance
 

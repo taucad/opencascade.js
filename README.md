@@ -110,8 +110,7 @@ Browsers require `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Emb
 
 Pre-built images are published to [ghcr.io/taucad/opencascade.js](https://github.com/taucad/opencascade.js/pkgs/container/opencascade.js):
 
-- **Release tags** (`v*`) publish multi-arch manifest lists (`linux/amd64` + `linux/arm64`).
-- **Branch pushes** publish `linux/amd64`-only images for fast smoke iteration.
+- **Every push**—branches, `master`, and release tags—publishes multi-arch manifest lists (`linux/amd64` + `linux/arm64`) after native testing and cross-architecture artifact parity.
 
 No local build required.
 
@@ -139,11 +138,11 @@ The entrypoint dispatches subcommands (`link`, `compile-bindings`, `compile-sour
 | `:<version>-single-threaded`    | Pinned release, single-threaded (e.g. `:3.0.0-single-threaded`)                    |
 | `:<version>-multi-threaded`     | Pinned release, multi-threaded                                                     |
 | `:<version>-bindgen-base`       | Pinned release, bindgen-base                                                       |
-| `:branch-<slug>`                | Branch tip, single-threaded (amd64-only, ephemeral — 7-day GHCR retention)         |
-| `:multi-threaded-branch-<slug>` | Branch tip, multi-threaded (amd64-only, ephemeral)                                 |
-| `:bindgen-base-branch-<slug>`   | Branch tip, bindgen-base (amd64-only, ephemeral)                                   |
+| `:branch-<slug>`                | Branch tip, single-threaded (amd64+arm64, ephemeral — 7-day GHCR retention)        |
+| `:multi-threaded-branch-<slug>` | Branch tip, multi-threaded (amd64+arm64, ephemeral)                                |
+| `:bindgen-base-branch-<slug>`   | Branch tip, bindgen-base (amd64+arm64, ephemeral)                                  |
 
-On release tags, Docker resolves the right architecture from the manifest list automatically — no `--platform` flag is needed on either `linux/amd64` or `linux/arm64` hosts.
+Docker resolves the right architecture from every published manifest list automatically — no `--platform` flag is needed on either `linux/amd64` or `linux/arm64` hosts.
 
 ## What's New in v3
 

@@ -22,16 +22,11 @@ that needs the pre-PCH/generate state but not the pre-compiled libraries, see
 
 ### Supported platforms
 
-Release tags (`:single-threaded`, `:multi-threaded`, `:bindgen-base`,
-versioned variants) ship as **multi-architecture manifest lists** —
+Release tags and branch tags (`:single-threaded`, `:multi-threaded`,
+`:bindgen-base`, versioned and branch variants) ship as
+**multi-architecture manifest lists** —
 `linux/amd64` and `linux/arm64` — so Apple Silicon and ARM Linux hosts pull
 the native arch automatically. No `--platform` flag required.
-
-Branch tags (`:branch-<slug>`, `:multi-threaded-branch-<slug>`,
-`:bindgen-base-branch-<slug>`) are **`linux/amd64` only** by design — branch
-publishes need to be fast for reviewers, and the per-arch image build cost
-is the dominant factor. ARM hosts pulling a branch tag will run under
-Rosetta / QEMU. Use a release tag whenever native performance matters.
 
 ## 2. Write a build YAML
 
@@ -152,11 +147,12 @@ runner (the e2e gate budget; M1 Pro local times are 30-50% faster):
 | Link against precompiled OCCT objects  |      30-90 s |      30-90 s |
 | **Total**                              | **~1-2 min** | **~3-5 min** |
 
-The CI e2e gate budgets a hard 5-minute warm-link ceiling and tags get
-published only if both `:single-threaded` and `:multi-threaded` clear that
-budget on both architectures. Cold-cache runs (first pull on a new machine)
-add the image pull time; subsequent runs on the same machine reuse the
-pulled image and Nx cache.
+The CI e2e gate applies one hard 20-minute consumer-link ceiling to each full
+single- and multi-threaded image on both architectures. It does not repeat the
+link to benchmark a warm cache; timing remains in the Actions log, while
+cross-architecture hashes prove the six published outputs are byte-identical.
+Cold-cache runs on consumer machines add image pull and compilation time;
+subsequent runs reuse the pulled image and Nx cache.
 
 Full surface builds (no symbol filter, i.e. `build-configs/full.yml`) take
 25-40 minutes — they're for the maintainer pipeline, not consumer machines.
