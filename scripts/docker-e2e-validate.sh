@@ -9,11 +9,10 @@
 # final-single / final-multi:
 #   Phase 0  Build image (skipped when OCJS_E2E_IMAGE is set).
 #   Phase 1  Resolve build-config YAML + artefact basename.
-#   Phase 2  Cold link (uses image-baked warm cache; no empty /build volume mount).
+#   Phase 2  One bounded consumer link.
 #   Phase 3  Output presence assertions.
 #   Phase 4  nCollectionManifest structural provenance (linked+dropped==total).
-#   Phase 5  Warm-cache rerun (budget WARM_BUDGET_S, default 1200 = 20 min).
-#   Phase 6  JS smoke test.
+#   Phase 5  JS smoke test.
 #
 # final-single also links link-filter-poc.yml from its baked single-threaded
 # objects and asserts the trim ratio; no separate debug candidate is built.
@@ -28,7 +27,7 @@
 #   OCJS_E2E_IMAGE         Pre-built image (CI); skips Phase 0 build.
 #   OCJS_E2E_BUILD_CONFIG  YAML under repo root (default: build-configs/full.yml).
 #   OCJS_E2E_STAGE         final-single | final-multi | bindgen-base.
-#   WARM_BUDGET_S          Default: 1200 (20 min; full.yml warm link ~8–9 min on GHA)
+#   LINK_BUDGET_S          Default: 1200 (20 min).
 #   OCJS_E2E_CPUS          Default: host CPU count (nproc); GHA ubuntu-latest has 4
 #   OCJS_DOCKER_PLATFORM   Optional docker --platform (e.g. linux/amd64)
 #   OCJS_E2E_OUTPUT_DIR    Default: $REPO_ROOT/docker-e2e-output
@@ -55,9 +54,8 @@ BUILD_CONFIG_DEFAULT="$REPO_ROOT/build-configs/full.yml"
 BUILD_CONFIG="${OCJS_E2E_BUILD_CONFIG:-$BUILD_CONFIG_DEFAULT}"
 OCJS_E2E_STAGE="${OCJS_E2E_STAGE:-final-single}"
 OUTPUT_DIR="${OCJS_E2E_OUTPUT_DIR:-$REPO_ROOT/docker-e2e-output}"
-WARM_BUDGET_S="${WARM_BUDGET_S:-1200}"
+LINK_BUDGET_S="${LINK_BUDGET_S:-1200}"
 DOCKER_CPUS="$(_resolve_docker_cpus "${OCJS_E2E_CPUS:-}")"
-SKIP_COLD_LINK=0
 SKIP_BUILD=0
 PLATFORM_FLAGS=()
 OCJS_EXPECTED_SHA="${OCJS_EXPECTED_SHA:-$(git -C "$REPO_ROOT" rev-parse HEAD)}"
@@ -83,8 +81,6 @@ while [ "$#" -gt 0 ]; do
     --image-tag)      IMAGE_TAG="$2"; shift 2 ;;
     --output-dir)     OUTPUT_DIR="$2"; shift 2 ;;
     --skip-build)     SKIP_BUILD=1; shift ;;
-    --skip-cold-link) SKIP_COLD_LINK=1; shift ;;
-    --warm-budget)    WARM_BUDGET_S="$2"; shift 2 ;;
     -h|--help)
       sed -n '2,35p' "${BASH_SOURCE[0]}"
       exit 0
@@ -187,17 +183,20 @@ if [ "$OCJS_E2E_STAGE" = "bindgen-base" ]; then
     _ok "validate $cfg"
   done
 
-  _section "Phase 2/3  Real trimmed regenerate + compile + link"
-  BUILD_CONFIG="$REPO_ROOT/build-configs/link-filter-poc.yml"
+  _section "Phase 2/3  Minimal regenerate + compile + link"
+  BUILD_CONFIG="$REPO_ROOT/tests/docker/fixtures/simple.yml"
   rm -rf "$OUTPUT_DIR"
   mkdir -p "$OUTPUT_DIR"
   _run_link "$BUILD_CONFIG"
   for ext in wasm js d.ts js.symbols build-manifest.json provenance.json; do
-    test -s "$OUTPUT_DIR/opencascade_linkfilter_poc.$ext" \
-      || _fail "Missing bindgen-base custom-build artefact: opencascade_linkfilter_poc.$ext"
+    test -s "$OUTPUT_DIR/customBuild.simple.$ext" \
+      || _fail "Missing bindgen-base custom-build artefact: customBuild.simple.$ext"
   done
-  python3 "$SCRIPT_DIR/docker-ncollection-check.py" trim \
-    "$OUTPUT_DIR/opencascade_linkfilter_poc.provenance.json"
+  if [ "$(find "$OUTPUT_DIR" -maxdepth 1 -type f | wc -l | tr -d ' ')" -ne 6 ]; then
+    _fail "Expected exactly six bindgen-base custom-build artefacts in $OUTPUT_DIR"
+  fi
+  node "$SCRIPT_DIR/docker-js-smoke.mjs" "$OUTPUT_DIR/customBuild.simple.js" simple \
+    || _fail "bindgen-base JS smoke test failed"
   _ok "bindgen-base custom build"
 
   _section "RESULT: bindgen-base Docker E2E validation PASSED"
@@ -206,7 +205,7 @@ if [ "$OCJS_E2E_STAGE" = "bindgen-base" ]; then
 fi
 
 # ── final-single / final-multi: full link gate ──────────────────────────────
-_section "Phase 0/6  Building image ($IMAGE_TAG)"
+_section "Phase 0/5  Building image ($IMAGE_TAG)"
 if [ "$SKIP_BUILD" -eq 1 ]; then
   echo "  OCJS_E2E_IMAGE set; reusing existing image."
   docker image inspect "$IMAGE_TAG" >/dev/null 2>&1 || _fail "Image $IMAGE_TAG not present."
@@ -234,7 +233,7 @@ else
   _ok "Image built"
 fi
 
-_section "Phase 1/6  Resolving build-config YAML"
+_section "Phase 1/5  Resolving build-config YAML"
 if [ ! -f "$BUILD_CONFIG" ]; then
   _fail "BUILD_CONFIG not found at $BUILD_CONFIG
 Override with --build-config <path> or OCJS_E2E_BUILD_CONFIG=<path>."
@@ -246,41 +245,24 @@ if [ -z "$ARTIFACT_BASENAME" ]; then
 fi
 _ok "Using $BUILD_CONFIG_ABS (artefact prefix: ${ARTIFACT_BASENAME})"
 
-if [ "$SKIP_COLD_LINK" -eq 0 ]; then
-  rm -rf "$OUTPUT_DIR"
-fi
+rm -rf "$OUTPUT_DIR"
 mkdir -p "$OUTPUT_DIR"
 
 CANDIDATE_JS="$OUTPUT_DIR/${ARTIFACT_BASENAME}.js"
 PROV_FILE="$OUTPUT_DIR/${ARTIFACT_BASENAME}.provenance.json"
 
-_artifact_digest_manifest() {
-  python3 - "$OUTPUT_DIR" "${EXPECTED_ARTIFACTS[@]}" <<'PY'
-import hashlib
-import pathlib
-import sys
-
-root = pathlib.Path(sys.argv[1])
-for name in sorted(sys.argv[2:]):
-    print(f"{hashlib.sha256((root / name).read_bytes()).hexdigest()}  {name}")
-PY
-}
-
-COLD_DIGESTS="$(_artifact_digest_manifest)"
-COLD_ELAPSED=0
-
-if [ "$SKIP_COLD_LINK" -eq 1 ] && [ -f "$CANDIDATE_JS" ] && [ -f "$PROV_FILE" ]; then
-  _section "Phase 2/6  Cold link skipped (--skip-cold-link; reusing $OUTPUT_DIR)"
-else
-  _section "Phase 2/6  Cold link against ${ARTIFACT_BASENAME}"
-  COLD_START=$(date +%s)
-  _run_link "$BUILD_CONFIG_ABS"
-  COLD_END=$(date +%s)
-  COLD_ELAPSED=$((COLD_END - COLD_START))
-  _ok "Cold link wall time: ${COLD_ELAPSED}s"
+_section "Phase 2/5  Bounded consumer link against ${ARTIFACT_BASENAME}"
+LINK_START=$(date +%s)
+_run_link "$BUILD_CONFIG_ABS"
+LINK_END=$(date +%s)
+LINK_ELAPSED=$((LINK_END - LINK_START))
+echo "  Link wall time: ${LINK_ELAPSED}s (budget ${LINK_BUDGET_S}s)"
+if [ "$LINK_ELAPSED" -gt "$LINK_BUDGET_S" ]; then
+  _fail "Consumer link (${LINK_ELAPSED}s) exceeded budget (${LINK_BUDGET_S}s)."
 fi
+_ok "Consumer link within budget"
 
-_section "Phase 3/6  Asserting output artefacts"
+_section "Phase 3/5  Asserting output artefacts"
 EXPECTED_ARTIFACTS=(
   "${ARTIFACT_BASENAME}.wasm"
   "${ARTIFACT_BASENAME}.js"
@@ -302,7 +284,7 @@ fi
 CANDIDATE_JS="$OUTPUT_DIR/${ARTIFACT_BASENAME}.js"
 PROV_FILE="$OUTPUT_DIR/${ARTIFACT_BASENAME}.provenance.json"
 
-_section "Phase 4/6  nCollectionManifest provenance (structural)"
+_section "Phase 4/5  nCollectionManifest provenance (structural)"
 python3 "$SCRIPT_DIR/docker-ncollection-check.py" structural "$PROV_FILE" \
   || _fail "nCollectionManifest provenance assertion failed"
 
@@ -328,7 +310,7 @@ PY
 fi
 
 if [ "$OCJS_E2E_STAGE" = "final-single" ]; then
-  _section "Phase 4b/6  Link-filter trim gate from baked single-threaded objects"
+  _section "Phase 4b/5  Link-filter trim gate from baked single-threaded objects"
   FULL_OUTPUT_DIR="$OUTPUT_DIR"
   OUTPUT_DIR="${FULL_OUTPUT_DIR}-link-filter"
   rm -rf "$OUTPUT_DIR"
@@ -344,29 +326,11 @@ if [ "$OCJS_E2E_STAGE" = "final-single" ]; then
   _ok "link-filter trim gate"
 fi
 
-_section "Phase 5/6  Warm-cache rerun (budget ${WARM_BUDGET_S}s)"
-WARM_START=$(date +%s)
-_run_link "$BUILD_CONFIG_ABS"
-WARM_END=$(date +%s)
-WARM_ELAPSED=$((WARM_END - WARM_START))
-WARM_DIGESTS="$(_artifact_digest_manifest)"
-echo "  Warm wall time: ${WARM_ELAPSED}s (budget ${WARM_BUDGET_S}s)"
-if [ "$WARM_ELAPSED" -gt "$WARM_BUDGET_S" ]; then
-  _fail "Warm rerun (${WARM_ELAPSED}s) exceeded budget (${WARM_BUDGET_S}s)."
-fi
-_ok "Warm rerun within budget"
-if [ "$COLD_DIGESTS" != "$WARM_DIGESTS" ]; then
-  diff -u <(printf '%s\n' "$COLD_DIGESTS") <(printf '%s\n' "$WARM_DIGESTS") || true
-  _fail "Warm rerun changed candidate artifact bytes."
-fi
-_ok "Warm rerun reproduced all six candidate artifacts byte-for-byte"
-
-_section "Phase 6/6  JS smoke test against ${ARTIFACT_BASENAME}.js"
+_section "Phase 5/5  JS smoke test against ${ARTIFACT_BASENAME}.js"
 node "$SCRIPT_DIR/docker-js-smoke.mjs" "$CANDIDATE_JS" || _fail "JS smoke test failed"
 
 _section "RESULT: Docker E2E validation PASSED"
 echo "  Image:       $IMAGE_TAG"
 echo "  Config:      $BUILD_CONFIG_ABS"
-echo "  Cold wall:   ${COLD_ELAPSED}s"
-echo "  Warm wall:   ${WARM_ELAPSED}s"
+echo "  Link wall:   ${LINK_ELAPSED}s"
 echo "  Output dir:  $OUTPUT_DIR"

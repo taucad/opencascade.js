@@ -182,6 +182,57 @@ describe('CI contracts', () => {
     expect(source).toContain('test "$platforms" = "linux/amd64,linux/arm64"');
   });
 
+  it('should compare all six ST and MT outputs across native architectures', () => {
+    const ci = workflow('docker.yml');
+    const parity = ci.jobs['artifact-parity'];
+    expect(parity.if).toContain("github.event_name == 'push'");
+    expect(parity.needs).toBe('candidate-build');
+    expect(ci.jobs['candidate-gate'].needs).toEqual([
+      'candidate-validation',
+      'candidate-build',
+      'artifact-parity',
+    ]);
+    const source = fs.readFileSync(path.join(ROOT, '.github/workflows/docker.yml'), 'utf8');
+    expect(source).toContain('artifact-manifest-${{ matrix.stage == \'final-single\' && \'single\' || \'multi\' }}-${{ matrix.arch }}');
+    expect(source).toContain('diff -u "$amd64" "$arm64"');
+    expect(source).toContain('test "$(find "$OUT" -maxdepth 1 -type f | wc -l)" -eq 6');
+  });
+
+  it('should use only stage-and-architecture-local Docker caches', () => {
+    const ci = workflow('docker.yml');
+    const validationStep = ci.jobs['candidate-validation'].steps.find(
+      ({ name }: { name?: string }) => name === 'Build candidate for validation',
+    );
+    const buildSteps = ci.jobs['candidate-build'].steps.filter(
+      ({ name }: { name?: string }) => ['Build candidate for e2e', 'Push tested candidate by digest'].includes(name ?? ''),
+    );
+    expect(validationStep.with['cache-from'].trim().split('\n')).toEqual([
+      'type=registry,ref=${{ env.REGISTRY_IMAGE }}:buildcache-amd64-${{ matrix.stage }}',
+    ]);
+    for (const step of buildSteps) {
+      expect(step.with['cache-from'].trim().split('\n')).toEqual([
+        'type=registry,ref=${{ env.REGISTRY_IMAGE }}:buildcache-${{ matrix.arch }}-${{ matrix.stage }}',
+      ]);
+    }
+  });
+
+  it('should run one bounded final link and reuse the minimal bindgen fixture', () => {
+    const source = fs.readFileSync(path.join(ROOT, 'scripts/docker-e2e-validate.sh'), 'utf8');
+    expect(source).toContain('LINK_BUDGET_S="${LINK_BUDGET_S:-1200}"');
+    expect(source).toContain('tests/docker/fixtures/simple.yml');
+    expect(source).toContain('docker-js-smoke.mjs" "$OUTPUT_DIR/customBuild.simple.js" simple');
+    for (const obsolete of [
+      'WARM_BUDGET_S',
+      'SKIP_COLD_LINK',
+      '--skip-cold-link',
+      '--warm-budget',
+      '_artifact_digest_manifest',
+      'Warm-cache rerun',
+    ]) {
+      expect(source).not.toContain(obsolete);
+    }
+  });
+
   it('should keep mutation behind the package gate and npm OIDC away from checkout', () => {
     const ci = workflow('docker.yml');
     expect(ci.jobs.quality.needs).toBe('preflight');
@@ -225,11 +276,14 @@ describe('CI contracts', () => {
       '.github/workflows/updateStarterTemplates.yml',
       'builds/opencascade.full.yml',
       'runAction.sh',
+      'scripts/docker-ci-preflight.sh',
       'test',
       'typedoc-reference-docs',
     ]) {
       expect(fs.existsSync(path.join(ROOT, relative)), relative).toBe(false);
     }
+    const project = JSON.parse(fs.readFileSync(path.join(ROOT, 'project.json'), 'utf8'));
+    expect(project.targets).not.toHaveProperty('docker-ci-preflight');
     expect(fs.existsSync(path.join(ROOT, 'starter-templates/legacy'))).toBe(true);
   });
 });
