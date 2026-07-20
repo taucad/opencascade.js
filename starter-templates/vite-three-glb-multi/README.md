@@ -8,7 +8,7 @@ Vite 6 + TS + three.js 0.180+ + `@taucad/opencascade.js/multi@beta`. Same box-wi
 - `@taucad/opencascade.js/multi` with wasm at `@taucad/opencascade.js/multi/wasm?url`
 - This fork links `@taucad/opencascade.js` via `file:../..` until the multi subpath ships on npm `beta`; swap to `"beta"` once published
 - Cross-origin isolation headers in `vite.config.ts` (required for `SharedArrayBuffer`)
-- Global parallel activation in `src/ocjs-init.ts` per the [multi-threading guide](https://github.com/taucad/opencascade.js/blob/main/docs-site/content/docs/package/guides/multi-threading.mdx)
+- Global parallel activation in `src/ocjs-init.ts` per the [multi-threading guide](https://github.com/taucad/opencascade.js/blob/master/docs-site/content/docs/package/guides/multi-threading.mdx)
 
 ## Files
 

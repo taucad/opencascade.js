@@ -7,12 +7,12 @@
   "scripts": {
     "dev": "vite --port 3003",
     "build": "tsc --noEmit && vite build",
-    "preview": "vite preview --port 4173",
+    "preview": "vite preview --port 4173 --host 127.0.0.1",
     "typecheck": "tsc --noEmit",
     "smoke": "node ../_shared/smoke-render.mjs --url http://localhost:4173 --canvas '#ocjs-canvas' --screenshot smoke.png"
   },
   "dependencies": {
-    "@taucad/opencascade.js": "file:../..",
+    "@taucad/opencascade.js": "beta",
     "three": "^0.184.0"
   },
   "devDependencies": {

@@ -3,7 +3,7 @@
  * Playwright-driven render smoke for the v3 web starter templates.
  *
  * Loads a dev-server URL in a headless Chromium, waits for the canvas
- * element, samples a 16x16 region from the centre of the canvas, and
+ * element, samples a 16x16 grid from a compositor screenshot, and
  * fails non-zero if:
  *   - the canvas never appears
  *   - every sampled pixel collapses to a single colour (nothing was painted)
@@ -26,6 +26,7 @@
  *   4  OCCT/OpenCascade/emscripten console.error observed
  */
 import { chromium } from 'playwright';
+import { PNG } from 'pngjs';
 
 const args = parseArgs(process.argv.slice(2));
 if (!args.url || !args.canvas) {
@@ -67,33 +68,17 @@ try {
   process.exit(2);
 }
 
+let unique = new Set();
+const deadline = Date.now() + TIMEOUT_MS;
+while (Date.now() < deadline && unique.size <= 1 && ocjsErrors.length === 0) {
+  const screenshot = PNG.sync.read(await canvasHandle.screenshot());
+  unique = sampleGrid(screenshot, SAMPLE_SIZE);
+  if (unique.size <= 1) await page.waitForTimeout(250);
+}
+
 if (SCREENSHOT_PATH) {
   await page.screenshot({ path: SCREENSHOT_PATH, fullPage: false });
 }
-
-const pixels = await canvasHandle.evaluate((canvas, sampleSize) => {
-  if (!(canvas instanceof HTMLCanvasElement)) return null;
-  const w = canvas.width;
-  const h = canvas.height;
-  if (w === 0 || h === 0) return null;
-
-  const ctx = canvas.getContext('2d');
-  if (ctx) {
-    const x = Math.max(0, Math.floor(w / 2 - sampleSize / 2));
-    const y = Math.max(0, Math.floor(h / 2 - sampleSize / 2));
-    const data = ctx.getImageData(x, y, sampleSize, sampleSize).data;
-    return Array.from(data);
-  }
-
-  const offscreen = new OffscreenCanvas(w, h);
-  const off = offscreen.getContext('2d');
-  if (!off) return null;
-  off.drawImage(canvas, 0, 0);
-  const x2 = Math.max(0, Math.floor(w / 2 - sampleSize / 2));
-  const y2 = Math.max(0, Math.floor(h / 2 - sampleSize / 2));
-  const data2 = off.getImageData(x2, y2, sampleSize, sampleSize).data;
-  return Array.from(data2);
-}, SAMPLE_SIZE);
 
 await browser.close();
 
@@ -105,25 +90,30 @@ if (ocjsErrors.length > 0) {
   process.exit(4);
 }
 
-if (!pixels) {
-  console.error('smoke-render: could not read canvas pixels (no 2d/OffscreenCanvas path)');
-  process.exit(1);
-}
-
-const unique = new Set();
-for (let i = 0; i < pixels.length; i += 4) {
-  unique.add(`${pixels[i]},${pixels[i + 1]},${pixels[i + 2]},${pixels[i + 3]}`);
-}
-
 if (unique.size <= 1) {
   console.error(
-    `smoke-render: every sampled pixel collapsed to ${[...unique][0]} — no geometry painted`,
+    `smoke-render: every sampled compositor pixel collapsed to ${[...unique][0]} — no geometry painted`,
   );
   process.exit(3);
 }
 
-console.log(`smoke-render: ok (${unique.size} distinct colours in ${SAMPLE_SIZE}x${SAMPLE_SIZE} centre sample)`);
+console.log(`smoke-render: ok (${unique.size} distinct colours in a ${SAMPLE_SIZE}x${SAMPLE_SIZE} grid)`);
 process.exit(0);
+
+function sampleGrid(image, sampleSize) {
+  const colors = new Set();
+  for (let row = 0; row < sampleSize; row++) {
+    const y = Math.min(image.height - 1, Math.floor(((row + 0.5) * image.height) / sampleSize));
+    for (let column = 0; column < sampleSize; column++) {
+      const x = Math.min(image.width - 1, Math.floor(((column + 0.5) * image.width) / sampleSize));
+      const offset = (y * image.width + x) * 4;
+      colors.add(
+        `${image.data[offset]},${image.data[offset + 1]},${image.data[offset + 2]},${image.data[offset + 3]}`,
+      );
+    }
+  }
+  return colors;
+}
 
 function parseArgs(argv) {
   const out = {};
