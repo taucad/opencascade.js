@@ -135,13 +135,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - stage: final-single
-            config: build-configs/full.yml
-          - stage: final-multi
-            config: build-configs/full_multi.yml
-          - stage: bindgen-base
-            config: build-configs/full.yml
+        stage: [final-single, final-multi, bindgen-base]
     steps:
       - name: Checkout
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -192,7 +186,7 @@ jobs:
         env:
           OCJS_E2E_IMAGE: ocjs:e2e-${{ matrix.stage }}
           OCJS_E2E_STAGE: ${{ matrix.stage }}
-          OCJS_E2E_BUILD_CONFIG: ${{ matrix.config }}
+          OCJS_E2E_BUILD_CONFIG: ${{ matrix.stage == 'final-multi' && 'build-configs/full_multi.yml' || 'build-configs/full.yml' }}
           OCJS_E2E_OUTPUT_DIR: ${{ runner.temp }}/e2e
           OCJS_EXPECTED_SHA: ${{ needs.preflight.outputs.full_sha }}
           SOURCE_DATE_EPOCH: ${{ needs.preflight.outputs.source_date_epoch }}
@@ -272,7 +266,7 @@ jobs:
     name: candidate · ${{ matrix.stage }} · ${{ matrix.arch }}
     if: github.event_name == 'push'
     needs: preflight
-    runs-on: ${{ matrix.runner }}
+    runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
     timeout-minutes: 360
     permissions:
       contents: read
@@ -281,20 +275,7 @@ jobs:
       fail-fast: false
       matrix:
         stage: [final-single, final-multi, bindgen-base]
-        arch: ${{ fromJSON(needs.preflight.outputs.is_release == 'true' && '["amd64","arm64"]' || '["amd64"]') }}
-        include:
-          - arch: amd64
-            runner: ubuntu-latest
-            platform: linux/amd64
-          - arch: arm64
-            runner: ubuntu-24.04-arm
-            platform: linux/arm64
-          - stage: final-single
-            config: build-configs/full.yml
-          - stage: final-multi
-            config: build-configs/full_multi.yml
-          - stage: bindgen-base
-            config: build-configs/full.yml
+        arch: [amd64, arm64]
     steps:
       - name: Checkout
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -334,7 +315,7 @@ jobs:
         with:
           context: .
           target: ${{ matrix.stage }}
-          platforms: ${{ matrix.platform }}
+          platforms: ${{ matrix.arch == 'arm64' && 'linux/arm64' || 'linux/amd64' }}
           load: true
           tags: ocjs:e2e-${{ matrix.stage }}
           build-args: |
@@ -350,10 +331,10 @@ jobs:
 
       - name: Candidate e2e
         env:
-          OCJS_DOCKER_PLATFORM: ${{ matrix.platform }}
+          OCJS_DOCKER_PLATFORM: ${{ matrix.arch == 'arm64' && 'linux/arm64' || 'linux/amd64' }}
           OCJS_E2E_IMAGE: ocjs:e2e-${{ matrix.stage }}
           OCJS_E2E_STAGE: ${{ matrix.stage }}
-          OCJS_E2E_BUILD_CONFIG: ${{ matrix.config }}
+          OCJS_E2E_BUILD_CONFIG: ${{ matrix.stage == 'final-multi' && 'build-configs/full_multi.yml' || 'build-configs/full.yml' }}
           OCJS_E2E_OUTPUT_DIR: ${{ runner.temp }}/e2e
           OCJS_EXPECTED_SHA: ${{ needs.preflight.outputs.full_sha }}
           SOURCE_DATE_EPOCH: ${{ needs.preflight.outputs.source_date_epoch }}
@@ -436,7 +417,7 @@ jobs:
         with:
           context: .
           target: ${{ matrix.stage }}
-          platforms: ${{ matrix.platform }}
+          platforms: ${{ matrix.arch == 'arm64' && 'linux/arm64' || 'linux/amd64' }}
           outputs: type=image,name=${{ env.REGISTRY_IMAGE }},push-by-digest=true,name-canonical=true,push=true
           build-args: |
             REVISION=${{ needs.preflight.outputs.full_sha }}
@@ -664,7 +645,6 @@ jobs:
         with:
           pattern: digest-${{ matrix.stage }}-*-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/digests
-          merge-multiple: true
       - name: Set up Buildx
         uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3
       - name: Log in to GHCR
@@ -682,7 +662,6 @@ jobs:
           IS_RELEASE: ${{ needs.preflight.outputs.is_release }}
           STAGE: ${{ matrix.stage }}
           VERSION: ${{ needs.preflight.outputs.version }}
-        working-directory: ${{ runner.temp }}/digests
         run: |
           case "$STAGE" in
             final-single) prefix=single-threaded; branch_prefix=branch ;;
@@ -697,8 +676,19 @@ jobs:
           args=()
           for tag in "${tags[@]}"; do args+=(-t "${REGISTRY_IMAGE}:$tag"); done
           sources=()
-          for digest in *; do sources+=("${REGISTRY_IMAGE}@sha256:$digest"); done
+          for arch in amd64 arm64; do
+            dir="${RUNNER_TEMP}/digests/digest-${STAGE}-${arch}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+            shopt -s nullglob
+            files=("$dir"/*)
+            test "${#files[@]}" -eq 1
+            sources+=("${REGISTRY_IMAGE}@sha256:$(basename "${files[0]}")")
+          done
           docker buildx imagetools create "${args[@]}" "${sources[@]}"
+          platforms="$(
+            docker buildx imagetools inspect "${REGISTRY_IMAGE}:${tags[0]}" --raw |
+              jq -r '[.manifests[].platform | "\(.os)/\(.architecture)"] | sort | join(",")'
+          )"
+          test "$platforms" = "linux/amd64,linux/arm64"
           digest="$(docker buildx imagetools inspect "${REGISTRY_IMAGE}:${tags[0]}" --format '{{json .Manifest}}' | jq -r '.digest')"
           cosign sign --yes "${REGISTRY_IMAGE}@${digest}"
 

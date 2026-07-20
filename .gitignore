@@ -1,5 +1,7 @@
 /build/*
-/tools/
+/tools/*
+!/tools/eslint-plugin/
+!/tools/eslint-plugin/**
 __pycache__
 *.pyc
 node_modules

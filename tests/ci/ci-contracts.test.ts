@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { parse } from 'yaml';
@@ -14,7 +15,7 @@ const workflow = (name: string) => parse(
 );
 
 describe('CI contracts', () => {
-  it('derives immutable branch versions and channel ownership', () => {
+  it('should derive immutable branch versions and channel ownership', () => {
     const feature = deriveRelease({
       event: 'push',
       ref: 'refs/heads/feature/npm',
@@ -48,7 +49,7 @@ describe('CI contracts', () => {
     expect(branchSlug('feature/'.concat('very-long-segment-'.repeat(8)))).toHaveLength(64);
   });
 
-  it('requires annotated release tags and exact package versions', () => {
+  it('should require annotated release tags and exact package versions', () => {
     expect(deriveRelease({
       event: 'push',
       ref: 'refs/tags/v3.0.0-rc.1',
@@ -69,21 +70,21 @@ describe('CI contracts', () => {
     })).toThrow('must be annotated');
   });
 
-  it('keeps the package allowlists exact', () => {
+  it('should keep the package allowlists exact', () => {
     expect(DIST_FILES).toHaveLength(12);
     expect(PACKAGE_FILES).toHaveLength(18);
     expect(() => validateExactFiles([...DIST_FILES, 'stale.wasm'], DIST_FILES, 'dist'))
       .toThrow('extra=[stale.wasm]');
   });
 
-  it('keeps specialized test surfaces independently runnable', () => {
+  it('should keep specialized test surfaces independently runnable', () => {
     const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
     expect(manifest.scripts['test:regression']).toContain('vitest.regression.config.ts');
     expect(manifest.scripts['test:docker']).toContain('vitest.docker.config.ts');
     expect(manifest.scripts['test:package']).toContain('vitest.package.config.ts');
   });
 
-  it('makes provisioned Replicad compatibility a mandatory candidate gate', () => {
+  it('should make provisioned Replicad compatibility a mandatory candidate gate', () => {
     const source = fs.readFileSync(path.join(ROOT, '.github/workflows/docker.yml'), 'utf8');
     const replicadTest = fs.readFileSync(
       path.join(ROOT, 'tests/sentinel/test_replicad_native_validation.py'),
@@ -94,7 +95,7 @@ describe('CI contracts', () => {
     expect(replicadTest).not.toContain('pytest.skip');
   });
 
-  it('selects only expired, unprotected GHCR versions', () => {
+  it('should select only expired, unprotected GHCR versions', () => {
     const now = Date.parse('2026-07-21T00:00:00Z');
     const version = (id: number, created_at: string, tags: string[], name = `sha256:${id}`) => ({
       id, name, created_at, metadata: { container: { tags } },
@@ -116,7 +117,7 @@ describe('CI contracts', () => {
     expect(selected.map(({ id }) => id)).toEqual([7, 22, 26]);
   });
 
-  it('runs every branch and PR while preserving every push publication', () => {
+  it('should run every branch and PR while preserving every push publication', () => {
     const ci = workflow('docker.yml');
     expect(ci.on.push.branches).toEqual(['**']);
     expect(ci.on).toHaveProperty('pull_request', null);
@@ -125,10 +126,63 @@ describe('CI contracts', () => {
       queue: 'max',
       'cancel-in-progress': false,
     });
-    expect(ci.jobs['candidate-build'].strategy.matrix.arch).toContain('needs.preflight.outputs.is_release');
   });
 
-  it('keeps mutation behind the package gate and npm OIDC away from checkout', () => {
+  it('should keep every ESLint relative import in clean checkouts', () => {
+    for (const relative of [
+      'tools/eslint-plugin/index.js',
+      'tools/eslint-plugin/require-using-on-disposable.js',
+    ]) {
+      expect(fs.existsSync(path.join(ROOT, relative)), relative).toBe(true);
+      const ignored = spawnSync('git', ['check-ignore', '--no-index', '--quiet', relative], {
+        cwd: ROOT,
+      });
+      expect(ignored.status, `${relative} must not be ignored`).toBe(1);
+    }
+  });
+
+  it('should expand push candidates to six complete native rows and validation to three amd64 rows', () => {
+    const ci = workflow('docker.yml');
+    const build = ci.jobs['candidate-build'];
+    const validation = ci.jobs['candidate-validation'];
+
+    expect(build.strategy.matrix).toEqual({
+      stage: ['final-single', 'final-multi', 'bindgen-base'],
+      arch: ['amd64', 'arm64'],
+    });
+    expect(validation.strategy.matrix).toEqual({
+      stage: ['final-single', 'final-multi', 'bindgen-base'],
+    });
+
+    const rows = build.strategy.matrix.stage.flatMap((stage: string) =>
+      build.strategy.matrix.arch.map((arch: string) => ({ stage, arch })),
+    );
+    expect(rows).toEqual([
+      { stage: 'final-single', arch: 'amd64' },
+      { stage: 'final-single', arch: 'arm64' },
+      { stage: 'final-multi', arch: 'amd64' },
+      { stage: 'final-multi', arch: 'arm64' },
+      { stage: 'bindgen-base', arch: 'amd64' },
+      { stage: 'bindgen-base', arch: 'arm64' },
+    ]);
+    expect(build['runs-on']).toContain("matrix.arch == 'arm64'");
+    const source = fs.readFileSync(path.join(ROOT, '.github/workflows/docker.yml'), 'utf8');
+    expect(source).toContain("matrix.arch == 'arm64' && 'linux/arm64' || 'linux/amd64'");
+    expect(source).toContain("matrix.stage == 'final-multi' && 'build-configs/full_multi.yml'");
+    expect(source).not.toContain('matrix.runner');
+    expect(source).not.toContain('matrix.platform');
+    expect(source).not.toContain('matrix.config');
+  });
+
+  it('should promote exactly one tested digest per native architecture', () => {
+    const source = fs.readFileSync(path.join(ROOT, '.github/workflows/docker.yml'), 'utf8');
+    expect(source).toContain('digest-${STAGE}-${arch}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}');
+    expect(source).toContain('for arch in amd64 arm64');
+    expect(source).toContain('test "${#files[@]}" -eq 1');
+    expect(source).toContain('test "$platforms" = "linux/amd64,linux/arm64"');
+  });
+
+  it('should keep mutation behind the package gate and npm OIDC away from checkout', () => {
     const ci = workflow('docker.yml');
     expect(ci.jobs.quality.needs).toBe('preflight');
     expect(ci.jobs['candidate-build'].needs).toBe('preflight');
@@ -145,7 +199,7 @@ describe('CI contracts', () => {
     expect(source).not.toContain('OCJS_CONFIG=debug');
   });
 
-  it('pins every workflow action to a full commit', () => {
+  it('should pin every workflow action to a full commit', () => {
     for (const name of fs.readdirSync(path.join(ROOT, '.github/workflows'))) {
       if (!name.endsWith('.yml')) continue;
       const jobs = Object.values(workflow(name).jobs ?? {}) as Array<{ steps?: Array<{ uses?: string }> }>;
@@ -160,7 +214,7 @@ describe('CI contracts', () => {
     }
   });
 
-  it('keeps obsolete automation deleted and active compatibility fixtures', () => {
+  it('should keep obsolete automation deleted and active compatibility fixtures', () => {
     for (const relative of [
       '.github/workflows/buildFull.yml',
       '.github/workflows/firebase-hosting-pull-request.yml',
