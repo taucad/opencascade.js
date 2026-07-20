@@ -272,6 +272,27 @@ describe('CI contracts', () => {
     }
   });
 
+  it('should fail cheap quality checks before provisioning build dependencies', () => {
+    const ci = workflow('docker.yml');
+    const names = ci.jobs.quality.steps.map(({ name }: { name?: string }) => name ?? '');
+    expect(names.indexOf('Cheap JavaScript and shell quality'))
+      .toBeLessThan(names.indexOf('Install uv'));
+    expect(names.indexOf('Workflow quality'))
+      .toBeLessThan(names.indexOf('Materialize pinned build dependencies'));
+    expect(names.indexOf('Materialize pinned build dependencies'))
+      .toBeLessThan(names.indexOf('Python quality and unit tests'));
+  });
+
+  it('should keep the final aggregate free of custom timing API code', () => {
+    const ci = workflow('docker.yml');
+    expect(ci.jobs['ci-required'].permissions).toEqual({ contents: 'read' });
+    expect(ci.jobs['ci-required'].steps).toHaveLength(1);
+    const source = fs.readFileSync(path.join(ROOT, '.github/workflows/docker.yml'), 'utf8');
+    expect(source).not.toContain('Summarize workflow timing');
+    expect(source).not.toContain('/actions/runs/${process.env.GITHUB_RUN_ID}/jobs');
+    expect(source).not.toContain('historical baseline:');
+  });
+
   it('should keep mutation behind the package gate and npm OIDC away from checkout', () => {
     const ci = workflow('docker.yml');
     expect(ci.jobs.quality.needs).toBe('preflight');
