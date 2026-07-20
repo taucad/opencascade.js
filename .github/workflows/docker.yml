@@ -1,234 +1,162 @@
-name: docker
-
-# Production-readiness blueprint reference:
-#   docs/research/ocjs-docker-production-readiness-blueprint.md
-#
-# Two responsibilities:
-#
-# 1. **Branch DAG** (every push to main/master/occt-v8-*):
-#    For each published stage (final-single, final-multi, bindgen-base):
-#      amd64 build (with --load) → e2e gate (20-min warm-link budget) → publish
-#      :branch-<slug>* / :*-branch-<slug>* → keyless cosign sign.
-#    branch-publish starts after setup only (parallel with docker-smoke).
-#    Pre-publish e2e on single/multi is the publish gate (R13); smoke is
-#    informational on branch pushes and remains the PR gate for link-filter-poc.
-#    Branch builds are amd64-only by design (R12) — Apple Silicon reviewers
-#    pay the Rosetta tax on branch tags; release tags carry the full
-#    multi-arch manifest list.
-#
-# 2. **Release DAG** (annotated git tags matching `v*`):
-#    For each (stage, arch) ∈ {final-single, final-multi, bindgen-base} ×
-#    {amd64, arm64}:
-#      build with `outputs=type=image,push-by-digest=true` → smoke → e2e gate
-#      (20-min warm-link budget) → upload digest.
-#    Then for each stage:
-#      manifest-list assembly → keyless cosign sign of the manifest-list
-#      digest (one signature verifies regardless of which arch the consumer
-#      pulls).
-#    Post-publish smoke pulls the manifest list and re-runs the link-filter
-#    PoC to confirm the published artefact is functional.
-#
-# Cache strategy (R5): registry-backed cache (`type=registry,ref=…:buildcache-
-# <arch>-<stage>`) — GHA cache backend's 10 GB limit cannot accommodate the
-# scopes we need (~40 GB combined). Scopes are partitioned by arch + stage so
-# the two architectures and three stages don't poison each other's cache hits.
-# cache-from on all build steps (warm reads); cache-to only on push steps after
-# the e2e gate passes (trusted writes). PR smoke has cache-from only — no PR
-# can poison buildcache-* tags. GHCR package must grant this repo Write under
-# Manage Actions access (packages: write in YAML is not sufficient alone).
-#
-# Disk: free-disk-space (`jlumbroso/free-disk-space@main`) reclaims ~30-40 GB
-# on the GHA runner before BuildKit starts — without it, the compiled-*
-# stages OOM the runner's 14 GB ext4 partition during link.
+name: ci
 
 on:
   push:
-    branches:
-      - main
-      - master
-      - 'occt-v8-*'
-    tags:
-      - 'v*'
+    branches: ['**']
+    tags: ['v*']
   pull_request:
-    branches:
-      - main
-      - master
-      - 'occt-v8-*'
   workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('run-{0}', github.run_id) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 env:
-  REGISTRY_IMAGE: ghcr.io/taucad/opencascade.js
-  # GitHub Actions Node 20 deprecation (2026-09): opt into Node 24 for action runtimes.
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  REGISTRY_IMAGE: ghcr.io/taucad/opencascade.js
 
 jobs:
-  # ───────────────────────────────────────────────────────────────────────────
-  # Setup
-  # ───────────────────────────────────────────────────────────────────────────
-  setup:
-    name: docker · setup · derive branch slug + DAG selector
+  preflight:
+    name: preflight
     runs-on: ubuntu-latest
     outputs:
-      is_release: ${{ steps.derive.outputs.is_release }}
-      is_branch_push: ${{ steps.derive.outputs.is_branch_push }}
-      is_pr: ${{ steps.derive.outputs.is_pr }}
-      branch_slug: ${{ steps.derive.outputs.branch_slug }}
-    steps:
-      - name: Derive DAG selector + sanitized branch slug
-        id: derive
-        env:
-          REF: ${{ github.ref }}
-          REF_NAME: ${{ github.ref_name }}
-          EVENT: ${{ github.event_name }}
-        run: |
-          set -euo pipefail
-          if [[ "$REF" == refs/tags/v* ]]; then
-            echo "is_release=true"      >> "$GITHUB_OUTPUT"
-            echo "is_branch_push=false" >> "$GITHUB_OUTPUT"
-            echo "is_pr=false"          >> "$GITHUB_OUTPUT"
-          elif [[ "$EVENT" == "pull_request" ]]; then
-            echo "is_release=false"     >> "$GITHUB_OUTPUT"
-            echo "is_branch_push=false" >> "$GITHUB_OUTPUT"
-            echo "is_pr=true"           >> "$GITHUB_OUTPUT"
-          else
-            echo "is_release=false"     >> "$GITHUB_OUTPUT"
-            echo "is_branch_push=true"  >> "$GITHUB_OUTPUT"
-            echo "is_pr=false"          >> "$GITHUB_OUTPUT"
-          fi
-          # GHCR tags cannot contain '/' — replace with '-' (e.g. occt-v8-2026-05 stays unchanged;
-          # feature/x-y becomes feature-x-y).
-          slug=$(printf '%s' "$REF_NAME" | tr '/' '-')
-          echo "branch_slug=$slug" >> "$GITHUB_OUTPUT"
-
-  # ───────────────────────────────────────────────────────────────────────────
-  # Smoke (PR + branch push) — link-filter-poc trim gate + YAML validate.
-  # Runs parallel with branch-publish on branch pushes (no needs edge).
-  # On pull_request, smoke is the sole docker compile gate before merge.
-  # ───────────────────────────────────────────────────────────────────────────
-  docker-smoke:
-    name: docker · smoke · build + link-filter-poc
-    needs: setup
-    runs-on: ubuntu-latest
-    timeout-minutes: 360
+      branch_slug: ${{ steps.release.outputs.branch_slug }}
+      channel: ${{ steps.release.outputs.channel }}
+      full_sha: ${{ steps.release.outputs.full_sha }}
+      is_release: ${{ steps.release.outputs.is_release }}
+      kind: ${{ steps.release.outputs.kind }}
+      publish: ${{ steps.release.outputs.publish }}
+      source_date_epoch: ${{ steps.release.outputs.source_date_epoch }}
+      version: ${{ steps.release.outputs.version }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Free disk space (reclaim ~30-40 GB)
-        uses: jlumbroso/free-disk-space@main
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          android: true
-          dotnet: true
-          haskell: true
-          large-packages: false
-          docker-images: false
-          swap-storage: false
-          tool-cache: false
+          fetch-depth: 0
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3.11.1
-
-      - name: Log in to GHCR (for registry cache reads)
-        if: github.event_name != 'pull_request'
-        uses: docker/login-action@v3.4.0
+      - name: Set up Node
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          node-version: '24'
+          cache: npm
 
-      - name: Build :bindgen-base + final-single (smoke target, --load)
-        uses: docker/build-push-action@v6.18.0
-        with:
-          context: .
-          target: final-single
-          tags: ocjs:ci
-          load: true
-          cache-from: type=registry,ref=ghcr.io/taucad/opencascade.js:buildcache-amd64-final-single
-          provenance: false
-          sbom: false
+      - name: Install locked Node tools
+        run: npm ci --ignore-scripts --no-audit --no-fund
 
-      - name: Validate full.yml schema (no build)
-        run: docker run --rm ocjs:ci validate /opencascade.js/build-configs/full.yml
-
-      - name: Validate link-filter-poc.yml schema
-        run: docker run --rm ocjs:ci validate /opencascade.js/build-configs/link-filter-poc.yml
-
-      - name: Smoke-link link-filter-poc.yml (22 symbols)
-        run: |
-          mkdir -p "$PWD/smoke-output"
-          docker run --rm \
-            -u "$(id -u):$(id -g)" \
-            -e OCJS_CONFIG=debug \
-            -v "$PWD/smoke-output:/src" \
-            -v "$PWD/build-configs/link-filter-poc.yml:/src/build-config.yml:ro" \
-            ocjs:ci link build-config.yml
-
-      - name: Assert smoke artefacts present
+      - name: Validate event and derive immutable release metadata
+        id: release
+        env:
+          EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          REF_NAME: ${{ github.ref_name }}
+          SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
-          missing=0
-          for ext in wasm js d.ts js.symbols build-manifest.json provenance.json; do
-            f="$PWD/smoke-output/opencascade_linkfilter_poc.${ext}"
-            if [ ! -f "$f" ]; then
-              echo "::error::Missing $f"
-              missing=1
-            else
-              echo "::notice::$(basename "$f") ($(stat -c%s "$f") bytes)"
-            fi
-          done
-          if [ "$missing" -ne 0 ]; then exit 1; fi
+          epoch="$(git show -s --format=%ct "$SHA")"
+          tag_type=""
+          if [[ "$REF" == refs/tags/* ]]; then
+            tag_type="$(git cat-file -t "$REF")"
+          fi
+          node scripts/ci-release.mjs \
+            --event "$EVENT" \
+            --ref "$REF" \
+            --ref-name "$REF_NAME" \
+            --sha "$SHA" \
+            --commit-epoch "$epoch" \
+            --package-version "$(node -p "require('./package.json').version")" \
+            --tag-object-type "$tag_type"
 
-      - name: Assert link-filter-poc NCollection trim filter ratio
+      - name: Fast syntax checks
         run: |
-          set -euo pipefail
-          python3 scripts/docker-ncollection-check.py trim "$PWD/smoke-output/opencascade_linkfilter_poc.provenance.json"
+          node --check scripts/ci-release.mjs
+          node --check scripts/package-candidate.mjs
+          node --check scripts/ghcr-retention.mjs
+          node --check scripts/lib/*.mjs
+          node --check docs-site/scripts/*.mjs
+          bash -n build-wasm.sh scripts/*.sh
 
-      - name: Upload smoke artefacts
-        if: always()
-        uses: actions/upload-artifact@v4.6.2
+  quality:
+    name: quality
+    needs: preflight
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Set up Node
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
-          name: link-filter-poc-output
-          path: smoke-output/
-          if-no-files-found: warn
-          retention-days: 7
+          node-version: '24'
+          cache: npm
 
-  # ───────────────────────────────────────────────────────────────────────────
-  # Branch DAG — fires on push to main/master/occt-v8-* (R12)
-  # Build each published stage on amd64-only, gate on e2e, publish as
-  # :*-branch-<slug>-<sha>, then keyless-sign with cosign.
-  # ───────────────────────────────────────────────────────────────────────────
-  branch-publish:
-    name: docker · branch · ${{ matrix.stage }}
-    if: needs.setup.outputs.is_branch_push == 'true'
-    needs: [setup]
+      - name: Install locked Node tools
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Install uv
+        run: |
+          python3 -m pip install --user uv==0.11.29
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Sync locked Python tools
+        run: uv sync --frozen --all-groups
+
+      - name: Materialize pinned build dependencies
+        run: scripts/clone-deps.sh --dest deps
+
+      - name: JavaScript, workflow, and shell quality
+        run: |
+          npm run lint
+          npm run test:ci
+          shellcheck build-wasm.sh scripts/*.sh
+          .venv/bin/actionlint \
+            -ignore 'unexpected key "queue" for "concurrency" section' \
+            .github/workflows/*.yml
+
+      - name: Python quality and unit tests
+        env:
+          EMSDK: ${{ github.workspace }}/deps/emsdk
+          FREETYPE_ROOT: ${{ github.workspace }}/deps/freetype
+          OCCT_ROOT: ${{ github.workspace }}/deps/OCCT
+          OCJS_ROOT: ${{ github.workspace }}
+          RAPIDJSON_ROOT: ${{ github.workspace }}/deps/rapidjson
+        run: |
+          .venv/bin/ruff check src scripts tests
+          .venv/bin/pytest tests/unit tests/bindgen
+
+  candidate-validation:
+    name: candidate · ${{ matrix.stage }} · amd64
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    needs: preflight
     runs-on: ubuntu-latest
     timeout-minutes: 360
-    permissions:
-      contents: read
-      packages: write
-      id-token: write
     strategy:
       fail-fast: false
       matrix:
         include:
           - stage: final-single
-            tag_prefix: branch
-            e2e_build_config: build-configs/full.yml
+            config: build-configs/full.yml
           - stage: final-multi
-            tag_prefix: multi-threaded-branch
-            e2e_build_config: build-configs/full_multi.yml
+            config: build-configs/full_multi.yml
           - stage: bindgen-base
-            tag_prefix: bindgen-base-branch
-            e2e_build_config: build-configs/full.yml
+            config: build-configs/full.yml
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
-      - name: Free disk space (reclaim ~30-40 GB)
-        uses: jlumbroso/free-disk-space@main
+      - name: Set up Node
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Install test runner
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Free disk space
+        uses: jlumbroso/free-disk-space@54081f138730dfa15788a46383842cd2f914a1be # v1
         with:
           android: true
           dotnet: true
@@ -238,95 +166,112 @@ jobs:
           swap-storage: false
           tool-cache: false
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3.11.1
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3
 
-      - name: Log in to GHCR
-        uses: docker/login-action@v3.4.0
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Install cosign
-        uses: sigstore/cosign-installer@v3.8.2
-
-      - name: Compute image metadata (labels)
-        id: meta
-        uses: docker/metadata-action@v5.7.0
-        with:
-          images: ${{ env.REGISTRY_IMAGE }}
-
-      # load: true uses the docker exporter — incompatible with provenance/sbom
-      # attestations (manifest-list export). Attestations are enabled on push.
-      - name: Build ${{ matrix.stage }} (amd64, --load for e2e gate)
-        id: build
-        uses: docker/build-push-action@v6.18.0
+      - name: Build candidate for validation
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6
         with:
           context: .
           target: ${{ matrix.stage }}
           platforms: linux/amd64
           load: true
-          tags: ocjs:e2e
-          labels: ${{ steps.meta.outputs.labels }}
+          tags: ocjs:e2e-${{ matrix.stage }}
           build-args: |
-            REVISION=${{ github.sha }}
-            VERSION=branch-${{ needs.setup.outputs.branch_slug }}
-          cache-from: type=registry,ref=${{ env.REGISTRY_IMAGE }}:buildcache-amd64-${{ matrix.stage }}
-          # cache-to omitted: written only on push step after e2e gate passes
+            REVISION=${{ needs.preflight.outputs.full_sha }}
+            SOURCE_DATE_EPOCH=${{ needs.preflight.outputs.source_date_epoch }}
+            VERSION=${{ needs.preflight.outputs.version }}
+          cache-from: |
+            type=registry,ref=${{ env.REGISTRY_IMAGE }}:buildcache-amd64-${{ matrix.stage }}
+            type=registry,ref=${{ env.REGISTRY_IMAGE }}:buildcache-amd64-bindgen-base
+            type=registry,ref=${{ env.REGISTRY_IMAGE }}:buildcache-amd64-final-single
           provenance: false
           sbom: false
 
-      - name: E2E gate — warm-link budget (20 min)
+      - name: Candidate e2e
         env:
-          OCJS_E2E_IMAGE: ocjs:e2e
+          OCJS_E2E_IMAGE: ocjs:e2e-${{ matrix.stage }}
           OCJS_E2E_STAGE: ${{ matrix.stage }}
-          OCJS_E2E_BUILD_CONFIG: ${{ matrix.e2e_build_config }}
+          OCJS_E2E_BUILD_CONFIG: ${{ matrix.config }}
+          OCJS_E2E_OUTPUT_DIR: ${{ runner.temp }}/e2e
+          OCJS_EXPECTED_SHA: ${{ needs.preflight.outputs.full_sha }}
+          SOURCE_DATE_EPOCH: ${{ needs.preflight.outputs.source_date_epoch }}
           WARM_BUDGET_S: 1200
-        run: |
-          set -euo pipefail
-          chmod +x scripts/docker-e2e-validate.sh
-          scripts/docker-e2e-validate.sh
+        run: scripts/docker-e2e-validate.sh
 
-      - name: Build + push ${{ matrix.stage }} to GHCR
-        id: push
-        uses: docker/build-push-action@v6.18.0
-        with:
-          context: .
-          target: ${{ matrix.stage }}
-          platforms: linux/amd64
-          push: true
-          tags: |
-            ${{ env.REGISTRY_IMAGE }}:${{ matrix.tag_prefix }}-${{ needs.setup.outputs.branch_slug }}
-            ${{ env.REGISTRY_IMAGE }}:${{ matrix.tag_prefix }}-${{ needs.setup.outputs.branch_slug }}-${{ github.sha }}
-          labels: ${{ steps.meta.outputs.labels }}
-          build-args: |
-            REVISION=${{ github.sha }}
-            VERSION=branch-${{ needs.setup.outputs.branch_slug }}
-          cache-from: type=registry,ref=${{ env.REGISTRY_IMAGE }}:buildcache-amd64-${{ matrix.stage }}
-          cache-to: type=registry,ref=${{ env.REGISTRY_IMAGE }}:buildcache-amd64-${{ matrix.stage }},mode=max
-          provenance: true
-          sbom: true
-
-      - name: Cosign sign published branch image (keyless)
+      - name: Docker consumer behavior
         env:
-          DIGEST: ${{ steps.push.outputs.digest }}
+          IMAGE: ocjs:e2e-${{ matrix.stage }}
+          OCJS_DOCKER_STAGE: ${{ matrix.stage }}
+          OCJS_DOCKER_TESTS: 1
         run: |
-          set -euo pipefail
-          cosign sign --yes \
-            "${REGISTRY_IMAGE}:${{ matrix.tag_prefix }}-${{ needs.setup.outputs.branch_slug }}@${DIGEST}"
-          cosign sign --yes \
-            "${REGISTRY_IMAGE}:${{ matrix.tag_prefix }}-${{ needs.setup.outputs.branch_slug }}-${{ github.sha }}@${DIGEST}"
+          if [ "$OCJS_DOCKER_STAGE" = final-single ]; then
+            export OCJS_DOCKER_SINGLE_IMAGE="$IMAGE"
+            npm run test:docker
+          elif [ "$OCJS_DOCKER_STAGE" = final-multi ]; then
+            export OCJS_DOCKER_MULTI_IMAGE="$IMAGE"
+            npm run test:docker
+          fi
 
-  # ───────────────────────────────────────────────────────────────────────────
-  # Release DAG — fires on annotated `v*` tag push (R7, R9, R12, R13)
-  # Per (stage × arch) build + e2e gate → manifest-list assembly → cosign
-  # sign manifest-list digest → post-publish smoke.
-  # ───────────────────────────────────────────────────────────────────────────
-  release-build:
-    name: docker · release · ${{ matrix.stage }} · ${{ matrix.arch }}
-    if: needs.setup.outputs.is_release == 'true'
-    needs: [setup, docker-smoke]
+      - name: Python integration and sentinel checks
+        if: matrix.stage == 'final-single'
+        env:
+          IMAGE: ocjs:e2e-${{ matrix.stage }}
+          DIST: ${{ runner.temp }}/e2e
+          REPLICAD_DIST: ${{ runner.temp }}/replicad
+          TEST_DIST: ${{ runner.temp }}/python-dist
+        run: |
+          mkdir -p "$REPLICAD_DIST" "$TEST_DIST"
+          docker run --rm \
+            -u "$(id -u):$(id -g)" \
+            -v "$PWD/build-configs/replicad-validation.yml:/src/build-config.yml:ro" \
+            -v "$REPLICAD_DIST:/output" \
+            -e OCJS_OUTPUT_DIR=/output \
+            "$IMAGE" link build-config.yml
+          cp "$DIST"/* "$REPLICAD_DIST"/* "$TEST_DIST"/
+          docker run --rm \
+            --entrypoint bash \
+            -v "$PWD:/host:ro" \
+            -v "$TEST_DIST:/opencascade.js/dist:ro" \
+            "$IMAGE" -lc '
+              rm -rf /opencascade.js/tests
+              cp -R /host/tests /opencascade.js/tests
+              cp /host/Dockerfile /opencascade.js/Dockerfile
+              cp -R /host/.github /opencascade.js/.github
+              cd /opencascade.js
+              .venv/bin/pytest tests/integration tests/sentinel
+            '
+
+      - name: Browser multi-threaded boot
+        if: matrix.stage == 'final-multi'
+        env:
+          IMAGE: ocjs:e2e-${{ matrix.stage }}
+          OUT: ${{ runner.temp }}/browser-multi
+        run: |
+          mkdir -p "$OUT"
+          docker run --rm \
+            -u "$(id -u):$(id -g)" \
+            -v "$PWD/build-configs/full_multi_browser.yml:/src/build-config.yml:ro" \
+            -v "$OUT:/output" \
+            -e OCJS_OUTPUT_DIR=/output \
+            "$IMAGE" link build-config.yml
+          corepack pnpm@9.15.9 --dir docs-site install --frozen-lockfile --ignore-scripts
+          corepack pnpm@9.15.9 --dir docs-site exec playwright install chromium
+          node docs-site/scripts/browser-multi-smoke.mjs "$OUT"
+
+      - name: Upload ST/MT package outputs
+        if: matrix.stage != 'bindgen-base'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: npm-dist-${{ matrix.stage == 'final-single' && 'single' || 'multi' }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/e2e/*
+          if-no-files-found: error
+          retention-days: 2
+
+  candidate-build:
+    name: candidate · ${{ matrix.stage }} · ${{ matrix.arch }}
+    if: github.event_name == 'push'
+    needs: preflight
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 360
     permissions:
@@ -336,7 +281,7 @@ jobs:
       fail-fast: false
       matrix:
         stage: [final-single, final-multi, bindgen-base]
-        arch: [amd64, arm64]
+        arch: ${{ fromJSON(needs.preflight.outputs.is_release == 'true' && '["amd64","arm64"]' || '["amd64"]') }}
         include:
           - arch: amd64
             runner: ubuntu-latest
@@ -345,17 +290,26 @@ jobs:
             runner: ubuntu-24.04-arm
             platform: linux/arm64
           - stage: final-single
-            e2e_build_config: build-configs/full.yml
+            config: build-configs/full.yml
           - stage: final-multi
-            e2e_build_config: build-configs/full_multi.yml
+            config: build-configs/full_multi.yml
           - stage: bindgen-base
-            e2e_build_config: build-configs/full.yml
+            config: build-configs/full.yml
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
-      - name: Free disk space (reclaim ~30-40 GB)
-        uses: jlumbroso/free-disk-space@main
+      - name: Set up Node
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Install test runner
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Free disk space
+        uses: jlumbroso/free-disk-space@54081f138730dfa15788a46383842cd2f914a1be # v1
         with:
           android: true
           dotnet: true
@@ -365,89 +319,336 @@ jobs:
           swap-storage: false
           tool-cache: false
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3.11.1
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3
 
       - name: Log in to GHCR
-        uses: docker/login-action@v3.4.0
+        uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Compute image metadata (labels only)
-        id: meta
-        uses: docker/metadata-action@v5.7.0
-        with:
-          images: ${{ env.REGISTRY_IMAGE }}
-
-      # load: true uses the docker exporter — incompatible with provenance/sbom
-      # attestations (manifest-list export). Attestations are enabled on push.
-      - name: Build ${{ matrix.stage }} (${{ matrix.arch }}, --load for e2e gate)
-        uses: docker/build-push-action@v6.18.0
+      - name: Build candidate for e2e
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6
         with:
           context: .
           target: ${{ matrix.stage }}
           platforms: ${{ matrix.platform }}
           load: true
-          tags: ocjs:e2e
-          labels: ${{ steps.meta.outputs.labels }}
+          tags: ocjs:e2e-${{ matrix.stage }}
           build-args: |
-            REVISION=${{ github.sha }}
-            VERSION=${{ steps.meta.outputs.version }}
-          cache-from: type=registry,ref=${{ env.REGISTRY_IMAGE }}:buildcache-${{ matrix.arch }}-${{ matrix.stage }}
-          # cache-to omitted: written only on push step after e2e gate passes
+            REVISION=${{ needs.preflight.outputs.full_sha }}
+            SOURCE_DATE_EPOCH=${{ needs.preflight.outputs.source_date_epoch }}
+            VERSION=${{ needs.preflight.outputs.version }}
+          cache-from: |
+            type=registry,ref=${{ env.REGISTRY_IMAGE }}:buildcache-${{ matrix.arch }}-${{ matrix.stage }}
+            type=registry,ref=${{ env.REGISTRY_IMAGE }}:buildcache-${{ matrix.arch }}-bindgen-base
+            type=registry,ref=${{ env.REGISTRY_IMAGE }}:buildcache-${{ matrix.arch }}-final-single
           provenance: false
           sbom: false
 
-      - name: E2E gate — warm-link budget (20 min)
+      - name: Candidate e2e
         env:
-          OCJS_E2E_IMAGE: ocjs:e2e
+          OCJS_DOCKER_PLATFORM: ${{ matrix.platform }}
+          OCJS_E2E_IMAGE: ocjs:e2e-${{ matrix.stage }}
           OCJS_E2E_STAGE: ${{ matrix.stage }}
-          OCJS_E2E_BUILD_CONFIG: ${{ matrix.e2e_build_config }}
+          OCJS_E2E_BUILD_CONFIG: ${{ matrix.config }}
+          OCJS_E2E_OUTPUT_DIR: ${{ runner.temp }}/e2e
+          OCJS_EXPECTED_SHA: ${{ needs.preflight.outputs.full_sha }}
+          SOURCE_DATE_EPOCH: ${{ needs.preflight.outputs.source_date_epoch }}
           WARM_BUDGET_S: 1200
-        run: |
-          set -euo pipefail
-          chmod +x scripts/docker-e2e-validate.sh
-          scripts/docker-e2e-validate.sh
+        run: scripts/docker-e2e-validate.sh
 
-      - name: Build + push by digest
+      - name: Docker consumer behavior
+        if: matrix.arch == 'amd64'
+        env:
+          IMAGE: ocjs:e2e-${{ matrix.stage }}
+          OCJS_DOCKER_STAGE: ${{ matrix.stage }}
+          OCJS_DOCKER_TESTS: 1
+        run: |
+          if [ "$OCJS_DOCKER_STAGE" = final-single ]; then
+            export OCJS_DOCKER_SINGLE_IMAGE="$IMAGE"
+            npm run test:docker
+          elif [ "$OCJS_DOCKER_STAGE" = final-multi ]; then
+            export OCJS_DOCKER_MULTI_IMAGE="$IMAGE"
+            npm run test:docker
+          fi
+
+      - name: Python integration and sentinel checks
+        if: matrix.arch == 'amd64' && matrix.stage == 'final-single'
+        env:
+          IMAGE: ocjs:e2e-${{ matrix.stage }}
+          DIST: ${{ runner.temp }}/e2e
+          REPLICAD_DIST: ${{ runner.temp }}/replicad
+          TEST_DIST: ${{ runner.temp }}/python-dist
+        run: |
+          mkdir -p "$REPLICAD_DIST" "$TEST_DIST"
+          docker run --rm \
+            -u "$(id -u):$(id -g)" \
+            -v "$PWD/build-configs/replicad-validation.yml:/src/build-config.yml:ro" \
+            -v "$REPLICAD_DIST:/output" \
+            -e OCJS_OUTPUT_DIR=/output \
+            "$IMAGE" link build-config.yml
+          cp "$DIST"/* "$REPLICAD_DIST"/* "$TEST_DIST"/
+          docker run --rm \
+            --entrypoint bash \
+            -v "$PWD:/host:ro" \
+            -v "$TEST_DIST:/opencascade.js/dist:ro" \
+            "$IMAGE" -lc '
+              rm -rf /opencascade.js/tests
+              cp -R /host/tests /opencascade.js/tests
+              cp /host/Dockerfile /opencascade.js/Dockerfile
+              cp -R /host/.github /opencascade.js/.github
+              cd /opencascade.js
+              .venv/bin/pytest tests/integration tests/sentinel
+            '
+
+      - name: Browser multi-threaded boot
+        if: matrix.arch == 'amd64' && matrix.stage == 'final-multi'
+        env:
+          IMAGE: ocjs:e2e-${{ matrix.stage }}
+          OUT: ${{ runner.temp }}/browser-multi
+        run: |
+          mkdir -p "$OUT"
+          docker run --rm \
+            -u "$(id -u):$(id -g)" \
+            -v "$PWD/build-configs/full_multi_browser.yml:/src/build-config.yml:ro" \
+            -v "$OUT:/output" \
+            -e OCJS_OUTPUT_DIR=/output \
+            "$IMAGE" link build-config.yml
+          corepack pnpm@9.15.9 --dir docs-site install --frozen-lockfile --ignore-scripts
+          corepack pnpm@9.15.9 --dir docs-site exec playwright install chromium
+          node docs-site/scripts/browser-multi-smoke.mjs "$OUT"
+
+      - name: Upload ST/MT package outputs
+        if: matrix.arch == 'amd64' && matrix.stage != 'bindgen-base'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: npm-dist-${{ matrix.stage == 'final-single' && 'single' || 'multi' }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/e2e/*
+          if-no-files-found: error
+          retention-days: 2
+
+      - name: Push tested candidate by digest
         id: push
-        uses: docker/build-push-action@v6.18.0
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6
         with:
           context: .
           target: ${{ matrix.stage }}
           platforms: ${{ matrix.platform }}
-          labels: ${{ steps.meta.outputs.labels }}
-          build-args: |
-            REVISION=${{ github.sha }}
-            VERSION=${{ steps.meta.outputs.version }}
           outputs: type=image,name=${{ env.REGISTRY_IMAGE }},push-by-digest=true,name-canonical=true,push=true
-          cache-from: type=registry,ref=${{ env.REGISTRY_IMAGE }}:buildcache-${{ matrix.arch }}-${{ matrix.stage }}
+          build-args: |
+            REVISION=${{ needs.preflight.outputs.full_sha }}
+            SOURCE_DATE_EPOCH=${{ needs.preflight.outputs.source_date_epoch }}
+            VERSION=${{ needs.preflight.outputs.version }}
+          cache-from: |
+            type=registry,ref=${{ env.REGISTRY_IMAGE }}:buildcache-${{ matrix.arch }}-${{ matrix.stage }}
+            type=registry,ref=${{ env.REGISTRY_IMAGE }}:buildcache-${{ matrix.arch }}-bindgen-base
+            type=registry,ref=${{ env.REGISTRY_IMAGE }}:buildcache-${{ matrix.arch }}-final-single
           cache-to: type=registry,ref=${{ env.REGISTRY_IMAGE }}:buildcache-${{ matrix.arch }}-${{ matrix.stage }},mode=max
           provenance: true
           sbom: true
 
-      - name: Export digest
+      - name: Export digest identity
         env:
           DIGEST: ${{ steps.push.outputs.digest }}
         run: |
-          set -euo pipefail
           mkdir -p "${{ runner.temp }}/digests"
           touch "${{ runner.temp }}/digests/${DIGEST#sha256:}"
 
-      - name: Upload digest
-        uses: actions/upload-artifact@v4.6.2
+      - name: Upload digest identity
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: digests-${{ matrix.stage }}-${{ matrix.arch }}
+          name: digest-${{ matrix.stage }}-${{ matrix.arch }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/digests/*
           if-no-files-found: error
-          retention-days: 1
+          retention-days: 2
 
-  release-manifest:
-    name: docker · release · manifest · ${{ matrix.stage }}
-    if: needs.setup.outputs.is_release == 'true'
-    needs: [setup, release-build]
+  candidate-gate:
+    name: candidate
+    if: always()
+    needs: [candidate-validation, candidate-build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require the applicable candidate matrix
+        env:
+          VALIDATION: ${{ needs.candidate-validation.result }}
+          BUILD: ${{ needs.candidate-build.result }}
+        run: |
+          if [ "$VALIDATION" = success ] && [ "$BUILD" = skipped ]; then exit 0; fi
+          if [ "$BUILD" = success ] && [ "$VALIDATION" = skipped ]; then exit 0; fi
+          echo "candidate matrices: validation=$VALIDATION build=$BUILD" >&2
+          exit 1
+
+  package-assemble:
+    name: package · assemble and pack once
+    needs: [preflight, quality, candidate-gate]
+    runs-on: ubuntu-latest
+    outputs:
+      artifact: npm-candidate-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Download single-threaded outputs
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: npm-dist-single-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/single
+          merge-multiple: true
+
+      - name: Download multi-threaded outputs
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: npm-dist-multi-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/multi
+          merge-multiple: true
+
+      - name: Assemble exact same-run dist
+        env:
+          OCJS_EXPECTED_SHA: ${{ needs.preflight.outputs.full_sha }}
+        run: |
+          rm -rf dist
+          mkdir dist
+          cp "${{ runner.temp }}/single/"* dist/
+          cp "${{ runner.temp }}/multi/"* dist/
+          node scripts/package-candidate.mjs dist
+
+      - name: Set up Node
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Install locked test tools
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Full runtime, regression, and declaration gates
+        run: |
+          npm test
+          npm run test:regression
+          npm run typecheck
+
+      - name: Apply ephemeral version and pack once
+        env:
+          VERSION: ${{ needs.preflight.outputs.version }}
+        run: |
+          npm version "$VERSION" --no-git-tag-version --allow-same-version --ignore-scripts
+          npm pack --ignore-scripts --json > "${{ runner.temp }}/pack.json"
+          node scripts/package-candidate.mjs --pack-json "${{ runner.temp }}/pack.json"
+          filename="$(node -p "JSON.parse(require('fs').readFileSync('${{ runner.temp }}/pack.json'))[0].filename")"
+          mv "$filename" "${{ runner.temp }}/candidate.tgz"
+          sha256sum "${{ runner.temp }}/candidate.tgz" | cut -d' ' -f1 > "${{ runner.temp }}/candidate.sha256"
+          printf 'sha512-' > "${{ runner.temp }}/candidate.sha512"
+          openssl dgst -sha512 -binary "${{ runner.temp }}/candidate.tgz" | base64 -w0 >> "${{ runner.temp }}/candidate.sha512"
+          printf '\n' >> "${{ runner.temp }}/candidate.sha512"
+
+      - name: Write candidate identity
+        env:
+          CHANNEL: ${{ needs.preflight.outputs.channel }}
+          FULL_SHA: ${{ needs.preflight.outputs.full_sha }}
+          SOURCE_DATE_EPOCH: ${{ needs.preflight.outputs.source_date_epoch }}
+          VERSION: ${{ needs.preflight.outputs.version }}
+        run: |
+          node -e "
+            const fs = require('node:fs');
+            fs.writeFileSync(process.env.RUNNER_TEMP + '/candidate.json', JSON.stringify({
+              channel: process.env.CHANNEL,
+              fullSha: process.env.FULL_SHA,
+              runAttempt: process.env.GITHUB_RUN_ATTEMPT,
+              runId: process.env.GITHUB_RUN_ID,
+              sourceDateEpoch: process.env.SOURCE_DATE_EPOCH,
+              version: process.env.VERSION,
+            }, null, 2) + '\n');
+          "
+
+      - name: Upload immutable npm candidate
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: npm-candidate-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/candidate.tgz
+            ${{ runner.temp }}/candidate.sha256
+            ${{ runner.temp }}/candidate.sha512
+            ${{ runner.temp }}/candidate.json
+          if-no-files-found: error
+          retention-days: 7
+
+  package-runtime:
+    name: package · installed runtime
+    needs: package-assemble
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Set up Node
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: ${{ needs.package-assemble.outputs.artifact }}
+          path: ${{ runner.temp }}/candidate
+      - name: Test installed tarball
+        env:
+          OCJS_PACKAGE_TARBALL: ${{ runner.temp }}/candidate/candidate.tgz
+        run: npm run test:package
+
+  package-templates:
+    name: package · active templates
+    needs: package-assemble
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Set up Node
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: '24'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: ${{ needs.package-assemble.outputs.artifact }}
+          path: ${{ runner.temp }}/candidate
+      - name: Build and smoke all active templates
+        env:
+          OCJS_PACKAGE_TARBALL: ${{ runner.temp }}/candidate/candidate.tgz
+        run: scripts/test-candidate-templates.sh
+
+  package-docs:
+    name: package · docs consumer
+    needs: [preflight, package-assemble]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Set up Node
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: '24'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: ${{ needs.package-assemble.outputs.artifact }}
+          path: ${{ runner.temp }}/candidate
+      - name: Test docs against candidate
+        env:
+          OCJS_PACKAGE_TARBALL: ${{ runner.temp }}/candidate/candidate.tgz
+          SOURCE_DATE_EPOCH: ${{ needs.preflight.outputs.source_date_epoch }}
+        run: scripts/test-candidate-docs.sh
+
+  package-gate:
+    name: package
+    needs: [package-runtime, package-templates, package-docs]
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Exact npm candidate passed every consumer"
+
+  ghcr-promote:
+    name: ghcr · ${{ matrix.stage }}
+    if: needs.preflight.outputs.publish == 'true'
+    needs: [preflight, candidate-build, package-gate]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -456,111 +657,338 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - stage: final-single
-            tag_suffix: single-threaded
-          - stage: final-multi
-            tag_suffix: multi-threaded
-          - stage: bindgen-base
-            tag_suffix: bindgen-base
+        stage: [final-single, final-multi, bindgen-base]
     steps:
-      - name: Download digests (${{ matrix.stage }} × all arches)
-        uses: actions/download-artifact@v4.3.0
+      - name: Download tested digests
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
+          pattern: digest-${{ matrix.stage }}-*-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/digests
-          pattern: digests-${{ matrix.stage }}-*
           merge-multiple: true
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3.11.1
-
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3
       - name: Log in to GHCR
-        uses: docker/login-action@v3.4.0
+        uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Install cosign
-        uses: sigstore/cosign-installer@v3.8.2
-
-      - name: Compute release tags for ${{ matrix.tag_suffix }}
-        id: meta
-        uses: docker/metadata-action@v5.7.0
-        with:
-          images: ${{ env.REGISTRY_IMAGE }}
-          # No :latest, no :beta, no :rolling — only versioned + base tags
-          # (single-threaded / multi-threaded / bindgen-base) and the matching
-          # version-suffixed pair. See blueprint Recommendations Trade-offs.
-          tags: |
-            type=raw,value=${{ matrix.tag_suffix }}
-            type=semver,pattern={{version}}-${{ matrix.tag_suffix }}
-            type=semver,pattern={{major}}.{{minor}}-${{ matrix.tag_suffix }}
-            type=sha,prefix=sha-,suffix=-${{ matrix.tag_suffix }},format=short
-
-      - name: Assemble manifest list and push
+        uses: sigstore/cosign-installer@3454372f43399081ed03b604cb2d021dabca52bb # v3
+      - name: Attach consumer-facing tags
+        env:
+          BRANCH: ${{ needs.preflight.outputs.branch_slug }}
+          FULL_SHA: ${{ needs.preflight.outputs.full_sha }}
+          IS_RELEASE: ${{ needs.preflight.outputs.is_release }}
+          STAGE: ${{ matrix.stage }}
+          VERSION: ${{ needs.preflight.outputs.version }}
         working-directory: ${{ runner.temp }}/digests
-        env:
-          REGISTRY_IMAGE: ${{ env.REGISTRY_IMAGE }}
         run: |
-          set -euo pipefail
-          # Word splitting is intentional below: both jq/printf substitutions
-          # expand into multiple CLI args (`-t tag1 -t tag2 …` and
-          # `image@sha256:a image@sha256:b`). This is the documented pattern
-          # from https://docs.docker.com/build/ci/github-actions/multi-platform/
-          # shellcheck disable=SC2046
-          docker buildx imagetools create \
-            $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
-            $(printf "${REGISTRY_IMAGE}@sha256:%s " *)
-
-      - name: Read manifest-list digest (for cosign signing)
-        id: index_digest
-        env:
-          REGISTRY_IMAGE: ${{ env.REGISTRY_IMAGE }}
-          PRIMARY_TAG: ${{ matrix.tag_suffix }}
-        run: |
-          set -euo pipefail
-          # `buildx imagetools inspect --raw` prints the manifest-list bytes;
-          # we sha256 those bytes to get the canonical digest. This is the
-          # same digest cosign would compute, so the signature pins the
-          # exact published manifest list.
-          digest=$(docker buildx imagetools inspect "${REGISTRY_IMAGE}:${PRIMARY_TAG}" --format '{{json .Manifest}}' | jq -r '.digest')
-          if [ -z "$digest" ] || [ "$digest" = "null" ]; then
-            echo "::error::Failed to resolve manifest-list digest for ${REGISTRY_IMAGE}:${PRIMARY_TAG}"
-            exit 1
+          case "$STAGE" in
+            final-single) prefix=single-threaded; branch_prefix=branch ;;
+            final-multi) prefix=multi-threaded; branch_prefix=multi-threaded-branch ;;
+            bindgen-base) prefix=bindgen-base; branch_prefix=bindgen-base-branch ;;
+          esac
+          if [ "$IS_RELEASE" = true ]; then
+            tags=("$prefix" "$VERSION-$prefix" "sha-${FULL_SHA:0:8}-$prefix")
+          else
+            tags=("$branch_prefix-$BRANCH" "$branch_prefix-$BRANCH-$FULL_SHA")
           fi
-          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+          args=()
+          for tag in "${tags[@]}"; do args+=(-t "${REGISTRY_IMAGE}:$tag"); done
+          sources=()
+          for digest in *; do sources+=("${REGISTRY_IMAGE}@sha256:$digest"); done
+          docker buildx imagetools create "${args[@]}" "${sources[@]}"
+          digest="$(docker buildx imagetools inspect "${REGISTRY_IMAGE}:${tags[0]}" --format '{{json .Manifest}}' | jq -r '.digest')"
+          cosign sign --yes "${REGISTRY_IMAGE}@${digest}"
 
-      - name: Cosign sign manifest-list digest (keyless, R16)
+  npm-publish:
+    name: npm · publish
+    if: needs.preflight.outputs.publish == 'true'
+    needs: [preflight, package-assemble, package-gate]
+    runs-on: ubuntu-latest
+    concurrency:
+      group: npm-${{ needs.preflight.outputs.channel }}
+      # Queue every immutable branch publication. actionlint 1.7.12 predates
+      # this GitHub workflow-syntax property, so the local lint target ignores
+      # only its unknown-property diagnostic.
+      queue: max
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Download tested tarball only
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: ${{ needs.package-assemble.outputs.artifact }}
+          path: ${{ runner.temp }}/candidate
+      - name: Set up Node
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: '24'
+          registry-url: https://registry.npmjs.org
+      - name: Use OIDC-capable npm
+        run: npm install --global npm@11.5.1
+      - name: Verify artifact digest
+        working-directory: ${{ runner.temp }}/candidate
+        run: echo "$(cat candidate.sha256)  candidate.tgz" | sha256sum --check
+      - name: Publish or prove idempotency
         env:
-          DIGEST: ${{ steps.index_digest.outputs.digest }}
-          REGISTRY_IMAGE: ${{ env.REGISTRY_IMAGE }}
-          PRIMARY_TAG: ${{ matrix.tag_suffix }}
+          CHANNEL: ${{ needs.preflight.outputs.channel }}
+          FULL_SHA: ${{ needs.preflight.outputs.full_sha }}
+          SOURCE_DATE_EPOCH: ${{ needs.preflight.outputs.source_date_epoch }}
+          VERSION: ${{ needs.preflight.outputs.version }}
+        working-directory: ${{ runner.temp }}/candidate
         run: |
-          set -euo pipefail
-          # Signing the manifest-list digest (rather than per-arch image
-          # digests) produces ONE signature that verifies regardless of which
-          # arch the consumer pulls. cosign 2.x automatically recognises and
-          # signs the OCI image index.
-          cosign sign --yes "${REGISTRY_IMAGE}@${DIGEST}"
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const candidate = JSON.parse(fs.readFileSync('candidate.json', 'utf8'));
+          const expected = {
+            channel: process.env.CHANNEL,
+            fullSha: process.env.FULL_SHA,
+            runAttempt: process.env.GITHUB_RUN_ATTEMPT,
+            runId: process.env.GITHUB_RUN_ID,
+            sourceDateEpoch: process.env.SOURCE_DATE_EPOCH,
+            version: process.env.VERSION,
+          };
+          for (const [key, value] of Object.entries(expected)) {
+            if (candidate[key] !== value) {
+              throw new Error(`candidate ${key} is ${candidate[key]}, expected ${value}`);
+            }
+          }
+          NODE
+          if npm view "@taucad/opencascade.js@$VERSION" version >/dev/null 2>&1; then
+            mkdir -p existing
+            npm pack "@taucad/opencascade.js@$VERSION" --ignore-scripts --pack-destination existing >/dev/null
+            existing="$(find existing -name '*.tgz' -type f -print -quit)"
+            test "$(sha256sum "$existing" | cut -d' ' -f1)" = "$(cat candidate.sha256)"
+            for provenance in \
+              package/dist/opencascade_full.provenance.json \
+              package/dist/opencascade_full_multi.provenance.json; do
+              test "$(tar -xOf "$existing" "$provenance" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>process.stdout.write(JSON.parse(s).source.opencascadejsCommit))")" = "$FULL_SHA"
+            done
+            export ATTESTATION_URL
+            ATTESTATION_URL="$(npm view "@taucad/opencascade.js@$VERSION" dist.attestations.url)"
+            node --input-type=module <<'NODE'
+          const response = await fetch(process.env.ATTESTATION_URL);
+          if (!response.ok) throw new Error(`npm attestation endpoint returned ${response.status}`);
+          const { attestations = [] } = await response.json();
+          const statements = attestations.map(({ bundle }) =>
+            JSON.parse(Buffer.from(bundle.dsseEnvelope.payload, 'base64url')),
+          );
+          const slsa = statements.find(({ predicateType }) =>
+            predicateType === 'https://slsa.dev/provenance/v1',
+          );
+          if (!slsa) throw new Error('published version has no SLSA provenance statement');
+          const workflow = slsa.predicate.buildDefinition.externalParameters.workflow;
+          if (workflow.repository !== 'https://github.com/taucad/opencascade.js') {
+            throw new Error(`unexpected provenance repository: ${workflow.repository}`);
+          }
+          if (workflow.path !== '.github/workflows/docker.yml') {
+            throw new Error(`unexpected provenance workflow: ${workflow.path}`);
+          }
+          const source = slsa.predicate.buildDefinition.resolvedDependencies.find(
+            ({ digest }) => digest?.gitCommit,
+          );
+          if (source?.digest.gitCommit !== process.env.FULL_SHA) {
+            throw new Error(`unexpected provenance commit: ${source?.digest.gitCommit}`);
+          }
+          NODE
+            echo "Exact version already exists with matching bytes and source identity"
+          else
+            npm publish ./candidate.tgz --ignore-scripts --access public --tag "$CHANNEL" --provenance
+          fi
 
-      - name: Checkout (for post-publish link-filter-poc config)
-        if: matrix.stage == 'final-single'
-        uses: actions/checkout@v6
-
-      - name: Post-publish smoke — pull + link-filter-poc
-        if: matrix.stage == 'final-single'
-        run: |
-          set -euo pipefail
-          docker pull "${REGISTRY_IMAGE}:${{ matrix.tag_suffix }}"
-          mkdir -p "$PWD/post-publish-output"
-          docker run --rm \
-            -u "$(id -u):$(id -g)" \
-            -e OCJS_CONFIG=debug \
-            -v "$PWD/post-publish-output:/src" \
-            -v "$PWD/build-configs/link-filter-poc.yml:/src/build-config.yml:ro" \
-            "${REGISTRY_IMAGE}:${{ matrix.tag_suffix }}" \
-            link build-config.yml
-          test -s "$PWD/post-publish-output/opencascade_linkfilter_poc.wasm"
+  registry-verify:
+    name: registries
+    if: needs.preflight.outputs.publish == 'true'
+    needs: [preflight, package-assemble, ghcr-promote, npm-publish]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: ${{ needs.package-assemble.outputs.artifact }}
+          path: ${{ runner.temp }}/candidate
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: '24'
+          registry-url: https://registry.npmjs.org
+      - name: Use the publication npm version
+        run: npm install --global npm@11.5.1
+      - name: Install cosign
+        uses: sigstore/cosign-installer@3454372f43399081ed03b604cb2d021dabca52bb # v3
+      - name: Verify exact registry bytes, provenance, signatures, and runtime
         env:
-          REGISTRY_IMAGE: ${{ env.REGISTRY_IMAGE }}
+          BRANCH: ${{ needs.preflight.outputs.branch_slug }}
+          FULL_SHA: ${{ needs.preflight.outputs.full_sha }}
+          IS_RELEASE: ${{ needs.preflight.outputs.is_release }}
+          VERSION: ${{ needs.preflight.outputs.version }}
+        working-directory: ${{ runner.temp }}/candidate
+        run: |
+          for _ in $(seq 1 30); do
+            npm view "@taucad/opencascade.js@$VERSION" version >/dev/null 2>&1 && break
+            sleep 10
+          done
+          test "$(npm view "@taucad/opencascade.js@$VERSION" dist.integrity)" = "$(cat candidate.sha512)"
+          export ATTESTATION_URL
+          ATTESTATION_URL="$(npm view "@taucad/opencascade.js@$VERSION" dist.attestations.url)"
+          node --input-type=module <<'NODE'
+          const response = await fetch(process.env.ATTESTATION_URL);
+          if (!response.ok) throw new Error(`npm attestation endpoint returned ${response.status}`);
+          const { attestations = [] } = await response.json();
+          const statements = attestations.map(({ bundle }) =>
+            JSON.parse(Buffer.from(bundle.dsseEnvelope.payload, 'base64url')),
+          );
+          const slsa = statements.find(({ predicateType }) =>
+            predicateType === 'https://slsa.dev/provenance/v1',
+          );
+          if (!slsa) throw new Error('published version has no SLSA provenance statement');
+          const workflow = slsa.predicate.buildDefinition.externalParameters.workflow;
+          if (workflow.repository !== 'https://github.com/taucad/opencascade.js') {
+            throw new Error(`unexpected provenance repository: ${workflow.repository}`);
+          }
+          if (workflow.path !== '.github/workflows/docker.yml') {
+            throw new Error(`unexpected provenance workflow: ${workflow.path}`);
+          }
+          const source = slsa.predicate.buildDefinition.resolvedDependencies.find(
+            ({ digest }) => digest?.gitCommit,
+          );
+          if (source?.digest.gitCommit !== process.env.FULL_SHA) {
+            throw new Error(`unexpected provenance commit: ${source?.digest.gitCommit}`);
+          }
+          NODE
+          mkdir install
+          cd install
+          npm init --yes >/dev/null
+          npm install --ignore-scripts --no-audit --no-fund "@taucad/opencascade.js@$VERSION"
+          npm audit signatures
+          node --input-type=module -e "
+            import fs from 'node:fs';
+            import path from 'node:path';
+            import { fileURLToPath } from 'node:url';
+            import init from '@taucad/opencascade.js';
+            import initMulti from '@taucad/opencascade.js/multi';
+            const root = path.dirname(fileURLToPath(import.meta.resolve('@taucad/opencascade.js/wasm')));
+            for (const load of [init, initMulti]) {
+              const oc = await load({ locateFile: file => path.join(root, file) });
+              const box = new oc.BRepPrimAPI_MakeBox(1, 2, 3);
+              const shape = box.Shape();
+              try {
+                if (shape.IsNull()) process.exit(1);
+              } finally {
+                shape.delete();
+                box.delete();
+                oc.PThread?.terminateAllThreads?.();
+              }
+            }
+            for (const name of ['opencascade_full.provenance.json', 'opencascade_full_multi.provenance.json']) {
+              const p = JSON.parse(fs.readFileSync(path.join(root, name)));
+              if (p.source.opencascadejsCommit !== process.env.FULL_SHA) process.exit(1);
+            }
+          "
+          cd ..
+          for stage in final-single final-multi bindgen-base; do
+            case "$stage" in
+              final-single) prefix=single-threaded; branch_prefix=branch ;;
+              final-multi) prefix=multi-threaded; branch_prefix=multi-threaded-branch ;;
+              bindgen-base) prefix=bindgen-base; branch_prefix=bindgen-base-branch ;;
+            esac
+            if [ "$IS_RELEASE" = true ]; then
+              tag="$VERSION-$prefix"
+            else
+              tag="$branch_prefix-$BRANCH-$FULL_SHA"
+            fi
+            cosign verify \
+              --certificate-identity-regexp '^https://github.com/taucad/opencascade\.js/\.github/workflows/docker\.yml@refs/(heads|tags)/.+' \
+              --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+              "$REGISTRY_IMAGE:$tag"
+          done
+          {
+            echo "## Published candidate"
+            echo
+            echo '```sh'
+            echo "npm install @taucad/opencascade.js@$VERSION"
+            echo '```'
+            echo
+            echo "- Source: \`$FULL_SHA\`"
+            echo "- npm provenance: \`.github/workflows/docker.yml\`"
+            echo "- GHCR signatures: verified for all three promoted stages"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  ci-required:
+    name: ci-required
+    if: always()
+    needs: [preflight, quality, candidate-gate, package-gate, registry-verify]
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Require validation and applicable publication
+        env:
+          CANDIDATE: ${{ needs.candidate-gate.result }}
+          PACKAGE: ${{ needs.package-gate.result }}
+          PREFLIGHT: ${{ needs.preflight.result }}
+          PUBLISH: ${{ needs.preflight.outputs.publish }}
+          QUALITY: ${{ needs.quality.result }}
+          REGISTRY: ${{ needs.registry-verify.result }}
+        run: |
+          test "$PREFLIGHT" = success
+          test "$QUALITY" = success
+          test "$CANDIDATE" = success
+          test "$PACKAGE" = success
+          if [ "$PUBLISH" = true ]; then
+            test "$REGISTRY" = success
+          else
+            test "$REGISTRY" = skipped
+          fi
+      - name: Summarize workflow timing
+        if: always()
+        env:
+          CHANNEL: ${{ needs.preflight.outputs.channel }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.preflight.outputs.version }}
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const response = await fetch(
+            `https://api.github.com/repos/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}/jobs?per_page=100`,
+            {
+              headers: {
+                Accept: 'application/vnd.github+json',
+                Authorization: `Bearer ${process.env.GH_TOKEN}`,
+                'X-GitHub-Api-Version': '2022-11-28',
+              },
+            },
+          );
+          if (!response.ok) throw new Error(`jobs API returned ${response.status}`);
+          const { jobs } = await response.json();
+          const complete = jobs.filter(({ started_at, completed_at }) => started_at && completed_at);
+          const rows = complete
+            .map((job) => ({
+              name: job.name,
+              seconds: (Date.parse(job.completed_at) - Date.parse(job.started_at)) / 1000,
+            }))
+            .sort((a, b) => b.seconds - a.seconds);
+          const starts = complete.map(({ started_at }) => Date.parse(started_at));
+          const ends = complete.map(({ completed_at }) => Date.parse(completed_at));
+          const elapsed = starts.length ? (Math.max(...ends) - Math.min(...starts)) / 60_000 : 0;
+          const runner = rows.reduce((total, { seconds }) => total + seconds, 0) / 60;
+          const minutes = (value) => `${value.toFixed(1)} min`;
+          const lines = [
+            '## CI timing',
+            '',
+            `- Candidate: \`${process.env.VERSION}\` (\`${process.env.CHANNEL}\`)`,
+            `- Observed critical-path span: ${minutes(elapsed)} (historical baseline: 149 min)`,
+            `- Completed runner time: ${minutes(runner)} (historical baseline: 305 min)`,
+            '',
+            '| Completed job | Duration |',
+            '| --- | ---: |',
+            ...rows.map(({ name, seconds }) => `| ${name.replaceAll('|', '\\|')} | ${minutes(seconds / 60)} |`),
+          ];
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${lines.join('\n')}\n`);
+          NODE

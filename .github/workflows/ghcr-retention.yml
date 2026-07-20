@@ -1,84 +1,48 @@
 name: ghcr-retention
 
-# Production-readiness blueprint reference:
-#   docs/research/ocjs-docker-production-readiness-blueprint.md
-#
-# Nightly enforcement of the GHCR retention policy:
-#
-#   - Branch tags (`:branch-*`, `:multi-threaded-branch-*`, `:bindgen-base-branch-*`):
-#     7 days retention; keep the 5 most recent versions per branch tag prefix.
-#   - Release tags (`:single-threaded`, `:multi-threaded`, `:bindgen-base`,
-#     versioned variants, `:sha-*`): retained indefinitely — NOT touched here.
-#   - Build cache (`:buildcache-*`): 14 days retention; rebuilds on cache miss
-#     are bounded by R10 in-RUN pruning so a stale cache is not disastrous.
-#
-# Implementation note (R15): `actions/delete-package-versions@v5` is the
-# GitHub-blessed retention action; it queries the package's version list and
-# deletes by version ID. We invoke it once per tag-prefix family because the
-# action's `package-version-ids` / `min-versions-to-keep` semantics work
-# per-package, not per-tag-prefix.
-
 on:
   schedule:
-    # 03:17 UTC nightly — off the GitHub Actions peak-load hour boundary
-    # (XX:00 / XX:30) so jobs queue faster.
     - cron: '17 3 * * *'
   workflow_dispatch:
+    inputs:
+      delete:
+        description: Delete the versions selected by the dry run
+        required: true
+        default: false
+        type: boolean
 
 permissions:
-  packages: write
+  contents: read
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-  PACKAGE_NAME: opencascade.js
-  PACKAGE_TYPE: container
-  PACKAGE_OWNER: taucad
 
 jobs:
-  prune-branch-tags:
-    name: Prune branch tags older than 7 days
+  retain:
+    name: ghcr · retention
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        tag_pattern:
-          - 'branch-*'
-          - 'multi-threaded-branch-*'
-          - 'bindgen-base-branch-*'
+    permissions:
+      contents: read
+      packages: write
     steps:
-      - name: Delete versions older than 7 days matching ${{ matrix.tag_pattern }}
-        uses: actions/delete-package-versions@v5.0.0
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Set up Node
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
-          package-name: ${{ env.PACKAGE_NAME }}
-          package-type: ${{ env.PACKAGE_TYPE }}
-          owner: ${{ env.PACKAGE_OWNER }}
-          # Keep the 5 most recent versions per family; older eligible
-          # versions get reaped. Tagged-only filter avoids deleting untagged
-          # builds that are still referenced by manifest lists.
-          min-versions-to-keep: 5
-          delete-only-pre-release-versions: 'false'
-          delete-only-untagged-versions: 'false'
-          ignore-versions: '^(?!${{ matrix.tag_pattern }}).*$'
-
-  prune-buildcache:
-    name: Prune build-cache tags older than 14 days
-    runs-on: ubuntu-latest
-    steps:
-      - name: Delete buildcache-* versions older than 14 days
-        uses: actions/delete-package-versions@v5.0.0
-        with:
-          package-name: ${{ env.PACKAGE_NAME }}
-          package-type: ${{ env.PACKAGE_TYPE }}
-          owner: ${{ env.PACKAGE_OWNER }}
-          # Keep the 4 most recent buildcache scopes — one per
-          # (arch × stage) pairing in the active hot path:
-          #   buildcache-amd64-final-single
-          #   buildcache-amd64-final-multi
-          #   buildcache-arm64-final-single
-          #   buildcache-arm64-final-multi
-          # Other (stage × arch) pairs (bindgen-base × arm64, etc.) are
-          # rebuilt on demand from BuildKit content addressing.
-          min-versions-to-keep: 4
-          delete-only-pre-release-versions: 'false'
-          delete-only-untagged-versions: 'false'
-          ignore-versions: '^(?!buildcache-).*$'
+          node-version: '24'
+          cache: npm
+      - name: Install locked test tools
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Verify retention policy
+        run: npx vitest run tests/ci/ci-contracts.test.ts
+      - name: Select and optionally delete expired versions
+        env:
+          DELETE_REQUESTED: ${{ github.event_name == 'schedule' || inputs.delete }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          args=()
+          if [ "$DELETE_REQUESTED" = true ]; then
+            args+=(--delete)
+          fi
+          node scripts/ghcr-retention.mjs "${args[@]}"

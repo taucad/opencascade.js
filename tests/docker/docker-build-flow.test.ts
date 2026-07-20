@@ -24,15 +24,16 @@ import {
 
 const LINK_TIMEOUT = 900_000; // 15 min — cold-ish custom link on the warm image cache.
 const FAST_TIMEOUT = 180_000; // schema-rejection cases fail fast but allow container startup.
+const STAGE = process.env.OCJS_DOCKER_STAGE ?? 'all';
 
 function expectArtifacts(workDir: string, base: string): void {
-  for (const ext of ['js', 'wasm', 'd.ts']) {
+  for (const ext of ['js', 'wasm', 'd.ts', 'js.symbols', 'build-manifest.json', 'provenance.json']) {
     const file = path.join(workDir, `${base}.${ext}`);
     expect(fs.existsSync(file), `expected artifact ${base}.${ext}`).toBe(true);
   }
 }
 
-describe.skipIf(!dockerTestsEnabled())('Docker build flow (published GHCR images)', () => {
+describe.skipIf(!dockerTestsEnabled() || !['all', 'final-single'].includes(STAGE))('Docker build flow (single candidate)', () => {
   it(
     'single image: builds a custom module that loads and instantiates OCCT',
     async () => {
@@ -74,6 +75,9 @@ describe.skipIf(!dockerTestsEnabled())('Docker build flow (published GHCR images
     FAST_TIMEOUT,
   );
 
+});
+
+describe.skipIf(!dockerTestsEnabled() || !['all', 'final-multi'].includes(STAGE))('Docker build flow (multi candidate)', () => {
   it(
     'multi image: builds a pthread module that reports parallel mode and meshes in parallel',
     async () => {
@@ -119,6 +123,9 @@ describe.skipIf(!dockerTestsEnabled())('Docker build flow (published GHCR images
     LINK_TIMEOUT,
   );
 
+});
+
+describe.skipIf(!dockerTestsEnabled() || !['all', 'final-single'].includes(STAGE))('Docker progress behavior (single candidate)', () => {
   it(
     'single image: progress indicator wiring — Show callbacks fire and UserBreak cancels',
     async () => {

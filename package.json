@@ -66,10 +66,12 @@
     "access": "public"
   },
   "scripts": {
-    "test": "vitest run tests/smoke/",
+    "test": "vitest run",
+    "test:ci": "CI=true vitest run tests/ci tests/readme-shape.test.ts tests/docs-layout.test.ts tests/yaml-schema-doc-parity.test.ts starter-templates/*/tests",
     "test:smoke": "vitest run tests/smoke/",
-    "test:regression": "vitest run tests/regression/",
+    "test:regression": "vitest run --config vitest.regression.config.ts",
     "test:docker": "vitest run --config vitest.docker.config.ts",
+    "test:package": "vitest run --config vitest.package.config.ts",
     "typecheck": "tsc --project tests/tsconfig.json",
     "lint": "eslint --config eslint.config.mjs tests",
     "lint:fix": "eslint --config eslint.config.mjs --fix tests"
@@ -80,7 +82,9 @@
     "@types/node": "~24.0.15",
     "eslint": "^9.32.0",
     "nx": "22.5.2",
-    "typedoc": "^0.28.19",
-    "typescript-eslint": "^8.56.1"
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.0",
+    "typescript-eslint": "^8.56.1",
+    "yaml": "^2.8.2"
   }
 }

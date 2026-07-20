@@ -222,6 +222,119 @@
         "cwd": "{projectRoot}"
       }
     },
+    "lint-js": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "options": {
+        "command": "npm run lint",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "lint-python": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "options": {
+        "command": ".venv/bin/ruff check src scripts tests",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "lint-shell": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "options": {
+        "command": "bash -n build-wasm.sh scripts/*.sh && shellcheck build-wasm.sh scripts/*.sh",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "lint-workflows": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "options": {
+        "command": ".venv/bin/actionlint -ignore 'unexpected key \"queue\" for \"concurrency\" section' .github/workflows/*.yml",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "options": {
+        "command": "npm test",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "test-ci": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "options": {
+        "command": "npm run test:ci",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "test-regression": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "options": {
+        "command": "npm run test:regression",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "options": {
+        "command": "npm run typecheck",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "test-python-unit": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "dependsOn": ["setup"],
+      "options": {
+        "command": "OCJS_ROOT=\"$PWD\" OCCT_ROOT=\"$PWD/deps/OCCT\" RAPIDJSON_ROOT=\"$PWD/deps/rapidjson\" FREETYPE_ROOT=\"$PWD/deps/freetype\" EMSDK=\"$PWD/deps/emsdk\" .venv/bin/pytest tests/unit tests/bindgen",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "test-python-integration": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "OCJS_ROOT=\"$PWD\" OCCT_ROOT=\"$PWD/deps/OCCT\" RAPIDJSON_ROOT=\"$PWD/deps/rapidjson\" FREETYPE_ROOT=\"$PWD/deps/freetype\" EMSDK=\"$PWD/deps/emsdk\" .venv/bin/pytest tests/integration tests/sentinel",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "test-docker": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "npm run test:docker",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "test-package": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "npm run test:package",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "quality": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "dependsOn": [
+        "lint-js",
+        "lint-python",
+        "lint-shell",
+        "lint-workflows",
+        "test-ci",
+        "test-python-unit"
+      ],
+      "options": {
+        "command": "echo 'Quality checks passed'",
+        "cwd": "{projectRoot}"
+      }
+    },
     "docker-e2e": {
       "executor": "nx:run-commands",
       "cache": false,

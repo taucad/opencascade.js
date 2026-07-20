@@ -20,8 +20,9 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
-export const SINGLE_IMAGE = 'ghcr.io/taucad/opencascade.js:single-threaded';
-export const MULTI_IMAGE = 'ghcr.io/taucad/opencascade.js:multi-threaded';
+export const SINGLE_IMAGE = process.env.OCJS_DOCKER_SINGLE_IMAGE ?? '';
+export const MULTI_IMAGE = process.env.OCJS_DOCKER_MULTI_IMAGE ?? '';
+export const BINDGEN_IMAGE = process.env.OCJS_DOCKER_BINDGEN_IMAGE ?? '';
 
 const FIXTURES_DIR = path.join(import.meta.dirname, 'fixtures');
 const WORK_ROOT = path.join(import.meta.dirname, '.work');
@@ -39,7 +40,18 @@ function dockerAvailable(): boolean {
  */
 export function dockerTestsEnabled(): boolean {
   if (process.env.OCJS_DOCKER_TESTS !== '1') return false;
-  return dockerAvailable();
+  if (!dockerAvailable()) throw new Error('OCJS_DOCKER_TESTS=1 but Docker is unavailable');
+  const stage = process.env.OCJS_DOCKER_STAGE ?? 'all';
+  if ((stage === 'all' || stage === 'final-single') && !SINGLE_IMAGE) {
+    throw new Error('OCJS_DOCKER_SINGLE_IMAGE is required');
+  }
+  if ((stage === 'all' || stage === 'final-multi') && !MULTI_IMAGE) {
+    throw new Error('OCJS_DOCKER_MULTI_IMAGE is required');
+  }
+  if ((stage === 'all' || stage === 'bindgen-base') && !BINDGEN_IMAGE) {
+    throw new Error('OCJS_DOCKER_BINDGEN_IMAGE is required');
+  }
+  return true;
 }
 
 export type LinkResult = {
