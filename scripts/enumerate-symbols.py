@@ -194,7 +194,7 @@ def generate_yaml(classes, enums, typedefs, handle_classes: set[str]) -> str:
         "  - -sEXPORT_ES6=1",
         "  - -sMODULARIZE",
         "  - -sALLOW_MEMORY_GROWTH=1",
-        '  - -sEXPORTED_RUNTIME_METHODS=["FS"]',
+        '  - -sEXPORTED_RUNTIME_METHODS=["FS","wasmMemory"]',
         "  - -sINITIAL_MEMORY=128MB",
         "  - -sMAXIMUM_MEMORY=4GB",
         "  - -sUSE_FREETYPE=1",

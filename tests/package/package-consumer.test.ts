@@ -48,6 +48,10 @@ describe('installed npm candidate', () => {
     ]) {
       const init = (await import(pathToFileURL(path.join(packageDir, 'dist', variant.module)).href)).default;
       const oc = await init({ locateFile: (file: string) => path.join(packageDir, 'dist', file) });
+      expect(oc.wasmMemory).toBeInstanceOf(WebAssembly.Memory);
+      expect(oc.wasmMemory.buffer).toBeInstanceOf(
+        variant.threaded ? SharedArrayBuffer : ArrayBuffer,
+      );
       using box = new oc.BRepPrimAPI_MakeBox(1, 2, 3);
       using shape = box.Shape();
       expect(shape.IsNull()).toBe(false);

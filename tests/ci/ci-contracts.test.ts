@@ -233,6 +233,45 @@ describe('CI contracts', () => {
     }
   });
 
+  it('should test the exact npm candidate in the six-cell browser runtime matrix', () => {
+    const ci = workflow('docker.yml');
+    const browser = ci.jobs['package-browser'];
+    expect(browser.needs).toBe('package-assemble');
+    expect(browser.strategy).toBeUndefined();
+    expect(ci.jobs['package-templates'].strategy).toBeUndefined();
+    expect(ci.jobs['package-gate'].needs).toEqual([
+      'package-runtime',
+      'package-browser',
+      'package-templates',
+      'package-docs',
+    ]);
+
+    const runner = fs.readFileSync(path.join(ROOT, 'scripts/browser-runtime-matrix.mjs'), 'utf8');
+    const wrapper = fs.readFileSync(path.join(ROOT, 'scripts/test-candidate-browser.sh'), 'utf8');
+    const workflowSource = fs.readFileSync(path.join(ROOT, '.github/workflows/docker.yml'), 'utf8');
+    expect(runner).toContain('Object.entries({ chromium, firefox, webkit })');
+    expect(runner).toContain("single: 'opencascade_full'");
+    expect(runner).toContain("multi: 'opencascade_full_multi'");
+    expect(runner).toContain("page.on('console'");
+    expect(runner).toContain("page.on('pageerror'");
+    expect(runner).toContain("page.on('worker'");
+    expect(wrapper).toContain('playwright@1.60.0');
+    expect(wrapper).toContain('playwright install --with-deps chromium firefox webkit');
+    expect(workflowSource).not.toContain('Browser multi-threaded boot');
+  });
+
+  it('should export wasmMemory from every canonical full-build configuration', () => {
+    for (const relative of [
+      'build-configs/full.yml',
+      'build-configs/full_multi.yml',
+      'build-configs/full_multi_browser.yml',
+      'scripts/enumerate-symbols.py',
+    ]) {
+      const source = fs.readFileSync(path.join(ROOT, relative), 'utf8');
+      expect(source, relative).toContain('-sEXPORTED_RUNTIME_METHODS=["FS","wasmMemory"]');
+    }
+  });
+
   it('should keep mutation behind the package gate and npm OIDC away from checkout', () => {
     const ci = workflow('docker.yml');
     expect(ci.jobs.quality.needs).toBe('preflight');
@@ -275,6 +314,7 @@ describe('CI contracts', () => {
       '.github/workflows/updateReferenceDocs.yml',
       '.github/workflows/updateStarterTemplates.yml',
       'builds/opencascade.full.yml',
+      'docs-site/scripts/browser-multi-smoke.mjs',
       'runAction.sh',
       'scripts/docker-ci-preflight.sh',
       'test',

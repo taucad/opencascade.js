@@ -72,6 +72,7 @@ jobs:
       - name: Fast syntax checks
         run: |
           node --check scripts/ci-release.mjs
+          node --check scripts/browser-runtime-matrix.mjs
           node --check scripts/package-candidate.mjs
           node --check scripts/ghcr-retention.mjs
           node --check scripts/lib/*.mjs
@@ -234,23 +235,6 @@ jobs:
               .venv/bin/pytest tests/integration tests/sentinel
             '
 
-      - name: Browser multi-threaded boot
-        if: matrix.stage == 'final-multi'
-        env:
-          IMAGE: ocjs:e2e-${{ matrix.stage }}
-          OUT: ${{ runner.temp }}/browser-multi
-        run: |
-          mkdir -p "$OUT"
-          docker run --rm \
-            -u "$(id -u):$(id -g)" \
-            -v "$PWD/build-configs/full_multi_browser.yml:/src/build-config.yml:ro" \
-            -v "$OUT:/output" \
-            -e OCJS_OUTPUT_DIR=/output \
-            "$IMAGE" link build-config.yml
-          corepack pnpm@9.15.9 --dir docs-site install --frozen-lockfile --ignore-scripts
-          corepack pnpm@9.15.9 --dir docs-site exec playwright install chromium
-          node docs-site/scripts/browser-multi-smoke.mjs "$OUT"
-
       - name: Upload ST/MT package outputs
         if: matrix.stage != 'bindgen-base'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -380,23 +364,6 @@ jobs:
               cd /opencascade.js
               .venv/bin/pytest tests/integration tests/sentinel
             '
-
-      - name: Browser multi-threaded boot
-        if: matrix.arch == 'amd64' && matrix.stage == 'final-multi'
-        env:
-          IMAGE: ocjs:e2e-${{ matrix.stage }}
-          OUT: ${{ runner.temp }}/browser-multi
-        run: |
-          mkdir -p "$OUT"
-          docker run --rm \
-            -u "$(id -u):$(id -g)" \
-            -v "$PWD/build-configs/full_multi_browser.yml:/src/build-config.yml:ro" \
-            -v "$OUT:/output" \
-            -e OCJS_OUTPUT_DIR=/output \
-            "$IMAGE" link build-config.yml
-          corepack pnpm@9.15.9 --dir docs-site install --frozen-lockfile --ignore-scripts
-          corepack pnpm@9.15.9 --dir docs-site exec playwright install chromium
-          node docs-site/scripts/browser-multi-smoke.mjs "$OUT"
 
       - name: Upload ST/MT package outputs
         if: matrix.arch == 'amd64' && matrix.stage != 'bindgen-base'
@@ -614,6 +581,26 @@ jobs:
           OCJS_PACKAGE_TARBALL: ${{ runner.temp }}/candidate/candidate.tgz
         run: npm run test:package
 
+  package-browser:
+    name: package · browser runtime matrix
+    needs: package-assemble
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Set up Node
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: '24'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: ${{ needs.package-assemble.outputs.artifact }}
+          path: ${{ runner.temp }}/candidate
+      - name: Test ST and MT in Chromium, Firefox, and WebKit
+        env:
+          OCJS_PACKAGE_TARBALL: ${{ runner.temp }}/candidate/candidate.tgz
+        run: scripts/test-candidate-browser.sh
+
   package-templates:
     name: package · active templates
     needs: package-assemble
@@ -657,7 +644,7 @@ jobs:
 
   package-gate:
     name: package
-    needs: [package-runtime, package-templates, package-docs]
+    needs: [package-runtime, package-browser, package-templates, package-docs]
     runs-on: ubuntu-latest
     steps:
       - run: echo "Exact npm candidate passed every consumer"
