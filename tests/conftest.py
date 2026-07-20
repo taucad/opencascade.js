@@ -15,9 +15,10 @@ real libclang AST is exercised only by the byte-parity sentinels in
 from __future__ import annotations
 
 import sys
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Iterable, List, Optional, Sequence
+from typing import Any
 
 import pytest
 
@@ -46,13 +47,13 @@ class _MockType:
     self,
     spelling: str = "",
     kind: Any = None,
-    canonical: Optional["_MockType"] = None,
-    pointee: Optional["_MockType"] = None,
-    declaration: Optional["_MockCursor"] = None,
+    canonical: _MockType | None = None,
+    pointee: _MockType | None = None,
+    declaration: _MockCursor | None = None,
     is_const: bool = False,
-    template_args: Optional[Sequence[Any]] = None,
-    argument_types: Optional[Sequence["_MockType"]] = None,
-    result_type: Optional["_MockType"] = None,
+    template_args: Sequence[Any] | None = None,
+    argument_types: Sequence[_MockType] | None = None,
+    result_type: _MockType | None = None,
   ) -> None:
     self.spelling = spelling
     self.kind = kind
@@ -66,13 +67,13 @@ class _MockType:
     self._argument_types = list(argument_types) if argument_types is not None else []
     self._result_type = result_type
 
-  def get_canonical(self) -> "_MockType":
+  def get_canonical(self) -> _MockType:
     return self._canonical if self._canonical is not None else self
 
-  def get_pointee(self) -> "_MockType":
+  def get_pointee(self) -> _MockType:
     return self._pointee if self._pointee is not None else _MockType()
 
-  def get_declaration(self) -> "_MockCursor":
+  def get_declaration(self) -> _MockCursor:
     return self._declaration if self._declaration is not None else cursor_mock(spelling="", kind=None)
 
   def is_const_qualified(self) -> bool:
@@ -81,14 +82,14 @@ class _MockType:
   def get_num_template_arguments(self) -> int:
     return len(self._template_args)
 
-  def get_template_argument_type(self, idx: int) -> "_MockType":
+  def get_template_argument_type(self, idx: int) -> _MockType:
     return self._template_args[idx]
 
-  def argument_types(self) -> List["_MockType"]:
+  def argument_types(self) -> list[_MockType]:
     """Stand-in for `clang.cindex.Type.argument_types()` on FUNCTIONPROTO."""
     return list(self._argument_types)
 
-  def get_result(self) -> "_MockType":
+  def get_result(self) -> _MockType:
     """Stand-in for `clang.cindex.Type.get_result()` on FUNCTIONPROTO."""
     return self._result_type if self._result_type is not None else _MockType()
 
@@ -103,21 +104,21 @@ class _MockCursor:
   """
   spelling: str = ""
   kind: Any = None
-  parent: Optional["_MockCursor"] = None
-  children: List["_MockCursor"] = field(default_factory=list)
+  parent: _MockCursor | None = None
+  children: list[_MockCursor] = field(default_factory=list)
   type: _MockType = field(default_factory=_MockType)
   displayname: str = ""
   access_specifier: Any = None
-  semantic_parent: Optional["_MockCursor"] = None
-  lexical_parent: Optional["_MockCursor"] = None
+  semantic_parent: _MockCursor | None = None
+  lexical_parent: _MockCursor | None = None
 
-  def get_children(self) -> Iterable["_MockCursor"]:
+  def get_children(self) -> Iterable[_MockCursor]:
     return iter(self.children)
 
-  def get_arguments(self) -> Iterable["_MockCursor"]:
+  def get_arguments(self) -> Iterable[_MockCursor]:
     return iter([c for c in self.children if getattr(c, "kind", None) and getattr(c.kind, "name", "") == "PARM_DECL"])
 
-  def get_definition(self) -> "_MockCursor":
+  def get_definition(self) -> _MockCursor:
     return self
 
   def is_const_method(self) -> bool:
@@ -131,9 +132,9 @@ def cursor_mock(
   *,
   kind: Any = None,
   spelling: str = "",
-  parent: Optional[_MockCursor] = None,
-  children: Optional[Sequence[_MockCursor]] = None,
-  type: Optional[_MockType] = None,
+  parent: _MockCursor | None = None,
+  children: Sequence[_MockCursor] | None = None,
+  type: _MockType | None = None,
   **overrides: Any,
 ) -> _MockCursor:
   """Build a minimal `_MockCursor` for unit tests.

@@ -20,7 +20,6 @@ import clang.cindex
 
 from ocjs_bindgen.ast import augment_template_args_with_canonical
 from ocjs_bindgen.ast.template_args import TemplateArgMap
-
 from tests.conftest import _MockType, cursor_mock
 
 

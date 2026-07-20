@@ -21,14 +21,11 @@ accessors:
 
 from __future__ import annotations
 
-from typing import Dict, List, Optional
-
 import clang.cindex
 
 from ocjs_bindgen.resolver.strategies.member_typedef import (
   resolve_member_typedef_substitution,
 )
-
 from tests.conftest import _MockType, cursor_mock  # type: ignore[attr-defined]
 
 
@@ -40,9 +37,9 @@ class _StubResolverContext:
   shape if needed.
   """
 
-  def __init__(self, *, resolve_table: Dict[str, str]) -> None:
+  def __init__(self, *, resolve_table: dict[str, str]) -> None:
     self._resolve_table = resolve_table
-    self.resolve_calls: List[str] = []
+    self.resolve_calls: list[str] = []
 
   def resolve_type(self, clang_type, templateDecl=None, templateArgs=None) -> str:
     self.resolve_calls.append(clang_type.spelling)
@@ -52,7 +49,7 @@ class _StubResolverContext:
 def _typedef_cursor(
   *,
   underlying_spelling: str,
-  underlying_canonical: Optional[str] = None,
+  underlying_canonical: str | None = None,
   kind: clang.cindex.CursorKind = clang.cindex.CursorKind.TYPEDEF_DECL,
 ):
   """Build a `_MockCursor` shaped like a TYPEDEF_DECL whose

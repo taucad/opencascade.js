@@ -34,13 +34,12 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from ocjs_bindgen.predicates.sibling_aliasing import (  # noqa: E402
-    ConflictReport,
     MATRIX_ROW,
+    ConflictReport,
     ParamSig,
     detect_sub2b_pairs,
     normalise_type,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -437,6 +436,7 @@ def test_emission_uses_val_discrimination_for_sub2b_pair():
     """
     sys.path.insert(0, str(REPO_ROOT / "src"))
     from collections import namedtuple
+
     from ocjs_bindgen.codegen.embind.constructor import emit_sibling_aliased_constructor
     # JsType is normally re-exported from ``bindings`` but importing
     # ``bindings`` triggers the libclang / vendored-LLVM toolchain
@@ -465,6 +465,9 @@ def test_emission_uses_val_discrimination_for_sub2b_pair():
 
         def get_canonical(self):
             return self
+
+        def get_declaration(self):
+            return None
 
         @property
         def kind(self):

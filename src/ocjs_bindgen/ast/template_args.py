@@ -31,10 +31,10 @@ dict shape unchanged. Behaviour preserved bit-for-bit.
 from __future__ import annotations
 
 import re
-from typing import Any, Iterable, Mapping, Optional
+from collections.abc import Iterable, Mapping
+from typing import Any
 
 import clang.cindex
-
 
 _TYPE_PARAM_RE = re.compile(r"type-parameter-(\d+)-(\d+)")
 
@@ -53,7 +53,7 @@ class TemplateArgMap:
 
     __slots__ = ("_map",)
 
-    def __init__(self, mapping: Optional[Mapping[str, Any]] = None) -> None:
+    def __init__(self, mapping: Mapping[str, Any] | None = None) -> None:
         self._map: dict = dict(mapping) if mapping else {}
 
     @classmethod

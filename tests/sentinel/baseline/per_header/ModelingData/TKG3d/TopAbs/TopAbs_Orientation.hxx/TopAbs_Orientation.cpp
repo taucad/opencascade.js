@@ -4615,6 +4615,7 @@
 #include <emscripten/wire.h>
 using namespace emscripten;
 #include <functional>
+#include <optional>
 #include <stdexcept>
 #include "ocjs_smart_ptr.h"
 #include "ocjs_handle_helpers.h"

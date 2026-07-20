@@ -1,27 +1,42 @@
 #!/usr/bin/python3
 
 import hashlib
+import json
+import multiprocessing
 import os
 import re
+import shutil
 import subprocess
 import sys
-import json
 import time
-import multiprocessing
-from itertools import chain
-import yaml
-import shutil
-from cerberus import Validator
 from argparse import ArgumentParser
-from ocjs_bindgen.config.paths import OCJS_ROOT, BUILD_DIR, getFlatIncludePaths, PCH_FILE
-from ocjs_bindgen.config.flags import WASM_EXCEPTION_FLAGS, USE_WASM_EXCEPTIONS, SIMD_FLAGS, EXTRA_COMPILE_FLAGS, validate_build_flags, BuildFlagMismatch
-from ocjs_bindgen.link.manifest_registry import (
-  builtin_binding_symbols as _builtin_binding_symbols,
-  collect_compiled_symbols as _collect_compiled_symbols,
-  load_ncollection_alias_index as _load_ncollection_alias_index,
-  resolve_requested_symbols as _resolve_requested_symbols,
-)
+from itertools import chain
+
+import yaml
+from cerberus import Validator
+
 from filter.filterPackages import filterPackages
+from ocjs_bindgen.config.flags import (
+    EXTRA_COMPILE_FLAGS,
+    SIMD_FLAGS,
+    WASM_EXCEPTION_FLAGS,
+    BuildFlagMismatch,
+    validate_build_flags,
+)
+from ocjs_bindgen.config.paths import BUILD_DIR, OCJS_ROOT, PCH_FILE, getFlatIncludePaths
+from ocjs_bindgen.link.manifest_registry import (
+    builtin_binding_symbols as _builtin_binding_symbols,
+)
+from ocjs_bindgen.link.manifest_registry import (
+    collect_compiled_symbols as _collect_compiled_symbols,
+)
+from ocjs_bindgen.link.manifest_registry import (
+    load_ncollection_alias_index as _load_ncollection_alias_index,
+)
+from ocjs_bindgen.link.manifest_registry import (
+    resolve_requested_symbols as _resolve_requested_symbols,
+)
+
 try:
     import provenance as prov
 except ImportError:
@@ -199,11 +214,6 @@ def _enforce_strict_types_gate(
 # original call shape; the implementation is now a composable
 # `LinkRewriter` chain that future passes (e.g. `RedundantUnknownAliasDropper`)
 # can plug into without re-touching the link driver.
-from ocjs_bindgen.link.rewrite import (  # noqa: E402
-  replace_undeclared_with_unknown as _replace_undeclared_with_unknown,
-)
-
-
 # Forward-declaration + inline-namespace preamble injected into BOTH the
 # additionalBindCode TU AND every generated binding TU (via embindPreamble in
 # generateBindings.py). The EM_JS *definition* lives only in the
@@ -219,9 +229,12 @@ from ocjs_bindgen.link.rewrite import (  # noqa: E402
 # from there so the link compile and the bind-symbols extractor always see
 # byte-identical source.
 from ocjs_bindgen.embind_builtins import (  # noqa: E402
-  BUILTIN_ADDITIONAL_BIND_CODE,
-  OCJS_RBV_PREAMBLE,
+    BUILTIN_ADDITIONAL_BIND_CODE,
 )
+from ocjs_bindgen.link.rewrite import (  # noqa: E402
+    replace_undeclared_with_unknown as _replace_undeclared_with_unknown,
+)
+
 
 def verifyBindings(bindings, libraryBasePath) -> bool:
   """Verify every requested binding has a compiled `.o`, an NCollection
@@ -545,7 +558,7 @@ def shouldProcessSymbol(symbol: str, bindings) -> bool:
   if symbol in _auto_symbols:
     return True
   entry = next((b for b in bindings if b["symbol"] == symbol), None)
-  if not entry is None:
+  if entry is not None:
     return True
   return False
 
@@ -562,20 +575,20 @@ def _warn_consistency(build):
 
   if env_exc and yaml_disables_exc:
     print(
-      f"WARNING: Compiled with OCJS_EXCEPTIONS=1 but emccFlags has -sDISABLE_EXCEPTION_CATCHING=1. "
-      f"These are contradictory -- link may not handle exceptions correctly.",
+      "WARNING: Compiled with OCJS_EXCEPTIONS=1 but emccFlags has -sDISABLE_EXCEPTION_CATCHING=1. "
+      "These are contradictory -- link may not handle exceptions correctly.",
       file=sys.stderr, flush=True,
     )
   if not env_exc and (yaml_has_wasm_exc or yaml_has_js_exc):
     print(
-      f"WARNING: Compiled with OCJS_EXCEPTIONS=0 but emccFlags has exception flags. "
-      f"Link-time exception support without compile-time support may cause issues.",
+      "WARNING: Compiled with OCJS_EXCEPTIONS=0 but emccFlags has exception flags. "
+      "Link-time exception support without compile-time support may cause issues.",
       file=sys.stderr, flush=True,
     )
   if env_simd and not yaml_has_simd:
     print(
-      f"WARNING: Compiled with OCJS_SIMD=1 but emccFlags lacks -msimd128. "
-      f"wasm-opt will enable SIMD, but link may miss relaxed-simd optimizations.",
+      "WARNING: Compiled with OCJS_SIMD=1 but emccFlags lacks -msimd128. "
+      "wasm-opt will enable SIMD, but link may miss relaxed-simd optimizations.",
       file=sys.stderr, flush=True,
     )
 
@@ -611,7 +624,7 @@ def runBuild(build, libraryBasePath):
     validate_build_flags()
   except BuildFlagMismatch as e:
     print(str(e), flush=True)
-    raise SystemExit(1)
+    raise SystemExit(1) from None
   _warn_consistency(build)
 
   def getAdditionalBindCodeO():
@@ -856,14 +869,14 @@ def _collect_dts_fragments(buildConfig, libraryBasePath):
       continue
     for item in filenames:
       if item.endswith(".d.ts.json") and shouldProcessSymbol(item[:-10], allBindings):
-        f = open(dirpath + "/" + item, "r")
+        f = open(dirpath + "/" + item)
         typescriptDefinitions.append(json.loads(f.read()))
   return typescriptDefinitions
 
 
 def main():
-  from ocjs_bindgen.pipeline.generate import generateCustomCodeBindings
   from compileBindings import compileCustomCodeBindings
+  from ocjs_bindgen.pipeline.generate import generateCustomCodeBindings
 
   parser = ArgumentParser()
   parser.add_argument(dest="filename", help="Custom build input file (.yml)", metavar="FILE.yml")
@@ -875,8 +888,8 @@ def main():
   global _yaml_config_hash
   with open(args.filename, "rb") as yf:
     _yaml_config_hash = hashlib.sha256(yf.read()).hexdigest()[:12]
-  buildConfig = yaml.safe_load(open(args.filename, "r"))
-  schema = eval(open(OCJS_ROOT + "/src/customBuildSchema.py", "r").read())
+  buildConfig = yaml.safe_load(open(args.filename))
+  schema = eval(open(OCJS_ROOT + "/src/customBuildSchema.py").read())
   v = Validator(schema)
   if not v.validate(buildConfig, schema):
     raise Exception(v.errors)
@@ -902,7 +915,7 @@ def main():
       resolved = os.path.join(yaml_dir, cpp_file) if not os.path.isabs(cpp_file) else cpp_file
       if not os.path.isfile(resolved):
         raise FileNotFoundError(f"additionalCppFiles: file not found: {resolved} (from '{cpp_file}')")
-      with open(resolved, "r") as f:
+      with open(resolved) as f:
         additionalCppCode += "\n" + f.read()
 
     # The global `_auto_symbols` default is empty; custom-code generation
@@ -1002,7 +1015,7 @@ def main():
     # module-level `OCJS_ROOT` (imported at top of file).
     declarations_dir = os.path.join(OCJS_ROOT, 'src', 'declarations')
 
-    with open(os.path.join(declarations_dir, 'builtin-bindings.d.ts'), 'r') as f:
+    with open(os.path.join(declarations_dir, 'builtin-bindings.d.ts')) as f:
       typescriptDefinitionOutput += f.read() + "\n\n"
     typescriptExports.extend([
       {"export": "TColStd_IndexedDataMapOfStringString", "kind": "class"},
@@ -1010,7 +1023,7 @@ def main():
       {"export": "OCJS", "kind": "class"},
     ])
 
-    with open(os.path.join(declarations_dir, 'emscripten-fs.d.ts'), 'r') as f:
+    with open(os.path.join(declarations_dir, 'emscripten-fs.d.ts')) as f:
       typescriptDefinitionOutput += f.read() + "\n\n"
 
     runtime_methods = _parse_exported_runtime_methods(
@@ -1018,7 +1031,7 @@ def main():
     )
     heap_methods_requested = [m for m in runtime_methods if m in _KNOWN_HEAP_METHODS]
     if heap_methods_requested:
-      with open(os.path.join(declarations_dir, 'emscripten-runtime.d.ts'), 'r') as f:
+      with open(os.path.join(declarations_dir, 'emscripten-runtime.d.ts')) as f:
         typescriptDefinitionOutput += f.read() + "\n\n"
 
     # Auto-generated `export namespace <prefix> { ... }` blocks were removed in
@@ -1043,6 +1056,8 @@ def main():
       )
 
     if uses_native_wasm_eh and exports_eh_helpers:
+      with open(os.path.join(declarations_dir, 'webassembly-exception.d.ts')) as f:
+        typescriptDefinitionOutput += f.read() + "\n\n"
       typescriptDefinitionOutput += \
         "/**\n" + \
         " * Extract the exception type and message from a caught `WebAssembly.Exception`.\n" + \
@@ -1152,6 +1167,9 @@ def main():
     # (no value at runtime, structural fallback at type level) to keep the
     # generated `.d.ts` semantically valid (zero TS2304/TS2552 diagnostics).
     declared_names = {x["export"] for x in deduped_exports}
+    declared_names.update(
+      re.findall(r"^export\s+(?:declare\s+)?(?:abstract\s+)?class\s+([A-Za-z_][A-Za-z0-9_]*)", typescriptDefinitionOutput, re.MULTILINE)
+    )
     declared_names.update(
       re.findall(r"^export\s+(?:declare\s+)?type\s+([A-Za-z_][A-Za-z0-9_]*)", typescriptDefinitionOutput, re.MULTILINE)
     )

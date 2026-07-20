@@ -207,7 +207,19 @@ def resolve_template_type(self, clang_type, templateDecl=None, templateArgs=None
                 # canonical spelling carries qualifications libclang's
                 # arg-iteration form strips, e.g. `::` namespace prefixes).
                 self._record_referenced_class(resolver_mangled)
-                if mangled is None:
+                # A template definition's canonical spelling can still carry
+                # `type-parameter-N-M` even though `templateArgs` resolved the
+                # concrete instantiation. Prefer the concrete mangling when it
+                # names an emitted binding; otherwise accessors such as
+                # `NCollection_HArray1<gp_Pnt>::Array1()` fall through to
+                # `any` despite the matching `NCollection_Array1_gp_Pnt`
+                # declaration being present.
+                if (
+                    resolver_mangled in self.exports
+                    or resolver_mangled in TypescriptBindings._known_export_names
+                ):
+                    mangled = resolver_mangled
+                elif mangled is None:
                     mangled = resolver_mangled
 
     typedef_name = self._find_typedef_for_container(container, t)

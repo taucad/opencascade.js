@@ -646,7 +646,7 @@ def run_doxygen(ocjs_root: str, occt_root: str):
     env["OCCT_ROOT"] = occt_root
     env["OCJS_ROOT"] = ocjs_root
 
-    print(f"  Running Doxygen on OCCT headers...")
+    print("  Running Doxygen on OCCT headers...")
     result = subprocess.run(
         [doxygen_bin, doxyfile],
         env=env,
@@ -710,7 +710,7 @@ def main():
     cache_key = f"{current_commit}:{extractor_sha}"
 
     if not force and os.path.isfile(hash_file) and os.path.isfile(output_json):
-        with open(hash_file, "r") as f:
+        with open(hash_file) as f:
             cached_key = f.read().strip()
         if cached_key == cache_key:
             print(f"  Documentation cache hit (OCCT {current_commit[:12]}, extractor {extractor_sha})")

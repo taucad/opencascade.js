@@ -42,7 +42,7 @@ import os
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, NamedTuple, Set
+from typing import NamedTuple
 
 
 @dataclass(frozen=True)
@@ -53,11 +53,11 @@ class EnumerationResult:
     shared across threads (e.g. parity tests running in parallel).
     """
 
-    classes: Dict[str, str] = field(default_factory=dict)
-    enums: Dict[str, str] = field(default_factory=dict)
-    typedefs: Dict[str, str] = field(default_factory=dict)
-    skipped_classes: Set[str] = field(default_factory=set)
-    handle_classes: Set[str] = field(default_factory=set)
+    classes: dict[str, str] = field(default_factory=dict)
+    enums: dict[str, str] = field(default_factory=dict)
+    typedefs: dict[str, str] = field(default_factory=dict)
+    skipped_classes: set[str] = field(default_factory=set)
+    handle_classes: set[str] = field(default_factory=set)
 
 
 class FilterConfig(NamedTuple):
@@ -67,12 +67,12 @@ class FilterConfig(NamedTuple):
     and the shared module always interpret the YAML the same way.
     """
 
-    excluded_classes: Set[str]
+    excluded_classes: set[str]
     excluded_class_prefixes: list
-    excluded_typedefs: Set[str]
-    excluded_template_typedefs: Set[str]
-    excluded_headers: Set[str]
-    excluded_packages: Set[str]
+    excluded_typedefs: set[str]
+    excluded_template_typedefs: set[str]
+    excluded_headers: set[str]
+    excluded_packages: set[str]
 
 
 def setup_full_environment(ocjs_root: Path, occt_root: Path) -> None:
@@ -137,22 +137,22 @@ def enumerate_occt_classes(cfg: FilterConfig, tu_info=None) -> EnumerationResult
     import clang.cindex
 
     from filter.filterPackages import filterPackages
-    from ocjs_bindgen.naming import getClassJsPublicName, getEnumJsPublicName
-    from ocjs_bindgen.predicates import shouldProcessClass
     from ocjs_bindgen.config.paths import occtBasePath
+    from ocjs_bindgen.naming import getClassJsPublicName, getEnumJsPublicName
     from ocjs_bindgen.pipeline.generate import (
+        SkipException,
         dedupeTemplateTypedefsByCanonical,
         processTemplate,
-        SkipException,
     )
+    from ocjs_bindgen.predicates import shouldProcessClass
 
     if tu_info is None:
         from ocjs_bindgen.ast import TuInfo
         tu_info = TuInfo("")
 
-    classes: Dict[str, str] = {}
-    skipped_classes: Set[str] = set()
-    seen_class_cursors: Set[int] = set()
+    classes: dict[str, str] = {}
+    skipped_classes: set[str] = set()
+    seen_class_cursors: set[int] = set()
 
     for child in tu_info.allChildren:
         if child.kind not in (
@@ -183,7 +183,7 @@ def enumerate_occt_classes(cfg: FilterConfig, tu_info=None) -> EnumerationResult
             continue
         classes.setdefault(name, pkg)
 
-    enums: Dict[str, str] = {}
+    enums: dict[str, str] = {}
     for child in tu_info.enums:
         if child.extent.start.file is None:
             continue
@@ -211,7 +211,7 @@ def enumerate_occt_classes(cfg: FilterConfig, tu_info=None) -> EnumerationResult
         "TColStd_SequenceOfAddress",
         "TopTools_IndexedDataMapOfShapeAddress",
     })
-    _ALWAYS_INCLUDE_TEMPLATE_TYPEDEFS: Dict[str, str] = {
+    _ALWAYS_INCLUDE_TEMPLATE_TYPEDEFS: dict[str, str] = {
         "GeomLProp_SLProps":   "GeomLProp",
         "GeomLProp_CLProps":   "GeomLProp",
         "GeomLProp_CLProps2d": "GeomLProp",
@@ -224,7 +224,7 @@ def enumerate_occt_classes(cfg: FilterConfig, tu_info=None) -> EnumerationResult
         tu_info.templateTypedefs
     )
 
-    typedefs: Dict[str, str] = {}
+    typedefs: dict[str, str] = {}
     for child in deduped_template_typedefs:
         if child.extent.start.file is None:
             continue
@@ -293,8 +293,8 @@ def enumerate_occt_classes(cfg: FilterConfig, tu_info=None) -> EnumerationResult
             continue
         typedefs.setdefault(forced_name, forced_pkg)
 
-    handle_classes: Set[str] = set()
-    transient_cache: Dict[str, bool] = {}
+    handle_classes: set[str] = set()
+    transient_cache: dict[str, bool] = {}
 
     def _is_transient_derived(cursor) -> bool:
         name = cursor.spelling

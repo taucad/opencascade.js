@@ -86,23 +86,23 @@ one sentinel header:
   Runs `nx run ocjs:generate` and SHA-256s the *entire* `build/bindings/` tree
   against `baseline/full_tree.sha256`. Catches regressions that escape the
   ten-header sample.
-* **Layer 3 — `tests/sentinel/test_dist_parity.py`** *(~25 min)*
-  Runs the full `nx run ocjs:link` pipeline and byte-diffs
-  `dist/opencascade_full.{d.ts,wasm}` against `baseline/dist_artifacts.sha256`.
-  Required exit gate for Phase 1 / Phase 2 / Phase 3 PRs that touch the
-  link-time rewriter or the codegen surface.
+* **Candidate reproducibility — `scripts/docker-e2e-validate.sh`**
+  Hashes all six ST/MT outputs before and after the warm link and requires
+  byte-for-byte equality for the same source/configuration identity. This
+  replaces the obsolete historical dist digest, which could not remain valid
+  across intentional source and provenance changes.
 
 ## Maintenance
 
-When OCCT itself is upgraded, regenerate the entire baseline in a single
-dedicated commit:
+After an audited OCCT upgrade or intentional binding-contract change,
+regenerate the affected baseline layers in a dedicated commit:
 
 ```bash
-nx run ocjs:link
+pnpm nx run ocjs:generate
 python tests/sentinel/refresh_baseline.py
 ```
 
-Do **not** refresh the baseline from a refactor PR — the whole point of the
-spine is to catch unintended drift. If the baseline must change, that change
-belongs in its own commit on its own PR with the OCCT bump rationale in the
-commit body.
+Do **not** refresh the baseline merely because a refactor changed output — the
+whole point of the spine is to catch unintended drift. Diagnose and review the
+source delta first. If the output change is intentional, record that contract
+change and the reviewed artifact delta alongside the refresh.

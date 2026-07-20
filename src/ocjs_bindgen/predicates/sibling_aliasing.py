@@ -43,9 +43,8 @@ off ``B``'s signature directly).
 
 from __future__ import annotations
 
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from typing import Callable, List, Sequence, Tuple
-
 
 # Public matrix-row label so emit-time diagnostics surface a single
 # canonical citation string across the bindgen.
@@ -82,8 +81,8 @@ class ConflictReport:
 
     smaller_index: int
     larger_index: int
-    smaller_sig: Tuple[ParamSig, ...]
-    larger_sig: Tuple[ParamSig, ...]
+    smaller_sig: tuple[ParamSig, ...]
+    larger_sig: tuple[ParamSig, ...]
 
     def diagnostic(self, class_name: str) -> str:
         """Render a build-log line citing matrix row 8 + the conflict pair."""
@@ -127,7 +126,7 @@ def extract_ctor_signatures(
     ctors: Sequence,
     get_arg_type_str: Callable,
     count_trailing_defaults: Callable,
-) -> List[Tuple[ParamSig, ...]]:
+) -> list[tuple[ParamSig, ...]]:
     """Lift a list of clang ctor cursors into ``ParamSig`` tuples.
 
     Args:
@@ -142,7 +141,7 @@ def extract_ctor_signatures(
         count for a ctor cursor. Pass the bindgen's
         ``_countTrailingDefaults``.
     """
-    sigs: List[Tuple[ParamSig, ...]] = []
+    sigs: list[tuple[ParamSig, ...]] = []
     for ctor in ctors:
         args = list(ctor.get_arguments())
         n_args = len(args)
@@ -160,8 +159,8 @@ def extract_ctor_signatures(
 
 
 def detect_sub2b_pairs(
-    signatures: Sequence[Tuple[ParamSig, ...]],
-) -> List[ConflictReport]:
+    signatures: Sequence[tuple[ParamSig, ...]],
+) -> list[ConflictReport]:
     """Return every sub-2b conflict pair detectable in ``signatures``.
 
     Algorithm (matches ``tau:docs/research/ocjs-occt-surface-audit.md``
@@ -184,7 +183,7 @@ def detect_sub2b_pairs(
       conflicts; the caller should proceed to the regular optional /
       arity-fan-out emission path.
     """
-    reports: List[ConflictReport] = []
+    reports: list[ConflictReport] = []
     for i, a_sig in enumerate(signatures):
         n_a = len(a_sig)
         # Precondition: A's last slot has a trailing default (so the

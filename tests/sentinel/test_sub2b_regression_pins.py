@@ -55,10 +55,12 @@ def test_generator_inventory_within_audit_range():
     )
 
 
-def test_every_inventory_entry_has_a_regression_pin_on_disk():
+def test_every_bindable_inventory_entry_has_a_regression_pin_on_disk():
     gen = _load_generator()
     missing = []
     for entry in gen.INVENTORY:
+        if entry.class_name in gen._BINDGEN_EXCLUDED_CLASSES:
+            continue
         path = REGRESSION_DIR / f"test_{entry.class_name}.test.ts"
         if not path.exists():
             missing.append(path.name)
@@ -92,6 +94,8 @@ def test_each_pin_contains_distinguishing_assertion():
     gen = _load_generator()
     bad = []
     for entry in gen.INVENTORY:
+        if entry.class_name in gen._BINDGEN_EXCLUDED_CLASSES:
+            continue
         path = REGRESSION_DIR / f"test_{entry.class_name}.test.ts"
         if not path.exists():
             continue

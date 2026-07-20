@@ -22,9 +22,8 @@ import clang.cindex
 
 from filter.filterEnums import filterEnum
 from filter.filterTypedefs import filterTypedef
-from ocjs_bindgen.config.paths import occtBasePath
 from ocjs_bindgen.codegen.wasm_common import ignoreDuplicateTypedef
-
+from ocjs_bindgen.config.paths import occtBasePath
 
 # Namespaces whose contents must NOT be enumerated for binding generation —
 # these are stdlib / Emscripten internals that would (a) blow up symbol counts

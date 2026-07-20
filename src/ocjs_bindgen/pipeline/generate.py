@@ -1,21 +1,22 @@
 #!/usr/bin/python3
 
-from typing import Callable
-from ocjs_bindgen.codegen.bindings import EmbindBindings, TypescriptBindings
-from ocjs_bindgen.predicates import shouldProcessClass
-from ocjs_bindgen.naming import getClassJsPublicName, getEnumJsPublicName
-from ocjs_bindgen.link.yaml_build import OCJS_RBV_PREAMBLE
-import clang.cindex
-import os
 import errno
 import hashlib
-from ocjs_bindgen.codegen.wasm_common import SkipException
-from ocjs_bindgen.config.paths import ocIncludeStatements
 import json
+import os
+from collections.abc import Callable
+
+import clang.cindex
+
 from filter.filterPackages import filterPackages
 from ocjs_bindgen.ast import TuInfo
+from ocjs_bindgen.codegen.bindings import EmbindBindings, TypescriptBindings
+from ocjs_bindgen.codegen.wasm_common import SkipException
+from ocjs_bindgen.config.paths import OCCT_ROOT, OCJS_ROOT, ocIncludeStatements
+from ocjs_bindgen.embind_builtins import OCJS_RBV_PREAMBLE
+from ocjs_bindgen.naming import getClassJsPublicName, getEnumJsPublicName
+from ocjs_bindgen.predicates import shouldProcessClass
 
-from ocjs_bindgen.config.paths import OCJS_ROOT, OCCT_ROOT
 libraryBasePath = OCJS_ROOT + "/build/bindings"
 buildDirectory = OCJS_ROOT + "/build"
 occtBasePath = OCCT_ROOT + "/src/"
@@ -41,7 +42,7 @@ def _check_generator_hash_and_clean():
 
   stored_hash = ""
   if os.path.exists(GENERATOR_HASH_FILE):
-    with open(GENERATOR_HASH_FILE, "r") as f:
+    with open(GENERATOR_HASH_FILE) as f:
       stored_hash = f.read().strip()
 
   if stored_hash == current_hash:
@@ -50,14 +51,14 @@ def _check_generator_hash_and_clean():
   if stored_hash:
     print(f"Generator code changed (was {stored_hash[:8]}..., now {current_hash[:8]}...). Purging stale .d.ts.json and .cpp files.")
   else:
-    print(f"No generator hash found. Will regenerate all bindings.")
+    print("No generator hash found. Will regenerate all bindings.")
 
   target = libraryBasePath
   if os.path.islink(target):
     target = os.path.realpath(target)
 
   count = 0
-  for dirpath, dirnames, filenames in os.walk(target):
+  for dirpath, _dirnames, filenames in os.walk(target):
     for fname in filenames:
       if fname.endswith(".d.ts.json") or (fname.endswith(".cpp") and not fname.endswith(".cpp.o")):
         os.remove(os.path.join(dirpath, fname))
@@ -403,7 +404,7 @@ def dedupeTemplateTypedefsByCanonical(typedefs):
   WinningAlias` in d.ts) is a future enhancement and not needed for
   correctness — the data layout is identical across all aliases.
   """
-  by_canonical: "dict[str, list]" = {}
+  by_canonical: dict[str, list] = {}
   for td in typedefs:
     if td.kind not in (clang.cindex.CursorKind.TYPEDEF_DECL, clang.cindex.CursorKind.TYPE_ALIAS_DECL):
       continue
@@ -412,7 +413,7 @@ def dedupeTemplateTypedefsByCanonical(typedefs):
       continue
     by_canonical.setdefault(canonical, []).append(td)
   winners = []
-  for canonical, group in by_canonical.items():
+  for _canonical, group in by_canonical.items():
     group.sort(key=lambda c: c.spelling)
     winners.append(group[0])
   winner_set = {(w.spelling, w.location.file.name if w.location.file else "", w.location.line) for w in winners}
@@ -541,8 +542,8 @@ if __name__ == "__main__":
   args = parser.parse_args()
 
   if args.config:
-    from ocjs_bindgen.config import get_config
     from ocjs_bindgen import filters
+    from ocjs_bindgen.config import get_config
     config = get_config(args.config)
     filters.install(config)
     if config.excluded_template_typedefs:

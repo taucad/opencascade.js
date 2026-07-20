@@ -97,7 +97,14 @@ def resolve_stl_type(self, container, clang_type, templateDecl=None, templateArg
                     return "[" + ", ".join([inner] * n) + "]"
             return f"{inner}[]"
 
-    if container in ("basic_string_view", "string_view", "u16string_view"):
+    if container in (
+        "basic_string_view",
+        "string_view",
+        "wstring_view",
+        "u8string_view",
+        "u16string_view",
+        "u32string_view",
+    ):
         return "string"
 
     if container in ("basic_string",):

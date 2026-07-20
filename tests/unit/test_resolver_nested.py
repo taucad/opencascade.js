@@ -15,7 +15,6 @@ from __future__ import annotations
 import clang.cindex
 
 from ocjs_bindgen.resolver.strategies.nested import resolve_qualified_member_type
-
 from tests.conftest import _MockType, cursor_mock
 
 

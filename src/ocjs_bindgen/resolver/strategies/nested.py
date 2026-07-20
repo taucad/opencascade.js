@@ -13,7 +13,6 @@ import re
 
 import clang.cindex
 
-
 _CONST_RE = re.compile(r"\bconst\b")
 
 

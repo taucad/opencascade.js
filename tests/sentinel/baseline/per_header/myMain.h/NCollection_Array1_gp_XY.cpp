@@ -4615,6 +4615,7 @@
 #include <emscripten/wire.h>
 using namespace emscripten;
 #include <functional>
+#include <optional>
 #include <stdexcept>
 #include "ocjs_smart_ptr.h"
 #include "ocjs_handle_helpers.h"
@@ -5520,13 +5521,22 @@ using NCollection_Sequence_handle_XCAFDimTolObjects_DatumObject = NCollection_Se
 using NCollection_Sequence_handle_XCAFDimTolObjects_DimensionObject = NCollection_Sequence<opencascade::handle<XCAFDimTolObjects_DimensionObject>>;
 using NCollection_Sequence_handle_XCAFDimTolObjects_GeomToleranceObject = NCollection_Sequence<opencascade::handle<XCAFDimTolObjects_GeomToleranceObject>>;
 using NCollection_Sequence_int = NCollection_Sequence<int>;EMSCRIPTEN_BINDINGS(NCollection_Array1_gp_XY) {
+  emscripten::register_optional<bool>();
   class_<NCollection_Array1_gp_XY>("NCollection_Array1_gp_XY")
     .constructor<>()
-    .constructor<const size_t>()
-    .constructor<const NCollection_Array1_gp_XY &>()
+    .constructor(optional_override([](emscripten::val arg0) -> NCollection_Array1_gp_XY* {
+      if (arg0.typeOf().as<std::string>() == "number") {
+        return new NCollection_Array1_gp_XY(arg0.as<const unsigned long>());
+      }
+      else {
+        return new NCollection_Array1_gp_XY(arg0.as<const NCollection_Array1_gp_XY &>(emscripten::allow_raw_pointers()));
+      }
+      return nullptr;
+    }))
     .constructor<const int, const int>()
-    .constructor<const gp_XY &, const int, const int>()
-    .constructor<const gp_XY &, const int, const int, const bool>()
+    .constructor(optional_override([](const gp_XY & theBegin, const int theLower, const int theUpper, std::optional<bool> theUseBuffer) {
+      return new NCollection_Array1_gp_XY(theBegin, theLower, theUpper, theUseBuffer.value_or((true)));
+    }), allow_raw_pointers())
     .function("Init", &NCollection_Array1_gp_XY::Init, allow_raw_pointers())
     .function("Size", &NCollection_Array1_gp_XY::Size, allow_raw_pointers())
     .function("Length", &NCollection_Array1_gp_XY::Length, allow_raw_pointers())

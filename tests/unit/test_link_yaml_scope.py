@@ -20,7 +20,6 @@ from ocjs_bindgen.link.yaml_build import (
   verifyBindings,
 )
 
-
 # ----------------------------------------------------------------------------
 # `_compute_yaml_class_scope` — direct bindings, ancestors, custom code.
 # ----------------------------------------------------------------------------

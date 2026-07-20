@@ -19,8 +19,6 @@ artifact.
 
 from __future__ import annotations
 
-from typing import Dict
-
 
 class Diagnostics:
     """Accumulator for ``unknown``/``any`` resolution failures.
@@ -33,7 +31,7 @@ class Diagnostics:
     """
 
     def __init__(self) -> None:
-        self._any_reasons: Dict[str, Dict[str, int]] = {}
+        self._any_reasons: dict[str, dict[str, int]] = {}
 
     def collect_any(self, reason: str, type_spelling: str) -> None:
         """Record one occurrence of ``type_spelling`` failing under ``reason``."""
@@ -41,11 +39,11 @@ class Diagnostics:
         bucket[type_spelling] = bucket.get(type_spelling, 0) + 1
 
     @property
-    def any_reasons(self) -> Dict[str, Dict[str, int]]:
+    def any_reasons(self) -> dict[str, dict[str, int]]:
         """Read-only view of the accumulated reasons. Same shape as the legacy attr."""
         return self._any_reasons
 
-    def get(self, reason: str) -> Dict[str, int]:
+    def get(self, reason: str) -> dict[str, int]:
         """Return the bucket for ``reason`` (empty dict if no occurrences yet)."""
         return self._any_reasons.get(reason, {})
 

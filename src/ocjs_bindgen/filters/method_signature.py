@@ -32,10 +32,9 @@ touching the embind output.
 
 from __future__ import annotations
 
-from typing import Callable, List, Optional, Tuple
+from collections.abc import Callable
 
 import clang.cindex
-
 
 _HANDLE_SPELLINGS = (
   "opencascade::handle",
@@ -83,7 +82,7 @@ def _peel_indirection(t):
   return None
 
 
-def _resolve_to_class_decl(t) -> Optional[clang.cindex.Cursor]:
+def _resolve_to_class_decl(t) -> clang.cindex.Cursor | None:
   """Resolve a peeled type to the underlying class declaration cursor.
 
   Follows typedef chains and unwraps a single level of ``Handle<T>`` /
@@ -144,7 +143,7 @@ def _resolve_to_class_decl(t) -> Optional[clang.cindex.Cursor]:
 def _excluded_class_for_type(
   t,
   exclusion_predicate: Callable[[str], bool],
-) -> Optional[str]:
+) -> str | None:
   """Return the excluded class spelling for ``t`` or ``None``.
 
   Also walks one level of template arguments on the peeled type so
@@ -191,7 +190,7 @@ def _excluded_class_for_type(
 def signature_references_excluded_class(
   method_cursor,
   exclusion_predicate: Callable[[str], bool],
-) -> Optional[Tuple[str, str]]:
+) -> tuple[str, str] | None:
   """Return ``(excluded_name, position)`` if the signature references an
   excluded class, otherwise ``None``.
 
@@ -257,7 +256,7 @@ def signature_references_excluded_class(
 R3_DROPPED_METHODS: dict = {}
 
 
-def record_dropped_method(class_spelling: str, method_displayname: str, reason: Tuple[str, str]) -> None:
+def record_dropped_method(class_spelling: str, method_displayname: str, reason: tuple[str, str]) -> None:
   """Record a signature-filter drop. ``reason`` is ``(excluded_name, position)``.
 
   Idempotent: the wrapped filter is invoked once per `processClass` call
@@ -271,12 +270,12 @@ def record_dropped_method(class_spelling: str, method_displayname: str, reason: 
     existing.append(reason)
 
 
-def peek_dropped_method_reasons(class_spelling: str, method_displayname: str) -> List[Tuple[str, str]]:
+def peek_dropped_method_reasons(class_spelling: str, method_displayname: str) -> list[tuple[str, str]]:
   """Look up the drop reasons recorded for a method without consuming them."""
   return list(R3_DROPPED_METHODS.get((class_spelling, method_displayname), ()))
 
 
-def pop_dropped_method_reasons(class_spelling: str, method_displayname: str) -> List[Tuple[str, str]]:
+def pop_dropped_method_reasons(class_spelling: str, method_displayname: str) -> list[tuple[str, str]]:
   """Remove and return the drop reasons recorded for a method."""
   key = (class_spelling, method_displayname)
   return R3_DROPPED_METHODS.pop(key, [])

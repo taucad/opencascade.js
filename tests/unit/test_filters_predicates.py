@@ -11,8 +11,6 @@ from __future__ import annotations
 import os
 from unittest.mock import MagicMock
 
-import pytest
-
 from ocjs_bindgen.filters.enums import filterEnum
 from ocjs_bindgen.filters.include_files import filterIncludeFile
 from ocjs_bindgen.filters.source_files import filterSourceFile

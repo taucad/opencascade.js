@@ -30,9 +30,8 @@ Companion to:
 from __future__ import annotations
 
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SRC = REPO_ROOT / "src"
@@ -42,7 +41,6 @@ if str(SRC) not in sys.path:
 import clang.cindex  # noqa: E402
 
 from ocjs_bindgen.codegen import val_default as _val_default  # noqa: E402
-
 
 # ---------------------------------------------------------------------------
 # Lightweight fakes — duck-typed against the val_default helper's surface.
@@ -60,7 +58,7 @@ class FakeType:
     """
 
     spelling: str = "int"
-    canonical_spelling: Optional[str] = None
+    canonical_spelling: str | None = None
     kind: int = clang.cindex.TypeKind.INT
 
     def get_canonical(self):
@@ -78,7 +76,7 @@ class FakeArg:
     type: FakeType
     spelling: str = ""
     has_default: bool = False
-    default_expr: Optional[str] = None
+    default_expr: str | None = None
 
 
 @dataclass(eq=False)
@@ -86,7 +84,7 @@ class FakeMethod:
     """Mimic one C++ method/ctor cursor."""
 
     spelling: str
-    args: List[FakeArg]
+    args: list[FakeArg]
     result_spelling: str = "void"
     is_const: bool = False
     is_static: bool = False
@@ -247,7 +245,9 @@ def test_row_2_emits_val_lambda_for_value_class_default():
     )
     assert '.function("Build"' in out
     assert "emscripten::val progress" in out
-    assert "[&]() -> const Message_ProgressRange&" in out
+    # The unwrap lambda must return an owning value. Returning ``const T&``
+    # here would dangle when the default branch materialises a temporary.
+    assert "[&]() -> Message_ProgressRange" in out
     assert "if (progress.isUndefined()) return (Message_ProgressRange());" in out
     assert "if (progress.isNull())" in out
 
@@ -396,7 +396,7 @@ def test_row_23_emits_strict_val_lambda_for_non_null_handle_default():
         class_cpp="MyAlgo",
     )
     assert "emscripten::val sentinel" in out
-    assert "[&]() -> const occ::handle<Foo>&" in out
+    assert "[&]() -> occ::handle<Foo>" in out
     assert "if (sentinel.isUndefined()) return (Handle_Foo_Default());" in out
     # Null still rejects per rule 5 — non-null defaults do NOT admit null.
     assert "if (sentinel.isNull())" in out
@@ -472,7 +472,7 @@ def test_row_37_emits_strict_val_lambda_for_reference_singleton_default():
         class_cpp="MyAlgo",
     )
     assert "emscripten::val singleton" in out
-    assert "[&]() -> const MyType&" in out
+    assert "[&]() -> MyType" in out
     assert "if (singleton.isUndefined()) return (MyType::Instance());" in out
     assert "if (singleton.isNull())" in out
 

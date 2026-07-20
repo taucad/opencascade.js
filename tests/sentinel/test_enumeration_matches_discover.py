@@ -40,7 +40,6 @@ walk trips the test in the same commit — preserving the
 
 from __future__ import annotations
 
-import os
 import re
 from pathlib import Path
 

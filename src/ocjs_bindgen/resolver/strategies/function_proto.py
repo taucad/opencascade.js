@@ -23,8 +23,6 @@ report so the failure remains visible).
 
 from __future__ import annotations
 
-from typing import Optional
-
 import clang.cindex
 
 
@@ -33,7 +31,7 @@ def resolve_function_proto(
     clang_type,
     templateDecl=None,
     templateArgs=None,
-) -> Optional[str]:
+) -> str | None:
     """Render a C-style function pointer typedef as a TypeScript callable.
 
     Returns the rendered TS signature ``((arg0: A, arg1: B) => R)`` or

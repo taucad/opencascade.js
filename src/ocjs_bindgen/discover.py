@@ -4,10 +4,11 @@ Scans the AST of bound OCCT classes to find NCollection template instantiations
 used in method parameters and return types, then generates modern C++ `using`
 declarations and a manifest for the link step.
 """
-import clang.cindex
 import json
 import os
 import re
+
+import clang.cindex
 
 NCOLLECTION_CONTAINERS = frozenset({
     "NCollection_Array1", "NCollection_Array2",
@@ -122,7 +123,7 @@ def _scan_type_for_ncollection(clang_type, needed, template_typedef_names=None, 
     if t.kind == clang.cindex.TypeKind.POINTER:
         t = t.get_pointee()
 
-    spelling = t.spelling.replace("const ", "").strip()
+    t.spelling.replace("const ", "").strip()
 
     decl = t.get_declaration()
     if not decl or not decl.spelling:
@@ -231,8 +232,8 @@ def _scan_template_typedef_methods(tuInfo, template_typedef, needed, template_ty
     """
     # Imported lazily so `discover` doesn't pull in the whole pipeline at
     # module import time (the pipeline imports discover via codegen).
-    from ocjs_bindgen.pipeline.generate import processTemplate, SkipException
     from ocjs_bindgen.ast.template_args import augment_template_args_with_canonical
+    from ocjs_bindgen.pipeline.generate import SkipException, processTemplate
 
     try:
         templateClass, templateArgs = processTemplate(template_typedef)
@@ -251,7 +252,7 @@ def _scan_template_typedef_methods(tuInfo, template_typedef, needed, template_ty
     if not raw:
         return
 
-    for mangled_name, container, arg_spellings, _orig_source in raw:
+    for _mangled_name, container, arg_spellings, _orig_source in raw:
         substituted_args = tuple(
             _substitute_arg_spelling(spelling, augmented_args)
             for spelling in arg_spellings
@@ -357,8 +358,8 @@ def discover_ncollection_types(tuInfo, filter_classes_fn, source_override=None):
     # disjoint TUs is the architecturally correct separation:
     # codegen sees a "live" OCCT class surface, discovery sees the
     # full alias map for validator-time resolution.
-    from ocjs_bindgen.ast import TypedefDiscoveryTuInfo
     from filter.filterPackages import filterPackages
+    from ocjs_bindgen.ast import TypedefDiscoveryTuInfo
     discovery_tu = TypedefDiscoveryTuInfo.instance()
 
     def _type_is_reachable(arg_type, _depth: int = 0) -> bool:

@@ -69,7 +69,7 @@ class TypedefDiscoveryTuInfo:
     ``_serialise_template_typedef_aliases`` consume it.
     """
 
-    _instance: "TypedefDiscoveryTuInfo | None" = None
+    _instance: TypedefDiscoveryTuInfo | None = None
 
     def __init__(self):
         self.tu = parse_with_deprecated_ncollection_aliases()
@@ -93,7 +93,7 @@ class TypedefDiscoveryTuInfo:
         )
 
     @classmethod
-    def instance(cls) -> "TypedefDiscoveryTuInfo":
+    def instance(cls) -> TypedefDiscoveryTuInfo:
         if cls._instance is None:
             cls._instance = cls()
         return cls._instance

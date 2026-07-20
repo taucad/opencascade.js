@@ -19,16 +19,14 @@ pins the **method** (non-constructor) emit paths fixed for R4 of
   arrives as the libc++ alias (``…u16string_view``) or fully resolved
   (``std::__2::basic_string_view<char16_t, …>``), with or without a surrounding
   ``const &``. Returns ``None`` for non-views so other args are untouched.
-* ``EmbindBindings._hasStringViewArg`` — detects a string-view parameter so the
+* ``embind.method.has_string_view_arg`` — detects a string-view parameter so the
   method is forced onto a wrapper-lambda path (never a raw method pointer).
-* ``EmbindBindings._embindLambdaParamType`` — declares a string-view slot as the
+* ``embind.method.embind_lambda_param_type`` — declares a string-view slot as the
   owning string and defers every other type to ``getOriginalArgumentType``.
 
-The two binder helpers are exec-extracted from ``bindings.py`` (the router
-sentinel uses the same shim) so the pin exercises the real source without
-importing the full module, which would trip the libclang / LLVM 17 toolchain
-check at import time. The fakes are duck-typed against the exact clang ``Type``
-surface the resolver reaches (``spelling`` / ``get_canonical`` /
+The helpers live with their production call site in
+``codegen/embind/method.py``. The fakes are duck-typed against the exact clang
+``Type`` surface the resolver reaches (``spelling`` / ``get_canonical`` /
 ``get_pointee`` / ``kind``); when the resolver upgrades, the fakes track the
 same surface so this stays a behavioural pin, not a string-equality hash.
 """
@@ -46,6 +44,10 @@ if str(SRC) not in sys.path:
 
 import clang.cindex  # noqa: E402
 
+from ocjs_bindgen.codegen.embind.method import (  # noqa: E402
+    embind_lambda_param_type,
+    has_string_view_arg,
+)
 from ocjs_bindgen.predicates.types import (  # noqa: E402
     isStringView,
     stringViewOwningCast,
@@ -142,38 +144,6 @@ OWNING = {
 }
 
 
-# ---------------------------------------------------------------------------
-# Exec-shim — load the two binder helpers without importing the full module.
-# ---------------------------------------------------------------------------
-
-
-def _load_binder_helpers():
-    """Extract ``_hasStringViewArg`` + ``_embindLambdaParamType`` from
-    ``bindings.py`` as free functions (``self`` becomes the first positional
-    arg). Importing the module wholesale would trip the LLVM 17 toolchain
-    check at import time, so we exec just the two method definitions with the
-    one production symbol they reference (``stringViewOwningType``) in scope.
-    """
-    src_path = SRC / "ocjs_bindgen" / "codegen" / "bindings.py"
-    source = src_path.read_text()
-    start = "  def _hasStringViewArg(self, args):"
-    end = "  def _canDoRbv(self, method):"
-    if start not in source or end not in source:
-        raise RuntimeError(
-            "Could not locate the string-view binder helpers in bindings.py — "
-            "the R4 method-path routing fix may have been reverted or renamed."
-        )
-    block = source[source.index(start) : source.index(end)]
-    # Dedent the 2-space class-method indentation to module level.
-    dedented = "\n".join(line[2:] if line.startswith("  ") else line for line in block.splitlines())
-    namespace: dict = {"stringViewOwningType": stringViewOwningType}
-    exec(compile(dedented, str(src_path), "exec"), namespace)
-    return namespace["_hasStringViewArg"], namespace["_embindLambdaParamType"]
-
-
-_has_string_view_arg, _embind_lambda_param_type = _load_binder_helpers()
-
-
 class _StubBinder:
     """Minimal ``self`` for the extracted helpers. ``getOriginalArgumentType``
     is the only binder method ``_embindLambdaParamType`` calls for non-views;
@@ -232,19 +202,18 @@ def test_non_view_types_are_left_untouched():
 
 
 def test_has_string_view_arg_detects_a_view_parameter():
-    stub = _StubBinder()
     no_views = [FakeArg(FakeType(spelling="int")), FakeArg(FakeType(spelling="const gp_Pnt &"))]
-    assert _has_string_view_arg(stub, no_views) is False
+    assert has_string_view_arg(no_views) is False
 
     with_view = no_views + [FakeArg(_ref(ALIAS["char16_t"]))]
-    assert _has_string_view_arg(stub, with_view) is True
+    assert has_string_view_arg(with_view) is True
 
 
 def test_lambda_param_type_declares_owning_string_for_view_arg():
     stub = _StubBinder()
     for elem, view in ALIAS.items():
         arg = FakeArg(_ref(view))
-        declared = _embind_lambda_param_type(stub, arg)
+        declared = embind_lambda_param_type(stub, arg)
         assert declared == OWNING[elem]
         # The decisive invariant: the embind boundary never sees a bare view.
         assert "string_view" not in declared
@@ -254,4 +223,4 @@ def test_lambda_param_type_passes_through_non_view_args():
     stub = _StubBinder()
     arg = FakeArg(FakeType(spelling="const gp_Pnt &"))
     # Non-view args defer to getOriginalArgumentType (echoed declared spelling).
-    assert _embind_lambda_param_type(stub, arg) == "const gp_Pnt &"
+    assert embind_lambda_param_type(stub, arg) == "const gp_Pnt &"

@@ -14,15 +14,11 @@ microseconds without invoking libclang on a real translation unit.
 
 from __future__ import annotations
 
-from typing import List
-
 import clang.cindex
 
 from ocjs_bindgen.ast.walker import _walk_classes
 from ocjs_bindgen.naming.encoder import NameEncoder
-
 from tests.conftest import cursor_mock
-
 
 # ----------------------------------------------------------------------------
 # R1.b — `NameEncoder.js_public_name` walks the full semantic-parent chain.
@@ -215,7 +211,7 @@ class _MockAccessSpec:
     return iter([])
 
 
-def _collect_classes(child, out: List[object]) -> None:
+def _collect_classes(child, out: list[object]) -> None:
   if child.kind in (
     clang.cindex.CursorKind.CLASS_DECL,
     clang.cindex.CursorKind.STRUCT_DECL,
@@ -231,7 +227,7 @@ def test_walk_classes_descends_into_public_nested() -> None:
     spelling="Outer",
     children=[inner_a, inner_b],
   )
-  results: List[str] = []
+  results: list[str] = []
   _walk_classes(outer, _collect_classes, results)
   assert results == ["InnerA", "InnerB"]
 
@@ -249,7 +245,7 @@ def test_walk_classes_skips_private_nested() -> None:
       public_inner,
     ],
   )
-  results: List[str] = []
+  results: list[str] = []
   _walk_classes(outer, _collect_classes, results)
   assert results == ["Visible"]
 
@@ -264,7 +260,7 @@ def test_walk_classes_skips_protected_nested() -> None:
       protected_inner,
     ],
   )
-  results: List[str] = []
+  results: list[str] = []
   _walk_classes(outer, _collect_classes, results)
   assert results == []
 
@@ -287,7 +283,7 @@ def test_walk_classes_recurses_unbounded_depth() -> None:
     spelling="BRepGraph",
     children=[inner],
   )
-  results: List[str] = []
+  results: list[str] = []
   _walk_classes(outer, _collect_classes, results)
   assert results == ["TopoView", "FaceOps", "Iterator"]
 
@@ -299,7 +295,7 @@ def test_walk_classes_handles_struct_nested_in_class() -> None:
     spelling="Builder",
     children=[inner],
   )
-  results: List[str] = []
+  results: list[str] = []
   _walk_classes(outer, _collect_classes, results)
   assert results == ["Range"]
 
@@ -309,7 +305,7 @@ def test_walk_classes_seen_set_prevents_cycle() -> None:
   # not loop forever.
   outer = cursor_mock(kind=clang.cindex.CursorKind.CLASS_DECL, spelling="Outer")
   outer.children = [outer]  # type: ignore[attr-defined]
-  results: List[str] = []
+  results: list[str] = []
   _walk_classes(outer, _collect_classes, results)
   # `outer` itself is collected once via the predicate (caller invokes
   # at the top), but recursion bails on the cycle.

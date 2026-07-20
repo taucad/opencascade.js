@@ -37,13 +37,11 @@ configurations (the partial-POC failure mode where libc++ 17 parses but
 from __future__ import annotations
 
 import os
-from typing import List
 from unittest.mock import patch
 
 import pytest
 
 from ocjs_bindgen.config import paths as paths_module
-
 
 # Path prefixes that, if they appear in the parse-side include list, prove
 # the function has regressed back to:

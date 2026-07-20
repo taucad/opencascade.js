@@ -27,8 +27,8 @@ from .template_args import (  # noqa: F401
     substitute_canonical_template_names,
 )
 from .walker import (  # noqa: F401
-    _SKIPPED_NAMESPACES,
     _SKIP_UNDERLYING_TYPES,
+    _SKIPPED_NAMESPACES,
     _collect_from_cursor,
     _is_top_level_namespace_member,
     _walk_classes,

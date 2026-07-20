@@ -46,7 +46,6 @@ import argparse
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Tuple
 
 # ---------------------------------------------------------------------------
 # Inventory — production sub-2b instances per the surface audit.
@@ -86,7 +85,7 @@ class Sub2bInventoryEntry:
     skip_reason: str = ""
 
 
-INVENTORY: Tuple[Sub2bInventoryEntry, ...] = (
+INVENTORY: tuple[Sub2bInventoryEntry, ...] = (
     Sub2bInventoryEntry(
         class_name="TDF_Transaction",
         smaller_args_js="undefined",
@@ -448,7 +447,7 @@ _DISPOSABLE_FIXTURES = {
 }
 
 
-def _resolve_args(arg_csv: str) -> Tuple[List[str], List[str]]:
+def _resolve_args(arg_csv: str) -> tuple[list[str], list[str]]:
     """Resolve a CSV of JS arg identifiers into (arg_exprs, fixture_keys).
 
     ``arg_exprs`` are the array-element expressions (inline literals or the
@@ -457,8 +456,8 @@ def _resolve_args(arg_csv: str) -> Tuple[List[str], List[str]]:
     can emit their ``using`` setup once in the test body.
     """
     parts = [p.strip() for p in arg_csv.split(",") if p.strip()]
-    arg_exprs: List[str] = []
-    fixture_keys: List[str] = []
+    arg_exprs: list[str] = []
+    fixture_keys: list[str] = []
     for p in parts:
         if p in _DISPOSABLE_FIXTURES:
             arg_exprs.append(_DISPOSABLE_FIXTURES[p]["ref"])
@@ -496,7 +495,7 @@ def emit_pin(entry: Sub2bInventoryEntry, target_dir: Path) -> Path:
     # ctors) are built a single time.
     seen_keys: set[str] = set()
     emitted_vars: set[str] = set()
-    fixture_lines: List[str] = []
+    fixture_lines: list[str] = []
     for key in [*smaller_fix, *larger_fix]:
         if key in seen_keys:
             continue
@@ -520,7 +519,7 @@ def emit_pin(entry: Sub2bInventoryEntry, target_dir: Path) -> Path:
     return target
 
 
-def emit_index(target_dir: Path, emitted: List[Path]) -> Path:
+def emit_index(target_dir: Path, emitted: list[Path]) -> Path:
     """Write a manifest listing every regression pin so the CI runner
     can discover them without re-running the generator."""
     manifest = target_dir / "MANIFEST.txt"
@@ -537,7 +536,7 @@ def emit_index(target_dir: Path, emitted: List[Path]) -> Path:
     return manifest
 
 
-def main(argv: List[str]) -> int:
+def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--target",
@@ -552,7 +551,7 @@ def main(argv: List[str]) -> int:
     target_dir = args.target
     target_dir.mkdir(parents=True, exist_ok=True)
 
-    emitted: List[Path] = []
+    emitted: list[Path] = []
     for entry in INVENTORY:
         if entry.class_name in _BINDGEN_EXCLUDED_CLASSES:
             # Filter-excluded at the bindgen layer (unbound `math_Vector`

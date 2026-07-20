@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-"""Refresh `tests/sentinel/baseline/` from the current `build/bindings/` + `dist/`.
+"""Refresh `tests/sentinel/baseline/` from the current `build/bindings/`.
 
-This script exists so an OCCT upgrade (the only legitimate trigger for a
-baseline refresh — see `baseline/README.md`) can regenerate all three layers
-of the parity baseline in a single, reproducible commit.
+This script exists so an audited OCCT or binding-contract change can regenerate
+the parity baseline reproducibly.
 
 Usage:
   python tests/sentinel/refresh_baseline.py
@@ -13,11 +12,8 @@ What it does:
      sentinel headers into `tests/sentinel/baseline/per_header/`.
   2. SHA-256s every fragment under `build/bindings/` into
      `tests/sentinel/baseline/full_tree.sha256`.
-  3. SHA-256s the four `dist/opencascade_full.{d.ts,wasm,js,build-manifest.json}`
-     artifacts into `tests/sentinel/baseline/dist_artifacts.sha256`.
-
-Pre-conditions: a fresh `nx run ocjs:link` has populated `build/bindings/`
-and `dist/` (cache hit is fine).
+Pre-conditions: a fresh `nx run ocjs:generate` has populated
+`build/bindings/`.
 """
 
 from __future__ import annotations
@@ -36,14 +32,6 @@ from sentinels import (  # noqa: E402  (sys.path mutation precedes import)
     BUILD_BINDINGS,
     REPO_ROOT,
     SENTINELS,
-)
-
-_DIST = REPO_ROOT / "dist"
-_DIST_ARTIFACTS = (
-    "opencascade_full.d.ts",
-    "opencascade_full.wasm",
-    "opencascade_full.js",
-    "opencascade_full.build-manifest.json",
 )
 
 
@@ -79,40 +67,10 @@ def _refresh_full_tree() -> None:
     print(f"  full_tree: {len(lines)} fragments")
 
 
-def _refresh_dist() -> None:
-    out = BASELINE_DIR / "dist_artifacts.sha256"
-    lines: list[str] = []
-    for name in _DIST_ARTIFACTS:
-        path = _DIST / name
-        if not path.is_file():
-            raise SystemExit(f"Cannot snapshot — dist artifact missing: {path}")
-        h = hashlib.sha256()
-        with path.open("rb") as fh:
-            for chunk in iter(lambda: fh.read(1 << 20), b""):
-                h.update(chunk)
-        lines.append(f"{h.hexdigest()}  dist/{name}")
-    out.write_text("\n".join(lines) + "\n")
-    print(f"  dist: {len(lines)} artifacts")
-
-
 def main() -> int:
     print(f"Refreshing baseline at {BASELINE_DIR.relative_to(REPO_ROOT)}/")
     _refresh_per_header()
     _refresh_full_tree()
-    # V1 RE-SHIP — refresh dist_artifacts only when `opencascade_full.*`
-    # is reachable (i.e. the user just ran a `pnpm nx run ocjs:build`
-    # with `OCJS_YAML=build-configs/full.yml`). The replicad-driven
-    # validation path uses `replicad_single.*` which is the canonical
-    # smoke target post-RE-SHIP; the opencascade_full baselines are
-    # only meaningful when refreshed alongside a matching full build.
-    if all((_DIST / n).is_file() for n in _DIST_ARTIFACTS):
-        _refresh_dist()
-    else:
-        print(
-            "  dist: skipped — opencascade_full.* not present in dist/. "
-            "Run `OCJS_YAML=build-configs/full.yml pnpm nx run ocjs:build` "
-            "before refreshing dist baselines."
-        )
     print("Done. Review `git diff tests/sentinel/baseline/` and commit.")
     return 0
 

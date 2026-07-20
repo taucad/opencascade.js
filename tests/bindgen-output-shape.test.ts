@@ -168,55 +168,40 @@ describe.skipIf(!bindingsExist())('Generated bindings shape — input-passthroug
   });
 });
 
-describe.skipIf(!fs.existsSync(DTS_PATH))('Generated .d.ts shape — Option C (no `?:` on RBV output-param inputs)', () => {
+describe.skipIf(!fs.existsSync(DTS_PATH))('Generated .d.ts shape — RBV output-param inputs', () => {
   const dts = fs.existsSync(DTS_PATH) ? fs.readFileSync(DTS_PATH, 'utf8') : '';
 
-  // A signature emits the RBV value-object return when it ends with
-  // `): { …; …; };` — the brace block is the structured `val::object()` /
-  // `value_object` shape. Class-typed returns (`gp_Pnt`, `boolean`, `number`,
-  // `unknown`, …) do NOT use this shape, so they are untouched by Option C.
-  // The `m` flag scopes the match to a single line so we never straddle a
-  // method declaration.
-  const rbvSignatureWithOptional = /^\s+[A-Za-z_]\w*\([^)]*\?:[^)]*\):\s*\{[^}]*\};\s*$/gm;
-
-  it('no method that returns an RBV value-object container marks any param `?:`', () => {
-    const violators = Array.from(dts.matchAll(rbvSignatureWithOptional), (m: RegExpExecArray) => m[0].trim());
-    expect(
-      violators,
-      `Found ${violators.length} RBV signatures with "?:" markers (Option C forbids these). First 5:\n${violators
-        .slice(0, 5)
-        .join('\n')}`,
-    ).toHaveLength(0);
-  });
-
-  // Canonical method spot-checks: every primitive-RBV method should now
-  // appear with required `:` slots in the .d.ts. These guard the foundational
-  // OCCT methods called out in the F3 direction-tag audit.
+  // RBV inputs follow the runtime dispatch contract introduced after the
+  // original Option C experiment: virtual or colliding registrations remain
+  // required, while a non-virtual unique-arity trailing output run can be
+  // omitted and is therefore typed optional. These spot checks guard both
+  // sides of that boundary.
   const canonicalSignatures: Array<[label: string, regex: RegExp]> = [
-    // gp_Trsf::Transforms(double&,double&,double&) — `[in,out]`, untagged in OCCT
+    // gp_Trsf::Transforms(double&,double&,double&) is non-virtual and has a
+    // unique effective arity, so the trailing primitive run is optional.
     [
-      'gp_Trsf::Transforms(theX,theY,theZ) required',
-      /\bTransforms\(theX: number, theY: number, theZ: number\): \{ theX: number; theY: number; theZ: number \};/,
+      'gp_Trsf::Transforms(theX,theY,theZ) optional',
+      /\bTransforms\(theX\?: number, theY\?: number, theZ\?: number\): \{ theX: number; theY: number; theZ: number \};/,
     ],
-    // Geom_Surface::Bounds(U1&,U2&,V1&,V2&) — pure `[out]`, untagged in OCCT
+    // Geom_Surface::Bounds is virtual, so inherited registrations collide and
+    // all input-passthrough slots must remain required.
     [
       'Geom_Surface::Bounds(U1,U2,V1,V2) required',
       /\bBounds\(U1: number, U2: number, V1: number, V2: number\): \{ U1: number; U2: number; V1: number; V2: number \};/,
     ],
-    // BRepTools / similar tessellation `Bounds(First,Last)` 1D variant
+    // Same-class effective-arity collisions stay required.
     [
-      'Bounds(First,Last) required',
+      'Bounds(First,Last) collision required',
       /\bBounds\(First: number, Last: number\): \{ First: number; Last: number \};/,
     ],
-    // BRep_Tool::Range(edge, First, Last) — pure `[out]`, untagged in OCCT
     [
-      'BRep_Tool::Range(.., aFirst, aLast) required',
-      /\bRange\(aFirst: number, aLast: number\): \{ aFirst: number; aLast: number \};/,
+      'BRep_Tool::Range output run optional',
+      /\bRange\(aFirst\?: number, aLast\?: number\): \{ aFirst: number; aLast: number \};/,
     ],
   ];
 
   for (const [label, regex] of canonicalSignatures) {
-    it(`canonical RBV signature is required (no "?:"): ${label}`, () => {
+    it(`canonical RBV signature matches runtime arity: ${label}`, () => {
       expect(regex.test(dts), `Expected /${regex.source}/ to match in ${path.basename(DTS_PATH)}`).toBe(true);
     });
   }

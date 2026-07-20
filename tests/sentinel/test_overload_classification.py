@@ -35,7 +35,6 @@ from ocjs_bindgen.predicates.overload_classification import (  # noqa: E402
     tag_overload_absence_semantics,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

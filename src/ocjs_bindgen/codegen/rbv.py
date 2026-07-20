@@ -32,15 +32,20 @@ import re
 
 import clang.cindex
 
-from ocjs_bindgen.predicates.types import (
-  builtInTypes, isCString, isRawPointerParam,
+from ocjs_bindgen.predicates.args import (
+  _isHandleType,
+  isClassOutputParam,
+  isHandleOutputParam,
+  isOutputParam,
+  shouldStripParam,
 )
 from ocjs_bindgen.predicates.classes import _isDefaultConstructibleClass
-from ocjs_bindgen.predicates.args import (
-  _isHandleType, isClassOutputParam, isOutputParam,
-  isHandleOutputParam, shouldStripParam,
+from ocjs_bindgen.predicates.types import (
+  builtInTypes,
+  isCString,
+  isRawPointerParam,
+  stringViewOwningType,
 )
-
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -397,15 +402,15 @@ def ensure_result_struct(b, method, args, className, overloadPostfix, templateDe
     struct_def = f"struct {structName} {{\n"
     for fname, ftype in struct_fields:
       struct_def += f"  {ftype} {fname};\n"
-    struct_def += f"}};\n\n"
+    struct_def += "};\n\n"
     b._result_struct_defs.append(struct_def)
 
   already_registered = any(f'"{structName}"' in r for r in b._result_struct_registrations)
   if not already_registered and is_s1_envelope_path:
     reg = f"  value_object<{structName}>(\"{structName}\")\n"
-    for fname, ftype in struct_fields:
+    for fname, _ftype in struct_fields:
       reg += f"    .field(\"{fname}\", &{structName}::{fname})\n"
-    reg += f"  ;\n"
+    reg += "  ;\n"
     b._result_struct_registrations.append(reg)
 
   return (structName, struct_fields, output_params, stripped_indices, disposable_field_names)
@@ -464,6 +469,10 @@ def emit_output_param_binding(b, theClass, method, args, className, classTypeNam
 
   for i, arg in enumerate(args):
     name = b._getArgName(arg, i)
+    string_view_owning = stringViewOwningType(arg.type)
+    if string_view_owning is not None:
+      lambda_params.append(f"{string_view_owning} {name}")
+      continue
     if b._needsCStringWrapper(arg.type):
       lambda_params.append(f"std::string {name}")
       continue

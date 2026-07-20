@@ -8,7 +8,6 @@ import path continues to work via a thin re-export in
 from __future__ import annotations
 
 import os
-from typing import Dict, List, Optional, Set
 
 import yaml
 
@@ -21,7 +20,7 @@ _DEFAULT_CONFIG_PATH = os.path.join(
 class BindgenConfig:
   """Holds parsed filter configuration for binding generation."""
 
-  def __init__(self, config_path: Optional[str] = None):
+  def __init__(self, config_path: str | None = None):
     path = config_path or os.environ.get("OCJS_BINDGEN_CONFIG", _DEFAULT_CONFIG_PATH)
     if not os.path.exists(path):
       raise FileNotFoundError(f"Bindgen config not found: {path}")
@@ -29,27 +28,27 @@ class BindgenConfig:
     raw = self._load_with_extends(path)
     exclude = raw.get("exclude", {})
 
-    self.excluded_classes: Set[str] = set()
-    self.excluded_class_prefixes: List[str] = []
+    self.excluded_classes: set[str] = set()
+    self.excluded_class_prefixes: list[str] = []
     for item in exclude.get("classes", []):
       if isinstance(item, dict) and "prefix" in item:
         self.excluded_class_prefixes.append(item["prefix"])
       elif isinstance(item, str):
         self.excluded_classes.add(item)
 
-    self.excluded_methods: Dict[str, Set[str]] = {}
+    self.excluded_methods: dict[str, set[str]] = {}
     for cls, methods in exclude.get("methods", {}).items():
       self.excluded_methods[cls] = set(methods) if methods else set()
 
-    self.excluded_typedefs: Set[str] = set(exclude.get("typedefs", []))
-    self.excluded_template_typedefs: Set[str] = set(exclude.get("template_typedefs", []))
-    self.excluded_headers: Set[str] = set(exclude.get("headers", []))
-    self.excluded_global_methods: Set[str] = set(exclude.get("global_methods", []))
-    self.excluded_packages: Set[str] = set(exclude.get("packages", []))
+    self.excluded_typedefs: set[str] = set(exclude.get("typedefs", []))
+    self.excluded_template_typedefs: set[str] = set(exclude.get("template_typedefs", []))
+    self.excluded_headers: set[str] = set(exclude.get("headers", []))
+    self.excluded_global_methods: set[str] = set(exclude.get("global_methods", []))
+    self.excluded_packages: set[str] = set(exclude.get("packages", []))
 
     deprecated = raw.get("deprecated", {})
     self.deprecated_include: bool = deprecated.get("include", True)
-    self.deprecated_symbols: Set[str] = set(deprecated.get("symbols", []))
+    self.deprecated_symbols: set[str] = set(deprecated.get("symbols", []))
 
     if not self.deprecated_include:
       self.excluded_classes |= self.deprecated_symbols
@@ -112,10 +111,10 @@ class BindgenConfig:
     return name in self.excluded_packages
 
 
-_config: Optional[BindgenConfig] = None
+_config: BindgenConfig | None = None
 
 
-def get_config(config_path: Optional[str] = None) -> BindgenConfig:
+def get_config(config_path: str | None = None) -> BindgenConfig:
   global _config
   if _config is None or config_path is not None:
     _config = BindgenConfig(config_path)

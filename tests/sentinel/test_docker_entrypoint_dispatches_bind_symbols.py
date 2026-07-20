@@ -26,7 +26,6 @@ from __future__ import annotations
 import os
 import re
 
-
 OCJS_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 ENTRYPOINT_PATH = os.path.join(OCJS_ROOT, "scripts", "docker-entrypoint.sh")
 

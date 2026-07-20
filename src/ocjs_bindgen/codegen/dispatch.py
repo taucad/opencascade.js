@@ -29,7 +29,6 @@ from typing import Any
 
 from ocjs_bindgen.predicates.types import isCString, isRawPointerParam, stringViewOwningCast
 
-
 # ---------------------------------------------------------------------------
 # Tree shapes
 # ---------------------------------------------------------------------------
@@ -105,9 +104,11 @@ def dispatch_primitive_sort_key(js_type_subtree_pair):
     return (2, '')
   if cat == 'number_float':
     return (3, '')
-  if cat in ('string', 'string_char'):
+  if cat == 'string_char':
     return (4, '')
-  return (5, cat)
+  if cat == 'string':
+    return (5, '')
+  return (6, cat)
 
 
 # ---------------------------------------------------------------------------
@@ -233,6 +234,12 @@ def _emit_branch_chain(emit_subtree, tree, sp):
     elif js_type.category == 'string':
       check = f'arg{tree.arg_position}.typeOf().as<std::string>() == "string"'
       code += f'{sp}{keyword} ({check}) {{\n'
+    elif js_type.category == 'string_char':
+      check = (
+        f'arg{tree.arg_position}.typeOf().as<std::string>() == "string"'
+        f' && arg{tree.arg_position}["length"].as<unsigned>() == 1'
+      )
+      code += f'{sp}{keyword} ({check}) {{\n'
     elif js_type.category == 'number_int' and int_float_split:
       check = f'arg{tree.arg_position}.typeOf().as<std::string>() == "number" && emscripten::val::global("Number").call<bool>("isInteger", arg{tree.arg_position})'
       code += f'{sp}{keyword} ({check}) {{\n'
@@ -288,7 +295,7 @@ def emit_val_dispatch_constructor(b, className, arity, tree, useHandleOverride, 
   if useHandleOverride:
     output += f"      return opencascade::handle<{className}>();\n"
   else:
-    output += f"      return nullptr;\n"
+    output += "      return nullptr;\n"
   output += "    }))\n"
   return output
 

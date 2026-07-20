@@ -52,8 +52,6 @@ so no recursion guard is required.
 
 from __future__ import annotations
 
-from typing import Optional
-
 import clang.cindex
 
 
@@ -62,7 +60,7 @@ def resolve_member_typedef_substitution(
     clang_type,
     templateDecl=None,
     templateArgs=None,
-) -> Optional[str]:
+) -> str | None:
     """Peel a member typedef whose underlying type references a template
     parameter, then re-resolve via the orchestrator so the existing
     canonical-key substitution can fire.

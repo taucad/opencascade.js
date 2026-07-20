@@ -2,7 +2,6 @@
 
 import re
 
-
 _NESTED_TPL_PATTERN = re.compile(r"^[A-Za-z_]\w*::[A-Za-z_]\w*<")
 
 _STDLIB_NS_PREFIXES = (

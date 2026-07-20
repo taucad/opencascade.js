@@ -30,7 +30,6 @@ from ocjs_bindgen.link.yaml_build import (
   _filter_auto_symbols_by_scope,
 )
 
-
 REPO_ROOT = Path(__file__).resolve().parents[2]
 MANIFEST_PATH = REPO_ROOT / "build" / "ncollection-manifest.json"
 
@@ -87,7 +86,7 @@ def test_filter_drops_brepgraph_ncollections() -> None:
 def test_filter_drops_xcaf_dimtol_ncollections() -> None:
   """XCAFDimTolObjects_* is the GD&T metadata subsystem — out of scope for
   pure geometry consumers."""
-  manifest = _manifest_or_skip()
+  _manifest_or_skip()
   kept = _filter_auto_symbols_by_scope(str(MANIFEST_PATH), set(_REPLICAD_LIKE_SCOPE))
   leak = {n for n in kept if "XCAFDimTolObjects" in n}
   assert leak == set(), f"XCAFDimTolObjects leak: {sorted(leak)[:5]}"
@@ -96,7 +95,7 @@ def test_filter_drops_xcaf_dimtol_ncollections() -> None:
 def test_filter_drops_plate_ncollections() -> None:
   """Plate_* (constraint-based surface fitting) is out of scope for
   consumers that don't bind any Plate algorithm classes."""
-  manifest = _manifest_or_skip()
+  _manifest_or_skip()
   kept = _filter_auto_symbols_by_scope(str(MANIFEST_PATH), set(_REPLICAD_LIKE_SCOPE))
   leak = {n for n in kept if "Plate_" in n}
   assert leak == set(), f"Plate leak: {sorted(leak)[:5]}"
@@ -105,7 +104,7 @@ def test_filter_drops_plate_ncollections() -> None:
 def test_filter_drops_stepfea_ncollections() -> None:
   """StepFEA_* (STEP finite-element-analysis schema) is out of scope for
   consumers that don't bind any STEP FEA classes."""
-  manifest = _manifest_or_skip()
+  _manifest_or_skip()
   kept = _filter_auto_symbols_by_scope(str(MANIFEST_PATH), set(_REPLICAD_LIKE_SCOPE))
   leak = {n for n in kept if "StepFEA" in n}
   assert leak == set(), f"StepFEA leak: {sorted(leak)[:5]}"

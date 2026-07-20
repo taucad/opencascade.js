@@ -6,16 +6,15 @@ asserts every Phase 3/4/5/6 invariant in one place. Mirrors
 `scripts/assert-replicad-validation.sh` so CI can replay the same
 contract without invoking shell.
 
-Skips with a clear message when the build artifacts are absent —
-matches the pattern in `test_link_ncollection_reachability.py` so a
-fresh clone doesn't fail this suite before the first successful build.
-Run the build via:
+The comprehensive integration tier requires these artifacts. CI provisions
+them from ``build-configs/replicad-validation.yml`` against the exact
+single-threaded candidate before running this module; absence is therefore a
+hard setup failure, never a passing skip. Run the local compatibility link via:
 
-    cd repos/opencascade.js
-    export OCJS_YAML=.../replicad-opencascadejs/build-config/custom_build_single.yml
-    export OCJS_OUTPUT_DIR=$(pwd)/dist
-    export OCJS_CONFIG=single-threaded
-    pnpm nx run ocjs:build
+    docker run --rm \
+      -v "$PWD/build-configs/replicad-validation.yml:/src/build-config.yml:ro" \
+      -v "$PWD/dist:/output" -e OCJS_OUTPUT_DIR=/output \
+      <single-threaded-candidate> link build-config.yml
 """
 
 from __future__ import annotations
@@ -23,9 +22,6 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-
-import pytest
-
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DIST_DIR = Path(
@@ -37,12 +33,11 @@ PROVENANCE_PATH = DIST_DIR / f"{VARIANT}.provenance.json"
 ADD_BIND_PATH = REPO_ROOT / "build" / "additional-bind-symbols.json"
 
 
-def _load_or_skip(path: Path) -> dict:
-  if not path.is_file():
-    pytest.skip(
-      f"{path.name} not present — run `pnpm nx run ocjs:build` against "
-      f"replicad's single-threaded YAML first ({path})"
-    )
+def _load_required(path: Path) -> dict:
+  assert path.is_file(), (
+    f"{path.name} not present; provision the Replicad compatibility fixture "
+    f"with build-configs/replicad-validation.yml ({path})"
+  )
   return json.loads(path.read_text())
 
 
@@ -94,17 +89,14 @@ def test_all_six_dist_artifacts_exist() -> None:
     ".provenance.json",
   ):
     artifact = DIST_DIR / f"{VARIANT}{suffix}"
-    if not artifact.is_file():
-      pytest.skip(
-        f"dist artifact {artifact} missing — run `pnpm nx run ocjs:build`"
-      )
+    assert artifact.is_file(), f"required Replicad compatibility artifact missing: {artifact}"
 
 
 def test_build_manifest_passes_validation_with_v2_schema() -> None:
   """V2 + V4 + V6 — manifest carries the new schema label, the bucket
   partition, and `binding_report` is non-null (V4 path fix).
   """
-  manifest = _load_or_skip(MANIFEST_PATH)
+  manifest = _load_required(MANIFEST_PATH)
   assert manifest["schema"] == "build-manifest-v2"
   assert manifest["validation_passed"] is True
   syms = manifest["symbols"]
@@ -122,7 +114,7 @@ def test_build_manifest_bucketed_typedef_aliases_into_alias_resolved() -> None:
   the historical failure set so a regression that re-introduces the
   split-brain trips this test by name.
   """
-  manifest = _load_or_skip(MANIFEST_PATH)
+  manifest = _load_required(MANIFEST_PATH)
   alias_names = {entry["alias"] for entry in manifest["symbols"]["alias_resolved"]}
   missing_aliases = _EXPECTED_ALIASES - alias_names
   assert not missing_aliases, (
@@ -140,7 +132,7 @@ def test_additional_bind_symbols_manifest_emitted_with_v1_schema() -> None:
   schema = stale pre-RE-SHIP manifest; missing symbols = producer ran
   but parsed nothing (libclang regression).
   """
-  data = _load_or_skip(ADD_BIND_PATH)
+  data = _load_required(ADD_BIND_PATH)
   assert data.get("schema") == "additional-bind-symbols-v1", (
     f"additional-bind-symbols.json missing v1 schema discriminator; "
     f"got {data.get('schema')!r} — pre-RE-SHIP manifest or producer "
@@ -162,7 +154,7 @@ def test_ncollection_manifest_carries_template_typedefs_for_historic_aliases() -
   would hard-fail.
   """
   ncollection_path = REPO_ROOT / "build" / "ncollection-manifest.json"
-  data = _load_or_skip(ncollection_path)
+  data = _load_required(ncollection_path)
   assert data.get("schema") == "ncollection-manifest-v2", (
     f"ncollection-manifest.json missing v2 schema discriminator; "
     f"got {data.get('schema')!r}"
@@ -181,7 +173,7 @@ def test_provenance_carries_ncollection_manifest_with_invariant() -> None:
   contract V9 pins, plus the invariant the docker-e2e validator
   derives the filter-ratio assertion from.
   """
-  prov = _load_or_skip(PROVENANCE_PATH)
+  prov = _load_required(PROVENANCE_PATH)
   assert prov["schema"] == "wasm-build-provenance-v1.1"
   mani = prov["nCollectionManifest"]
   linked = mani["linked"]
@@ -199,7 +191,7 @@ def test_docker_e2e_phase6_snippet_reads_new_field_name() -> None:
   snippet must read the new `nCollectionManifest` field cleanly without
   falling through to the WARNING path.
   """
-  prov = _load_or_skip(PROVENANCE_PATH)
+  prov = _load_required(PROVENANCE_PATH)
   mani = prov.get("nCollectionManifest") or {}
   linked = mani.get("linked")
   total = mani.get("total")
@@ -215,7 +207,7 @@ def test_runtime_helpers_block_present() -> None:
   for the manifest as a whole (catches accidental removals during
   schema bumps).
   """
-  manifest = _load_or_skip(MANIFEST_PATH)
+  manifest = _load_required(MANIFEST_PATH)
   assert "runtime_helpers" in manifest
   rh = manifest["runtime_helpers"]
   assert isinstance(rh, dict)

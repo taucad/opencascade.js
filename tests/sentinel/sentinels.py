@@ -1,8 +1,8 @@
 """Authoritative list of the 10 sentinel headers + their emitted fragments.
 
-The list is consumed by all three parity layers
-(`test_artifact_parity.py`, `test_tree_parity.py`, `test_dist_parity.py`)
-and by `refresh_baseline.py`. Update this file in lock-step with
+The list is consumed by both generated-fragment parity layers
+(`test_artifact_parity.py` and `test_tree_parity.py`) and by
+`refresh_baseline.py`. Update this file in lock-step with
 `SENTINEL_HEADERS.md` if the spine ever changes (e.g. on an OCCT upgrade).
 """
 

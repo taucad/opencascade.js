@@ -20,10 +20,8 @@ fires at PCH-build time when emcc is available.
 from __future__ import annotations
 
 import os
-import subprocess
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock, patch
 
 import pytest
 

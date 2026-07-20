@@ -34,9 +34,8 @@ the Phase 1 implementation research doc at
 from __future__ import annotations
 
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import List
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SRC = REPO_ROOT / "src"
@@ -48,7 +47,6 @@ from ocjs_bindgen.codegen.rbv import (  # noqa: E402
     js_effective_arity_collisions,
     js_effective_arity_range,
 )
-
 
 # ---------------------------------------------------------------------------
 # Lightweight fakes — duck-typed against the binder surface.
@@ -94,7 +92,7 @@ class FakeMethod:
     """Mimic the binder's view of one C++ method/ctor cursor."""
 
     spelling: str
-    args: List[FakeArg]
+    args: list[FakeArg]
     result_kind: str = "void"
     is_const: bool = False
     is_static: bool = False

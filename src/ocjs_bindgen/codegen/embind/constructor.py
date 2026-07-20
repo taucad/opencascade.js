@@ -19,26 +19,25 @@ from collections import defaultdict
 import clang.cindex
 
 from filter.filterMethodOrProperties import filterMethodOrProperty
-
 from ocjs_bindgen.codegen import dispatch as _dispatch
 from ocjs_bindgen.codegen import val_default as _val_default
 from ocjs_bindgen.codegen.wasm_common import SkipException, isTransientDerived
 from ocjs_bindgen.naming.cpp import getClassQualifiedName, getClassTypeName
 from ocjs_bindgen.naming.ts import getClassJsPublicName
 from ocjs_bindgen.predicates.optional_emission_guards import (
-    assert_no_multi_all_optional_same_arity,
-    assert_no_nonconst_ref_in_optional,
-    assert_no_val_vs_optional_same_arity,
+  assert_no_multi_all_optional_same_arity,
+  assert_no_nonconst_ref_in_optional,
+  assert_no_val_vs_optional_same_arity,
 )
 from ocjs_bindgen.predicates.overload_classification import (
-    GroupClassificationInputs,
-    OverloadDescriptor,
-    ParameterDescriptor,
-    classify_overload_group,
+  GroupClassificationInputs,
+  OverloadDescriptor,
+  ParameterDescriptor,
+  classify_overload_group,
 )
 from ocjs_bindgen.predicates.sibling_aliasing import (
-    detect_sub2b_pairs,
-    extract_ctor_signatures,
+  detect_sub2b_pairs,
+  extract_ctor_signatures,
 )
 from ocjs_bindgen.predicates.types import isCString, isRawPointerParam, stringViewOwningType
 
@@ -129,10 +128,12 @@ def emit_constructor(b, class_cpp, args, template_decl, template_args, use_handl
 
   n_args = len(args)
   has_c_string = any(isCString(a.type) for a in args)
+  has_string_view = any(stringViewOwningType(a.type) is not None for a in args)
   needs_raw = any(isRawPointerParam(a.type) and not isCString(a.type) for a in args)
 
   if (not use_handle_override
       and not has_c_string
+      and not has_string_view
       and not needs_raw
       and optional_param_count == 0):
     arg_types_bindings = ", ".join([
@@ -147,6 +148,7 @@ def emit_constructor(b, class_cpp, args, template_decl, template_args, use_handl
   for i, arg in enumerate(args):
     name = arg.spelling if arg.spelling else f"a{i}"
     is_c_string = isCString(arg.type)
+    string_view_owning = stringViewOwningType(arg.type)
     is_raw_pointer = isRawPointerParam(arg.type) and not is_c_string
     if i >= optional_start and is_raw_pointer:
       # Raw-pointer trailing defaults can't be wrapped in std::optional<T*>:
@@ -165,6 +167,11 @@ def emit_constructor(b, class_cpp, args, template_decl, template_args, use_handl
         body = name + ".value_or((" + default_expr + ")).c_str()"
         if hasattr(b, "_optional_inner_types") and "std::string" not in b._optional_inner_types:
           b._optional_inner_types.append("std::string")
+      elif string_view_owning is not None:
+        typed = f"std::optional<{string_view_owning}> {name}"
+        body = name + f".value_or({string_view_owning}(" + default_expr + "))"
+        if hasattr(b, "_optional_inner_types") and string_view_owning not in b._optional_inner_types:
+          b._optional_inner_types.append(string_view_owning)
       else:
         typed = "std::optional<" + inner + "> " + name
         body = name + ".value_or((" + default_expr + "))"
@@ -173,6 +180,8 @@ def emit_constructor(b, class_cpp, args, template_decl, template_args, use_handl
       type_str = rw(b.getSingleArgumentBinding(False, True, template_decl, template_args)(arg)[0])
       if is_c_string:
         named_args.append(("std::string " + name, name + ".c_str()"))
+      elif string_view_owning is not None:
+        named_args.append((f"{string_view_owning} {name}", name))
       else:
         named_args.append((type_str + " " + name, name))
   typed_args = ", ".join([a[0] for a in named_args])
@@ -1591,9 +1600,34 @@ def process_overloaded_constructors(b, theClass, children=None, templateDecl=Non
   for constructor in ambiguous_ctors:
     try:
       overloadPostfix = "_" + str(allOverloads.index(constructor) + 1)
-      args = ", ".join(list(map(lambda x: ("std::string " + x.spelling) if isCString(x.type) else b.getSingleArgumentBinding(True, True, templateDecl, templateArgs)(x)[0], constructor.get_arguments())))
-      argNames = ", ".join(list(map(lambda x: (x.spelling + ".c_str()") if isCString(x.type) else x.spelling, constructor.get_arguments())))
-      argTypes = ", ".join(list(map(lambda x: "std::string" if isCString(x.type) else b.getSingleArgumentBinding(False, True, templateDecl, templateArgs)(x)[0], constructor.get_arguments())))
+      ctor_args = list(constructor.get_arguments())
+      arg_names = [
+        arg.spelling if arg.spelling else f"a{i}"
+        for i, arg in enumerate(ctor_args)
+      ]
+      args = ", ".join(
+        f"std::string {name}"
+        if isCString(arg.type)
+        else (
+          f"{stringViewOwningType(arg.type)} {name}"
+          if stringViewOwningType(arg.type) is not None
+          else b.getSingleArgumentBinding(True, True, templateDecl, templateArgs)(arg)[0]
+        )
+        for arg, name in zip(ctor_args, arg_names, strict=True)
+      )
+      argNames = ", ".join(
+        f"{name}.c_str()" if isCString(arg.type) else name
+        for arg, name in zip(ctor_args, arg_names, strict=True)
+      )
+      argTypes = ", ".join(
+        "std::string"
+        if isCString(arg.type)
+        else (
+          stringViewOwningType(arg.type)
+          or b.getSingleArgumentBinding(False, True, templateDecl, templateArgs)(arg)[0]
+        )
+        for arg in ctor_args
+      )
 
       output += "    struct " + name + overloadPostfix + " : public " + qual + " {\n"
       output += "      " + name + overloadPostfix + "(" + args + ") : " + qual + "(" + argNames + ") {}\n"

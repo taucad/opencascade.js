@@ -16,8 +16,6 @@ shapes:
 
 from __future__ import annotations
 
-from typing import List
-
 import clang.cindex
 
 from ocjs_bindgen.resolver.strategies.function_proto import resolve_function_proto
@@ -38,7 +36,7 @@ class _StubResolverContext:
 
   def __init__(self, *, resolve_table: dict[str, str]) -> None:
     self._resolve_table = resolve_table
-    self.resolve_calls: List[str] = []
+    self.resolve_calls: list[str] = []
 
   def _strip_qualifiers(self, clang_type):
     return clang_type
@@ -48,7 +46,7 @@ class _StubResolverContext:
     return self._resolve_table.get(clang_type.spelling, "unknown")
 
 
-def _make_proto(*, args: List[_MockType], result: _MockType) -> _MockType:
+def _make_proto(*, args: list[_MockType], result: _MockType) -> _MockType:
   """Build a `_MockType` that looks like a FUNCTIONPROTO."""
   return _MockType(
     spelling="(*)(...)",

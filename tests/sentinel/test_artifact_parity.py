@@ -18,7 +18,6 @@ import json
 from pathlib import Path
 
 import pytest
-
 from sentinels import (
     BUILD_BINDINGS,
     SENTINELS,
@@ -82,7 +81,7 @@ def _summarise_diff(fresh: Path, baseline: Path, max_lines: int = 20) -> str:
     if len(fresh_lines) != len(baseline_lines):
         return f"  size: fresh={len(fresh_lines)} lines, baseline={len(baseline_lines)} lines"
     drift = []
-    for i, (a, b) in enumerate(zip(fresh_lines, baseline_lines)):
+    for i, (a, b) in enumerate(zip(fresh_lines, baseline_lines, strict=False)):
         if a != b:
             drift.append(f"  line {i + 1}:\n    -baseline: {b!r}\n    +fresh:    {a!r}")
             if len(drift) >= max_lines:

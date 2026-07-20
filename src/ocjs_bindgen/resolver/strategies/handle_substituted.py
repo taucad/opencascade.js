@@ -52,7 +52,6 @@ Architectural notes:
 from __future__ import annotations
 
 import re
-from typing import Optional
 
 # Anchored regex matching the three Handle wrapper shapes documented above.
 # Tolerates outer ``const`` and trailing ``&`` / ``*`` so reference-returning
@@ -77,7 +76,7 @@ _HANDLE_SUBSTITUTED_RE = re.compile(
 
 def resolve_handle_substituted_typedef(
     ctx, substituted_spelling: str
-) -> Optional[str]:
+) -> str | None:
     """Peel a substituted Handle wrapper at the string level.
 
     Called from :func:`resolveWithCanonicalFallback` after

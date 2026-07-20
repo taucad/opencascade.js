@@ -4615,6 +4615,7 @@
 #include <emscripten/wire.h>
 using namespace emscripten;
 #include <functional>
+#include <optional>
 #include <stdexcept>
 #include "ocjs_smart_ptr.h"
 #include "ocjs_handle_helpers.h"
@@ -5532,11 +5533,9 @@ using NCollection_Sequence_int = NCollection_Sequence<int>;EMSCRIPTEN_BINDINGS(I
         return ret == nullptr ? std::string() : std::string(ret);
       }
     ), allow_raw_pointers())
-    .class_function("SetGroup",
-      ((void (*)(std::string, std::string))[](std::string group, std::string file) -> void {
-        IFSelect_Act::SetGroup(strdup(group.c_str()), strdup(file.c_str()));
-      }
-    ), allow_raw_pointers())
+    .class_function("SetGroup", optional_override([](std::string group, emscripten::val file) -> void {
+      IFSelect_Act::SetGroup(group.c_str(), ([&]() -> const char* { if (file.isUndefined()) return (""); if (file.isNull()) { emscripten::val::global("Error").new_(emscripten::val("[rule 5 / strict null] null is not a valid value for this slot — pass undefined to use the default")).throw_(); throw 0; } return file.as<std::string>().c_str(); })());
+    }), allow_raw_pointers())
     .class_function("AddFunc",
       ((void (*)(std::string, std::string, const IFSelect_ActFunc))[](std::string name, std::string help, const IFSelect_ActFunc func) -> void {
         IFSelect_Act::AddFunc(strdup(name.c_str()), strdup(help.c_str()), func);

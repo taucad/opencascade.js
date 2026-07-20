@@ -17,11 +17,10 @@ Exit codes:
   1 - One or more validations failed
 """
 
+import hashlib
 import json
 import os
 import sys
-import hashlib
-import time
 from argparse import ArgumentParser
 
 OCJS_ROOT = os.environ.get("OCJS_ROOT", os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -36,6 +35,7 @@ from ocjs_bindgen.link.manifest_registry import (  # noqa: E402
     load_ncollection_alias_index,
     resolve_requested_symbols,
 )
+from ocjs_bindgen.provenance.clock import build_datetime  # noqa: E402
 
 MIN_WASM_SIZE_BYTES = 1024 * 100  # 100 KB — any real OCCT build should be much larger
 
@@ -220,7 +220,7 @@ def validate_runtime_helpers(config, output_dir):
             "error": f"JS glue missing: {js_path}",
         }
 
-    with open(js_path, "r", encoding="utf-8") as f:
+    with open(js_path, encoding="utf-8") as f:
         glue = f.read()
 
     required = ["getExceptionMessage", "incrementExceptionRefcount", "decrementExceptionRefcount"]
@@ -330,7 +330,7 @@ def main():
 
     manifest = {
         "schema": BUILD_MANIFEST_SCHEMA,
-        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "timestamp": build_datetime().strftime("%Y-%m-%dT%H:%M:%SZ"),
         "yaml_config": os.path.basename(args.yaml_config),
         "yaml_hash": config_hash,
         "validation_passed": all_pass,

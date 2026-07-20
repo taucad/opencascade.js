@@ -85,10 +85,10 @@ def main():
 
 def _run_full_pipeline(gen):
     """Run the full binding generation pipeline with two-phase NCollection discovery."""
-    from ocjs_bindgen.config.paths import ocIncludeStatements, BUILD_DIR
     from ocjs_bindgen.ast import TuInfo
-    from ocjs_bindgen.discover import discover_ncollection_types, generate_using_declarations, write_manifest
     from ocjs_bindgen.codegen.bindings import TypescriptBindings
+    from ocjs_bindgen.config.paths import BUILD_DIR, ocIncludeStatements
+    from ocjs_bindgen.discover import discover_ncollection_types, generate_using_declarations, write_manifest
 
     os.makedirs(gen.libraryBasePath, exist_ok=True)
     gen._check_generator_hash_and_clean()

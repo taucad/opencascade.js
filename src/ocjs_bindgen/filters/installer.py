@@ -13,12 +13,20 @@ import sys
 
 from . import (
   classes as _classes_mod,
-  enums as _enums_mod,
+)
+from . import (
   include_files as _include_mod,
+)
+from . import (
   method_or_properties as _method_mod,
+)
+from . import (
   method_signature as _method_signature_mod,
+)
+from . import (
   packages as _packages_mod,
-  source_files as _source_mod,
+)
+from . import (
   typedefs as _typedefs_mod,
 )
 from .config import BindgenConfig
@@ -40,11 +48,11 @@ def install(config: BindgenConfig):
   # Importing them ensures they are present in `sys.modules` so the patches
   # below cover both call paths.
   import filter.filterClasses as _shim_classes
-  import filter.filterMethodOrProperties as _shim_method
-  import filter.filterTypedefs as _shim_typedefs
   import filter.filterEnums as _shim_enums  # noqa: F401  (kept for symmetry)
   import filter.filterIncludeFiles as _shim_include
+  import filter.filterMethodOrProperties as _shim_method
   import filter.filterPackages as _shim_packages
+  import filter.filterTypedefs as _shim_typedefs
 
   _orig_filterClass = _classes_mod.filterClass
   _orig_filterMethod = _method_mod.filterMethodOrProperty

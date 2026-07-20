@@ -41,12 +41,11 @@ Registered passes
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable, List, Optional, Tuple
-
 
 # Edit tuple over the original source: (start, end, replacement).
-Edit = Tuple[int, int, str]
+Edit = tuple[int, int, str]
 
 
 _TS_BUILTIN_TYPES = frozenset({
@@ -122,7 +121,7 @@ class RewriteContext:
   ancestor_chains: dict
 
 
-LinkRewriter = Callable[[RewriteContext], List[Edit]]
+LinkRewriter = Callable[[RewriteContext], list[Edit]]
 
 
 def _strip_comments(text: str) -> str:
@@ -152,14 +151,14 @@ def _strip_comments(text: str) -> str:
   return ''.join(out)
 
 
-def heritage_relink_rewriter(ctx: RewriteContext) -> List[Edit]:
+def heritage_relink_rewriter(ctx: RewriteContext) -> list[Edit]:
   """Rewriter A — `extends Undeclared`:
 
   - Re-link to the nearest declared ancestor when ancestor-chain metadata
     covers the class.
   - Drop the `extends Undeclared` clause entirely otherwise.
   """
-  edits: List[Edit] = []
+  edits: list[Edit] = []
   for m in _HERITAGE_RE.finditer(ctx.scrubbed):
     childName = m.group(2)
     parent = m.group(3)
@@ -174,9 +173,9 @@ def heritage_relink_rewriter(ctx: RewriteContext) -> List[Edit]:
   return edits
 
 
-def undeclared_to_unknown_rewriter(ctx: RewriteContext) -> List[Edit]:
+def undeclared_to_unknown_rewriter(ctx: RewriteContext) -> list[Edit]:
   """Rewriter B — undeclared identifier in TS type position → `unknown`."""
-  edits: List[Edit] = []
+  edits: list[Edit] = []
   for pat in _TYPE_REF_PATTERNS:
     for m in pat.finditer(ctx.scrubbed):
       name = m.group(1)
@@ -186,7 +185,7 @@ def undeclared_to_unknown_rewriter(ctx: RewriteContext) -> List[Edit]:
   return edits
 
 
-def redundant_unknown_alias_dropper(ctx: RewriteContext) -> List[Edit]:
+def redundant_unknown_alias_dropper(ctx: RewriteContext) -> list[Edit]:
   """Rewriter C — drop `export type X = unknown;` declarations whose name
   is also exported as a real class / interface / non-`unknown` type alias
   somewhere else in the merged file.
@@ -207,7 +206,7 @@ def redundant_unknown_alias_dropper(ctx: RewriteContext) -> List[Edit]:
   real_names.update(m.group(1) for m in _REAL_CLASS_DECL_RE.finditer(ctx.scrubbed))
   real_names.update(m.group(1) for m in _REAL_IFACE_DECL_RE.finditer(ctx.scrubbed))
 
-  unknown_alias_spans: List[Tuple[int, int, str]] = []
+  unknown_alias_spans: list[tuple[int, int, str]] = []
   for m in _TYPE_ALIAS_DECL_RE.finditer(ctx.scrubbed):
     name, rhs = m.group(1), m.group(2).strip()
     if rhs == "unknown":
@@ -215,7 +214,7 @@ def redundant_unknown_alias_dropper(ctx: RewriteContext) -> List[Edit]:
     else:
       real_names.add(name)
 
-  edits: List[Edit] = []
+  edits: list[Edit] = []
   for start, end, name in unknown_alias_spans:
     if name in real_names:
       edits.append((start, end, ""))
@@ -230,7 +229,7 @@ def redundant_unknown_alias_dropper(ctx: RewriteContext) -> List[Edit]:
 #   3. `redundant_unknown_alias_dropper` runs last and removes stand-alone
 #      `unknown` aliases that are now provably shadowed by a real class
 #      or interface declaration.
-DEFAULT_REWRITERS: Tuple[LinkRewriter, ...] = (
+DEFAULT_REWRITERS: tuple[LinkRewriter, ...] = (
   heritage_relink_rewriter,
   undeclared_to_unknown_rewriter,
   redundant_unknown_alias_dropper,
@@ -240,8 +239,8 @@ DEFAULT_REWRITERS: Tuple[LinkRewriter, ...] = (
 def apply_rewriters(
   source: str,
   declared_names: set,
-  ancestor_chains: Optional[dict] = None,
-  rewriters: Optional[Tuple[LinkRewriter, ...]] = None,
+  ancestor_chains: dict | None = None,
+  rewriters: tuple[LinkRewriter, ...] | None = None,
 ) -> str:
   """Run every registered `LinkRewriter` against `source` and return the
   rewritten text.
@@ -257,7 +256,7 @@ def apply_rewriters(
     ancestor_chains=ancestor_chains or {},
   )
 
-  edits: List[Edit] = []
+  edits: list[Edit] = []
   for rewriter in rewriters or DEFAULT_REWRITERS:
     edits.extend(rewriter(ctx))
 
@@ -265,7 +264,7 @@ def apply_rewriters(
     return source
 
   edits.sort()
-  merged: List[Edit] = []
+  merged: list[Edit] = []
   last = -1
   for start, end, repl in edits:
     if start < last:
@@ -286,7 +285,7 @@ def apply_rewriters(
 def replace_undeclared_with_unknown(
   source: str,
   declared_names: set,
-  ancestor_chains: Optional[dict] = None,
+  ancestor_chains: dict | None = None,
 ) -> str:
   """Backward-compatible wrapper around `apply_rewriters`.
 

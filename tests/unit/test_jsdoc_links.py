@@ -6,8 +6,6 @@ minimal `tsb`-shaped stub so the test stays hermetic.
 
 from __future__ import annotations
 
-from typing import Set
-
 from ocjs_bindgen.codegen.typescript.jsdoc.links import (
   classify_link_target,
   normalize_link_tokens,
@@ -19,7 +17,7 @@ class _StubBinder:
 
   _CONTAINER_ALIASES = {"std::vector": "EmscriptenVector"}
 
-  def __init__(self, declared: Set[str]) -> None:
+  def __init__(self, declared: set[str]) -> None:
     self._declared = set(declared)
 
   def _is_known_export_name(self, name: str) -> bool:

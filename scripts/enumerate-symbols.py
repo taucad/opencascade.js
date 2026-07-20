@@ -37,7 +37,6 @@ import os
 import sys
 import time
 from pathlib import Path
-from typing import Dict, List, Set
 
 import yaml
 
@@ -65,8 +64,8 @@ def load_filters(path: Path):
 
     exclude = raw.get("exclude", {})
 
-    classes: Set[str] = set()
-    prefixes: List[str] = []
+    classes: set[str] = set()
+    prefixes: list[str] = []
     for item in exclude.get("classes", []):
         if isinstance(item, dict) and "prefix" in item:
             prefixes.append(item["prefix"])
@@ -122,7 +121,7 @@ def enumerate_symbols(occt_root: Path, filter_path: Path):
 # ── YAML generation ──────────────────────────────────────────────────
 
 
-def generate_yaml(classes, enums, typedefs, handle_classes: Set[str]) -> str:
+def generate_yaml(classes, enums, typedefs, handle_classes: set[str]) -> str:
     all_symbols = sorted(set(classes) | set(enums) | set(typedefs))
 
     lines = [

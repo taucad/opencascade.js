@@ -18,7 +18,6 @@ constants keeps the producer/consumer surface in one file.
 
 from __future__ import annotations
 
-
 OCJS_RBV_PREAMBLE = r"""
 #include <emscripten/val.h>
 

@@ -31,7 +31,6 @@ from ocjs_bindgen.link.manifest_registry import (
   resolve_requested_symbols,
 )
 
-
 # ----------------------------------------------------------------------------
 # collect_compiled_symbols — dual-path walk (compiled-bindings + legacy).
 # ----------------------------------------------------------------------------

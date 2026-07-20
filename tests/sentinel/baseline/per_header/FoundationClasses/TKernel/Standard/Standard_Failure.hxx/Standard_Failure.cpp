@@ -4615,6 +4615,7 @@
 #include <emscripten/wire.h>
 using namespace emscripten;
 #include <functional>
+#include <optional>
 #include <stdexcept>
 #include "ocjs_smart_ptr.h"
 #include "ocjs_handle_helpers.h"
@@ -5522,10 +5523,15 @@ using NCollection_Sequence_handle_XCAFDimTolObjects_GeomToleranceObject = NColle
 using NCollection_Sequence_int = NCollection_Sequence<int>;EMSCRIPTEN_BINDINGS(Standard_Failure) {
   class_<Standard_Failure>("Standard_Failure")
     .constructor<>()
-    .constructor<const Standard_Failure &>()
-    .constructor(optional_override([](std::string theMessage) {
-      return new Standard_Failure(theMessage.c_str());
-    }), allow_raw_pointers())
+    .constructor(optional_override([](emscripten::val arg0) -> Standard_Failure* {
+      if (arg0.typeOf().as<std::string>() == "string") {
+        return new Standard_Failure(arg0.as<std::string>().c_str());
+      }
+      else {
+        return new Standard_Failure(arg0.as<const Standard_Failure &>(emscripten::allow_raw_pointers()));
+      }
+      return nullptr;
+    }))
     .constructor(optional_override([](std::string theMessage, std::string theStackTrace) {
       return new Standard_Failure(theMessage.c_str(), theStackTrace.c_str());
     }), allow_raw_pointers())

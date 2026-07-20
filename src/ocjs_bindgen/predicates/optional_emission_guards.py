@@ -39,7 +39,6 @@ import clang.cindex
 
 from ocjs_bindgen.codegen.wasm_common import SkipException
 
-
 _VAL_TYPE_SPELLINGS = frozenset({
     "emscripten::val",
     "const emscripten::val",

@@ -27,16 +27,14 @@ Test design follows ``docs/policy/testing-policy.md``:
 from __future__ import annotations
 
 import importlib
-import os
 import textwrap
 
 import pytest
 
-
 pytestmark = pytest.mark.libclang
 
 
-def _skip_if_no_toolchain() -> "tuple":
+def _skip_if_no_toolchain() -> tuple:
   """Return (`parse_additional_bind_code`, `extract_class_registrations`,
   `include_paths`) when the vendored LLVM 17 + emsdk toolchain is present,
   otherwise skip the test.

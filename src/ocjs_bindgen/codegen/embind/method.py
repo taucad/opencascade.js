@@ -16,15 +16,19 @@ from collections import defaultdict
 import clang.cindex
 
 from filter.filterMethodOrProperties import filterMethodOrProperty  # noqa: F401  (kept for parity with binders)
-
 from ocjs_bindgen.codegen import dispatch as _dispatch
+from ocjs_bindgen.codegen import rbv as _rbv
 from ocjs_bindgen.codegen.wasm_common import SkipException, getMethodOverloadPostfix
 from ocjs_bindgen.naming.cpp import getClassQualifiedName, getClassTypeName
 from ocjs_bindgen.predicates.args import (
-  isOutputParam, shouldStripParam,
+  isOutputParam,
+  shouldStripParam,
 )
 from ocjs_bindgen.predicates.types import (
-  builtInTypes, isCString, unbindablePointerTypes,
+  builtInTypes,
+  isCString,
+  stringViewOwningType,
+  unbindablePointerTypes,
 )
 
 
@@ -42,6 +46,19 @@ def _pick_wrap(condition, wrapStart, center, wrapEnd):
 
 def _indent(level):
   return " " * level * 2
+
+
+def has_string_view_arg(args):
+  """Return whether any method argument needs an owning-string boundary."""
+  return any(stringViewOwningType(arg.type) is not None for arg in args)
+
+
+def embind_lambda_param_type(b, arg, templateDecl=None, templateArgs=None):
+  """Use an Embind-registered owning string for string-view parameters."""
+  owning = stringViewOwningType(arg.type)
+  if owning is not None:
+    return owning
+  return b.getOriginalArgumentType(arg, templateDecl, templateArgs)
 
 
 def process_method_or_property(b, theClass, method, templateDecl=None, templateArgs=None, overload_index=0, override_postfix=None):
@@ -63,6 +80,7 @@ def process_method_or_property(b, theClass, method, templateDecl=None, templateA
 
     hasOutputParams = any(isOutputParam(a.type) for a in args)
     hasCStringArgs = any(b._needsCStringWrapper(a.type) for a in args)
+    hasStringViewArgs = has_string_view_arg(args)
     returnIsCString = b._needsCStringWrapper(method.result_type)
 
     functionBinding = None
@@ -72,10 +90,11 @@ def process_method_or_property(b, theClass, method, templateDecl=None, templateA
     if functionBinding is None and hasOutputParams:
       print(f"Skipping {className}::{method.spelling}: output params with unbindable return type")
       return ""
-    if functionBinding is None and (hasCStringArgs or returnIsCString):
+    if functionBinding is None and (hasCStringArgs or hasStringViewArgs or returnIsCString):
       def needsCStringOrLvalueWrapper(type):
         return (
-          type.kind == clang.cindex.TypeKind.LVALUEREFERENCE and (
+          stringViewOwningType(type) is not None
+          or type.kind == clang.cindex.TypeKind.LVALUEREFERENCE and (
             type.get_pointee().kind == clang.cindex.TypeKind.POINTER or (
               theClass.kind == clang.cindex.CursorKind.CLASS_TEMPLATE and
               templateArgs is not None and
@@ -104,7 +123,9 @@ def process_method_or_property(b, theClass, method, templateDecl=None, templateA
       wrappedParamTypes = _merge(", ", *map(lambda x:
         _pick(
           x[1],
-          "std::string" if isCString(args[x[0]].type) else "emscripten::val",
+          "std::string" if isCString(args[x[0]].type) else (
+            stringViewOwningType(args[x[0]].type) or "emscripten::val"
+          ),
           replaceTemplateArgs(x)
         ),
         enumerate(argsNeedingWrapper)
@@ -112,7 +133,11 @@ def process_method_or_property(b, theClass, method, templateDecl=None, templateA
       wrappedParamTypesAndNames = _merge(", ", *map(lambda x:
         _pick(
           x[1],
-          f"std::string {getArgName(x)}" if isCString(args[x[0]].type) else f"emscripten::val {getArgName(x)}",
+          f"std::string {getArgName(x)}" if isCString(args[x[0]].type) else (
+            f"{stringViewOwningType(args[x[0]].type)} {getArgName(x)}"
+            if stringViewOwningType(args[x[0]].type) is not None
+            else f"emscripten::val {getArgName(x)}"
+          ),
           f"{replaceTemplateArgs(x)} {getArgName(x)}",
         ), enumerate(argsNeedingWrapper)))
       def generateInvocationArgs(x):
@@ -122,6 +147,8 @@ def process_method_or_property(b, theClass, method, templateDecl=None, templateA
               return f"strdup({getArgName(x)}.c_str())"
             else:
               return f"{getArgName(x)}.c_str()"
+          elif stringViewOwningType(args[x[0]].type) is not None:
+            return getArgName(x)
           else:
             return getArgName(x)
         else:
@@ -213,7 +240,7 @@ def process_method_or_property(b, theClass, method, templateDecl=None, templateA
         arg_decl = []
         fwd = []
         for i, a in enumerate(args_m):
-          typ = b.getOriginalArgumentType(a, templateDecl, templateArgs)
+          typ = embind_lambda_param_type(b, a, templateDecl, templateArgs)
           nm = a.spelling if a.spelling else f"a{i}"
           arg_decl.append(f"{typ} {nm}")
           fwd.append(nm)
@@ -336,7 +363,7 @@ def emit_suffixed_method(b, theClass, m, suffix, className, templateDecl, templa
     m_arg.type.kind == clang.cindex.TypeKind.LVALUEREFERENCE and (
       m_arg.type.get_pointee().get_canonical().spelling in builtInTypes or
       m_arg.type.get_pointee().kind == clang.cindex.TypeKind.ENUM
-    ) or isCString(m_arg.type)
+    ) or isCString(m_arg.type) or stringViewOwningType(m_arg.type) is not None
     for m_arg in args
   )
   if argsNeedingWrapper:

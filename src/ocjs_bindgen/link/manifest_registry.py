@@ -64,7 +64,6 @@ import json
 import os
 from dataclasses import dataclass, field
 
-
 NCOLLECTION_MANIFEST_SCHEMA = "ncollection-manifest-v2"
 ADDITIONAL_BIND_SYMBOLS_SCHEMA = "additional-bind-symbols-v1"
 
@@ -119,7 +118,7 @@ def collect_compiled_symbols(build_dir: str) -> set[str]:
   for root in candidates:
     if not os.path.isdir(root):
       continue
-    for dirpath, _dirnames, filenames in os.walk(root):
+    for _dirpath, _dirnames, filenames in os.walk(root):
       for fname in filenames:
         if fname.endswith(".cpp.o"):
           compiled.add(fname[:-6])
@@ -165,9 +164,9 @@ def load_ncollection_alias_index(build_dir: str) -> dict[str, str]:
   typedef_aliases = manifest.get("template_typedefs")
   if not isinstance(typedef_aliases, dict):
     raise ManifestSchemaError(
-      f"ncollection-manifest.json is v2 but missing required "
-      f"`template_typedefs` field; regenerate via "
-      f"`pnpm nx run ocjs:generate`"
+      "ncollection-manifest.json is v2 but missing required "
+      "`template_typedefs` field; regenerate via "
+      "`pnpm nx run ocjs:generate`"
     )
   return dict(typedef_aliases)
 

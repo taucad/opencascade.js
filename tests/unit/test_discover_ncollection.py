@@ -24,11 +24,9 @@ from ocjs_bindgen.discover import (
   _dedupe_by_canonical_args,
   _is_globally_accessible,
   _normalize_arg,
-  _scan_template_typedef_methods,
   _substitute_arg_spelling,
   discover_ncollection_types,
 )
-
 from tests.conftest import _MockType, cursor_mock
 
 

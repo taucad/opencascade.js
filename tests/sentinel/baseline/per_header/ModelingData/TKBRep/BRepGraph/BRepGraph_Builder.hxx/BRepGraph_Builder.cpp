@@ -4615,6 +4615,7 @@
 #include <emscripten/wire.h>
 using namespace emscripten;
 #include <functional>
+#include <optional>
 #include <stdexcept>
 #include "ocjs_smart_ptr.h"
 #include "ocjs_handle_helpers.h"
@@ -5523,7 +5524,7 @@ using NCollection_Sequence_int = NCollection_Sequence<int>;EMSCRIPTEN_BINDINGS(B
   class_<BRepGraph_Builder>("BRepGraph_Builder")
     .class_function("Add", select_overload<BRepGraph_Builder::Result(BRepGraph &, const TopoDS_Shape &)>(&BRepGraph_Builder::Add), allow_raw_pointers())
     .class_function("Add", optional_override([](emscripten::val arg0, emscripten::val arg1, emscripten::val arg2) {
-      if (arg2.typeOf().as<std::string>() == "object" && !emscripten::val::module_property("Options").isUndefined() && arg2.instanceof(emscripten::val::module_property("Options"))) {
+      if (arg2.typeOf().as<std::string>() == "object" && !emscripten::val::module_property("BRepGraph_Builder_Options").isUndefined() && arg2.instanceof(emscripten::val::module_property("BRepGraph_Builder_Options"))) {
         return BRepGraph_Builder::Add(arg0.as<BRepGraph &>(emscripten::allow_raw_pointers()), arg1.as<const TopoDS_Shape &>(emscripten::allow_raw_pointers()), arg2.as<const BRepGraph_Builder::Options &>(emscripten::allow_raw_pointers()));
       }
       else {

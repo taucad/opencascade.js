@@ -37,7 +37,7 @@ now delegates to.
 
 from __future__ import annotations
 
-from typing import MutableSet, Optional
+from collections.abc import MutableSet
 
 import clang.cindex
 
@@ -192,8 +192,8 @@ class NameEncoder:
     @staticmethod
     def resolve_nested_type(
         decl,
-        namespace_scoped_sink: Optional[MutableSet[str]] = None,
-    ) -> Optional[str]:
+        namespace_scoped_sink: MutableSet[str] | None = None,
+    ) -> str | None:
         """Resolve nested enum/class/struct inside a class or namespace.
 
         Returns ``Parent_Child`` (or ``A_B_C`` for deeper chains) for

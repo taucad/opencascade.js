@@ -19,10 +19,11 @@ Usage (from build-wasm.sh):
 import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
-from datetime import datetime, timezone
-from pathlib import Path
+
+from ocjs_bindgen.provenance.clock import build_datetime
 
 OCJS_ROOT = os.environ.get("OCJS_ROOT", os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 OCCT_ROOT = os.environ.get("OCCT_ROOT", "")
@@ -52,6 +53,15 @@ def _git_commit(repo_path: str) -> str:
         return result.stdout.strip() if result.returncode == 0 else "unknown"
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return "unknown"
+
+
+def _ocjs_source_commit() -> str:
+    injected = os.environ.get("OCJS_SOURCE_COMMIT")
+    if injected:
+        if not re.fullmatch(r"[0-9a-f]{40}", injected):
+            raise ValueError("OCJS_SOURCE_COMMIT must be a lowercase 40-character hexadecimal commit")
+        return injected
+    return _git_commit(OCJS_ROOT)
 
 
 def _get_emscripten_version() -> str:
@@ -240,7 +250,8 @@ def init() -> None:
     lto_slug = "LTO" if lto else "noLTO"
     exc_slug = "wasmExc" if exceptions == "1" else "noExc"
     thread_slug = "multi" if "multi" in threading else "single"
-    build_id = f"{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S')}-{opt.lstrip('-')}-{lto_slug}-{thread_slug}"
+    built_at = build_datetime()
+    build_id = f"{built_at.strftime('%Y%m%dT%H%M%S')}-{opt.lstrip('-')}-{lto_slug}-{thread_slug}"
 
     cache_key_parts = [
         opt.lstrip("-"),
@@ -254,7 +265,7 @@ def init() -> None:
     provenance = {
         "schema": "wasm-build-provenance-v1.1",
         "buildId": build_id,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": built_at.isoformat(),
 
         "toolchain": {
             "emscripten": _get_emscripten_version(),
@@ -265,7 +276,7 @@ def init() -> None:
 
         "source": {
             "occtCommit": _git_commit(OCCT_ROOT),
-            "opencascadejsCommit": _git_commit(OCJS_ROOT),
+            "opencascadejsCommit": _ocjs_source_commit(),
             "filterPackagesHash": _filter_hash(),
             "pinnedDeps": _load_deps_json(),
         },

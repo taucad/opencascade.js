@@ -20,7 +20,8 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import datetime, timezone
+
+from ocjs_bindgen.provenance.clock import build_datetime
 
 USE_WASM_EXCEPTIONS: bool = os.environ.get("OCJS_EXCEPTIONS", "0") == "1"
 _EH_MODE: str = os.environ.get("OCJS_EH_MODE", "wasm")
@@ -121,7 +122,7 @@ def write_build_flags(path: str = "") -> None:
     if not path:
         path = BUILD_FLAGS_PATH
     flags = _current_build_flags()
-    flags["timestamp"] = datetime.now(timezone.utc).isoformat()
+    flags["timestamp"] = build_datetime().isoformat()
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w") as f:
         json.dump(flags, f, indent=2)

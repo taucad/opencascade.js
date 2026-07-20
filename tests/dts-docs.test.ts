@@ -695,15 +695,17 @@ describe('JSDoc documentation coverage', () => {
     }
 
     it.skipIf(!sourceFile)(
-      'should not have @param tags on no-arg constructors (TColStd_HPackedMapOfInteger)',
+      'should document the optional bucket count on the zero-required-argument constructor (TColStd_HPackedMapOfInteger)',
       () => {
         const cls = findClass(sourceFile!, 'TColStd_HPackedMapOfInteger');
         expect(cls).toBeDefined();
         const ctors = findAllConstructors(cls!);
-        const noArgCtor = ctors.find((c) => c.parameters.length === 0);
-        expect(noArgCtor).toBeDefined();
-        const params = getJSDocParams(noArgCtor!);
-        expect(params).toHaveLength(0);
+        const zeroRequiredArgCtor = ctors.find(
+          (c) => c.parameters.every((parameter) => parameter.questionToken),
+        );
+        expect(zeroRequiredArgCtor).toBeDefined();
+        const params = getJSDocParams(zeroRequiredArgCtor!);
+        expect(params.map((param) => param.name)).toEqual(['theNbBuckets']);
       },
     );
 

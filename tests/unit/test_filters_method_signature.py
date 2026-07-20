@@ -17,7 +17,7 @@ from tests.conftest import _MockType, cursor_mock
 method_signature = importlib.import_module("ocjs_bindgen.filters.method_signature")
 
 
-def _class_decl(name: str) -> "clang.cindex.Cursor":
+def _class_decl(name: str) -> clang.cindex.Cursor:
   return cursor_mock(kind=clang.cindex.CursorKind.CLASS_DECL, spelling=name)
 
 

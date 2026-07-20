@@ -40,10 +40,8 @@ defensive shapes.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from enum import Enum
-from typing import Optional, Tuple
-
+from dataclasses import dataclass
+from enum import StrEnum
 
 # Matrix rows whose primitive is ``std::optional<T>`` unconditionally.
 #
@@ -73,7 +71,7 @@ NATIVE_ROWS = frozenset({6, 20})
 RBV_ROWS = frozenset({16, 17, 18, 19, 25, 27})
 
 
-class AbsenceTag(str, Enum):
+class AbsenceTag(StrEnum):
     """Per-defaulted-parameter JS-surface absence semantics (rule 4).
 
     The tag is the bindgen's explicit statement of what an omitted JS
@@ -131,7 +129,7 @@ class ParameterDescriptor:
 class OverloadDescriptor:
     """Per-overload view consumed by :func:`classify_overload_group`."""
 
-    parameters: Tuple[ParameterDescriptor, ...] = ()
+    parameters: tuple[ParameterDescriptor, ...] = ()
     is_constructor: bool = False
     is_static: bool = False
     # Number of OTHER same-name overloads in the group (i.e.
@@ -143,7 +141,7 @@ class OverloadDescriptor:
 class GroupClassificationInputs:
     """Aggregate inputs the classifier needs to walk the decision tree."""
 
-    overloads: Tuple[OverloadDescriptor, ...]
+    overloads: tuple[OverloadDescriptor, ...]
     # Verdict from ``ocjs_bindgen.predicates.sibling_aliasing.detect_sub2b_pairs``.
     has_sibling_aliasing: bool = False
     # Verdict from ``ocjs_bindgen.codegen.rbv.js_effective_arity_collisions``.
@@ -185,7 +183,7 @@ class OverloadClassification:
 
     matrix_row: int
     primitive: str
-    per_position_tags: Tuple[Tuple[int, int, AbsenceTag], ...] = ()
+    per_position_tags: tuple[tuple[int, int, AbsenceTag], ...] = ()
     rationale: str = ""
 
     def diagnostic(self, group_label: str) -> str:
@@ -201,7 +199,7 @@ class OverloadClassification:
 # ---------------------------------------------------------------------------
 
 
-def _tag_position(param: ParameterDescriptor) -> Optional[AbsenceTag]:
+def _tag_position(param: ParameterDescriptor) -> AbsenceTag | None:
     """Return the :class:`AbsenceTag` for one parameter, or ``None`` when
     the slot has no absence semantics (no default, no genuine optional,
     no output marker)."""
@@ -215,8 +213,8 @@ def _tag_position(param: ParameterDescriptor) -> Optional[AbsenceTag]:
 
 
 def tag_overload_absence_semantics(
-    overloads: Tuple[OverloadDescriptor, ...],
-) -> Tuple[Tuple[int, int, AbsenceTag], ...]:
+    overloads: tuple[OverloadDescriptor, ...],
+) -> tuple[tuple[int, int, AbsenceTag], ...]:
     """Walk every parameter position in every overload and tag absence semantics.
 
     Returns a tuple of ``(overload_index, position_index, tag)`` triples
@@ -240,15 +238,15 @@ def tag_overload_absence_semantics(
 # ---------------------------------------------------------------------------
 
 
-def _has_genuine_optional(overloads: Tuple[OverloadDescriptor, ...]) -> bool:
+def _has_genuine_optional(overloads: tuple[OverloadDescriptor, ...]) -> bool:
     return any(p.is_genuine_optional for ov in overloads for p in ov.parameters)
 
 
-def _has_trailing_defaults(overloads: Tuple[OverloadDescriptor, ...]) -> bool:
+def _has_trailing_defaults(overloads: tuple[OverloadDescriptor, ...]) -> bool:
     return any(p.is_trailing_default for ov in overloads for p in ov.parameters)
 
 
-def _all_cstring_trailing_default(overloads: Tuple[OverloadDescriptor, ...]) -> bool:
+def _all_cstring_trailing_default(overloads: tuple[OverloadDescriptor, ...]) -> bool:
     """True iff EVERY trailing-default slot is a C-string. Drives row 33."""
     found_trailing = False
     for ov in overloads:

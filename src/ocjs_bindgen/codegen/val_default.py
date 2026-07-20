@@ -37,10 +37,12 @@ so the bench fixture worker can compare apples-to-apples across rows.
 
 from __future__ import annotations
 
-import clang.cindex
-
 from ocjs_bindgen.predicates.overload_classification import AbsenceTag
-from ocjs_bindgen.predicates.types import isCString, isRawPointerParam
+from ocjs_bindgen.predicates.types import (
+    isCString,
+    isRawPointerParam,
+    stringViewOwningType,
+)
 
 
 def _val_unwrap_expr(b, arg, val_name, tag, default_expr, accepts_meaningful_null, template_decl, template_args):
@@ -68,11 +70,14 @@ def _val_unwrap_expr(b, arg, val_name, tag, default_expr, accepts_meaningful_nul
     cpp_type = b.getOriginalArgumentType(arg, template_decl, template_args)
     is_c_string = isCString(arg.type)
     is_raw_pointer = isRawPointerParam(arg.type) and not is_c_string
+    string_view_owning = stringViewOwningType(arg.type)
 
     if tag is None:
         # Required input. Read directly.
         if is_c_string:
             return f"{val_name}.as<std::string>().c_str()"
+        if string_view_owning is not None:
+            return f"{val_name}.as<{string_view_owning}>()"
         if is_raw_pointer:
             return f"{val_name}.as<{cpp_type}>(emscripten::allow_raw_pointers())"
         return f"{val_name}.as<{cpp_type}>()"
@@ -90,6 +95,8 @@ def _val_unwrap_expr(b, arg, val_name, tag, default_expr, accepts_meaningful_nul
     # DEFAULT_ON_ABSENCE — strict-by-default unless row 30 carve-out.
     if is_c_string:
         cast = f"{val_name}.as<std::string>().c_str()"
+    elif string_view_owning is not None:
+        cast = f"{val_name}.as<{string_view_owning}>()"
     elif is_raw_pointer:
         # Raw pointer trailing defaults stay required: embind's
         # wire.h:124 static_assert rejects std::optional<T*>, and
@@ -99,9 +106,14 @@ def _val_unwrap_expr(b, arg, val_name, tag, default_expr, accepts_meaningful_nul
     else:
         cast = f"{val_name}.as<{cpp_type}>()"
 
+    rendered_default = (
+        f"{string_view_owning}({default_expr})"
+        if string_view_owning is not None
+        else default_expr
+    )
     if accepts_meaningful_null:
         # Row 30 — permissive null/undefined.
-        return f"(({val_name}.isUndefined() || {val_name}.isNull()) ? ({default_expr}) : {cast})"
+        return f"(({val_name}.isUndefined() || {val_name}.isNull()) ? ({rendered_default}) : {cast})"
 
     # Strict-by-default (policy rule 5): undefined → default;
     # null → BindingError. We use a lambda that returns the bare value
@@ -112,11 +124,11 @@ def _val_unwrap_expr(b, arg, val_name, tag, default_expr, accepts_meaningful_nul
     # pattern we replaced (a reference return on the lambda would dangle
     # the moment the lambda exited, since the default branch constructs
     # the value in the lambda's own stack frame).
-    type_for_lambda = _decay_lambda_return_type(cpp_type, is_c_string)
+    type_for_lambda = string_view_owning or _decay_lambda_return_type(cpp_type, is_c_string)
     arg_name = val_name
     return (
         f"([&]() -> {type_for_lambda} {{ "
-        f"if ({arg_name}.isUndefined()) return ({default_expr}); "
+        f"if ({arg_name}.isUndefined()) return ({rendered_default}); "
         f"if ({arg_name}.isNull()) "
         f"{{ emscripten::val::global(\"Error\").new_(emscripten::val("
         f"\"[rule 5 / strict null] null is not a valid value for this slot — "
@@ -200,7 +212,7 @@ def _emit_truncated_lambda(
     for i in range(truncate_to):
         a = args[i]
         nm = a.spelling if a.spelling else f"arg{i}"
-        typ = b.getOriginalArgumentType(a, template_decl, template_args)
+        typ = stringViewOwningType(a.type) or b.getOriginalArgumentType(a, template_decl, template_args)
         if isCString(a.type):
             lambda_decls.append(f"std::string {nm}")
             call_arg_exprs.append(f"{nm}.c_str()")
@@ -264,7 +276,7 @@ def emit_method_with_val_default(
     args = list(method.get_arguments())
     n_args = len(args)
     n_def = b._countTrailingDefaults(method)
-    default_start = n_args - n_def
+    n_args - n_def
 
     result_cpp = b.resolveWithCanonicalFallback(
         method.result_type.spelling, method.result_type, template_decl, template_args,
@@ -276,7 +288,7 @@ def emit_method_with_val_default(
         nm = a.spelling if a.spelling else f"arg{i}"
         if tag is None:
             # Required input slot — type natively.
-            typ = b.getOriginalArgumentType(a, template_decl, template_args)
+            typ = stringViewOwningType(a.type) or b.getOriginalArgumentType(a, template_decl, template_args)
             if isCString(a.type):
                 lambda_decls.append(f"std::string {nm}")
                 call_arg_exprs.append(f"{nm}.c_str()")
@@ -362,7 +374,7 @@ def emit_constructor_with_val_default(
     """
     accepts_null_per_position = accepts_null_per_position or set()
     args = list(ctor.get_arguments())
-    n_args = len(args)
+    len(args)
     n_def = b._countTrailingDefaults(ctor)
 
     lambda_decls = []
@@ -370,7 +382,7 @@ def emit_constructor_with_val_default(
     for i, a, tag, accepts_null in _enumerate_lambda_args(args, n_def, accepts_null_per_position):
         nm = a.spelling if a.spelling else f"arg{i}"
         if tag is None:
-            typ = b.getOriginalArgumentType(a, template_decl, template_args)
+            typ = stringViewOwningType(a.type) or b.getOriginalArgumentType(a, template_decl, template_args)
             if isCString(a.type):
                 lambda_decls.append(f"std::string {nm}")
                 call_arg_exprs.append(f"{nm}.c_str()")

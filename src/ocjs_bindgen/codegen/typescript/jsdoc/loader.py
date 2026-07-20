@@ -26,7 +26,7 @@ def load_docs(tsb_cls):
     return tsb_cls._docs_cache
   docs_path = os.path.join(OCJS_ROOT, "build", "occt-docs.json")
   if os.path.isfile(docs_path):
-    with open(docs_path, "r") as f:
+    with open(docs_path) as f:
       tsb_cls._docs_cache = json.load(f)
   else:
     tsb_cls._docs_cache = {}

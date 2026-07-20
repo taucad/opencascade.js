@@ -80,6 +80,14 @@ describe.skipIf(!wasmExists)('Smoke: string_view → owning-string ctor cast', (
       using same = new oc.TCollection_ExtendedString(input);
       expect(s.IsEqual(same)).toBe(true);
     });
+
+    it('dispatches multi-character AssignCat through the full-string overload', () => {
+      const oc = getOC();
+      using s = new oc.TCollection_ExtendedString('Tau');
+      s.AssignCat('CAD');
+      using expected = new oc.TCollection_ExtendedString('TauCAD');
+      expect(s.IsEqual(expected)).toBe(true);
+    });
   });
 
   describe('TCollection_AsciiString (std::string_view → std::string)', () => {
@@ -97,6 +105,13 @@ describe.skipIf(!wasmExists)('Smoke: string_view → owning-string ctor cast', (
       using s = new oc.TCollection_AsciiString(input);
       expect(s.Length()).toBe(input.length);
       expect(s.ToCString()).toBe(input);
+    });
+
+    it('dispatches multi-character AssignCat through the full-string overload', () => {
+      const oc = getOC();
+      using s = new oc.TCollection_AsciiString('open');
+      s.AssignCat('cascade');
+      expect(s.ToCString()).toBe('opencascade');
     });
   });
 });

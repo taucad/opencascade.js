@@ -21,7 +21,7 @@ new dependencies through.
 
 from __future__ import annotations
 
-from typing import Any, Optional, Protocol
+from typing import Any, Protocol
 
 
 class ResolverContext(Protocol):
@@ -46,8 +46,8 @@ class ResolverContext(Protocol):
     def _collect_any(self, reason: str, type_spelling: str) -> None: ...
 
     # Nested / template lookups owned by the binder.
-    def _resolve_nested_type(self, decl) -> Optional[str]: ...
-    def _find_typedef_for_container(self, container: str, clang_type) -> Optional[str]: ...
+    def _resolve_nested_type(self, decl) -> str | None: ...
+    def _find_typedef_for_container(self, container: str, clang_type) -> str | None: ...
 
     # Recursive entry — strategies dispatch back through the orchestrator.
     def resolve_type(self, clang_type, templateDecl=None, templateArgs=None) -> str: ...

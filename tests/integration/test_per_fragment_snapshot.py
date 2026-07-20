@@ -33,7 +33,6 @@ if str(_SENTINEL_DIR) not in sys.path:
 
 from sentinels import BUILD_BINDINGS, SENTINELS, Sentinel  # noqa: E402
 
-
 # Pick the two cheapest, most-coverage-dense fragments. `gp_Pnt` is the
 # canonical simple class; `Standard_Failure` exercises the std-using
 # constructor + handle wiring.

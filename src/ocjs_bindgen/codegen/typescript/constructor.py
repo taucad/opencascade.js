@@ -16,6 +16,43 @@ from ocjs_bindgen.naming import getClassJsPublicName
 from ocjs_bindgen.naming.cpp import getClassTypeName
 
 
+def dedupe_js_equivalent_constructors(
+  tsb,
+  constructors,
+  templateDecl=None,
+  templateArgs=None,
+):
+  """Keep one constructor for each JavaScript-visible argument signature.
+
+  C++ overloads such as ``const char*`` and ``std::string_view`` are distinct
+  to Clang but both accept the same JavaScript ``string``. The runtime binder
+  resolves an indistinguishable group to one equivalent implementation; the
+  declaration emitter must do the same before ambiguity analysis, otherwise
+  it removes every usable signature from the public class and emits only
+  suffixed helper subclasses.
+
+  When equivalent declarations differ only in trailing defaults, retain the
+  richer declaration so TypeScript exposes every arity the runtime accepts.
+  Stable input order breaks ties and preserves the canonical OCCT overload's
+  documentation.
+  """
+  deduped = {}
+  for constructor in constructors:
+    args = list(constructor.get_arguments())
+    key = tuple(
+      tsb._classify_js_type(arg.type, templateDecl, templateArgs)
+      for arg in args
+    )
+    existing = deduped.get(key)
+    if (
+      existing is None
+      or tsb._countTrailingDefaults(constructor)
+      > tsb._countTrailingDefaults(existing)
+    ):
+      deduped[key] = constructor
+  return list(deduped.values())
+
+
 def emit_ts_constructor(tsb, className, args, templateDecl, templateArgs, tplName, numOptional=0, overload_index=0):
   """Emit a single TypeScript constructor signature, marking trailing args as optional."""
   parts = []
@@ -62,6 +99,12 @@ def process_simple_constructor(tsb, theClass, templateDecl=None, templateArgs=No
 
   if len(bindable) == 0:
     return output
+  bindable = dedupe_js_equivalent_constructors(
+    tsb,
+    bindable,
+    templateDecl,
+    templateArgs,
+  )
 
   # Optional-overload migration: each ctor emits ONE TypeScript signature
   # with the trailing `nDefaults` parameters marked optional (`?:` syntax)
@@ -125,6 +168,12 @@ def process_overloaded_constructors(tsb, theClass, children=None, templateDecl=N
       bindable.append(c)
     except SkipException:
       continue
+  bindable = dedupe_js_equivalent_constructors(
+    tsb,
+    bindable,
+    templateDecl,
+    templateArgs,
+  )
 
   by_arity = defaultdict(list)
   for c in bindable:

@@ -18,10 +18,8 @@ from __future__ import annotations
 
 import hashlib
 import subprocess
-from pathlib import Path
 
 import pytest
-
 from sentinels import BASELINE_DIR, BUILD_BINDINGS, REPO_ROOT
 
 _TREE_SHA_BASELINE = BASELINE_DIR / "full_tree.sha256"

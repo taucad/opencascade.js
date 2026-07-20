@@ -1,16 +1,22 @@
 #!/usr/bin/python3
 
 import json
+import multiprocessing
 import os
 import subprocess
-import multiprocessing
+from argparse import ArgumentParser
 from functools import partial
 
-from ocjs_bindgen.config.paths import OCJS_ROOT, PCH_FILE, getFlatIncludePaths, FLAT_INCLUDE_DIR, BUILD_DIR
-from ocjs_bindgen.config.flags import WASM_EXCEPTION_FLAGS, SIMD_FLAGS, EXTRA_COMPILE_FLAGS, validate_build_flags, BuildFlagMismatch, BUILD_FLAGS_PATH
 from filter.filterPackages import filterPackages
-
-from argparse import ArgumentParser
+from ocjs_bindgen.config.flags import (
+  BUILD_FLAGS_PATH,
+  EXTRA_COMPILE_FLAGS,
+  SIMD_FLAGS,
+  WASM_EXCEPTION_FLAGS,
+  BuildFlagMismatch,
+  validate_build_flags,
+)
+from ocjs_bindgen.config.paths import BUILD_DIR, FLAT_INCLUDE_DIR, PCH_FILE, getFlatIncludePaths
 
 libraryBasePath = BUILD_DIR + "/bindings"
 COMPILED_BINDINGS_DIR = BUILD_DIR + "/compiled-bindings"
@@ -109,7 +115,7 @@ def buildOneFile(args, item):
 
 def compileCustomCodeBindings(args):
   filesToBuild = []
-  for dirpath, dirnames, filenames in os.walk(libraryBasePath + "/myMain.h"):
+  for dirpath, _dirnames, filenames in os.walk(libraryBasePath + "/myMain.h"):
     filesToBuild.extend(map(lambda x: dirpath + "/" + x, filter(lambda x: x.endswith(".cpp"), filenames)))
 
   with multiprocessing.Pool(processes=min(multiprocessing.cpu_count(), 8)) as p:
@@ -129,14 +135,14 @@ if __name__ == "__main__":
     validate_build_flags()
   except BuildFlagMismatch as e:
     print(str(e), flush=True)
-    raise SystemExit(1)
+    raise SystemExit(1) from None
 
   parser = ArgumentParser()
   parser.add_argument(dest="threading", choices=["single-threaded", "multi-threaded"], help="Build in single vs. multi-threaded mode")
   args = parser.parse_args()
 
   filesToBuild = []
-  for dirpath, dirnames, filenames in os.walk(libraryBasePath):
+  for dirpath, _dirnames, filenames in os.walk(libraryBasePath):
     for f in filenames:
       if f.endswith(".cpp"):
         fullpath = dirpath + "/" + f
@@ -167,18 +173,18 @@ if __name__ == "__main__":
     cat = f.get("error_type", "unknown")
     error_categories.setdefault(cat, []).append(f["file"])
 
-  print(f"\nBinding compilation summary:")
+  print("\nBinding compilation summary:")
   print(f"  Total:     {total}")
   print(f"  Succeeded: {succeeded}")
   print(f"  Cached:    {cached}")
   print(f"  Failed:    {failed}")
   if error_categories:
-    print(f"  Failure breakdown:")
+    print("  Failure breakdown:")
     for cat, files in sorted(error_categories.items(), key=lambda x: -len(x[1])):
       print(f"    {cat}: {len(files)}")
   if failed > 0:
     print(f"  ({failed} failures are expected \u2014 not all OCCT classes compile with embind)")
-    print(f"  Required bindings will be verified during the link step.")
+    print("  Required bindings will be verified during the link step.")
 
   report = {
     "total": total,

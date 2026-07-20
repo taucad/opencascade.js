@@ -20,7 +20,6 @@ import glob
 import os
 import platform
 import subprocess
-from typing import List, Optional, Set, Tuple
 
 import yaml
 
@@ -50,7 +49,7 @@ PCH_FILE = BUILD_DIR + "/pch.h.pch"
 _DEPRECATED_DIR = "Deprecated"
 
 
-def _load_excluded_includes() -> Set[str]:
+def _load_excluded_includes() -> set[str]:
     """Parse the legacy `bindgen-filters.yaml` `exclude.headers` section.
 
     Reads the YAML directly rather than going through `BindgenConfig` because
@@ -75,7 +74,7 @@ def _load_excluded_includes() -> Set[str]:
 _EXCLUDED_INCLUDES = _load_excluded_includes()
 
 
-def getGlobalIncludes() -> Tuple[List[str], List[str], List[str]]:
+def getGlobalIncludes() -> tuple[list[str], list[str], list[str]]:
     """Discover OCCT headers from non-filtered packages for PCH generation.
 
     Uses `filterPackages` to avoid pulling platform-specific headers (OpenGL,
@@ -129,7 +128,7 @@ VENDORED_LLVM17_DIR = os.path.join(OCJS_ROOT, "deps", "llvm-17")
 _LIBC_SENTINEL_RELPATH = os.path.join("sys", "types.h")
 
 
-def _detect_linux_multiarch_triple() -> Optional[str]:
+def _detect_linux_multiarch_triple() -> str | None:
     """Return the Debian-style multiarch triple (e.g. ``aarch64-linux-gnu``).
 
     Debian/Ubuntu split libc6-dev headers across two trees:
@@ -157,7 +156,7 @@ def _detect_linux_multiarch_triple() -> Optional[str]:
     return None
 
 
-def _get_host_libc_includes() -> List[str]:
+def _get_host_libc_includes() -> list[str]:
     """Resolve the host libc include directories for libclang's parse pass.
 
     The vendored LLVM 17 tarball ships libc++ headers and a clang resource
@@ -214,7 +213,7 @@ def _get_host_libc_includes() -> List[str]:
     return []
 
 
-def _get_parse_libcxx_include_paths() -> List[str]:
+def _get_parse_libcxx_include_paths() -> list[str]:
     """Return vendored libc++ 17 + clang 17 resource + per-OS libc paths.
 
     The parse pass uses pip's `libclang==18.1.1`, which falls inside the
@@ -262,7 +261,7 @@ def _get_parse_libcxx_include_paths() -> List[str]:
     # Without this prepend, every translation unit fails at `__config_site`
     # not-found, which then cascades into the Phase 7 silent type-degradation
     # because libclang error-recovers by treating all templated returns as int.
-    config_site_inc: Optional[str] = None
+    config_site_inc: str | None = None
     if not os.path.isfile(os.path.join(libcxx_inc, "__config_site")):
         matches = glob.glob(
             os.path.join(VENDORED_LLVM17_DIR, "include", "*", "c++", "v1", "__config_site")
@@ -369,7 +368,7 @@ def buildFlatIncludes() -> str:
 
     header_exts = {".hxx", ".h", ".lxx", ".gxx", ".pxx"}
     count = 0
-    for dirpath, dirnames, filenames in os.walk(occtBasePath):
+    for dirpath, _dirnames, filenames in os.walk(occtBasePath):
         for fname in filenames:
             if os.path.splitext(fname)[1].lower() in header_exts:
                 target = os.path.join(FLAT_INCLUDE_DIR, fname)
@@ -527,7 +526,6 @@ def _assert_pch_survives_mtime_bump(pch_build_command: list[str]) -> None:
     1-second local failure at PCH-build time. See plan
     pch-mtime-eliminate_e887edab.plan.md for the full root cause.
     """
-    import time
 
     original_mtime = os.path.getmtime(PCH_HEADER)
     try:

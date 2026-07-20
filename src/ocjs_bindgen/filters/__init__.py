@@ -12,15 +12,15 @@ Public surface (re-exported here for ergonomic imports):
     — semantic / AST-driven filter predicates consumed by the bindgen.
 """
 
-from .config import BindgenConfig, get_config
-from .installer import install
 from .classes import filterClass
-from .method_or_properties import filterMethodOrProperty
-from .typedefs import filterTypedef
+from .config import BindgenConfig, get_config
 from .enums import filterEnum
 from .include_files import filterIncludeFile
+from .installer import install
+from .method_or_properties import filterMethodOrProperty
 from .packages import filterPackages
 from .source_files import filterSourceFile
+from .typedefs import filterTypedef
 
 __all__ = [
   "BindgenConfig",

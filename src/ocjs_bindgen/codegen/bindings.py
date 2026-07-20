@@ -1,88 +1,96 @@
-import clang.cindex
-import json
-import os
 import re
 from collections import defaultdict, namedtuple
-from dataclasses import dataclass, field
 
-from ocjs_bindgen.codegen.wasm_common import SkipException, isAbstractClass, isTransientDerived, getMethodOverloadPostfix
+import clang.cindex
+
 from filter.filterClasses import filterClass
 from filter.filterMethodOrProperties import filterMethodOrProperty
-from ocjs_bindgen.filters.method_signature import pop_dropped_method_reasons
-from typing import Tuple, List, Any, Optional, Dict
-
-from ocjs_bindgen.predicates.types import (
-  builtInTypes, cStringTypes, unbindablePointerTypes, isCString, isRawPointerParam,
-)
-from ocjs_bindgen.predicates.classes import (
-  shouldProcessClass,
-  _isDefaultConstructibleClass, _isCopyConstructibleClass, _ctor_is_copy,
-  _findClassTemplateByName, _COPY_CTOR_CACHE, _CLASS_TEMPLATE_INDEX,
-)
-from ocjs_bindgen.predicates.optional_emission_guards import (
-  assert_no_nonconst_ref_in_optional,
-)
-from ocjs_bindgen.predicates.args import (
-  _isHandleType, isClassOutputParam, isOutputParam,
-  isHandleOutputParam, isPrimitiveOutputParam, shouldStripParam,
-)
-from ocjs_bindgen.naming.cpp import (
-  getClassTypeName, getClassQualifiedName, getEnumQualifiedName,
-)
-from ocjs_bindgen.naming.ts import (
-  getClassJsPublicName, getEnumJsPublicName,
-)
 
 # PR 2.1 — dispatch-tree codegen lives in ocjs_bindgen.codegen.dispatch.
 # Re-export the dataclasses so any external consumer (POC scripts, debuggers)
 # that imports them from `bindings` keeps working.
 from ocjs_bindgen.codegen import dispatch as _dispatch
-from ocjs_bindgen.codegen.dispatch import (  # noqa: F401
-  DispatchLeaf, DispatchBranch, DispatchAmbiguous,
-)
+
 # PR 2.2 — RBV envelope codegen lives in ocjs_bindgen.codegen.rbv. Re-export
 # the envelope field-name constants because several call sites in this module
 # still reference them at module scope.
 from ocjs_bindgen.codegen import rbv as _rbv
-from ocjs_bindgen.codegen.rbv import (  # noqa: F401
-  ENVELOPE_RETURN_FIELD, ENVELOPE_RETURN_FIELD_COLLISION,
-)
-# PR 2.3 — embind codegen decomposed into ocjs_bindgen/codegen/embind/{class_,
-# constructor,method,enum,preamble}.py. Methods on `EmbindBindings` now delegate.
-from ocjs_bindgen.codegen.embind import (
-  class_ as _embind_class,
-  constructor as _embind_ctor,
-  method as _embind_method,
-  enum as _embind_enum,
-  preamble as _embind_preamble,
-)
+
 # Phase 2 — per-row val-with-default emission for the trailing-default
 # matrix rows that policy rule 9 routes to ``emscripten::val``
 # (currently rows 33 + 34 — wire-in for rows 1, 2, 7, 23, 30, 37 is
 # tracked in the Phase 2 research doc as deferred pending per-row
 # bench fixture data).
 from ocjs_bindgen.codegen import val_default as _val_default
+from ocjs_bindgen.codegen.dispatch import (  # noqa: F401
+  DispatchAmbiguous,
+  DispatchBranch,
+  DispatchLeaf,
+)
+
+# PR 2.3 — embind codegen decomposed into ocjs_bindgen/codegen/embind/{class_,
+# constructor,method,enum,preamble}.py. Methods on `EmbindBindings` now delegate.
+from ocjs_bindgen.codegen.embind import (
+  class_ as _embind_class,
+)
+from ocjs_bindgen.codegen.embind import (
+  constructor as _embind_ctor,
+)
+from ocjs_bindgen.codegen.embind import (
+  preamble as _embind_preamble,
+)
+from ocjs_bindgen.codegen.rbv import (  # noqa: F401
+  ENVELOPE_RETURN_FIELD,
+  ENVELOPE_RETURN_FIELD_COLLISION,
+)
+from ocjs_bindgen.codegen.typescript import (
+  constructor as _ts_ctor,
+)
+from ocjs_bindgen.codegen.typescript import (
+  enum as _ts_enum,
+)
+from ocjs_bindgen.codegen.typescript import (
+  inheritance as _ts_inheritance,
+)
+from ocjs_bindgen.codegen.typescript.jsdoc import (
+  links as _ts_jsdoc_links,
+)
+
+# PR 2.4 — TypescriptBindings JSDoc cluster, inheritance walk, and enum
+# emission decomposed into ocjs_bindgen/codegen/typescript/. Methods on
+# `TypescriptBindings` now delegate to the free-function implementations.
+from ocjs_bindgen.codegen.typescript.jsdoc import (
+  loader as _ts_jsdoc_loader,
+)
+from ocjs_bindgen.codegen.typescript.jsdoc import (
+  params as _ts_jsdoc_params,
+)
+from ocjs_bindgen.codegen.typescript.jsdoc import (
+  renderer as _ts_jsdoc_renderer,
+)
+from ocjs_bindgen.codegen.typescript.jsdoc import (
+  wrapping as _ts_jsdoc_wrapping,
+)
+from ocjs_bindgen.codegen.wasm_common import (
+  SkipException,
+  getMethodOverloadPostfix,
+  isAbstractClass,
+  isTransientDerived,
+)
+from ocjs_bindgen.filters.method_signature import pop_dropped_method_reasons
+from ocjs_bindgen.naming.ts import (
+  getClassJsPublicName,
+)
+from ocjs_bindgen.predicates.optional_emission_guards import (
+  assert_no_nonconst_ref_in_optional,
+)
 from ocjs_bindgen.predicates.overload_classification import (
   GroupClassificationInputs,
   OverloadDescriptor,
   ParameterDescriptor,
   classify_overload_group,
 )
-# PR 2.4 — TypescriptBindings JSDoc cluster, inheritance walk, and enum
-# emission decomposed into ocjs_bindgen/codegen/typescript/. Methods on
-# `TypescriptBindings` now delegate to the free-function implementations.
-from ocjs_bindgen.codegen.typescript.jsdoc import (
-  loader as _ts_jsdoc_loader,
-  renderer as _ts_jsdoc_renderer,
-  wrapping as _ts_jsdoc_wrapping,
-  links as _ts_jsdoc_links,
-  params as _ts_jsdoc_params,
-)
-from ocjs_bindgen.codegen.typescript import (
-  inheritance as _ts_inheritance,
-  enum as _ts_enum,
-  constructor as _ts_ctor,
-)
+from ocjs_bindgen.predicates.types import isStringView
 
 JsType = namedtuple('JsType', ['category', 'name'])
 
@@ -90,13 +98,13 @@ def _normalize_handle_ns(s: str) -> str:
   """Normalize handle namespace to canonical occ::handle spelling."""
   return s.replace("opencascade::handle", "occ::handle")
 
-def merge(sep: str, *strings: List[str]):
+def merge(sep: str, *strings: list[str]):
   return sep.join(strings)
 
 def pick(condition: bool, strTrue: str, strFalse: str):
   return strTrue if condition else strFalse
 
-def pickWrap(condition: bool, wrapStart: Tuple[str, str], center: str, wrapEnd: Tuple[str, str]):
+def pickWrap(condition: bool, wrapStart: tuple[str, str], center: str, wrapEnd: tuple[str, str]):
   return (wrapStart[0] if condition else wrapStart[1]) + center + (wrapEnd[0] if condition else wrapEnd[1])
 
 def indent(level: int):
@@ -646,7 +654,7 @@ def _is_canonical_optional_default(b, arg, theClass, classCpp, templateDecl, tem
         return False
 
     expr_compact = "".join(default_expr.split())
-    canonical = arg.type.get_canonical()
+    arg.type.get_canonical()
 
     # Row 3 — handle type with ``Handle()`` (null) default. The default
     # expression normalises to ``Handle()`` or ``opencascade::handle<T>()``
@@ -855,7 +863,7 @@ class Bindings:
     base_args = list(base_override.get_arguments())
     if len(base_args) != len(allArgs):
       return derived_names
-    for derived_a, base_a in zip(allArgs, base_args):
+    for derived_a, base_a in zip(allArgs, base_args, strict=False):
       if derived_a.type.get_canonical().spelling != base_a.type.get_canonical().spelling:
         return derived_names
     return [self._effectiveArgName(base_a, i) for i, base_a in enumerate(base_args)]
@@ -989,7 +997,7 @@ class Bindings:
     if len(base_output) != len(output_args):
       return [(i, self._effectiveArgName(a, i)) for i, a in output_args]
     pairs = []
-    for (di, _derived_a), (bi, base_a) in zip(output_args, base_output):
+    for (di, _derived_a), (bi, base_a) in zip(output_args, base_output, strict=False):
       pairs.append((di, self._effectiveArgName(base_a, bi)))
     return pairs
 
@@ -1007,7 +1015,6 @@ class Bindings:
     "std::istream", "std::ostream", "std::ifstream", "std::ofstream",
     "std::istringstream", "std::ostringstream", "std::stringstream",
     "std::streambuf", "std::basic_istream", "std::basic_ostream",
-    "std::string_view", "std::basic_string_view",
     "void *", "void*",
     "NCollection_Vec2", "NCollection_Vec3", "NCollection_Vec4",
   ]
@@ -1438,7 +1445,7 @@ class Bindings:
     Mirrors the same mangling algorithm used by the discover phase so the
     discriminator and the registered class name stay in lock-step.
     """
-    from ocjs_bindgen.discover import mangle_template_name, _extract_template_args
+    from ocjs_bindgen.discover import _extract_template_args, mangle_template_name
     try:
       arg_spellings = _extract_template_args(clang_type)
     except Exception:
@@ -1498,9 +1505,11 @@ class Bindings:
       return JsType('number_float', 'number')
     if kind == clang.cindex.TypeKind.BOOL:
       return JsType('boolean', 'boolean')
-    if kind in self._JS_STRING_KINDS:
-      return JsType('string', 'string')
     if isCString(clang_type):
+      return JsType('string', 'string')
+    if kind in self._JS_STRING_KINDS:
+      return JsType('string_char', 'string')
+    if isStringView(clang_type):
       return JsType('string', 'string')
 
     decl = t.get_declaration()
@@ -3722,7 +3731,7 @@ class TypescriptBindings(Bindings):
       if not base_output:
         return None
       if len(base_output) == len(outputArgs):
-        outputArgs = [(i, derived_a) for (i, derived_a), (_bi, base_a) in zip(outputArgs, base_output)]
+        outputArgs = [(i, derived_a) for (i, derived_a), (_bi, base_a) in zip(outputArgs, base_output, strict=False)]
         output_names = [self._argname(base_a, bi) for (bi, base_a) in base_output]
       else:
         # Mixed-arity virtual override — describe the union of base + derived
@@ -3762,7 +3771,7 @@ class TypescriptBindings(Bindings):
       names_set = set(output_names)
       return_field = ENVELOPE_RETURN_FIELD_COLLISION if ENVELOPE_RETURN_FIELD in names_set else ENVELOPE_RETURN_FIELD
       fields.append({"name": return_field, "kind": "return"})
-    for (i, arg), out_name in zip(outputArgs, output_names):
+    for (_i, arg), out_name in zip(outputArgs, output_names, strict=False):
       fields.append({"name": out_name, "kind": self._envelopeFieldKind(arg)})
     needs_dispose = self._containerNeedsDispose(outputArgs, method)
     return {
@@ -3822,7 +3831,7 @@ class TypescriptBindings(Bindings):
       if len(base_output) == len(outputArgs):
         # Mirror the base's argument names for the output fields, but use the
         # derived's (more specific) types to preserve covariance.
-        outputArgs = [(i, derived_a) for (i, derived_a), (_bi, base_a) in zip(outputArgs, base_output)]
+        outputArgs = [(i, derived_a) for (i, derived_a), (_bi, base_a) in zip(outputArgs, base_output, strict=False)]
         derived_output_names = [self._argname(base_a, bi) for (bi, base_a) in base_output]
       else:
         # The derived override carries a different number of output params
@@ -3867,7 +3876,7 @@ class TypescriptBindings(Bindings):
       ret_field_name = ENVELOPE_RETURN_FIELD_COLLISION if ENVELOPE_RETURN_FIELD in output_names else ENVELOPE_RETURN_FIELD
       fields.append(f"{ret_field_name}: {origReturn}")
 
-    for (i, arg), out_name in zip(outputArgs, derived_output_names):
+    for (_i, arg), out_name in zip(outputArgs, derived_output_names, strict=False):
       tsType = self.resolve_type(arg.type, templateDecl, templateArgs)
       fields.append(f"{out_name}: {tsType}")
 

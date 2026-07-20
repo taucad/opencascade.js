@@ -1,5 +1,6 @@
 import clang.cindex
 
+
 class SkipException(Exception):
   pass
 
@@ -50,7 +51,7 @@ def isAbstractClass(theClass, classDict):
   return numPureVirtualMethods > numImplementedPureVirtualMethods
 
 def getMethodOverloadPostfix(theClass, method, children = None):
-  if children == None:
+  if children is None:
     children = theClass.get_children() 
   allOverloads = [m for m in children if m.spelling == method.spelling]
   numOverloads = len(allOverloads)

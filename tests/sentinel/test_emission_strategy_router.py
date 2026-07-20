@@ -50,7 +50,6 @@ if str(SRC) not in sys.path:
 # import time. Pulling just the function via an ``importlib`` shim
 # keeps the sentinel toolchain-free.
 def _import_router():
-    import importlib.util
 
     src_path = REPO_ROOT / "src" / "ocjs_bindgen" / "codegen" / "bindings.py"
     # Read the file and exec only the router function — keeps the

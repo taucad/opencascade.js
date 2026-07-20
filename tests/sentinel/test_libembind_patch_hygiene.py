@@ -37,8 +37,6 @@ import shutil
 import subprocess
 from pathlib import Path
 
-import pytest
-
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PRISTINE = REPO_ROOT / "src" / "vendor" / "pristine-libembind.js"
 PRISTINE_HASH_FILE = REPO_ROOT / "src" / "vendor" / "pristine-libembind.expected.sha256"
