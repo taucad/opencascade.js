@@ -952,7 +952,7 @@ else:
       # seeded for standalone CLI use, which we now serve by having
       # `finalize` no-op cleanly when the scratchpad is absent.
       echo "═══ Generating build provenance ═══"
-      "$OCJS_PYTHON" src/provenance.py finalize --wasm-dir "$OCJS_OUTPUT_DIR" --yaml "${YAML_CONFIG:-}" --duration 0
+      "$OCJS_PYTHON" src/provenance.py finalize --wasm-dir "$OCJS_OUTPUT_DIR" --yaml "${YAML_CONFIG:-}"
       echo ""
       ;;
     full)
@@ -996,7 +996,7 @@ ELAPSED=$((END_TIME - START_TIME))
 # to finalize don't fail the wrapper.
 
 if [ -n "$YAML_CONFIG" ]; then
-  "$OCJS_PYTHON" src/provenance.py finalize --wasm-dir "$OCJS_OUTPUT_DIR" --yaml "$YAML_CONFIG" --duration "$ELAPSED" || true
+  "$OCJS_PYTHON" src/provenance.py finalize --wasm-dir "$OCJS_OUTPUT_DIR" --yaml "$YAML_CONFIG" || true
 fi
 
 echo ""

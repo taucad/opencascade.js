@@ -74,7 +74,7 @@ Per-build raw `EMSCRIPTEN_BINDINGS(...)` registrations compiled with
 
 ## Symbol resolution classes
 
-Every YAML-requested symbol becomes a linked binding through exactly one of four mechanisms. The post-link `build-manifest.json` (schema `build-manifest-v2`) buckets each requested symbol into one of these categories under `symbols`:
+Every YAML-requested symbol becomes a linked binding through exactly one of four mechanisms. The post-link `build-manifest.json` (schema `build-manifest-v3`) buckets each requested symbol into one of these categories under `symbols`:
 
 1. **Direct compilation.** `bindings: - symbol: gp_Pnt` causes the generator to emit `build/bindings/gp_Pnt.cpp`, which `compileBindings.py` compiles into `build/compiled-bindings/gp_Pnt.cpp.o`. Detected by `ocjs_bindgen.link.manifest_registry.collect_compiled_symbols`. Reported as `satisfied_by_compiled` (count surfaces as `symbols.compiled`).
 2. **NCollection typedef alias.** `bindings: - symbol: TColgp_Array1OfPnt` resolves via the canonical mangled spelling `NCollection_Array1_gp_Pnt`; the linker substitutes the typedef at link time. Mapping lives in `build/ncollection-manifest.json`. Detected by `manifest_registry.load_ncollection_alias_index`. Reported under `symbols.alias_resolved` as `{alias, canonical}` entries.
@@ -83,7 +83,7 @@ Every YAML-requested symbol becomes a linked binding through exactly one of four
 
 Anything that survives all four lookups lands in `symbols.missing` and triggers `validation_passed=false`. The link step also raises immediately via `yaml_build.verifyBindings` (no env-var gate) so a YAML asking for a symbol the toolchain cannot provide fails the link, not just the post-link audit.
 
-Auto-discovered NCollection canonicals (entries the YAML never named directly, but that became reachable from the YAML's scope) are tracked separately in `<variant>.provenance.json::nCollectionManifest.{linked, total, dropped}` (schema `wasm-build-provenance-v1.1`). They never appear in `symbols.requested` because they're produced by the discovery pass, not requested by the operator.
+Auto-discovered NCollection canonicals (entries the YAML never named directly, but that became reachable from the YAML's scope) are tracked separately in `<variant>.provenance.json::nCollectionManifest.{linked, total, dropped}` (schema `wasm-build-provenance-v2`). They never appear in `symbols.requested` because they're produced by the discovery pass, not requested by the operator.
 
 ## Producer-side manifest contract
 

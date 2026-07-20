@@ -92,12 +92,12 @@ def test_all_six_dist_artifacts_exist() -> None:
     assert artifact.is_file(), f"required Replicad compatibility artifact missing: {artifact}"
 
 
-def test_build_manifest_passes_validation_with_v2_schema() -> None:
-  """V2 + V4 + V6 — manifest carries the new schema label, the bucket
+def test_build_manifest_passes_validation_with_v3_schema() -> None:
+  """V3 + V4 + V6 — manifest carries the new schema label, the bucket
   partition, and `binding_report` is non-null (V4 path fix).
   """
   manifest = _load_required(MANIFEST_PATH)
-  assert manifest["schema"] == "build-manifest-v2"
+  assert manifest["schema"] == "build-manifest-v3"
   assert manifest["validation_passed"] is True
   syms = manifest["symbols"]
   assert syms["missing"] == []
@@ -168,13 +168,13 @@ def test_ncollection_manifest_carries_template_typedefs_for_historic_aliases() -
 
 
 def test_provenance_carries_ncollection_manifest_with_invariant() -> None:
-  """V5 — provenance schema bumped to v1.1 and `nCollectionManifest`
+  """V5 — provenance schema v2 carries `nCollectionManifest` and
   satisfies `linked + dropped == total`. Asserts the round-trip
   contract V9 pins, plus the invariant the docker-e2e validator
   derives the filter-ratio assertion from.
   """
   prov = _load_required(PROVENANCE_PATH)
-  assert prov["schema"] == "wasm-build-provenance-v1.1"
+  assert prov["schema"] == "wasm-build-provenance-v2"
   mani = prov["nCollectionManifest"]
   linked = mani["linked"]
   total = mani["total"]

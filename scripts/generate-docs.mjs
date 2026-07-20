@@ -421,7 +421,7 @@ async function main() {
     throw new Error(
       `[ocjs-docs] provenance at ${provPath} lacks nCollectionManifest.{linked,total}. ` +
         `This means the link stage was run with an older provenance schema ` +
-        `(< wasm-build-provenance-v1.1). Rebuild via \`pnpm nx run ocjs:build\`.`,
+        `(< wasm-build-provenance-v2). Rebuild via \`pnpm nx run ocjs:build\`.`,
     );
   }
   const ncollectionAutoLinked = ncoll.linked;

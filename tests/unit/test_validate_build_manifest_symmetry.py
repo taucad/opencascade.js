@@ -252,9 +252,9 @@ def test_validate_symbols_passes_iff_truly_missing_empty(symmetry_build) -> None
   assert failing["builtin"] == passing["builtin"]
 
 
-def test_validate_symbols_emits_v2_manifest_shape(symmetry_build) -> None:
+def test_validate_symbols_emits_v3_manifest_shape(symmetry_build) -> None:
   """``validate_symbols`` returns the manifest sub-dict ``main()`` then
-  stamps with ``schema=build-manifest-v2``. The bucket fields are part
+  stamps with ``schema=build-manifest-v3``. The bucket fields are part
   of the wire contract; downstream consumers (docs generator, dts
   validator, future CI dashboards) read them by exact key name. Pin
   the shape so a structural rename triggers a deliberate test update.
@@ -286,4 +286,19 @@ def test_validate_symbols_emits_v2_manifest_shape(symmetry_build) -> None:
   for entry in result["alias_resolved"]:
     assert set(entry.keys()) == {"alias", "canonical"}
 
-  assert vb.BUILD_MANIFEST_SCHEMA == "build-manifest-v2"
+  assert vb.BUILD_MANIFEST_SCHEMA == "build-manifest-v3"
+
+
+def test_stable_binding_report_omits_execution_state() -> None:
+  vb = _load_validate_build_module()
+  structural = {
+    "total": 10,
+    "failed": 1,
+    "error_categories": {"compile": 1},
+    "failures": [{"file": "Bad.cpp", "error_type": "compile", "message": "bad"}],
+  }
+  cold = {**structural, "succeeded": 9, "cached": 0}
+  warm = {**structural, "succeeded": 0, "cached": 9}
+
+  assert vb.stable_binding_report(cold) == structural
+  assert vb.stable_binding_report(warm) == structural

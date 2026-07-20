@@ -4,16 +4,13 @@ Build provenance tracking for WASM artifacts.
 Generates a JSON sidecar document that captures the complete recipe
 for reproducing a WASM binary. Built incrementally across build stages:
   1. init       — toolchain info, env vars, source commits
-  2. add-compilation — file counts, compilation duration, cache status
-  3. add-linking — symbol list, link flags, pre/post-opt sizes (called by buildFromYaml.py)
-  4. finalize   — output file hashes, section analysis
+  2. add-linking — symbol list, link flags, pre/post-opt sizes (called by buildFromYaml.py)
+  3. finalize   — output file hashes, section analysis
 
 Usage (from build-wasm.sh):
   python3 src/provenance.py init
-  python3 src/provenance.py add-compilation --duration 1234
-  python3 src/provenance.py add-compilation --cache-hit
   python3 src/provenance.py add-linking --yaml <path> --symbols 233 --flags '...' --pre-size 19900000 --post-size 19885932
-  python3 src/provenance.py finalize --wasm-dir <path> --duration 120
+  python3 src/provenance.py finalize --wasm-dir <path>
 """
 
 import hashlib
@@ -110,17 +107,6 @@ def _get_python_version() -> str:
     return f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
 
 
-def _count_files(directory: str, ext: str) -> int:
-    count = 0
-    if not os.path.isdir(directory):
-        return 0
-    for _dp, _dn, fns in os.walk(directory):
-        for fn in fns:
-            if fn.endswith(ext):
-                count += 1
-    return count
-
-
 def _filter_hash() -> str:
     filter_file = os.path.join(OCJS_ROOT, "src", "filter", "filterPackages.py")
     if os.path.exists(filter_file):
@@ -195,7 +181,8 @@ def _load() -> dict:
 def _save(data: dict) -> None:
     os.makedirs(BUILD_DIR, exist_ok=True)
     with open(PROVENANCE_FILE, "w") as f:
-        json.dump(data, f, indent=2)
+        json.dump(data, f, indent=2, sort_keys=True)
+        f.write("\n")
 
 
 def _build_compile_flags(opt: str, lto: bool, exceptions: str) -> list:
@@ -263,7 +250,7 @@ def init() -> None:
     ]
 
     provenance = {
-        "schema": "wasm-build-provenance-v1.1",
+        "schema": "wasm-build-provenance-v2",
         "buildId": build_id,
         "timestamp": built_at.isoformat(),
 
@@ -283,16 +270,12 @@ def init() -> None:
 
         "compilation": {
             "cacheKey": "-".join(cache_key_parts),
-            "cacheHit": False,
             "optimization": opt,
             "lto": lto,
             "exceptions": exc_mode,
             "threading": threading,
             "wasmOptLevel": os.environ.get("OCJS_WASM_OPT_LEVEL", "-O3"),
             "emccCompileFlags": _build_compile_flags(opt, lto, exceptions),
-            "sourceFiles": 0,
-            "bindingFiles": 0,
-            "compileDuration_s": 0,
         },
 
         "linking": {},
@@ -308,32 +291,15 @@ def init() -> None:
     _save(provenance)
 
 
-def add_compilation(cache_hit: bool = False, duration: int = 0) -> None:
-    prov = _load()
-    if not prov:
-        return
-
-    comp = prov.get("compilation", {})
-    comp["cacheHit"] = cache_hit
-    comp["compileDuration_s"] = duration
-    comp["sourceFiles"] = _count_files(os.path.join(BUILD_DIR, "sources"), ".o")
-    comp["bindingFiles"] = _count_files(os.path.join(BUILD_DIR, "bindings"), ".o")
-    prov["compilation"] = comp
-
-    _save(prov)
-
-
 def add_linking(
     yaml_config: str = "",
     yaml_hash: str = "",
     bound_symbols: int = 0,
     symbol_list: list = None,
     emcc_flags: list = None,
-    link_duration: float = 0,
     wasm_opt_flags: list = None,
     pre_opt_size: int = 0,
     post_opt_size: int = 0,
-    wasm_opt_duration: float = 0,
     ncollection_linked: int = 0,
     ncollection_total: int = 0,
     ncollection_dropped: int = 0,
@@ -354,8 +320,8 @@ def add_linking(
         (``total - linked``; written explicitly so consumers don't
         re-derive it).
 
-    Schema bumps to ``wasm-build-provenance-v1.1`` (additive change;
-    pre-1.1 readers continue to parse). The fields are reachable only
+    Schema ``wasm-build-provenance-v2`` excludes execution-local timing and
+    cache state. The fields are reachable only
     via this in-process call; ``provenance.py main()`` deliberately
     does NOT expose CLI flags for them so an out-of-band caller can't
     write values that contradict what the link actually produced.
@@ -370,7 +336,6 @@ def add_linking(
         "boundSymbols": bound_symbols,
         "symbolList": symbol_list or [],
         "emccFlags": emcc_flags or [],
-        "linkDuration_s": round(link_duration, 1),
     }
 
     opt_reduction = "0.0%"
@@ -383,7 +348,6 @@ def add_linking(
         "preOptSize": pre_opt_size,
         "postOptSize": post_opt_size,
         "optReduction": opt_reduction,
-        "wasmOptDuration_s": round(wasm_opt_duration, 1),
     }
 
     prov["nCollectionManifest"] = {
@@ -407,12 +371,10 @@ def _variant_name_from_yaml(yaml_path: str) -> str:
         return ""
 
 
-def finalize(wasm_dir: str = "", total_duration: int = 0, yaml_config: str = "") -> None:
+def finalize(wasm_dir: str = "", yaml_config: str = "") -> None:
     prov = _load()
     if not prov:
         return
-
-    prov["totalDuration_s"] = total_duration
 
     if wasm_dir and os.path.isdir(wasm_dir):
         wasm_files = [f for f in os.listdir(wasm_dir) if f.endswith(".wasm")]
@@ -452,7 +414,8 @@ def finalize(wasm_dir: str = "", total_duration: int = 0, yaml_config: str = "")
     dest = os.path.join(wasm_dir, filename) if wasm_dir else PROVENANCE_FILE
 
     with open(PROVENANCE_FILE, "w") as f:
-        json.dump(prov, f, indent=2)
+        json.dump(prov, f, indent=2, sort_keys=True)
+        f.write("\n")
     if dest != PROVENANCE_FILE:
         import shutil
         shutil.copy2(PROVENANCE_FILE, dest)
@@ -461,21 +424,13 @@ def finalize(wasm_dir: str = "", total_duration: int = 0, yaml_config: str = "")
 
 def main() -> None:
     if len(sys.argv) < 2:
-        print("Usage: provenance.py <init|add-compilation|add-linking|finalize> [args...]")
+        print("Usage: provenance.py <init|add-linking|finalize> [args...]")
         sys.exit(1)
 
     command = sys.argv[1]
 
     if command == "init":
         init()
-    elif command == "add-compilation":
-        cache_hit = "--cache-hit" in sys.argv
-        duration = 0
-        if "--duration" in sys.argv:
-            idx = sys.argv.index("--duration")
-            if idx + 1 < len(sys.argv):
-                duration = int(sys.argv[idx + 1])
-        add_compilation(cache_hit=cache_hit, duration=duration)
     elif command == "add-linking":
         kwargs = {}
         args = sys.argv[2:]
@@ -498,7 +453,6 @@ def main() -> None:
         add_linking(**kwargs)
     elif command == "finalize":
         wasm_dir = ""
-        duration = 0
         yaml_config = ""
         args = sys.argv[2:]
         i = 0
@@ -506,15 +460,12 @@ def main() -> None:
             if args[i] == "--wasm-dir" and i + 1 < len(args):
                 wasm_dir = args[i + 1]
                 i += 2
-            elif args[i] == "--duration" and i + 1 < len(args):
-                duration = int(args[i + 1])
-                i += 2
             elif args[i] == "--yaml" and i + 1 < len(args):
                 yaml_config = args[i + 1]
                 i += 2
             else:
                 i += 1
-        finalize(wasm_dir=wasm_dir, total_duration=duration, yaml_config=yaml_config)
+        finalize(wasm_dir=wasm_dir, yaml_config=yaml_config)
     else:
         print(f"Unknown command: {command}")
         sys.exit(1)

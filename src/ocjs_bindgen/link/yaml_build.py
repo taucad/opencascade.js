@@ -8,7 +8,6 @@ import re
 import shutil
 import subprocess
 import sys
-import time
 from argparse import ArgumentParser
 from itertools import chain
 
@@ -787,9 +786,7 @@ def runBuild(build, libraryBasePath):
   if os.environ.get("OCJS_CLOSURE", "false") == "true":
     linkCmd.extend(["--closure", "1"])
   print(f"Linking {len(bindingsO)} bindings + {len(sourcesO)} sources ...", flush=True)
-  link_start = time.time()
   subprocess.check_call(linkCmd)
-  link_duration = time.time() - link_start
 
   wasmFile = output_dir + "/" + os.path.splitext(build["name"])[0] + ".wasm"
   emsdk = os.environ.get("EMSDK", "")
@@ -797,7 +794,6 @@ def runBuild(build, libraryBasePath):
 
   sizeBefore = os.path.getsize(wasmFile) if os.path.exists(wasmFile) else 0
   sizeAfter = sizeBefore
-  wasm_opt_duration = 0
   wasm_opt_flag_list = []
 
   wasm_opt_level = os.environ.get("OCJS_WASM_OPT_LEVEL", "-O3")
@@ -828,9 +824,7 @@ def runBuild(build, libraryBasePath):
           wasm_opt_flag_list.append(pass_name)
           wasmOptCmd.append(pass_name)
     wasmOptCmd.extend([wasmFile, "-o", wasmFile])
-    opt_start = time.time()
     subprocess.check_call(wasmOptCmd)
-    wasm_opt_duration = time.time() - opt_start
     sizeAfter = os.path.getsize(wasmFile)
     reduction = (1 - sizeAfter / sizeBefore) * 100 if sizeBefore > 0 else 0
     print(f"wasm-opt: {sizeBefore / (1024*1024):.1f} MB -> {sizeAfter / (1024*1024):.1f} MB ({reduction:.1f}% reduction)", flush=True)
@@ -843,11 +837,9 @@ def runBuild(build, libraryBasePath):
       bound_symbols=len(symbol_list),
       symbol_list=symbol_list,
       emcc_flags=list(fill_flags) + list(emcc_flags),
-      link_duration=link_duration,
       wasm_opt_flags=wasm_opt_flag_list,
       pre_opt_size=sizeBefore,
       post_opt_size=sizeAfter,
-      wasm_opt_duration=wasm_opt_duration,
       ncollection_linked=_ncollection_link_stats["linked"],
       ncollection_total=_ncollection_link_stats["total"],
       ncollection_dropped=_ncollection_link_stats["dropped"],

@@ -6,7 +6,7 @@ Validates that a completed build matches the requested YAML configuration:
   typedef alias / BUILTIN_ADDITIONAL_BIND_CODE / consumer additionalBindCode
   via the shared `manifest_registry` consumer chain)
 - The .wasm output exists and has a reasonable size
-- Produces a machine-readable build manifest (JSON, schema `build-manifest-v2`)
+- Produces a machine-readable build manifest (JSON, schema `build-manifest-v3`)
 
 Usage:
   python3 scripts/validate-build.py <yaml-config> <build-output-dir>
@@ -39,7 +39,7 @@ from ocjs_bindgen.provenance.clock import build_datetime  # noqa: E402
 
 MIN_WASM_SIZE_BYTES = 1024 * 100  # 100 KB — any real OCCT build should be much larger
 
-BUILD_MANIFEST_SCHEMA = "build-manifest-v2"
+BUILD_MANIFEST_SCHEMA = "build-manifest-v3"
 
 
 def load_yaml_config(yaml_path):
@@ -161,6 +161,18 @@ def validate_binding_report(build_dir):
         return None
     with open(report_path) as f:
         return json.load(f)
+
+
+def stable_binding_report(report):
+    """Keep only binding facts that do not change between cold and cached builds."""
+    if report is None:
+        return None
+    return {
+        "total": report.get("total", 0),
+        "failed": report.get("failed", 0),
+        "error_categories": report.get("error_categories", {}),
+        "failures": report.get("failures", []),
+    }
 
 
 def merge_any_reasons(build_dir):
@@ -337,12 +349,13 @@ def main():
         "symbols": sym_result,
         "outputs": wasm_results,
         "runtime_helpers": helper_result,
-        "binding_report": binding_report,
+        "binding_report": stable_binding_report(binding_report),
     }
 
     os.makedirs(os.path.dirname(os.path.abspath(json_output)), exist_ok=True)
     with open(json_output, "w") as f:
-        json.dump(manifest, f, indent=2)
+        json.dump(manifest, f, indent=2, sort_keys=True)
+        f.write("\n")
     print(f"\n  Manifest written to {json_output}")
 
     if all_pass:

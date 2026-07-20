@@ -80,7 +80,7 @@ def _finalised_sidecar(tmp_path, prov_mod, ncollection_kwargs: dict) -> dict:
     symbol_list=["gp_Pnt"],
     **ncollection_kwargs,
   )
-  prov_mod.finalize(wasm_dir=wasm_dir, total_duration=10, yaml_config=yaml_path)
+  prov_mod.finalize(wasm_dir=wasm_dir, yaml_config=yaml_path)
 
   sidecar_path = os.path.join(wasm_dir, "roundtrip_single.provenance.json")
   assert os.path.isfile(sidecar_path), f"finalize did not write {sidecar_path}"
@@ -111,7 +111,32 @@ def test_nccollection_manifest_round_trips_through_finalize(
     "total": 596,
     "dropped": 519,
   }
-  assert sidecar["schema"] == "wasm-build-provenance-v1.1"
+  assert sidecar["schema"] == "wasm-build-provenance-v2"
+
+
+def test_provenance_omits_execution_state(tmp_path, provenance_module) -> None:
+  sidecar = _finalised_sidecar(
+    tmp_path,
+    provenance_module,
+    {
+      "ncollection_linked": 0,
+      "ncollection_total": 0,
+      "ncollection_dropped": 0,
+    },
+  )
+  forbidden = {
+    "cacheHit",
+    "sourceFiles",
+    "bindingFiles",
+    "compileDuration_s",
+    "linkDuration_s",
+    "wasmOptDuration_s",
+    "totalDuration_s",
+  }
+  assert forbidden.isdisjoint(sidecar)
+  assert forbidden.isdisjoint(sidecar["compilation"])
+  assert forbidden.isdisjoint(sidecar["linking"])
+  assert forbidden.isdisjoint(sidecar["postProcessing"])
 
 
 def test_zero_ncollection_edge_case_still_round_trips(
