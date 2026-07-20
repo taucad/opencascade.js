@@ -28,6 +28,7 @@
 import { promises as fs } from 'node:fs';
 import { dirname, join, resolve, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { buildDate } from '../../scripts/lib/source-date-epoch.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const FALLBACK_ROOT = resolve(HERE, '..');
@@ -130,7 +131,7 @@ const TS_KEYWORD_DENYLIST = [
 
 const buildTree = (index) => ({
   schema: 1,
-  generatedAt: index.generatedAt ?? new Date().toISOString(),
+  generatedAt: index.generatedAt ?? buildDate().toISOString(),
   manifest: index.manifest ?? {},
   totals: index.totals ?? {},
   modules: index.modules.map((module) => {

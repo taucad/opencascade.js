@@ -1,8 +1,8 @@
 /**
  * Fork-internal layout guards for the `docs/` tree.
  *
- * The Diataxis layout (`getting-started/`, `guides/`, `concepts/`,
- * `reference/`) is the load-bearing skeleton consumers navigate. The
+ * The maintained docs layout (`guides/`, `reference/`, `policy/`,
+ * `research/`) is the load-bearing skeleton contributors navigate. The
  * production-DX rollout committed to four canonical how-to guides
  * (`trim-symbols`, `extend-with-cpp`, `reproducible-ci`, `custom-emcc-flags`),
  * to every relative link inside Markdown files under docs/ resolving to an
@@ -25,10 +25,10 @@ const REQUIRED_GUIDES = [
 ] as const;
 
 const REQUIRED_DIATAXIS_DIRS = [
-  'getting-started',
   'guides',
-  'concepts',
+  'policy',
   'reference',
+  'research',
 ] as const;
 
 const walkMarkdownFiles = (root: string): string[] => {
@@ -143,7 +143,11 @@ describe('docs/ markdown H1 presence', () => {
     const files = walkMarkdownFiles(DOCS_DIR);
     const offenders: string[] = [];
     for (const file of files) {
-      const head = fs.readFileSync(file, 'utf8').split('\n').slice(0, 5);
+      const source = fs.readFileSync(file, 'utf8');
+      const body = source.startsWith('---\n')
+        ? source.slice(source.indexOf('\n---\n', 4) + 5)
+        : source;
+      const head = body.split('\n').slice(0, 5);
       const hasH1 = head.some((line) => /^#\s+\S/.test(line));
       if (!hasH1) {
         offenders.push(

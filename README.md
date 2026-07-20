@@ -31,20 +31,6 @@
 | **Build OCCT WASM from source** (fork maintainers)         | [MAINTAINER.md](MAINTAINER.md)                                                            |
 | **Contribute or report an issue**                          | [Contributing](#contributing) · [Issues](https://github.com/taucad/opencascade.js/issues) |
 
-## Table of Contents
-
-- [Choose Your Path](#choose-your-path)
-- [Table of Contents](#table-of-contents)
-- [Quickstart (npm)](#quickstart-npm)
-  - [Multi-threaded build](#multi-threaded-build)
-- [Quickstart (Docker)](#quickstart-docker)
-- [Tags](#tags)
-- [What's New in v3](#whats-new-in-v3)
-- [Documentation](#documentation)
-- [Projects Using opencascade.js](#projects-using-opencascadejs)
-- [Contributing](#contributing)
-- [License](#license)
-
 ## Quickstart (npm)
 
 > Upgrading from v2? See **[BREAKING_CHANGES.md](BREAKING_CHANGES.md)** for the v3 migration guide (package rename, ESM-only loading, exception decode pattern, OCCT V8 API).
@@ -80,7 +66,7 @@ import wasmUrl from '@taucad/opencascade.js/wasm?url';
 const oc = await init({ locateFile: () => wasmUrl });
 ```
 
-The published tarball ships pre-built WASM at `dist/opencascade_full.{wasm,js,d.ts}` (single-threaded default) and `dist/opencascade_full_multi.{wasm,js,d.ts}` (multi-threaded opt-in), each with a `provenance.json` sidecar describing the exact toolchain and source commits used.
+The published tarball ships pre-built WASM at `dist/opencascade_full.{wasm,js,d.ts}` (single-threaded default) and `dist/opencascade_full_multi.{wasm,js,d.ts}` (multi-threaded opt-in), each with a `provenance.json` sidecar describing the exact toolchain and source commits used. npm releases are produced by GitHub OIDC Trusted Publishing and include Sigstore provenance; see the [maintainer release flow](MAINTAINER.md#ci-and-release-ownership).
 
 ### Multi-threaded build
 

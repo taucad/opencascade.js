@@ -32,7 +32,7 @@ These manage *other* toolchains. They are not compilers or libraries themselves.
 | name | role |
 | --- | --- |
 | **emsdk** (Emscripten SDK) | A Python-based meta-installer that downloads and version-locks the entire Emscripten toolchain (clang, `emcc`, libc++, sysroot, node, etc.) as a single bundle. We pin a specific emsdk release in `DEPS.json`; running `scripts/clone-deps.sh` installs it under `deps/emsdk/`. The bundle's exact clang/libc++ commits come from emsdk's manifest, not from us. |
-| **uv** (Astral) | Hermetic Python interpreter + venv manager. Reads `.python-version` and `requirements.txt` to install an exact CPython and an exact set of Python packages into `.venv/`. Has no role in C++ — it only sets up the Python that runs the bindgen scripts. |
+| **uv** (Astral) | Hermetic Python interpreter + venv manager. Reads `.python-version`, `pyproject.toml`, and `uv.lock` to install an exact CPython and an exact set of Python packages into `.venv/`. Has no role in C++ — it only sets up the Python that runs the bindgen scripts. |
 
 ### B. The C++ frontend (what reads source code)
 
@@ -41,7 +41,7 @@ Two distinct copies of clang are in play here. The distinction matters.
 | name | role |
 | --- | --- |
 | **clang** (the driver, from emsdk) | The `clang++` executable at `deps/emsdk/upstream/bin/clang`. Drives preprocessing → parsing → codegen → linking. Wrapped by `emcc` to inject wasm-specific defaults. Version is whatever emsdk's manifest pinned (currently ahead of any released LLVM). |
-| **libclang** (the Python binding) | The pip package `libclang` exposes ctypes bindings to a `libclang.{so,dylib}` — the C library form of the clang frontend. The bindgen's discover pass uses this to parse OCCT headers into an AST it can walk. **This is a separate clang from the driver above** and its version is independent. Pinned in `requirements.txt`. |
+| **libclang** (the Python binding) | The pip package `libclang` exposes ctypes bindings to a `libclang.{so,dylib}` — the C library form of the clang frontend. The bindgen's discover pass uses this to parse OCCT headers into an AST it can walk. **This is a separate clang from the driver above** and its version is independent. Pinned in `pyproject.toml` and locked in `uv.lock`. |
 | **clang resource directory** | A small directory of compiler-builtin headers (`stddef.h`, `stdint.h`, `arm_neon.h`, intrinsic shims) that ships *with* every clang at `lib/clang/<N>/include/`. Defines macros and types that depend on the compiler's own version (`__INT32_C`, `__builtin_ctzg`, etc.) and **must match the clang version reading them**. |
 
 > **Important pairing rule:** libclang and libc++ are released together from the LLVM monorepo and the LLVM project only supports pairings within ±1 major release (per the official libc++ compiler-support policy). The parse-side libclang version and the libc++ headers libclang reads must stay aligned. See "C. The C++ standard library" below.
@@ -104,7 +104,7 @@ These are *not* source — they're intermediate files the pipeline produces and 
 
 | name | role |
 | --- | --- |
-| **CMake** | Configures and drives OCCT's own C++ build (compiles OCCT's `.cxx` into object archives) before `emcc` links them into wasm. Run via `emcmake cmake` to inject `emcc` as the compiler. Pinned in `requirements.txt`. |
+| **CMake** | Configures and drives OCCT's own C++ build (compiles OCCT's `.cxx` into object archives) before `emcc` links them into wasm. Run via `emcmake cmake` to inject `emcc` as the compiler. Pinned in `pyproject.toml` and locked in `uv.lock`. |
 | **Doxygen** | Parses OCCT's `/** … */` comments into XML; `extract-docs.py` folds that into the generated `.d.ts` JSDoc. Does not touch the wasm itself. Uses the system-installed `doxygen`. |
 | **Nx** | Workspace build orchestrator. Caches per-task outputs so re-running unchanged steps is a no-op. The host build pipeline goes through Nx targets. See [Caching Behavior](#caching-behavior). |
 | **Docker** | Alternative isolation: the same scripts run inside a Linux container with emsdk pre-installed. See [Consumer Workflows → Docker](#docker). |

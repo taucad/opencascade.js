@@ -9,6 +9,10 @@ Build-from-source, configuration, and release workflow for `@taucad/opencascade.
   - [YAML Configs](#yaml-configs)
   - [Configurations](#configurations)
   - [Environment Variables](#environment-variables)
+- [CI and Release Ownership](#ci-and-release-ownership)
+  - [Publication Channels](#publication-channels)
+  - [npm Trusted Publishing](#npm-trusted-publishing)
+  - [Cutting a Release](#cutting-a-release)
 - [Customizing Your Build](#customizing-your-build)
 - [Build Commands](#build-commands)
 - [Docker End-to-End Validation](#docker-end-to-end-validation)
@@ -16,25 +20,21 @@ Build-from-source, configuration, and release workflow for `@taucad/opencascade.
 
 ## Quick Start (Native Build)
 
-Prerequisites: Python 3.10+, Git, CMake, a C++ toolchain.
+Prerequisites: Git, [uv](https://docs.astral.sh/uv/), and a C++ toolchain. `uv` installs the pinned Python 3.14 environment.
 
 ```bash
 # 1. Clone opencascade.js
 git clone https://github.com/taucad/opencascade.js.git
 cd opencascade.js
 
-# 2. Install Emscripten SDK
-git clone https://github.com/emscripten-core/emsdk.git ../emsdk
-cd ../emsdk && ./emsdk install 5.0.1 && ./emsdk activate 5.0.1 && source ./emsdk_env.sh
-cd ../opencascade.js
+# 2. Clone every dependency at its DEPS.json pin and sync uv.lock
+./scripts/clone-deps.sh --dest deps
+source deps/emsdk/emsdk_env.sh
 
-# 3. Clone dependencies at pinned commits
-./scripts/clone-deps.sh
+# 3. Install locked JavaScript tools
+npm ci
 
-# 4. Install Python build dependencies
-pip install -r requirements.txt
-
-# 5. Build WASM (use nohup — full builds take 10-30+ min)
+# 4. Build WASM (use nohup — full builds take 10-30+ min)
 nohup env OCJS_LTO=0 ./build-wasm.sh full build-configs/full.yml > build.log 2>&1 &
 tail -f build.log
 ```
@@ -81,18 +81,7 @@ The published npm tarball ships **both** build outputs:
 | `opencascade_full.*`       | `single-threaded` + `full.yml`      | `@taucad/opencascade.js` / `@taucad/opencascade.js/wasm`             |
 | `opencascade_full_multi.*` | `multi-threaded` + `full_multi.yml` | `@taucad/opencascade.js/multi` / `@taucad/opencascade.js/multi/wasm` |
 
-Each triple includes a matching `*.provenance.json` sidecar (`dist/opencascade_full.provenance.json` and `dist/opencascade_full_multi.provenance.json`).
-
-### npm release
-
-After `dist/` contains both ST and MT artifacts and smoke tests pass:
-
-```bash
-npm pack --dry-run   # verify tarball lists all 12 dist files (6 ST + 6 MT)
-npm publish --tag rc --access public
-```
-
-Do **not** publish from a dirty tree or without both binaries present — consumers expect the MT subpath to resolve at install time.
+Each six-file set includes a matching `*.provenance.json` sidecar (`dist/opencascade_full.provenance.json` and `dist/opencascade_full_multi.provenance.json`).
 
 ### Environment Variables
 
@@ -113,6 +102,71 @@ Two layers of "default" matter here. The **bare default** is what `build-wasm.sh
 | `THREADING`         | `single-threaded` | `single-threaded`        | Threading mode (`single-threaded` or `multi-threaded`).                                                              |
 
 The bare-default column is only relevant if you invoke `build-wasm.sh` without `--config` _and_ without `OCJS_CONFIG` — the script's own fallback selects the `single-threaded` configuration when both are unset, so in practice you always get the rightmost column unless you go out of your way to disable it.
+
+## CI and Release Ownership
+
+| Responsibility | Owner |
+| --- | --- |
+| Source, workflow, shell, Python, ST/MT, bindgen, browser, package, template, and docs-candidate tests | `.github/workflows/docker.yml` → `ci-required` |
+| Dedicated docs typecheck, lint, prose, unit, build, and post-build budgets | `.github/workflows/docs-site.yml` → `docs-required` |
+| Branch and release GHCR images, SBOM/provenance, signing, npm publication, and registry verification | `.github/workflows/docker.yml` |
+| Vercel preview/production docs deployment | Vercel Git integration rooted at `docs-site/` |
+| GHCR branch/cache expiry without deleting releases or referrers | `.github/workflows/ghcr-retention.yml` |
+| Dependency and pinned-action updates | `.github/dependabot.yml` |
+
+Only `ci-required` is suitable as an always-present required check. The dedicated docs workflow is path-filtered; its `docs-required` aggregate is evidence for docs changes, not a repository-wide required check.
+
+The candidate workflow deliberately builds once, tests the exact ST and MT outputs, packs one immutable tarball, and gives the no-checkout npm job only that tarball plus its hashes and identity record. Pull requests and manual runs validate without publishing. Push runs queue and are never canceled; superseded pull-request runs may be canceled.
+
+### Publication Channels
+
+| Event | npm version and dist-tag | GHCR |
+| --- | --- | --- |
+| Feature-branch push | `3.0.0-beta-<sha8>-<UTC commit date>` under `canary` | amd64 branch and full-SHA tags |
+| `master` push | Same immutable beta-shaped version under `beta` | amd64 branch and full-SHA tags |
+| Annotated `vX.Y.Z-prerelease` tag | Exact `X.Y.Z-prerelease` under its first prerelease identifier, such as `rc` | signed amd64+arm64 version manifests |
+| Annotated stable `vX.Y.Z` tag | Exact `X.Y.Z` under `latest` | signed amd64+arm64 version manifests |
+
+The branch date comes from the commit timestamp, not the workflow clock, so retries address the same immutable version. Use the exact install coordinate printed in the workflow summary; `canary` is intentionally a mutable “last completed feature build” pointer.
+
+### npm Trusted Publishing
+
+Configure the npm package once under **Settings → Trusted publishing**:
+
+- provider: GitHub Actions
+- organization/user: `taucad`
+- repository: `opencascade.js`
+- workflow filename: `docker.yml`
+- environment: leave empty because every branch push is a publisher
+
+Do not add `NPM_TOKEN` or `NODE_AUTH_TOKEN`. The publish job uses Node 24, npm 11.5.1, `id-token: write`, and no source checkout. After the first successful canary, verify the package’s provenance on npm, enable the package setting that requires two-factor authentication and disallows tokens, and revoke obsolete automation tokens.
+
+There are two complementary provenance layers:
+
+- `dist/*.provenance.json` records the OCJS/OCCT/toolchain recipe embedded beside each WASM file.
+- npm/Sigstore provenance cryptographically ties the published tarball to `taucad/opencascade.js`, `.github/workflows/docker.yml`, and the full source commit.
+
+The registry gate requires both layers to agree, verifies tarball integrity and signatures, installs the exact published version, boots ST and MT, and verifies all three promoted GHCR signatures.
+
+### Cutting a Release
+
+Ordinary branch work does not change the checked-in `3.0.0-beta.3`; CI applies branch versions only in its disposable package workspace and never commits them.
+
+When the reviewed `master` commit is ready for an explicit prerelease or stable release:
+
+```bash
+# Use 3.0.0-rc.1 for an RC, or 3.0.0 for the stable release.
+npm version 3.0.0 --no-git-tag-version --ignore-scripts
+git add package.json package-lock.json CHANGELOG.md
+git commit -m "release: 3.0.0"
+git push origin master
+
+# After ci-required succeeds for that exact commit:
+git tag -a v3.0.0 -m "v3.0.0"
+git push origin v3.0.0
+```
+
+The annotated tag must exactly match `package.json`. The tag run rebuilds and tests the candidates, publishes that exact version, moves the appropriate npm dist-tag, creates signed multi-arch GHCR manifests, and verifies both registries. Never run `npm publish` locally, create a lightweight release tag, or retag an older branch package.
 
 ## Customizing Your Build
 

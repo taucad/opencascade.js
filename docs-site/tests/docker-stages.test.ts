@@ -8,9 +8,9 @@ const REQUIRED_STAGES: ReadonlyArray<{
   readonly target: string;
   readonly label: string;
 }> = [
-  { target: 'deps-base', label: 'opencascade.js (deps-base)' },
   { target: 'bindgen-base', label: 'opencascade.js (bindgen-base)' },
-  { target: 'final', label: 'opencascade.js' },
+  { target: 'final-single', label: 'opencascade.js (single-threaded)' },
+  { target: 'final-multi', label: 'opencascade.js (multi-threaded)' },
 ];
 
 describe('Dockerfile multi-stage layout', () => {
@@ -30,9 +30,13 @@ describe('Dockerfile multi-stage layout', () => {
     }
   });
 
-  it('should chain stages so bindgen-base extends deps-base and final extends bindgen-base', async () => {
+  it('should share bindgen-content and split compiled single/multi descendants', async () => {
     const dockerfile = await fs.readFile(DOCKERFILE, 'utf8');
-    expect(dockerfile).toMatch(/^FROM\s+deps-base\s+AS\s+bindgen-base\b/m);
-    expect(dockerfile).toMatch(/^FROM\s+bindgen-base\s+AS\s+final\b/m);
+    expect(dockerfile).toMatch(/^FROM\s+deps-base\s+AS\s+bindgen-content\b/m);
+    expect(dockerfile).toMatch(/^FROM\s+bindgen-content\s+AS\s+bindgen-base\b/m);
+    expect(dockerfile).toMatch(/^FROM\s+bindgen-content\s+AS\s+compiled-single-threaded\b/m);
+    expect(dockerfile).toMatch(/^FROM\s+bindgen-content\s+AS\s+compiled-multi-threaded\b/m);
+    expect(dockerfile).toMatch(/^FROM\s+compiled-single-threaded\s+AS\s+final-single\b/m);
+    expect(dockerfile).toMatch(/^FROM\s+compiled-multi-threaded\s+AS\s+final-multi\b/m);
   });
 });

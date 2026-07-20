@@ -76,9 +76,8 @@ docker run --rm -it -v "$(pwd):/src" --entrypoint bash \
 | Branch tags  | `linux/amd64` only            | `ubuntu-latest`, GitHub Actions                                                     |
 
 Releases ship full manifest lists so Apple Silicon and ARM Linux hosts pull
-the native arch transparently. Branch tags are amd64-only by design (R12 in
-the [production-readiness blueprint](https://github.com/taucad/opencascade.js/blob/main/docs/research/ocjs-docker-production-readiness-blueprint.md))
-— ARM hosts will run under Rosetta / QEMU for branch tags.
+the native arch transparently. Branch tags are amd64-only to keep feedback
+fast; ARM hosts run under Rosetta or QEMU for branch tags.
 
 ## OCI labels
 
@@ -138,7 +137,7 @@ Diff the SBOM across image digests in CI to flag unexpected dep bumps.
 
 ## Image stages
 
-The [Dockerfile](https://github.com/taucad/opencascade.js/blob/main/Dockerfile)
+The [Dockerfile](https://github.com/taucad/opencascade.js/blob/master/Dockerfile)
 is multi-stage with five logical stages, three of which are published:
 
 | Stage                      | Published as       | Contents                                                                        |

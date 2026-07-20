@@ -26,6 +26,7 @@ import path from 'node:path';
 import fs from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { parseDeclaration } from './lib/dts-parser.mjs';
+import { buildDate } from './lib/source-date-epoch.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const BINDINGS_DIR = path.join(ROOT, 'build', 'bindings');
@@ -429,7 +430,7 @@ async function main() {
   const index = {
     schema: 2,
     project: PROJECT_NAME,
-    generatedAt: new Date().toISOString(),
+    generatedAt: buildDate().toISOString(),
     manifest: manifest
       ? {
           wasm_bytes: manifest.outputs?.[0]?.wasm_size ?? null,

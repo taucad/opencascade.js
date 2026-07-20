@@ -30,11 +30,12 @@ describe('performance budget thresholds', () => {
 
   it('should keep the docs route table compact: no 275 generated MDX routes', async () => {
     if (!(await exists(NEXT_DIR))) {
-      console.log('.next/ missing — skipping post-build assertion (run `pnpm build` first).');
-      return;
+      throw new Error('.next/ missing — run `pnpm build` before `pnpm test:postbuild`.');
     }
     const appDir = resolve(NEXT_DIR, 'server/app');
-    if (!(await exists(appDir))) return;
+    if (!(await exists(appDir))) {
+      throw new Error(`Next app route output missing at ${appDir}.`);
+    }
     const files = await fs.readdir(appDir, { recursive: true });
     // The /docs/package/api subtree should resolve via a single dynamic route, not
     // hundreds of generated per-package server chunks. Pre-rendered HTML

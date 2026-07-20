@@ -17,6 +17,10 @@ vi.mock('../../components/api/api-type-link', () => ({
   ),
 }));
 
+vi.mock('../../components/api/api-prose', () => ({
+  ApiProse: ({ text }: { text: string }) => <span>{text}</span>,
+}));
+
 const sample: ApiClass = {
   name: 'Fix_Vec',
   kind: 'class',
@@ -38,13 +42,13 @@ const sample: ApiClass = {
 };
 
 describe('ApiClassCard', () => {
-  it('should emit anchor ids matching the <Class>__<kind>__<idx> convention', () => {
+  it('should emit collision-free human-readable anchor ids', () => {
     const { container } = render(<ApiClassCard cls={sample} />);
-    expect(container.querySelector('#Fix_Vec__ctor__0')).not.toBeNull();
-    expect(container.querySelector('#Fix_Vec__static__0')).not.toBeNull();
-    expect(container.querySelector('#Fix_Vec__inst__0')).not.toBeNull();
-    expect(container.querySelector('#Fix_Vec__inst__1')).not.toBeNull();
-    expect(container.querySelector('#Fix_Vec__inst__2')).not.toBeNull();
+    expect(container.querySelector('#Fix_Vec-Constructor')).not.toBeNull();
+    expect(container.querySelector('#Fix_Vec-identity')).not.toBeNull();
+    expect(container.querySelector('#Fix_Vec-scale0')).not.toBeNull();
+    expect(container.querySelector('#Fix_Vec-scale1')).not.toBeNull();
+    expect(container.querySelector('#Fix_Vec-magnitude')).not.toBeNull();
   });
 
   it('should render the inheritance chip for every extends entry', () => {
@@ -54,9 +58,9 @@ describe('ApiClassCard', () => {
 
   it('should mark adjacent same-name members as overloads via the dashed border class', () => {
     const { container } = render(<ApiClassCard cls={sample} />);
-    const scale0 = container.querySelector('#Fix_Vec__inst__0')!;
-    const scale1 = container.querySelector('#Fix_Vec__inst__1')!;
-    const magnitude = container.querySelector('#Fix_Vec__inst__2')!;
+    const scale0 = container.querySelector('#Fix_Vec-scale0')!;
+    const scale1 = container.querySelector('#Fix_Vec-scale1')!;
+    const magnitude = container.querySelector('#Fix_Vec-magnitude')!;
     expect(scale0.className).toContain('border-dashed');
     expect(scale1.className).toContain('border-dashed');
     expect(magnitude.className).not.toContain('border-dashed');

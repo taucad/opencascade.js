@@ -1,11 +1,15 @@
 import type { NextConfig } from 'next';
 import { createMDX } from 'fumadocs-mdx/next';
+import { resolve } from 'node:path';
 import redirectsJson from './redirects.json' with { type: 'json' };
 
 const withMDX = createMDX();
 
 const config: NextConfig = {
   reactStrictMode: true,
+  turbopack: {
+    root: resolve(import.meta.dirname, '..'),
+  },
   experimental: {
     optimizePackageImports: ['fumadocs-ui', 'fumadocs-core'],
   },
