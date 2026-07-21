@@ -8,6 +8,7 @@ The list is consumed by both generated-fragment parity layers
 
 from __future__ import annotations
 
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -16,6 +17,17 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 BUILD_BINDINGS = REPO_ROOT / "build" / "bindings"
 BASELINE_DIR = REPO_ROOT / "tests" / "sentinel" / "baseline"
 BASELINE_PER_HEADER = BASELINE_DIR / "per_header"
+LINUX_BASELINE_DIR = BASELINE_DIR / "linux"
+BASELINE_DTS_PER_HEADER = (
+    LINUX_BASELINE_DIR / "per_header"
+    if sys.platform.startswith("linux")
+    else BASELINE_PER_HEADER
+)
+BASELINE_TREE = (
+    LINUX_BASELINE_DIR / "full_tree.sha256"
+    if sys.platform.startswith("linux")
+    else BASELINE_DIR / "full_tree.sha256"
+)
 
 
 @dataclass(frozen=True)
@@ -42,7 +54,7 @@ class Sentinel:
 
     @property
     def baseline_dts(self) -> Path:
-        return BASELINE_PER_HEADER / self.header_dir / f"{self.fragment_stem}.d.ts.json"
+        return BASELINE_DTS_PER_HEADER / self.header_dir / f"{self.fragment_stem}.d.ts.json"
 
 
 SENTINELS: tuple[Sentinel, ...] = (

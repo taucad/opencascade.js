@@ -9,9 +9,10 @@ Usage:
 
 What it does:
   1. Re-snapshots every per-fragment `.cpp` and `.d.ts.json` for the 10
-     sentinel headers into `tests/sentinel/baseline/per_header/`.
+     sentinel headers. Linux keeps a dedicated `.d.ts.json` baseline because
+     Doxygen and libc AST spellings differ from Darwin; C++ remains shared.
   2. SHA-256s every fragment under `build/bindings/` into
-     `tests/sentinel/baseline/full_tree.sha256`.
+     the current platform's full-tree manifest.
 Pre-conditions: a fresh `nx run ocjs:generate` has populated
 `build/bindings/`.
 """
@@ -28,29 +29,34 @@ sys.path.insert(0, str(_HERE))
 
 from sentinels import (  # noqa: E402  (sys.path mutation precedes import)
     BASELINE_DIR,
+    BASELINE_DTS_PER_HEADER,
     BASELINE_PER_HEADER,
+    BASELINE_TREE,
     BUILD_BINDINGS,
+    LINUX_BASELINE_DIR,
     REPO_ROOT,
     SENTINELS,
 )
 
 
 def _refresh_per_header() -> None:
-    if BASELINE_PER_HEADER.exists():
-        shutil.rmtree(BASELINE_PER_HEADER)
-    BASELINE_PER_HEADER.mkdir(parents=True)
+    linux = BASELINE_DTS_PER_HEADER.is_relative_to(LINUX_BASELINE_DIR)
+    target = BASELINE_DTS_PER_HEADER if linux else BASELINE_PER_HEADER
+    if target.exists():
+        shutil.rmtree(target)
+    target.mkdir(parents=True)
     for sentinel in SENTINELS:
-        for src in (sentinel.cpp_path, sentinel.dts_path):
+        sources = (sentinel.dts_path,) if linux else (sentinel.cpp_path, sentinel.dts_path)
+        for src in sources:
             if not src.is_file():
                 raise SystemExit(f"Cannot snapshot — fresh fragment missing: {src}")
-            dst = BASELINE_PER_HEADER / sentinel.header_dir / src.name
+            dst = target / sentinel.header_dir / src.name
             dst.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(src, dst)
             print(f"  per_header: {sentinel.header_dir}/{src.name}")
 
 
 def _refresh_full_tree() -> None:
-    out = BASELINE_DIR / "full_tree.sha256"
     lines: list[str] = []
     for path in sorted(BUILD_BINDINGS.rglob("*")):
         if not path.is_file():
@@ -63,7 +69,8 @@ def _refresh_full_tree() -> None:
             for chunk in iter(lambda: fh.read(1 << 20), b""):
                 h.update(chunk)
         lines.append(f"{h.hexdigest()}  {rel}")
-    out.write_text("\n".join(lines) + "\n")
+    BASELINE_TREE.parent.mkdir(parents=True, exist_ok=True)
+    BASELINE_TREE.write_text("\n".join(lines) + "\n")
     print(f"  full_tree: {len(lines)} fragments")
 
 

@@ -20,9 +20,8 @@ import hashlib
 import subprocess
 
 import pytest
-from sentinels import BASELINE_DIR, BUILD_BINDINGS, REPO_ROOT
+from sentinels import BASELINE_TREE, BUILD_BINDINGS, REPO_ROOT
 
-_TREE_SHA_BASELINE = BASELINE_DIR / "full_tree.sha256"
 _INTERESTING_SUFFIXES = (".cpp", ".d.ts.json")
 
 
@@ -63,10 +62,10 @@ def _hash_tree() -> dict[str, str]:
 
 def _load_baseline() -> dict[str, str]:
     """Parse `<sha>  <relpath>` lines from the frozen baseline."""
-    if not _TREE_SHA_BASELINE.is_file():
-        pytest.fail(f"Baseline manifest missing: {_TREE_SHA_BASELINE}")
+    if not BASELINE_TREE.is_file():
+        pytest.fail(f"Baseline manifest missing: {BASELINE_TREE}")
     digests: dict[str, str] = {}
-    for line in _TREE_SHA_BASELINE.read_text().splitlines():
+    for line in BASELINE_TREE.read_text().splitlines():
         line = line.strip()
         if not line:
             continue
