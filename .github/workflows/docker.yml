@@ -444,6 +444,11 @@ jobs:
   package-assemble:
     name: package · assemble and pack once
     needs: [preflight, quality, candidate-gate]
+    if: >-
+      always() &&
+      needs.preflight.result == 'success' &&
+      needs.quality.result == 'success' &&
+      needs.candidate-gate.result == 'success'
     runs-on: ubuntu-latest
     outputs:
       artifact: npm-candidate-${{ github.run_id }}-${{ github.run_attempt }}
@@ -538,6 +543,7 @@ jobs:
   package-runtime:
     name: package · installed runtime
     needs: package-assemble
+    if: always() && needs.package-assemble.result == 'success'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -560,6 +566,7 @@ jobs:
   package-browser:
     name: package · browser runtime matrix
     needs: package-assemble
+    if: always() && needs.package-assemble.result == 'success'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -580,6 +587,7 @@ jobs:
   package-templates:
     name: package · active templates
     needs: package-assemble
+    if: always() && needs.package-assemble.result == 'success'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -600,6 +608,10 @@ jobs:
   package-docs:
     name: package · docs consumer
     needs: [preflight, package-assemble]
+    if: >-
+      always() &&
+      needs.preflight.result == 'success' &&
+      needs.package-assemble.result == 'success'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -621,13 +633,24 @@ jobs:
   package-gate:
     name: package
     needs: [package-runtime, package-browser, package-templates, package-docs]
+    if: >-
+      always() &&
+      needs.package-runtime.result == 'success' &&
+      needs.package-browser.result == 'success' &&
+      needs.package-templates.result == 'success' &&
+      needs.package-docs.result == 'success'
     runs-on: ubuntu-latest
     steps:
       - run: echo "Exact npm candidate passed every consumer"
 
   ghcr-promote:
     name: ghcr · ${{ matrix.stage }}
-    if: needs.preflight.outputs.publish == 'true'
+    if: >-
+      always() &&
+      needs.preflight.outputs.publish == 'true' &&
+      needs.preflight.result == 'success' &&
+      needs.candidate-build.result == 'success' &&
+      needs.package-gate.result == 'success'
     needs: [preflight, candidate-build, package-gate]
     runs-on: ubuntu-latest
     permissions:
@@ -693,7 +716,12 @@ jobs:
 
   npm-publish:
     name: npm · publish
-    if: needs.preflight.outputs.publish == 'true'
+    if: >-
+      always() &&
+      needs.preflight.outputs.publish == 'true' &&
+      needs.preflight.result == 'success' &&
+      needs.package-assemble.result == 'success' &&
+      needs.package-gate.result == 'success'
     needs: [preflight, package-assemble, package-gate]
     runs-on: ubuntu-latest
     concurrency:
@@ -791,7 +819,13 @@ jobs:
 
   registry-verify:
     name: registries
-    if: needs.preflight.outputs.publish == 'true'
+    if: >-
+      always() &&
+      needs.preflight.outputs.publish == 'true' &&
+      needs.preflight.result == 'success' &&
+      needs.package-assemble.result == 'success' &&
+      needs.ghcr-promote.result == 'success' &&
+      needs.npm-publish.result == 'success'
     needs: [preflight, package-assemble, ghcr-promote, npm-publish]
     runs-on: ubuntu-latest
     permissions:

@@ -336,6 +336,34 @@ describe('CI contracts', () => {
     expect(source).not.toContain('OCJS_CONFIG=debug');
   });
 
+  it('should bridge the mutually exclusive candidate matrices explicitly', () => {
+    const ci = workflow('docker.yml');
+    const downstream = [
+      'package-assemble',
+      'package-runtime',
+      'package-browser',
+      'package-templates',
+      'package-docs',
+      'package-gate',
+      'ghcr-promote',
+      'npm-publish',
+      'registry-verify',
+    ];
+    for (const jobName of downstream) {
+      const job = ci.jobs[jobName];
+      const needs = Array.isArray(job.needs) ? job.needs : [job.needs];
+      expect(job.if, jobName).toContain('always()');
+      for (const dependency of needs) {
+        expect(job.if, `${jobName} must require ${dependency}`).toContain(
+          `needs.${dependency}.result == 'success'`,
+        );
+      }
+    }
+    expect(ci.jobs['ghcr-promote'].if).toContain("needs.preflight.outputs.publish == 'true'");
+    expect(ci.jobs['npm-publish'].if).toContain("needs.preflight.outputs.publish == 'true'");
+    expect(ci.jobs['registry-verify'].if).toContain("needs.preflight.outputs.publish == 'true'");
+  });
+
   it('should pin every workflow action to a full commit', () => {
     for (const name of fs.readdirSync(path.join(ROOT, '.github/workflows'))) {
       if (!name.endsWith('.yml')) continue;
