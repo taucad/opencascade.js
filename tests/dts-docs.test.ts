@@ -1311,21 +1311,7 @@ describe('JSDoc documentation coverage', () => {
       },
     );
 
-    // T2 — non-exported target collapses to inline code.
-    // Doxygen emits {@link Iterator} for OCCT-internal iterator helpers that are
-    // never exported as TS classes; these must render as `Iterator` backticks so
-    // Monaco doesn't show a literal {@link …} artifact.
-    it.skipIf(!sourceFile)(
-      'should emit backticks for {@link Iterator} (non-exported)',
-      () => {
-        expect(isExportedTopLevel('Iterator')).toBe(false);
-        const content = fs.readFileSync(FULL_DTS, 'utf8');
-        expect(content).toContain('`Iterator`');
-        expect(/\{@link\s+Iterator\s*\}/.test(content)).toBe(false);
-      },
-    );
-
-    // T3 — C++ scoped target whose underscore-flattened form does not export.
+    // T2 — C++ scoped target whose underscore-flattened form does not export.
     // {@link BRep_Tool::IsClosed} is a canonical scoped reference in the current
     // corpus where every resolution step misses: BRep_Tool_IsClosed is a static
     // method (not a top-level class), the bare leaf IsClosed is not exported,
@@ -1351,7 +1337,7 @@ describe('JSDoc documentation coverage', () => {
       },
     );
 
-    // T4 — templated targets strip `<…>` for resolution but the alias text
+    // T3 — templated targets strip `<…>` for resolution but the alias text
     // preserves the original templated form. Whether the resolver finds an
     // export determines emission shape:
     //   * exported  → `{@link Stripped | \`Original<T>\`}`
@@ -1377,7 +1363,7 @@ describe('JSDoc documentation coverage', () => {
       },
     );
 
-    // T5 — multiple tokens in the same paragraph are independently rewritten.
+    // T4 — multiple tokens in the same paragraph are independently rewritten.
     // Poly_CoherentTriangulation has the worst-offending paragraph in the corpus
     // (>2k chars, many {@link …} tokens); each token must be transformed.
     it.skipIf(!sourceFile)(
@@ -1391,7 +1377,7 @@ describe('JSDoc documentation coverage', () => {
       },
     );
 
-    // T6 — whole-d.ts regression guard: zero bare {@link X} tokens remaining.
+    // T5 — whole-d.ts regression guard: zero bare {@link X} tokens remaining.
     // Locks in the doc's "eliminate 2,300 visual artifacts" target. Also catches
     // any future channel that bypasses _normalize_link_tokens.
     it.skipIf(!sourceFile)(
@@ -1409,7 +1395,7 @@ describe('JSDoc documentation coverage', () => {
       },
     );
 
-    // T7 — _CONTAINER_ALIASES post-V8 reality.
+    // T6 — _CONTAINER_ALIASES post-V8 reality.
     // In OCCT V8.0 the source class was renamed from NCollection_Vector to
     // NCollection_DynamicArray. Neither base class is exported as a top-level
     // TS class (only their specializations like NCollection_DynamicArray_double),

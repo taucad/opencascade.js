@@ -240,6 +240,7 @@ jobs:
               cd /opencascade.js
               rm -rf build/bindings
               npx nx run ocjs:generate --skip-nx-cache
+              npx vitest run tests/no-clobber-validation.test.ts
               OCJS_YAML=/host/build-configs/replicad-validation.yml \
                 npx nx run ocjs:bind-symbols --skip-nx-cache
               OCJS_OUTPUT_DIR=/opencascade.js/dist \
@@ -377,6 +378,7 @@ jobs:
               cd /opencascade.js
               rm -rf build/bindings
               npx nx run ocjs:generate --skip-nx-cache
+              npx vitest run tests/no-clobber-validation.test.ts
               OCJS_YAML=/host/build-configs/replicad-validation.yml \
                 npx nx run ocjs:bind-symbols --skip-nx-cache
               OCJS_OUTPUT_DIR=/opencascade.js/dist \
@@ -491,7 +493,7 @@ jobs:
 
       - name: Full runtime, regression, and declaration gates
         run: |
-          npm test
+          npm test -- --exclude tests/no-clobber-validation.test.ts
           npm run test:regression
           npm run typecheck
 

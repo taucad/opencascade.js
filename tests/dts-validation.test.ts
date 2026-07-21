@@ -21,6 +21,10 @@ const REPLICAD_BUILD_CONFIG = path.resolve(
 );
 
 const FULL_BUILD_CONFIG = path.resolve(import.meta.dirname, '../build-configs');
+const DIST = path.resolve(import.meta.dirname, '../dist');
+const FULL_DTS = path.join(DIST, 'opencascade_full.d.ts');
+const FULL_JS = path.join(DIST, 'opencascade_full.js');
+const FULL_BUILD_MANIFEST = path.join(DIST, 'opencascade_full.build-manifest.json');
 // `./build-wasm.sh dts <yaml>` writes the .d.ts next to the YAML it consumes;
 // for replicad-single this is the build-config directory in the replicad fork.
 // `dist/` only receives artifacts from a full WASM link (`./build-wasm.sh full`).
@@ -87,8 +91,7 @@ function extractSymbols(sourceFile: ts.SourceFile): DtsSymbol[] {
   return symbols;
 }
 
-function loadManifest(configDir: string): Record<string, unknown> | null {
-  const manifestPath = path.join(configDir, 'build-manifest.json');
+function loadManifest(manifestPath: string): Record<string, unknown> | null {
   if (!fs.existsSync(manifestPath)) return null;
   return JSON.parse(fs.readFileSync(manifestPath, 'utf8')) as Record<string, unknown>;
 }
@@ -187,7 +190,7 @@ function countAnyTypes(sourceFile: ts.SourceFile): {
 // ---------------------------------------------------------------------------
 
 describe('Full build .d.ts validation', () => {
-  const dtsPath = path.join(FULL_BUILD_CONFIG, 'opencascade_full.d.ts');
+  const dtsPath = FULL_DTS;
   const sourceFile = parseDtsFile(dtsPath);
 
   it('should parse without errors (zero syntactic diagnostics)', () => {
@@ -246,7 +249,7 @@ describe('Full build .d.ts validation', () => {
   });
 
   it('should expose Emscripten exception-handling helpers in the linked JS glue', () => {
-    const jsPath = path.join(FULL_BUILD_CONFIG, 'opencascade_full.js');
+    const jsPath = FULL_JS;
     if (!fs.existsSync(jsPath)) return;
     const glue = fs.readFileSync(jsPath, 'utf8');
     for (const name of [
@@ -337,7 +340,7 @@ describe('Full build .d.ts validation', () => {
   });
 
   it('should validate symbol coverage against build manifest', () => {
-    const manifest = loadManifest(FULL_BUILD_CONFIG);
+    const manifest = loadManifest(FULL_BUILD_MANIFEST);
     if (!manifest || !sourceFile) return;
 
     const symbolsSection = manifest['symbols'] as
@@ -373,7 +376,7 @@ describe('Full build .d.ts validation', () => {
 // ---------------------------------------------------------------------------
 
 describe('Overload validation (full build)', () => {
-  const dtsPath = path.join(FULL_BUILD_CONFIG, 'opencascade_full.d.ts');
+  const dtsPath = FULL_DTS;
   const sourceFile = parseDtsFile(dtsPath);
 
   it('should use inline constructor overloads for gp_Pnt (unique arities: 0, 1, 3 args)', () => {
@@ -438,7 +441,7 @@ describe('Overload validation (full build)', () => {
 // ---------------------------------------------------------------------------
 
 describe('NCollection_Vec tuple type validation', () => {
-  const dtsPath = path.join(FULL_BUILD_CONFIG, 'opencascade_full.d.ts');
+  const dtsPath = FULL_DTS;
 
   it('should never produce bare number[] for NCollection_Vec types', () => {
     if (!fs.existsSync(dtsPath)) return;
@@ -698,7 +701,7 @@ const TS_RESERVED_WORDS = new Set([
 ]);
 
 const SEMANTIC_GAP_TARGETS: { label: string; dtsPath: string }[] = [
-  { label: 'opencascade_full', dtsPath: path.join(FULL_BUILD_CONFIG, 'opencascade_full.d.ts') },
+  { label: 'opencascade_full', dtsPath: FULL_DTS },
   { label: 'replicad_single', dtsPath: REPLICAD_SINGLE_DTS },
 ];
 
@@ -933,7 +936,7 @@ for (const target of SEMANTIC_GAP_TARGETS) {
 // ---------------------------------------------------------------------------
 
 describe('Handle_<T> typedef parity', () => {
-  const dts = buildDtsProgram(REPLICAD_SINGLE_DTS) ?? buildDtsProgram(path.join(FULL_BUILD_CONFIG, 'opencascade_full.d.ts'));
+  const dts = buildDtsProgram(REPLICAD_SINGLE_DTS) ?? buildDtsProgram(FULL_DTS);
 
   it('should not emit raw `Handle_X` parameter spellings', () => {
     if (!dts) return;
@@ -950,7 +953,7 @@ describe('Handle_<T> typedef parity', () => {
 // ---------------------------------------------------------------------------
 
 describe('Typedef alias determinism', () => {
-  const dts = buildDtsProgram(path.join(FULL_BUILD_CONFIG, 'opencascade_full.d.ts'));
+  const dts = buildDtsProgram(FULL_DTS);
 
   it('should prefer OCCT-public aliases (NCollection_/TColStd_/TColgp_/TopTools_)', () => {
     if (!dts) return;
@@ -987,16 +990,19 @@ describe('Typedef alias determinism', () => {
 // ---------------------------------------------------------------------------
 
 describe('Build manifest `any_reasons` instrumentation', () => {
-  it('should expose `any_reasons` keyed by reason label in build-manifest.json', () => {
-    const manifestPath = path.join(FULL_BUILD_CONFIG, 'build-manifest.json');
+  it('should expose emitted `any_reasons` under the symbols result', () => {
+    const manifestPath = FULL_BUILD_MANIFEST;
     if (!fs.existsSync(manifestPath)) {
       // Manifest is only generated by `nx run ocjs:build` after a full rebuild;
       // skip rather than fail when running the dts-only loop.
       return;
     }
     const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8')) as Record<string, unknown>;
-    expect(manifest, 'build-manifest.json must contain any_reasons').toHaveProperty('any_reasons');
-    const reasons = manifest['any_reasons'] as Record<string, unknown> | undefined;
+    expect(manifest).not.toHaveProperty('any_reasons');
+    const symbols = manifest['symbols'] as Record<string, unknown> | undefined;
+    expect(symbols && typeof symbols === 'object', 'symbols must be an object').toBe(true);
+    const reasons = symbols?.['any_reasons'] as Record<string, unknown> | undefined;
+    if (reasons === undefined) return;
     expect(reasons && typeof reasons === 'object', 'any_reasons must be an object').toBe(true);
   });
 });

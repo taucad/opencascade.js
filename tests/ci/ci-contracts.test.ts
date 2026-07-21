@@ -105,6 +105,7 @@ describe('CI contracts', () => {
       );
       expect(step.run).toContain('rm -rf build/bindings');
       expect(step.run).toContain('npx nx run ocjs:generate --skip-nx-cache');
+      expect(step.run).toContain('npx vitest run tests/no-clobber-validation.test.ts');
       expect(step.run).toContain('npx nx run ocjs:bind-symbols --skip-nx-cache');
       expect(step.run).toContain('cp -R /host/scripts /opencascade.js/scripts');
       expect(step.run).toContain('OCJS_OUTPUT_DIR=/opencascade.js/dist');
@@ -334,6 +335,16 @@ describe('CI contracts', () => {
     expect(source).not.toContain('NPM_TOKEN');
     expect(source).not.toContain('NODE_AUTH_TOKEN');
     expect(source).not.toContain('OCJS_CONFIG=debug');
+  });
+
+  it('should run generated-source checks before the dist-only package gate', () => {
+    const ci = workflow('docker.yml');
+    const packageGate = ci.jobs['package-assemble'].steps.find(
+      ({ name }: { name?: string }) => name === 'Full runtime, regression, and declaration gates',
+    );
+    expect(packageGate.run).toContain(
+      'npm test -- --exclude tests/no-clobber-validation.test.ts',
+    );
   });
 
   it('should bridge the mutually exclusive candidate matrices explicitly', () => {
