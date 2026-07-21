@@ -28,6 +28,7 @@ import importlib
 import json
 import os
 import textwrap
+from pathlib import Path
 
 import pytest
 import yaml
@@ -183,6 +184,20 @@ def test_extract_registrations_handles_yaml_with_no_consumer_code(tmp_path) -> N
   )
   registrations = extract_registrations_for_yaml(str(yaml_path))
   assert {"OCJS", "TopoDS", "TColStd_IndexedDataMapOfStringString"} <= registrations
+
+
+@pytest.mark.libclang
+def test_extract_registrations_handles_progress_indicator_fixture() -> None:
+  """The Docker consumer fixture exercises Embind's public subclassing
+  surface. The parse-only header must model that surface closely enough to
+  preserve its registration rather than emitting an incomplete manifest.
+  """
+  _skip_if_no_toolchain()
+  from ocjs_bindgen.bind_symbols import extract_registrations_for_yaml
+
+  fixture = Path(__file__).parents[2] / "tests/docker/fixtures/progress-indicator.yml"
+  registrations = extract_registrations_for_yaml(str(fixture))
+  assert "Message_ProgressIndicator_JS" in registrations
 
 
 @pytest.mark.libclang

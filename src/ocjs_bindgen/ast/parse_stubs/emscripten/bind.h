@@ -38,7 +38,21 @@ struct class_ {
   class_& field(const char* name, Args...) { (void)name; return *this; }
   template <typename... Args>
   class_& smart_ptr(Args...) { return *this; }
+  template <typename WrapperType, typename... Args>
+  class_& allow_subclass(const char* name, Args...) {
+    (void)name;
+    return *this;
+  }
 };
+
+template <typename T>
+struct wrapper : T {
+  template <typename ReturnType, typename... Args>
+  ReturnType call(const char* name, Args&&...) const;
+};
+
+template <typename T>
+struct base {};
 
 template <typename T>
 struct enum_ {
@@ -73,8 +87,19 @@ void register_optional(const char* name) { (void)name; }
 template <typename Callable, typename... Policies>
 void function(const char* name, Callable, Policies...) { (void)name; }
 
+template <typename Signature>
+Signature* select_overload(Signature* function) {
+  return function;
+}
+
+template <typename Signature, typename ClassType>
+auto select_overload(Signature (ClassType::*method)) -> decltype(method) {
+  return method;
+}
+
 // Embind helpers referenced from BUILTIN_ADDITIONAL_BIND_CODE callbacks.
 inline int allow_raw_pointers() { return 0; }
+struct pure_virtual {};
 template <typename T>
 T optional_override(T t) { return t; }
 
@@ -86,3 +111,8 @@ T optional_override(T t) { return t; }
 // runtime to link.
 #define EMSCRIPTEN_BINDINGS(name) \
   static void embind_init_##name()
+
+// The real macro declares a forwarding constructor for the JS wrapper.
+// Construction is irrelevant to registration extraction, so the parse-only
+// shadow intentionally expands to nothing.
+#define EMSCRIPTEN_WRAPPER(name)
