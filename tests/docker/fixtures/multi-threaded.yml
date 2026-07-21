@@ -40,6 +40,7 @@ mainBuild:
     - -sWASM_BIGINT
     - -msimd128
     - -O3
+    - --emit-symbol-map
     # Multi-threading delta (see build-configs/full_multi.yml):
     - -pthread
     - -sUSE_PTHREADS=1
