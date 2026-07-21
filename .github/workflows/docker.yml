@@ -232,11 +232,16 @@ jobs:
             -v "$TEST_DIST:/opencascade.js/dist:ro" \
             "$IMAGE" -lc '
               rm -rf /opencascade.js/tests
+              rm -rf /opencascade.js/scripts
               cp -R /host/tests /opencascade.js/tests
+              cp -R /host/scripts /opencascade.js/scripts
               cp /host/Dockerfile /opencascade.js/Dockerfile
               cp -R /host/.github /opencascade.js/.github
               cd /opencascade.js
-              .venv/bin/pytest tests/integration tests/sentinel
+              rm -rf build/bindings
+              npx nx run ocjs:generate --skip-nx-cache
+              OCJS_OUTPUT_DIR=/opencascade.js/dist \
+                .venv/bin/pytest tests/integration tests/sentinel
             '
 
       - name: Upload ST/MT package outputs
@@ -362,11 +367,16 @@ jobs:
             -v "$TEST_DIST:/opencascade.js/dist:ro" \
             "$IMAGE" -lc '
               rm -rf /opencascade.js/tests
+              rm -rf /opencascade.js/scripts
               cp -R /host/tests /opencascade.js/tests
+              cp -R /host/scripts /opencascade.js/scripts
               cp /host/Dockerfile /opencascade.js/Dockerfile
               cp -R /host/.github /opencascade.js/.github
               cd /opencascade.js
-              .venv/bin/pytest tests/integration tests/sentinel
+              rm -rf build/bindings
+              npx nx run ocjs:generate --skip-nx-cache
+              OCJS_OUTPUT_DIR=/opencascade.js/dist \
+                .venv/bin/pytest tests/integration tests/sentinel
             '
 
       - name: Upload ST/MT package outputs

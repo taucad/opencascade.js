@@ -85,6 +85,7 @@ describe('CI contracts', () => {
   });
 
   it('should make provisioned Replicad compatibility a mandatory candidate gate', () => {
+    const ci = workflow('docker.yml');
     const source = fs.readFileSync(path.join(ROOT, '.github/workflows/docker.yml'), 'utf8');
     const replicadTest = fs.readFileSync(
       path.join(ROOT, 'tests/sentinel/test_replicad_native_validation.py'),
@@ -93,6 +94,15 @@ describe('CI contracts', () => {
     expect(source).toContain('build-configs/replicad-validation.yml');
     expect(source).toContain('.venv/bin/pytest tests/integration tests/sentinel');
     expect(replicadTest).not.toContain('pytest.skip');
+    for (const jobName of ['candidate-validation', 'candidate-build']) {
+      const step = ci.jobs[jobName].steps.find(
+        ({ name }: { name?: string }) => name === 'Python integration and sentinel checks',
+      );
+      expect(step.run).toContain('rm -rf build/bindings');
+      expect(step.run).toContain('npx nx run ocjs:generate --skip-nx-cache');
+      expect(step.run).toContain('cp -R /host/scripts /opencascade.js/scripts');
+      expect(step.run).toContain('OCJS_OUTPUT_DIR=/opencascade.js/dist');
+    }
   });
 
   it('should select only expired, unprotected GHCR versions', () => {
