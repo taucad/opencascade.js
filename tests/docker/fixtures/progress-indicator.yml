@@ -42,6 +42,7 @@ mainBuild:
     - -sWASM_BIGINT
     - -msimd128
     - -O3
+    - --emit-symbol-map
   additionalBindCode: |
     #include "Message_ProgressIndicator.hxx"
     #include <emscripten/bind.h>

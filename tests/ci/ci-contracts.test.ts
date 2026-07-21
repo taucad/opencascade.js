@@ -224,8 +224,9 @@ describe('CI contracts', () => {
     expect(source).toContain('LINK_BUDGET_S="${LINK_BUDGET_S:-1200}"');
     expect(source).toContain('tests/docker/fixtures/simple.yml');
     expect(source).toContain('docker-js-smoke.mjs" "$OUTPUT_DIR/customBuild.simple.js" simple');
-    expect(fixture('simple.yml').mainBuild.emccFlags).toContain('--emit-symbol-map');
-    expect(fixture('multi-threaded.yml').mainBuild.emccFlags).toContain('--emit-symbol-map');
+    for (const name of ['simple.yml', 'multi-threaded.yml', 'progress-indicator.yml']) {
+      expect(fixture(name).mainBuild.emccFlags).toContain('--emit-symbol-map');
+    }
     for (const obsolete of [
       'WARM_BUDGET_S',
       'SKIP_COLD_LINK',
