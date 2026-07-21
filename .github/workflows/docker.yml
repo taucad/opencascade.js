@@ -392,25 +392,6 @@ jobs:
           if-no-files-found: error
           retention-days: 2
 
-      - name: Write ST/MT artifact manifest
-        if: matrix.stage != 'bindgen-base'
-        env:
-          OUT: ${{ runner.temp }}/e2e
-        run: |
-          test "$(find "$OUT" -maxdepth 1 -type f | wc -l)" -eq 6
-          mkdir -p "${{ runner.temp }}/artifact-manifest"
-          (cd "$OUT" && find . -maxdepth 1 -type f -printf '%f\n' | LC_ALL=C sort | xargs sha256sum) \
-            > "${{ runner.temp }}/artifact-manifest/manifest.sha256"
-
-      - name: Upload ST/MT artifact manifest
-        if: matrix.stage != 'bindgen-base'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: artifact-manifest-${{ matrix.stage == 'final-single' && 'single' || 'multi' }}-${{ matrix.arch }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/artifact-manifest/manifest.sha256
-          if-no-files-found: error
-          retention-days: 2
-
       - name: Push tested candidate by digest
         id: push
         uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6
@@ -444,43 +425,20 @@ jobs:
           if-no-files-found: error
           retention-days: 2
 
-  artifact-parity:
-    name: candidate · cross-architecture artifact parity
-    if: github.event_name == 'push'
-    needs: candidate-build
-    runs-on: ubuntu-latest
-    steps:
-      - name: Download ST/MT artifact manifests
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        with:
-          pattern: artifact-manifest-*-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/manifests
-
-      - name: Require byte-identical amd64 and arm64 outputs
-        run: |
-          for variant in single multi; do
-            amd64="${{ runner.temp }}/manifests/artifact-manifest-${variant}-amd64-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}/manifest.sha256"
-            arm64="${{ runner.temp }}/manifests/artifact-manifest-${variant}-arm64-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}/manifest.sha256"
-            test -f "$amd64"
-            test -f "$arm64"
-            diff -u "$amd64" "$arm64"
-          done
-
   candidate-gate:
     name: candidate
     if: always()
-    needs: [candidate-validation, candidate-build, artifact-parity]
+    needs: [candidate-validation, candidate-build]
     runs-on: ubuntu-latest
     steps:
       - name: Require the applicable candidate matrix
         env:
           VALIDATION: ${{ needs.candidate-validation.result }}
           BUILD: ${{ needs.candidate-build.result }}
-          PARITY: ${{ needs.artifact-parity.result }}
         run: |
-          if [ "$VALIDATION" = success ] && [ "$BUILD" = skipped ] && [ "$PARITY" = skipped ]; then exit 0; fi
-          if [ "$BUILD" = success ] && [ "$VALIDATION" = skipped ] && [ "$PARITY" = success ]; then exit 0; fi
-          echo "candidate matrices: validation=$VALIDATION build=$BUILD parity=$PARITY" >&2
+          if [ "$VALIDATION" = success ] && [ "$BUILD" = skipped ]; then exit 0; fi
+          if [ "$BUILD" = success ] && [ "$VALIDATION" = skipped ]; then exit 0; fi
+          echo "candidate matrices: validation=$VALIDATION build=$BUILD" >&2
           exit 1
 
   package-assemble:

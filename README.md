@@ -110,7 +110,7 @@ Browsers require `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Emb
 
 Pre-built images are published to [ghcr.io/taucad/opencascade.js](https://github.com/taucad/opencascade.js/pkgs/container/opencascade.js):
 
-- **Every push**—branches, `master`, and release tags—publishes multi-arch manifest lists (`linux/amd64` + `linux/arm64`) after native testing and cross-architecture artifact parity.
+- **Every push**—branches, `master`, and release tags—publishes multi-arch manifest lists (`linux/amd64` + `linux/arm64`) after each architecture builds, links, and passes its native runtime smoke.
 
 No local build required.
 

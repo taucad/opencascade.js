@@ -76,8 +76,9 @@ docker run --rm -it -v "$(pwd):/src" --entrypoint bash \
 
 Every push ships full manifest lists so Apple Silicon and ARM Linux hosts pull
 the native architecture transparently. CI links and smokes each image natively,
-then requires byte-identical ST/MT package outputs across architectures before
-promotion.
+and requires every native stage to pass before promotion. The amd64 outputs are
+the canonical npm package inputs; host-specific compiler output is not compared
+byte-for-byte across architectures.
 
 ## OCI labels
 

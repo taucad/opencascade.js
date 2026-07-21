@@ -149,8 +149,9 @@ runner (the e2e gate budget; M1 Pro local times are 30-50% faster):
 
 The CI e2e gate applies one hard 20-minute consumer-link ceiling to each full
 single- and multi-threaded image on both architectures. It does not repeat the
-link to benchmark a warm cache; timing remains in the Actions log, while
-cross-architecture hashes prove the six published outputs are byte-identical.
+link to benchmark a warm cache; timing remains in the Actions log. Each native
+image must validate all six outputs and pass the same runtime smoke, while the
+tested amd64 outputs are the canonical npm package inputs.
 Cold-cache runs on consumer machines add image pull and compilation time;
 subsequent runs reuse the pulled image and Nx cache.
 

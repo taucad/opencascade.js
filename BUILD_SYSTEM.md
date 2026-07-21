@@ -123,7 +123,7 @@ The output set per consumer YAML. Names come from the YAML's `mainBuild.name` (h
 
 ### CI validation boundaries
 
-Every push builds `final-single`, `final-multi`, and `bindgen-base` natively on both amd64 and arm64. The final stages each perform one bounded consumer link and runtime smoke. Bindgen-base instead exercises the smallest source-generation boundary with `tests/docker/fixtures/simple.yml`. The ST and MT six-file outputs are hashed and compared across architectures before the amd64 copies are assembled into the npm candidate.
+Every push builds `final-single`, `final-multi`, and `bindgen-base` natively on both amd64 and arm64. The final stages each perform one bounded consumer link, validate all six outputs, and run the same runtime smoke. Bindgen-base instead exercises the smallest source-generation boundary with `tests/docker/fixtures/simple.yml`. Native host toolchains are not byte-reproducible across architectures, so the amd64 ST and MT outputs are the canonical npm inputs while both successful native image digests are required for GHCR promotion.
 
 The packed candidate is the sole package-test input. Node runtime, declarations, docs, and starter templates run independently; a dedicated COOP/COEP server then validates ST and MT under Chromium, Firefox, and WebKit. Template render tests remain Chromium-only because they own bundler, WebGL, and compositor behavior rather than browser-engine runtime compatibility.
 

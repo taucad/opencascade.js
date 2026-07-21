@@ -28,7 +28,8 @@ the artifact delta in its body. Never refresh a baseline merely to silence an
 unexplained parity failure.
 
 Published candidate binaries are not compared with a historical digest:
-source identity and intentional generator changes legitimately change those
-bytes. Each native amd64/arm64 push candidate instead hashes all six current
-ST/MT artifacts, and the cross-architecture parity gate requires exact
-same-source bytes before promotion.
+source identity, host toolchains, and intentional generator changes
+legitimately change those bytes. Exact reproducibility belongs to the source
+parity layers above. Each native amd64/arm64 push candidate independently
+validates all six current ST/MT artifacts and executes the same runtime smoke
+before its image digest can be promoted.

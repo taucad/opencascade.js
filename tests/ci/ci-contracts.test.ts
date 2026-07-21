@@ -198,20 +198,24 @@ describe('CI contracts', () => {
     expect(source).toContain('test "$platforms" = "linux/amd64,linux/arm64"');
   });
 
-  it('should compare all six ST and MT outputs across native architectures', () => {
+  it('should require every native candidate without comparing host-dependent bytes', () => {
     const ci = workflow('docker.yml');
-    const parity = ci.jobs['artifact-parity'];
-    expect(parity.if).toContain("github.event_name == 'push'");
-    expect(parity.needs).toBe('candidate-build');
+    const nativeE2e = ci.jobs['candidate-build'].steps.find(
+      ({ name }: { name?: string }) => name === 'Candidate e2e',
+    );
     expect(ci.jobs['candidate-gate'].needs).toEqual([
       'candidate-validation',
       'candidate-build',
-      'artifact-parity',
     ]);
+    expect(nativeE2e.if).toBeUndefined();
+    expect(nativeE2e.run).toBe('scripts/docker-e2e-validate.sh');
+    expect(nativeE2e.env.OCJS_DOCKER_PLATFORM).toBe(
+      "${{ matrix.arch == 'arm64' && 'linux/arm64' || 'linux/amd64' }}",
+    );
     const source = fs.readFileSync(path.join(ROOT, '.github/workflows/docker.yml'), 'utf8');
-    expect(source).toContain('artifact-manifest-${{ matrix.stage == \'final-single\' && \'single\' || \'multi\' }}-${{ matrix.arch }}');
-    expect(source).toContain('diff -u "$amd64" "$arm64"');
-    expect(source).toContain('test "$(find "$OUT" -maxdepth 1 -type f | wc -l)" -eq 6');
+    expect(source).not.toContain('artifact-parity');
+    expect(source).not.toContain('artifact-manifest-');
+    expect(source).not.toContain('byte-identical amd64 and arm64');
   });
 
   it('should use only stage-and-architecture-local Docker caches', () => {

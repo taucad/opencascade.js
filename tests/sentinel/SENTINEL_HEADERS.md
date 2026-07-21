@@ -86,12 +86,12 @@ one sentinel header:
   Runs `nx run ocjs:generate` and SHA-256s the *entire* `build/bindings/` tree
   against `baseline/full_tree.sha256`. Catches regressions that escape the
   ten-header sample.
-* **Candidate reproducibility — cross-architecture CI parity**
-  Each native amd64/arm64 candidate performs one ST or MT consumer link and
-  hashes its six outputs. The push-only parity gate requires byte-for-byte
-  equality across architectures for the same source/configuration identity.
-  This replaces both the obsolete historical dist digest and the redundant
-  same-run warm relink.
+* **Candidate portability — native multi-architecture CI**
+  Each native amd64/arm64 candidate performs one ST or MT consumer link,
+  validates all six outputs, and executes the same runtime smoke. The source
+  parity layers above remain exact; native host toolchains are not required to
+  produce identical final bytes. The tested amd64 outputs own npm packaging,
+  while both native image digests are required for GHCR promotion.
 
 ## Maintenance
 
