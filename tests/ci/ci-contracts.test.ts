@@ -218,9 +218,13 @@ describe('CI contracts', () => {
 
   it('should run one bounded final link and reuse the minimal bindgen fixture', () => {
     const source = fs.readFileSync(path.join(ROOT, 'scripts/docker-e2e-validate.sh'), 'utf8');
+    const fixture = parse(
+      fs.readFileSync(path.join(ROOT, 'tests/docker/fixtures/simple.yml'), 'utf8'),
+    );
     expect(source).toContain('LINK_BUDGET_S="${LINK_BUDGET_S:-1200}"');
     expect(source).toContain('tests/docker/fixtures/simple.yml');
     expect(source).toContain('docker-js-smoke.mjs" "$OUTPUT_DIR/customBuild.simple.js" simple');
+    expect(fixture.mainBuild.emccFlags).toContain('--emit-symbol-map');
     for (const obsolete of [
       'WARM_BUDGET_S',
       'SKIP_COLD_LINK',

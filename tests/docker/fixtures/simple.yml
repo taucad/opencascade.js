@@ -28,6 +28,7 @@ mainBuild:
     - -sSTACK_SIZE=8388608
     - -sWASM_BIGINT
     - -msimd128
+    - --emit-symbol-map
     - -O3
 additionalCppCode: |
   #include <iostream>
