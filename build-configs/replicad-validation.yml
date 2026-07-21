@@ -15,3 +15,5 @@ mainBuild:
     - symbol: TColStd_Array1OfReal
     - symbol: Poly_Array1OfTriangle
     - symbol: TopTools_ListOfShape
+  emccFlags:
+    - --emit-symbol-map

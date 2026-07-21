@@ -240,6 +240,8 @@ jobs:
               cd /opencascade.js
               rm -rf build/bindings
               npx nx run ocjs:generate --skip-nx-cache
+              OCJS_YAML=/host/build-configs/replicad-validation.yml \
+                npx nx run ocjs:bind-symbols --skip-nx-cache
               OCJS_OUTPUT_DIR=/opencascade.js/dist \
                 .venv/bin/pytest tests/integration tests/sentinel
             '
@@ -375,6 +377,8 @@ jobs:
               cd /opencascade.js
               rm -rf build/bindings
               npx nx run ocjs:generate --skip-nx-cache
+              OCJS_YAML=/host/build-configs/replicad-validation.yml \
+                npx nx run ocjs:bind-symbols --skip-nx-cache
               OCJS_OUTPUT_DIR=/opencascade.js/dist \
                 .venv/bin/pytest tests/integration tests/sentinel
             '

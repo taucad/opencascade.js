@@ -91,15 +91,21 @@ describe('CI contracts', () => {
       path.join(ROOT, 'tests/sentinel/test_replicad_native_validation.py'),
       'utf8',
     );
+    const replicadFixture = parse(fs.readFileSync(
+      path.join(ROOT, 'build-configs/replicad-validation.yml'),
+      'utf8',
+    ));
     expect(source).toContain('build-configs/replicad-validation.yml');
     expect(source).toContain('.venv/bin/pytest tests/integration tests/sentinel');
     expect(replicadTest).not.toContain('pytest.skip');
+    expect(replicadFixture.mainBuild.emccFlags).toContain('--emit-symbol-map');
     for (const jobName of ['candidate-validation', 'candidate-build']) {
       const step = ci.jobs[jobName].steps.find(
         ({ name }: { name?: string }) => name === 'Python integration and sentinel checks',
       );
       expect(step.run).toContain('rm -rf build/bindings');
       expect(step.run).toContain('npx nx run ocjs:generate --skip-nx-cache');
+      expect(step.run).toContain('npx nx run ocjs:bind-symbols --skip-nx-cache');
       expect(step.run).toContain('cp -R /host/scripts /opencascade.js/scripts');
       expect(step.run).toContain('OCJS_OUTPUT_DIR=/opencascade.js/dist');
     }
