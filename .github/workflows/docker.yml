@@ -251,9 +251,10 @@ jobs:
         if: matrix.stage != 'bindgen-base'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: npm-dist-${{ matrix.stage == 'final-single' && 'single' || 'multi' }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: npm-dist-${{ matrix.stage == 'final-single' && 'single' || 'multi' }}-${{ github.run_id }}
           path: ${{ runner.temp }}/e2e/*
           if-no-files-found: error
+          overwrite: true
           retention-days: 2
 
   candidate-build:
@@ -389,9 +390,10 @@ jobs:
         if: matrix.arch == 'amd64' && matrix.stage != 'bindgen-base'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: npm-dist-${{ matrix.stage == 'final-single' && 'single' || 'multi' }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: npm-dist-${{ matrix.stage == 'final-single' && 'single' || 'multi' }}-${{ github.run_id }}
           path: ${{ runner.temp }}/e2e/*
           if-no-files-found: error
+          overwrite: true
           retention-days: 2
 
       - name: Push tested candidate by digest
@@ -422,9 +424,10 @@ jobs:
       - name: Upload digest identity
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: digest-${{ matrix.stage }}-${{ matrix.arch }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: digest-${{ matrix.stage }}-${{ matrix.arch }}-${{ github.run_id }}
           path: ${{ runner.temp }}/digests/*
           if-no-files-found: error
+          overwrite: true
           retention-days: 2
 
   candidate-gate:
@@ -453,7 +456,7 @@ jobs:
       needs.candidate-gate.result == 'success'
     runs-on: ubuntu-latest
     outputs:
-      artifact: npm-candidate-${{ github.run_id }}-${{ github.run_attempt }}
+      artifact: npm-candidate-${{ github.run_id }}
     steps:
       - name: Checkout
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -461,14 +464,14 @@ jobs:
       - name: Download single-threaded outputs
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          pattern: npm-dist-single-${{ github.run_id }}-${{ github.run_attempt }}
+          pattern: npm-dist-single-${{ github.run_id }}
           path: ${{ runner.temp }}/single
           merge-multiple: true
 
       - name: Download multi-threaded outputs
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          pattern: npm-dist-multi-${{ github.run_id }}-${{ github.run_attempt }}
+          pattern: npm-dist-multi-${{ github.run_id }}
           path: ${{ runner.temp }}/multi
           merge-multiple: true
 
@@ -523,7 +526,6 @@ jobs:
             fs.writeFileSync(process.env.RUNNER_TEMP + '/candidate.json', JSON.stringify({
               channel: process.env.CHANNEL,
               fullSha: process.env.FULL_SHA,
-              runAttempt: process.env.GITHUB_RUN_ATTEMPT,
               runId: process.env.GITHUB_RUN_ID,
               sourceDateEpoch: process.env.SOURCE_DATE_EPOCH,
               version: process.env.VERSION,
@@ -533,13 +535,14 @@ jobs:
       - name: Upload immutable npm candidate
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: npm-candidate-${{ github.run_id }}-${{ github.run_attempt }}
+          name: npm-candidate-${{ github.run_id }}
           path: |
             ${{ runner.temp }}/candidate.tgz
             ${{ runner.temp }}/candidate.sha256
             ${{ runner.temp }}/candidate.sha512
             ${{ runner.temp }}/candidate.json
           if-no-files-found: error
+          overwrite: true
           retention-days: 7
 
   package-runtime:
@@ -667,7 +670,7 @@ jobs:
       - name: Download tested digests
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          pattern: digest-${{ matrix.stage }}-*-${{ github.run_id }}-${{ github.run_attempt }}
+          pattern: digest-${{ matrix.stage }}-*-${{ github.run_id }}
           path: ${{ runner.temp }}/digests
       - name: Set up Buildx
         uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3
@@ -701,7 +704,7 @@ jobs:
           for tag in "${tags[@]}"; do args+=(-t "${REGISTRY_IMAGE}:$tag"); done
           sources=()
           for arch in amd64 arm64; do
-            dir="${RUNNER_TEMP}/digests/digest-${STAGE}-${arch}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+            dir="${RUNNER_TEMP}/digests/digest-${STAGE}-${arch}-${GITHUB_RUN_ID}"
             shopt -s nullglob
             files=("$dir"/*)
             test "${#files[@]}" -eq 1
@@ -710,7 +713,11 @@ jobs:
           docker buildx imagetools create "${args[@]}" "${sources[@]}"
           platforms="$(
             docker buildx imagetools inspect "${REGISTRY_IMAGE}:${tags[0]}" --raw |
-              jq -r '[.manifests[].platform | "\(.os)/\(.architecture)"] | sort | join(",")'
+              jq -r '[
+                .manifests[] |
+                select(.annotations["vnd.docker.reference.type"] != "attestation-manifest") |
+                .platform | "\(.os)/\(.architecture)"
+              ] | sort | join(",")'
           )"
           test "$platforms" = "linux/amd64,linux/arm64"
           digest="$(docker buildx imagetools inspect "${REGISTRY_IMAGE}:${tags[0]}" --format '{{json .Manifest}}' | jq -r '.digest')"
@@ -766,7 +773,6 @@ jobs:
           const expected = {
             channel: process.env.CHANNEL,
             fullSha: process.env.FULL_SHA,
-            runAttempt: process.env.GITHUB_RUN_ATTEMPT,
             runId: process.env.GITHUB_RUN_ID,
             sourceDateEpoch: process.env.SOURCE_DATE_EPOCH,
             version: process.env.VERSION,

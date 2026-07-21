@@ -193,9 +193,12 @@ describe('CI contracts', () => {
 
   it('should promote exactly one tested digest per native architecture', () => {
     const source = fs.readFileSync(path.join(ROOT, '.github/workflows/docker.yml'), 'utf8');
-    expect(source).toContain('digest-${STAGE}-${arch}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}');
+    expect(source).toContain('digest-${STAGE}-${arch}-${GITHUB_RUN_ID}');
     expect(source).toContain('for arch in amd64 arm64');
     expect(source).toContain('test "${#files[@]}" -eq 1');
+    expect(source).toContain(
+      'select(.annotations["vnd.docker.reference.type"] != "attestation-manifest")',
+    );
     expect(source).toContain('test "$platforms" = "linux/amd64,linux/arm64"');
   });
 
@@ -234,6 +237,31 @@ describe('CI contracts', () => {
       expect(step.with['cache-from'].trim().split('\n')).toEqual([
         'type=registry,ref=${{ env.REGISTRY_IMAGE }}:buildcache-${{ matrix.arch }}-${{ matrix.stage }}',
       ]);
+    }
+  });
+
+  it('should keep commit identity out of expensive Docker layers', () => {
+    const source = fs.readFileSync(path.join(ROOT, 'Dockerfile'), 'utf8');
+    const expensive = source.slice(
+      source.indexOf('FROM deps-base AS bindgen-content'),
+      source.indexOf('FROM bindgen-content AS bindgen-base'),
+    );
+    expect(expensive).not.toContain('ARG REVISION');
+    expect(expensive).not.toContain('ARG SOURCE_DATE_EPOCH');
+    expect(source.match(/ENV OCJS_SOURCE_COMMIT=/g)).toHaveLength(3);
+  });
+
+  it('should keep same-run artifacts stable across retry attempts', () => {
+    const ci = workflow('docker.yml');
+    const source = fs.readFileSync(path.join(ROOT, '.github/workflows/docker.yml'), 'utf8');
+    expect(source).not.toContain('GITHUB_RUN_ATTEMPT');
+    for (const jobName of ['candidate-validation', 'candidate-build', 'package-assemble']) {
+      const uploads = ci.jobs[jobName].steps.filter(
+        ({ uses }: { uses?: string }) => uses?.startsWith('actions/upload-artifact@'),
+      );
+      for (const upload of uploads) {
+        expect(upload.with.overwrite, jobName).toBe(true);
+      }
     }
   });
 
