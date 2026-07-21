@@ -70,6 +70,9 @@ void register_map(const char* name) { (void)name; }
 template <typename T>
 void register_optional(const char* name) { (void)name; }
 
+template <typename Callable, typename... Policies>
+void function(const char* name, Callable, Policies...) { (void)name; }
+
 // Embind helpers referenced from BUILTIN_ADDITIONAL_BIND_CODE callbacks.
 inline int allow_raw_pointers() { return 0; }
 template <typename T>

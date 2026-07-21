@@ -71,7 +71,8 @@ def _collect_from_cursor(cursor, predicate):
 # first string-literal argument of the call is the JS-visible "Name". This
 # set covers the public Embind 5.0 registration surface used by OCJS's
 # `BUILTIN_ADDITIONAL_BIND_CODE` block and consumer YAML `additionalBindCode`
-# snippets; any future Embind registration entry point would be added here
+# snippets, including top-level `function`; any future Embind registration
+# entry point would be added here
 # rather than re-parsed via regex.
 _EMBIND_REGISTRATION_SPELLINGS: frozenset[str] = frozenset(
     {
@@ -82,6 +83,7 @@ _EMBIND_REGISTRATION_SPELLINGS: frozenset[str] = frozenset(
         "register_vector",
         "register_map",
         "register_optional",
+        "function",
     }
 )
 
@@ -135,7 +137,7 @@ def extract_class_registrations(tu) -> set[str]:
     Embind registration call — ``class_<T>("Name")``, ``enum_<T>("Name")``,
     ``value_object<T>("Name")``, ``register_vector<T>("Name")``,
     ``register_map<K,V>("Name")``, ``register_optional<T>("Name")``,
-    ``value_array<T>("Name")``.
+    ``function("Name", callable)``, ``value_array<T>("Name")``.
 
     Implementation visits every cursor in the TU (via :func:`_walk_all`)
     and matches by:
@@ -203,8 +205,15 @@ def extract_class_registrations(tu) -> set[str]:
             cur.kind == clang.cindex.CursorKind.CALL_EXPR
             and cur.spelling in _EMBIND_REGISTRATION_SPELLINGS
         ):
+            if (
+                cur.spelling == "function"
+                and cur.referenced is not None
+                and cur.referenced.kind == clang.cindex.CursorKind.CXX_METHOD
+            ):
+                continue
             # Free-function template registration (register_vector,
-            # register_map, register_optional). The constructor form
+            # register_map, register_optional, function). Member
+            # `.function(...)` calls are excluded above. The constructor form
             # also produces a CALL_EXPR but it lives inside a
             # CXX_FUNCTIONAL_CAST_EXPR we will have already handled;
             # skip it by location-dedup so the inner CALL_EXPR is not

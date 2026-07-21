@@ -120,12 +120,19 @@ def test_consumer_additional_bind_code_extracts_each_registration() -> None:
         .function("clone", &ShapeWrapper::clone);
       value_object<MeshData>("MeshData")
         .field("vertices", &MeshData::vertices);
+      function("make_shape", optional_override([]() { return 1; }));
       register_vector<int>("VectorInt");
       register_map<int, double>("MapIntDouble");
     }
     """)
   registered = _extract(source)
-  assert registered == {"ShapeWrapper", "MeshData", "VectorInt", "MapIntDouble"}
+  assert registered == {
+    "ShapeWrapper",
+    "MeshData",
+    "make_shape",
+    "VectorInt",
+    "MapIntDouble",
+  }
 
 
 # ----------------------------------------------------------------------------
