@@ -62,8 +62,9 @@ OCJS_EXPECTED_SHA="${OCJS_EXPECTED_SHA:-$(git -C "$REPO_ROOT" rev-parse HEAD)}"
 SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-$(git -C "$REPO_ROOT" show -s --format=%ct HEAD)}"
 BUILD_VERSION="$(node -p "require('$REPO_ROOT/package.json').version")"
 BUILD_ARGS=(
+  "--build-arg" "SOURCE_DATE_EPOCH=0"
   "--build-arg" "REVISION=$OCJS_EXPECTED_SHA"
-  "--build-arg" "SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH"
+  "--build-arg" "OCJS_SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH"
   "--build-arg" "VERSION=$BUILD_VERSION"
 )
 

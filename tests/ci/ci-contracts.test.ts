@@ -238,9 +238,16 @@ describe('CI contracts', () => {
         'type=registry,ref=${{ env.REGISTRY_IMAGE }}:buildcache-${{ matrix.arch }}-${{ matrix.stage }}',
       ]);
     }
+    const initialBuild = buildSteps.find(
+      ({ name }: { name?: string }) => name === 'Build candidate for e2e',
+    );
+    expect(initialBuild.with['cache-to']).toBe(
+      'type=registry,ref=${{ env.REGISTRY_IMAGE }}:buildcache-${{ matrix.arch }}-${{ matrix.stage }},mode=max',
+    );
   });
 
   it('should keep commit identity out of expensive Docker layers', () => {
+    const ci = workflow('docker.yml');
     const source = fs.readFileSync(path.join(ROOT, 'Dockerfile'), 'utf8');
     const expensive = source.slice(
       source.indexOf('FROM deps-base AS bindgen-content'),
@@ -248,7 +255,29 @@ describe('CI contracts', () => {
     );
     expect(expensive).not.toContain('ARG REVISION');
     expect(expensive).not.toContain('ARG SOURCE_DATE_EPOCH');
+    expect(source).not.toContain('ARG SOURCE_DATE_EPOCH');
+    expect(source.match(/ARG OCJS_SOURCE_DATE_EPOCH/g)).toHaveLength(3);
     expect(source.match(/ENV OCJS_SOURCE_COMMIT=/g)).toHaveLength(3);
+    for (const step of [
+      ci.jobs['candidate-validation'].steps.find(
+        ({ name }: { name?: string }) => name === 'Build candidate for validation',
+      ),
+      ...ci.jobs['candidate-build'].steps.filter(
+        ({ name }: { name?: string }) => ['Build candidate for e2e', 'Push tested candidate by digest'].includes(name ?? ''),
+      ),
+    ]) {
+      const buildArgs = step.with['build-args'].trim().split('\n');
+      expect(buildArgs).toContain('SOURCE_DATE_EPOCH=0');
+      expect(buildArgs).toContain(
+        'OCJS_SOURCE_DATE_EPOCH=${{ needs.preflight.outputs.source_date_epoch }}',
+      );
+      expect(buildArgs).not.toContain(
+        'SOURCE_DATE_EPOCH=${{ needs.preflight.outputs.source_date_epoch }}',
+      );
+    }
+    const e2e = fs.readFileSync(path.join(ROOT, 'scripts/docker-e2e-validate.sh'), 'utf8');
+    expect(e2e).toContain('"--build-arg" "SOURCE_DATE_EPOCH=0"');
+    expect(e2e).toContain('"--build-arg" "OCJS_SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH"');
   });
 
   it('should keep same-run artifacts stable across retry attempts', () => {

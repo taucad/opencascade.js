@@ -356,11 +356,11 @@ FROM bindgen-content AS bindgen-base
 
 # ── OCI metadata for the published :bindgen-base image ──────────────────────
 ARG REVISION
-ARG SOURCE_DATE_EPOCH
+ARG OCJS_SOURCE_DATE_EPOCH
 ARG VERSION
 ARG SOURCE_URL=https://github.com/taucad/opencascade.js
 ENV OCJS_SOURCE_COMMIT="${REVISION}" \
-    SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH}"
+    SOURCE_DATE_EPOCH="${OCJS_SOURCE_DATE_EPOCH}"
 LABEL org.opencontainers.image.title="opencascade.js (bindgen-base)" \
       org.opencontainers.image.description="Custom-bindings starting point: OCCT patches + PCH + generate index pre-baked (.cpp sources pruned; re-run generate against your YAML)" \
       org.opencontainers.image.source="${SOURCE_URL}" \
@@ -466,11 +466,11 @@ FROM compiled-single-threaded AS final-single
 # rebuilds. Labels follow the opencontainers.org spec so `docker inspect` and
 # GHCR's UI surface provenance, licensing, and source links automatically.
 ARG REVISION
-ARG SOURCE_DATE_EPOCH
+ARG OCJS_SOURCE_DATE_EPOCH
 ARG VERSION
 ARG SOURCE_URL=https://github.com/taucad/opencascade.js
 ENV OCJS_SOURCE_COMMIT="${REVISION}" \
-    SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH}"
+    SOURCE_DATE_EPOCH="${OCJS_SOURCE_DATE_EPOCH}"
 LABEL org.opencontainers.image.title="opencascade.js (single-threaded)" \
       org.opencontainers.image.description="OpenCASCADE.js single-threaded WASM build image (warm cache, ≤5min link)" \
       org.opencontainers.image.source="${SOURCE_URL}" \
@@ -500,11 +500,11 @@ CMD ["--help"]
 FROM compiled-multi-threaded AS final-multi
 
 ARG REVISION
-ARG SOURCE_DATE_EPOCH
+ARG OCJS_SOURCE_DATE_EPOCH
 ARG VERSION
 ARG SOURCE_URL=https://github.com/taucad/opencascade.js
 ENV OCJS_SOURCE_COMMIT="${REVISION}" \
-    SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH}"
+    SOURCE_DATE_EPOCH="${OCJS_SOURCE_DATE_EPOCH}"
 LABEL org.opencontainers.image.title="opencascade.js (multi-threaded)" \
       org.opencontainers.image.description="OpenCASCADE.js multi-threaded WASM build image (requires COOP/COEP on consumer pages)" \
       org.opencontainers.image.source="${SOURCE_URL}" \

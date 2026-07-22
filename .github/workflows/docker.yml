@@ -177,8 +177,9 @@ jobs:
           load: true
           tags: ocjs:e2e-${{ matrix.stage }}
           build-args: |
+            SOURCE_DATE_EPOCH=0
             REVISION=${{ needs.preflight.outputs.full_sha }}
-            SOURCE_DATE_EPOCH=${{ needs.preflight.outputs.source_date_epoch }}
+            OCJS_SOURCE_DATE_EPOCH=${{ needs.preflight.outputs.source_date_epoch }}
             VERSION=${{ needs.preflight.outputs.version }}
           cache-from: |
             type=registry,ref=${{ env.REGISTRY_IMAGE }}:buildcache-amd64-${{ matrix.stage }}
@@ -314,11 +315,13 @@ jobs:
           load: true
           tags: ocjs:e2e-${{ matrix.stage }}
           build-args: |
+            SOURCE_DATE_EPOCH=0
             REVISION=${{ needs.preflight.outputs.full_sha }}
-            SOURCE_DATE_EPOCH=${{ needs.preflight.outputs.source_date_epoch }}
+            OCJS_SOURCE_DATE_EPOCH=${{ needs.preflight.outputs.source_date_epoch }}
             VERSION=${{ needs.preflight.outputs.version }}
           cache-from: |
             type=registry,ref=${{ env.REGISTRY_IMAGE }}:buildcache-${{ matrix.arch }}-${{ matrix.stage }}
+          cache-to: type=registry,ref=${{ env.REGISTRY_IMAGE }}:buildcache-${{ matrix.arch }}-${{ matrix.stage }},mode=max
           provenance: false
           sbom: false
 
@@ -405,8 +408,9 @@ jobs:
           platforms: ${{ matrix.arch == 'arm64' && 'linux/arm64' || 'linux/amd64' }}
           outputs: type=image,name=${{ env.REGISTRY_IMAGE }},push-by-digest=true,name-canonical=true,push=true
           build-args: |
+            SOURCE_DATE_EPOCH=0
             REVISION=${{ needs.preflight.outputs.full_sha }}
-            SOURCE_DATE_EPOCH=${{ needs.preflight.outputs.source_date_epoch }}
+            OCJS_SOURCE_DATE_EPOCH=${{ needs.preflight.outputs.source_date_epoch }}
             VERSION=${{ needs.preflight.outputs.version }}
           cache-from: |
             type=registry,ref=${{ env.REGISTRY_IMAGE }}:buildcache-${{ matrix.arch }}-${{ matrix.stage }}
