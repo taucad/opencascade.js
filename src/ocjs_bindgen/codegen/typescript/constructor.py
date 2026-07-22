@@ -87,7 +87,7 @@ def process_simple_constructor(tsb, theClass, templateDecl=None, templateArgs=No
   if len(publicConstructors) == 0:
     return output
 
-  filtered = tsb._filter_overloads(publicConstructors)
+  filtered = tsb._filter_overloads(publicConstructors, templateDecl)
   filtered = [c for c in filtered if filterMethodOrProperty(theClass, c)]
   bindable = []
   for c in filtered:
@@ -159,7 +159,7 @@ def process_overloaded_constructors(tsb, theClass, children=None, templateDecl=N
   if len(constructors) <= 1:
     return output
 
-  filtered = tsb._filter_overloads(constructors)
+  filtered = tsb._filter_overloads(constructors, templateDecl)
   filtered = [c for c in filtered if filterMethodOrProperty(theClass, c)]
   bindable = []
   for c in filtered:

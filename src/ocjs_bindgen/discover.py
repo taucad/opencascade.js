@@ -4,6 +4,7 @@ Scans the AST of bound OCCT classes to find NCollection template instantiations
 used in method parameters and return types, then generates modern C++ `using`
 declarations and a manifest for the link step.
 """
+import hashlib
 import json
 import os
 import re
@@ -19,29 +20,23 @@ NCOLLECTION_CONTAINERS = frozenset({
     "NCollection_IndexedDataMap",
     "NCollection_Vector", "NCollection_DynamicArray",
     "NCollection_DoubleMap",
+    "NCollection_Shared",
 })
 
 CONTAINER_ALIASES = {
     "NCollection_Vector": "NCollection_DynamicArray",
 }
 
-# TKMath: non-NCollection template containers also admitted into
-# template-instantiation discovery. math_VectorBase<double> (= math_Vector) and
-# math_MatrixBase<double> (= math_Matrix) gate the GeomInt/BRepApprox walking-line
-# approximators — without the base bound, every ctor taking `const math_Vector&`
-# throws "Cannot construct ... due to unbound types" (those approximators were
-# excluded for exactly this reason; see bindgen-filters.yaml). Kept as an explicit
-# allowlist (not a generic denylist) for a low-risk first landing; widen per-package later.
-EXTRA_TEMPLATE_CONTAINERS = frozenset({
-    "math_VectorBase",
-    "math_MatrixBase",
+_PUBLIC_TEMPLATE_ALIAS_KINDS = frozenset({
+    clang.cindex.CursorKind.TYPEDEF_DECL,
+    clang.cindex.CursorKind.TYPE_ALIAS_DECL,
 })
 
-# Containers admitted into discovery: NCollection (always) + the
-# EXTRA_TEMPLATE_CONTAINERS above. Existing behaviour is a strict subset, so
-# widening cannot regress it.
-ADMIT_TEMPLATE_CONTAINERS = NCOLLECTION_CONTAINERS | EXTRA_TEMPLATE_CONTAINERS
+_INTERNAL_TEMPLATE_NAMESPACES = frozenset({
+    "std", "emscripten", "__gnu_cxx", "__cxxabiv1", "__cxx", "__1",
+})
 
+_MAX_MANGLED_NAME_BYTES = 200
 
 def mangle_template_name(container, arg_spellings):
     """Convert a template instantiation to a valid C++ identifier.
@@ -64,18 +59,53 @@ def mangle_template_name(container, arg_spellings):
         if not clean:
             return None
         parts.append(clean)
-    return "_".join(parts)
+    mangled = "_".join(parts)
+    encoded = mangled.encode("utf-8")
+    if len(encoded) <= _MAX_MANGLED_NAME_BYTES:
+        return mangled
+
+    digest = hashlib.sha256(encoded).hexdigest()[:16]
+    prefix_bytes = encoded[:_MAX_MANGLED_NAME_BYTES - len(digest) - 1]
+    prefix = prefix_bytes.decode("utf-8", errors="ignore").rstrip("_")
+    return f"{prefix}_{digest}"
 
 
-def _extract_template_args(clang_type):
+def _public_alias_spelling(arg_type):
+    """Return a globally nameable typedef spelling, or ``None``.
+
+    Libclang's canonical template argument erases public aliases such as
+    ``BRepGraph_FaceId`` into their implementation specialization. Direct
+    NCollection API discovery should preserve that source-level name, while
+    still rejecting class-local aliases that cannot be named by the generated
+    file-scope ``using`` declaration.
+    """
+    decl = arg_type.get_declaration()
+    if decl is None or decl.kind not in _PUBLIC_TEMPLATE_ALIAS_KINDS:
+        return None
+    parent = decl.semantic_parent
+    if parent is None or parent.kind == clang.cindex.CursorKind.TRANSLATION_UNIT:
+        return arg_type.spelling or decl.spelling or None
+    namespaces = []
+    while parent is not None and parent.kind == clang.cindex.CursorKind.NAMESPACE:
+        if parent.spelling:
+            namespaces.append(parent.spelling)
+        parent = parent.semantic_parent
+    if parent is not None and parent.kind != clang.cindex.CursorKind.TRANSLATION_UNIT:
+        return None
+    alias = decl.spelling or arg_type.spelling
+    if not alias:
+        return None
+    return "::".join([*reversed(namespaces), alias]) if namespaces else alias
+
+
+def _extract_template_args(clang_type, preserve_public_aliases=False):
     """Extract template argument spellings from a clang type.
 
-    Always prefers the canonical spelling, which is namespace-qualified for
-    types declared inside a namespace (e.g. `ExtremaPC::ExtremumResult`).
-    The naked `arg_type.spelling` would return the lookup-context-relative
-    name (`ExtremumResult` when scanned from inside `ExtremaPC::Result`),
-    and emitting an unqualified `using NCollection_…<ExtremumResult>;` at
-    global scope in `myMain.h` would fail to compile.
+    Prefers the canonical spelling, which is namespace-qualified for types
+    declared inside a namespace (e.g. `ExtremaPC::ExtremumResult`). When
+    ``preserve_public_aliases`` is enabled for a direct NCollection API use,
+    a globally nameable typedef wins so stable public names such as
+    ``BRepGraph_FaceId`` are not erased into implementation specializations.
     """
     num_args = clang_type.get_num_template_arguments()
     if num_args <= 0:
@@ -83,11 +113,47 @@ def _extract_template_args(clang_type):
     args = []
     for i in range(num_args):
         arg_type = clang_type.get_template_argument_type(i)
+        if arg_type is None or arg_type.kind == clang.cindex.TypeKind.INVALID:
+            return []
         canonical = arg_type.get_canonical()
-        spelling = canonical.spelling or arg_type.spelling
-        if spelling:
-            args.append(spelling)
+        source_alias = (
+            _public_alias_spelling(arg_type)
+            if preserve_public_aliases
+            else None
+        )
+        spelling = source_alias or canonical.spelling or arg_type.spelling
+        if not spelling or "type-parameter-" in spelling:
+            return []
+        args.append(spelling)
     return args
+
+
+def _is_template_declaration(decl):
+    """Return whether ``decl`` is a bindable class-template declaration."""
+    if decl is None or decl.kind not in (
+        clang.cindex.CursorKind.CLASS_TEMPLATE,
+        clang.cindex.CursorKind.CLASS_TEMPLATE_PARTIAL_SPECIALIZATION,
+        clang.cindex.CursorKind.CLASS_DECL,
+        clang.cindex.CursorKind.STRUCT_DECL,
+    ):
+        return False
+    parent = decl.semantic_parent
+    while parent:
+        if (
+            parent.kind == clang.cindex.CursorKind.NAMESPACE
+            and parent.spelling in _INTERNAL_TEMPLATE_NAMESPACES
+        ):
+            return False
+        parent = parent.semantic_parent
+    return True
+
+
+def _is_top_level_template_declaration(decl):
+    """Return whether the current emitter can name ``decl`` unqualified."""
+    if not _is_template_declaration(decl):
+        return False
+    parent = decl.semantic_parent
+    return parent is None or parent.kind == clang.cindex.CursorKind.TRANSLATION_UNIT
 
 
 def _is_globally_accessible(arg_type, template_typedef_names=None):
@@ -124,13 +190,14 @@ def _is_globally_accessible(arg_type, template_typedef_names=None):
 
 
 def _scan_type_for_ncollection(clang_type, needed, template_typedef_names=None, source_class=None):
-    """Check if a type is or contains an NCollection template instantiation.
+    """Check if a type contains a supported concrete template instantiation.
 
-    `source_class` tags every discovered NCollection with the bound class
-    whose method/field signature contained it. The link step uses these
-    tags to compute per-YAML reachability — an NCollection whose source
-    class is not in the consumer YAML's scope is dropped at link time,
-    preventing per-YAML overbinding into unrelated OCCT packages.
+    Existing NCollection families remain directly discoverable. Other template
+    families are admitted only through a public typedef/type-alias spelling:
+    that is the structural signal that the specialization is an intended,
+    globally named API surface rather than an implementation template exposed
+    incidentally in a signature. `source_class` lets the link step preserve
+    per-YAML reachability for every generated specialization.
     """
     t = clang_type
     if t.kind == clang.cindex.TypeKind.LVALUEREFERENCE:
@@ -142,49 +209,78 @@ def _scan_type_for_ncollection(clang_type, needed, template_typedef_names=None, 
 
     t.spelling.replace("const ", "").strip()
 
-    decl = t.get_declaration()
-    if not decl or not decl.spelling:
-        canonical = t.get_canonical()
-        decl = canonical.get_declaration()
-        if not decl or not decl.spelling:
-            return
+    direct_decl = t.get_declaration()
+    canonical_type = t.get_canonical()
+    canonical_decl = canonical_type.get_declaration()
+    direct_container = (
+        CONTAINER_ALIASES.get(direct_decl.spelling, direct_decl.spelling)
+        if direct_decl and direct_decl.spelling
+        else None
+    )
+    canonical_container = (
+        CONTAINER_ALIASES.get(canonical_decl.spelling, canonical_decl.spelling)
+        if canonical_decl and canonical_decl.spelling
+        else None
+    )
 
-    container = CONTAINER_ALIASES.get(decl.spelling, decl.spelling)
-    if container not in ADMIT_TEMPLATE_CONTAINERS:
-        # The direct declaration may be a typedef/alias whose CANONICAL is an
-        # admitted template — e.g. `math_Vector` -> `math_VectorBase<double>`
-        # (TKMath). OCCT V8 spells NCollection params as
-        # `NCollection_X<...>` directly, so this branch only newly-resolves
-        # alias-spelled admitted templates (math, and any NCollection referenced
-        # via a deprecated alias in a signature). Rebind `t`/`container` to the
-        # canonical so the arg-extraction below sees the real instantiation;
-        # `_extract_template_args` reads template args positionally
-        # (`get_template_argument_type`), so it recovers `double` even though
-        # libclang renders the canonical spelling as `math_VectorBase<>`.
-        canonical_type = t.get_canonical()
-        canonical_decl = canonical_type.get_declaration()
-        canonical_container = None
-        if canonical_decl and canonical_decl.spelling:
-            canonical_container = CONTAINER_ALIASES.get(
-                canonical_decl.spelling, canonical_decl.spelling
-            )
-        if canonical_container in ADMIT_TEMPLATE_CONTAINERS:
-            t = canonical_type
-            container = canonical_container
-        else:
-            if t.get_num_template_arguments() > 0:
-                for i in range(t.get_num_template_arguments()):
-                    inner = t.get_template_argument_type(i)
-                    _scan_type_for_ncollection(inner, needed, template_typedef_names, source_class)
-            return
+    direct_is_alias = bool(
+        direct_decl and direct_decl.kind in _PUBLIC_TEMPLATE_ALIAS_KINDS
+    )
+    canonical_is_template = (
+        canonical_type.get_num_template_arguments() > 0
+        and _is_template_declaration(canonical_decl)
+    )
+    direct_is_template = (
+        t.get_num_template_arguments() > 0
+        and _is_template_declaration(direct_decl)
+    )
+    canonical_is_admitted = canonical_is_template and (
+        canonical_container in NCOLLECTION_CONTAINERS
+        or (
+            direct_is_alias
+            and _is_top_level_template_declaration(canonical_decl)
+        )
+    )
+    direct_is_admitted = (
+        direct_is_template and direct_container in NCOLLECTION_CONTAINERS
+    )
 
-    arg_spellings = _extract_template_args(t)
+    # Preserve an admitted direct specialization's public argument spelling.
+    # Canonicalizing first erases typed aliases (for example SolidId -> NodeId)
+    # and expands omitted defaults, changing established JS names.
+    if direct_is_admitted:
+        container = direct_container
+    elif canonical_is_admitted:
+        t = canonical_type
+        container = canonical_container
+    else:
+        nested_type = (
+            canonical_type
+            if canonical_type.get_num_template_arguments() > 0
+            else t
+        )
+        if nested_type.get_num_template_arguments() > 0:
+            for i in range(nested_type.get_num_template_arguments()):
+                inner = nested_type.get_template_argument_type(i)
+                _scan_type_for_ncollection(inner, needed, template_typedef_names, source_class)
+        return
+
+    if not container:
+        return
+
+    arg_spellings = _extract_template_args(
+        t,
+        preserve_public_aliases=direct_is_admitted,
+    )
     if not arg_spellings:
         return
 
+    accessible_template_typedefs = (
+        template_typedef_names if container in NCOLLECTION_CONTAINERS else None
+    )
     for i in range(t.get_num_template_arguments()):
         arg_t = t.get_template_argument_type(i)
-        if not _is_globally_accessible(arg_t, template_typedef_names):
+        if not _is_globally_accessible(arg_t, accessible_template_typedefs):
             return
         canonical = arg_t.get_canonical()
         if canonical.kind == clang.cindex.TypeKind.POINTER:
@@ -246,6 +342,7 @@ _HARRAY_TO_ARRAY = {
 # the manual binding remains the sole registration site.
 _BUILTIN_BIND_CONFLICTS = frozenset({
     "NCollection_IndexedDataMap_TCollection_AsciiString_TCollection_AsciiString",
+    "NCollection_IndexedDataMap_TCollection_AsciiString_TCollection_AsciiString_NCollection_DefaultHasher_TCollection_AsciiString",
 })
 
 
@@ -459,13 +556,11 @@ def discover_ncollection_types(tuInfo, filter_classes_fn, source_override=None):
             clang.cindex.CursorKind.CLASS_TEMPLATE_PARTIAL_SPECIALIZATION,
         ):
             continue
-        canonical_spelling = canonical.spelling
-        parsed = _parse_template_spelling(canonical_spelling)
-        if parsed is None:
+        canonical_container = CONTAINER_ALIASES.get(decl.spelling, decl.spelling)
+        if canonical_container not in NCOLLECTION_CONTAINERS:
             continue
-        container, args = parsed
-        canonical_container = CONTAINER_ALIASES.get(container, container)
-        if canonical_container not in ADMIT_TEMPLATE_CONTAINERS:
+        args = _extract_template_args(canonical)
+        if not args:
             continue
         # Reject if any template arg references a type in an excluded
         # package (see _type_is_reachable docstring for the OCCT V8
@@ -534,7 +629,7 @@ def discover_ncollection_types(tuInfo, filter_classes_fn, source_override=None):
     return _dedupe_by_canonical_args(augmented, tuInfo)
 
 
-def _build_typedef_alias_map(tuInfo):
+def _build_typedef_alias_map(tuInfo, include_plain_typedefs=False):
     """Map every `using A = B;` template-typedef to its underlying spelling.
 
     Used by `_dedupe_by_canonical_args` to collapse manifest entries whose
@@ -544,7 +639,15 @@ def _build_typedef_alias_map(tuInfo):
     triggering wasm-ld duplicate symbol errors at link time.
     """
     alias_map = {}
-    for td in tuInfo.templateTypedefs:
+    typedefs = list(getattr(tuInfo, "templateTypedefs", []) or [])
+    if include_plain_typedefs:
+        seen = {id(td) for td in typedefs}
+        typedefs.extend(
+            td
+            for td in (getattr(tuInfo, "typedefs", []) or [])
+            if id(td) not in seen
+        )
+    for td in typedefs:
         name = (td.spelling or "").strip()
         if not name:
             continue
@@ -555,9 +658,34 @@ def _build_typedef_alias_map(tuInfo):
         if underlying is None:
             continue
         underlying_spelling = (underlying.spelling or "").strip()
+        try:
+            canonical = underlying.get_canonical()
+            canonical_args = _extract_template_args(canonical)
+            canonical_decl = canonical.get_declaration()
+            if (
+                canonical_args
+                and canonical_decl is not None
+                and canonical_decl.spelling
+            ):
+                underlying_spelling = (
+                    f"{canonical_decl.spelling}"
+                    f"<{', '.join(canonical_args)}>"
+                )
+        except Exception:
+            pass
         if not underlying_spelling or underlying_spelling == name:
             continue
         alias_map[name] = underlying_spelling
+
+        namespace_parts = []
+        parent = getattr(td, "semantic_parent", None)
+        while parent and parent.kind == clang.cindex.CursorKind.NAMESPACE:
+            if parent.spelling:
+                namespace_parts.append(parent.spelling)
+            parent = getattr(parent, "semantic_parent", None)
+        if namespace_parts:
+            public_name = "_".join([*reversed(namespace_parts), name])
+            alias_map[public_name] = underlying_spelling
     return alias_map
 
 
@@ -698,10 +826,17 @@ def _serialise_template_typedef_aliases(tuInfo, discovered):
     # historic aliases), the test's mock tuInfo in unit tests
     # (which never instantiates the real discovery TU).
     discovery_tu = TypedefDiscoveryTuInfo.instance()
-    tu_typedefs = list(getattr(tuInfo, "templateTypedefs", []) or [])
-    discovery_typedefs = list(getattr(discovery_tu, "templateTypedefs", []) or [])
+    tu_typedefs = list(getattr(tuInfo, "templateTypedefs", []) or []) + list(
+        getattr(tuInfo, "typedefs", []) or []
+    )
+    discovery_typedefs = list(
+        getattr(discovery_tu, "templateTypedefs", []) or []
+    ) + list(getattr(discovery_tu, "typedefs", []) or [])
     typedef_source = discovery_tu if len(discovery_typedefs) >= len(tu_typedefs) else tuInfo
-    alias_map = _build_typedef_alias_map(typedef_source)
+    alias_map = _build_typedef_alias_map(
+        typedef_source,
+        include_plain_typedefs=True,
+    )
     out = {}
     for alias, underlying in alias_map.items():
         normalized = _normalize_arg(underlying, alias_map)
@@ -715,6 +850,74 @@ def _serialise_template_typedef_aliases(tuInfo, discovered):
             continue
         if mangled in discovered_mangled:
             out[alias] = mangled
+
+    # Discovery intentionally keeps a globally nameable public typedef in a
+    # template argument (for example ``BRepGraph_OccurrenceId``), while the
+    # canonical spelling remains useful to TypeScript consumers. Point that
+    # canonical spelling at the single public Embind registration instead of
+    # compiling a duplicate registration for the same C++ TypeID.
+    for mangled, container, args, *_ in discovered:
+        canonical_args = tuple(_normalize_arg(arg, alias_map) for arg in args)
+        canonical_mangled = mangle_template_name(container, canonical_args)
+        if canonical_mangled and canonical_mangled != mangled:
+            out.setdefault(canonical_mangled, mangled)
+
+    # Preserve the public name implied by a typedef's source spelling when
+    # canonicalization adds defaulted arguments. Both names describe the same
+    # C++ TypeID, so the source-shaped name is a declaration-only alias to the
+    # one canonical Embind registration rather than a second class binding.
+    source_typedefs = list(getattr(typedef_source, "templateTypedefs", []) or [])
+    source_typedefs += list(getattr(typedef_source, "typedefs", []) or [])
+    for typedef in source_typedefs:
+        alias = (getattr(typedef, "spelling", "") or "").strip()
+        if not alias or alias not in out:
+            continue
+        underlying_type = getattr(typedef, "underlying_typedef_type", None)
+        source_spelling = (
+            getattr(underlying_type, "spelling", "") or ""
+        ).strip()
+        parsed = _parse_template_spelling(source_spelling)
+        if parsed is None:
+            continue
+        source_container, source_args = parsed
+        source_container = CONTAINER_ALIASES.get(
+            source_container,
+            source_container,
+        )
+        source_mangled = mangle_template_name(source_container, source_args)
+        canonical_mangled = out[alias]
+        if not source_mangled or source_mangled == canonical_mangled:
+            continue
+        if source_mangled in discovered_mangled:
+            # The source-shaped specialization owns the compiled Embind
+            # registration. Keep the public typedef pointed at that exact
+            # object instead of a canonical spelling whose defaulted template
+            # arguments were never emitted as a second registration.
+            out[alias] = source_mangled
+        else:
+            out.setdefault(source_mangled, canonical_mangled)
+    return out
+
+
+def _serialise_zero_bindable_typedefs(tuInfo):
+    """Record public aliases that cannot own an independent Embind TypeID."""
+    from ocjs_bindgen.filters.typedefs import isHandleTemplateTypedef
+    from ocjs_bindgen.naming import getClassJsPublicName
+
+    out = {}
+    for typedef in getattr(tuInfo, "templateTypedefs", []) or []:
+        if not isHandleTemplateTypedef(typedef):
+            continue
+        canonical = typedef.underlying_typedef_type
+        get_canonical = getattr(canonical, "get_canonical", None)
+        if callable(get_canonical):
+            canonical = get_canonical()
+        spelling = getattr(canonical, "spelling", "") or typedef.underlying_typedef_type.spelling
+        spelling = spelling.replace("occ::handle<", "opencascade::handle<")
+        out[getClassJsPublicName(typedef)] = {
+            "canonical": spelling,
+            "reason": "canonical-handle-alias",
+        }
     return out
 
 
@@ -749,6 +952,7 @@ def write_manifest(discovered, build_dir, tuInfo=None):
         "symbols": sorted(entry[0] for entry in discovered),
         "declarations": [],
         "template_typedefs": {},
+        "zero_bindable": {},
     }
     for entry in sorted(discovered):
         mangled, container, args, sources = entry
@@ -761,6 +965,8 @@ def write_manifest(discovered, build_dir, tuInfo=None):
     if tuInfo is not None:
         typedef_aliases = _serialise_template_typedef_aliases(tuInfo, discovered)
         manifest["template_typedefs"] = dict(sorted(typedef_aliases.items()))
+        zero_bindable = _serialise_zero_bindable_typedefs(tuInfo)
+        manifest["zero_bindable"] = dict(sorted(zero_bindable.items()))
         # Diagnostic: surface the producer-side counts so silent drops
         # (e.g. headers unparseable in this env) are visible in the
         # generate log without having to instrument downstream.

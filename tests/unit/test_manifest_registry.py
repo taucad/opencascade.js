@@ -28,6 +28,7 @@ from ocjs_bindgen.link.manifest_registry import (
   builtin_binding_symbols,
   collect_compiled_symbols,
   load_ncollection_alias_index,
+  load_zero_bindable_symbols,
   resolve_requested_symbols,
 )
 
@@ -97,6 +98,7 @@ def _write_ncollection_manifest_v2(
   tmp_path,
   declarations,
   template_typedefs=None,
+  zero_bindable=None,
   schema=NCOLLECTION_MANIFEST_SCHEMA,
 ) -> None:
   """Write a v2 schema manifest fixture matching the real producer
@@ -111,6 +113,7 @@ def _write_ncollection_manifest_v2(
     "symbols": sorted(d["mangled_name"] for d in declarations),
     "declarations": declarations,
     "template_typedefs": dict(template_typedefs or {}),
+    "zero_bindable": dict(zero_bindable or {}),
   }
   with open(manifest_path, "w") as f:
     json.dump(payload, f)
@@ -164,6 +167,26 @@ def test_load_ncollection_alias_index_returns_empty_when_no_typedefs(tmp_path) -
     template_typedefs={},
   )
   assert load_ncollection_alias_index(str(tmp_path)) == {}
+
+
+def test_load_zero_bindable_symbols_preserves_structural_reason(tmp_path) -> None:
+  _write_ncollection_manifest_v2(
+    tmp_path,
+    declarations=[],
+    zero_bindable={
+      "IMeshData_IPCurveHandle": {
+        "canonical": "opencascade::handle<IMeshData_PCurve>",
+        "reason": "canonical-handle-alias",
+      },
+    },
+  )
+
+  assert load_zero_bindable_symbols(str(tmp_path)) == {
+    "IMeshData_IPCurveHandle": {
+      "canonical": "opencascade::handle<IMeshData_PCurve>",
+      "reason": "canonical-handle-alias",
+    },
+  }
 
 
 def test_load_ncollection_alias_index_returns_empty_when_manifest_missing(tmp_path) -> None:
@@ -285,18 +308,36 @@ def test_resolve_requested_symbols_buckets_each_mechanism() -> None:
     "gp_Pnt",                # directly compiled
     "TColgp_Array1OfPnt",    # NCollection typedef alias
     "TopoDS",                # Embind builtin
+    "IMeshData_IPCurveHandle",  # canonical handle alias, no own registration
     "DoesNotExist",          # truly missing
   }
   compiled = {"gp_Pnt", "NCollection_Array1_gp_Pnt"}
   alias_index = {"TColgp_Array1OfPnt": "NCollection_Array1_gp_Pnt"}
   builtins = frozenset({"TopoDS", "OCJS"})
 
-  resolution = resolve_requested_symbols(requested, compiled, alias_index, builtins)
+  resolution = resolve_requested_symbols(
+    requested,
+    compiled,
+    alias_index,
+    builtins,
+    zero_bindable={
+      "IMeshData_IPCurveHandle": {
+        "canonical": "opencascade::handle<IMeshData_PCurve>",
+        "reason": "canonical-handle-alias",
+      },
+    },
+  )
 
   assert isinstance(resolution, SymbolResolution)
   assert resolution.satisfied_by_compiled == frozenset({"gp_Pnt"})
   assert resolution.alias_resolved == {"TColgp_Array1OfPnt": "NCollection_Array1_gp_Pnt"}
   assert resolution.builtin == frozenset({"TopoDS"})
+  assert resolution.zero_bindable == {
+    "IMeshData_IPCurveHandle": {
+      "canonical": "opencascade::handle<IMeshData_PCurve>",
+      "reason": "canonical-handle-alias",
+    },
+  }
   assert resolution.truly_missing == frozenset({"DoesNotExist"})
 
 

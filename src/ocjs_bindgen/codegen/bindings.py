@@ -1,3 +1,4 @@
+import os
 import re
 from collections import defaultdict, namedtuple
 
@@ -1188,12 +1189,23 @@ class Bindings:
         result.extend(group)
     return result
 
-  def _filter_overloads(self, overloads):
+  def _filter_overloads(self, overloads, templateDecl=None):
     """Apply all safe filters: deleted ctors, move ctors, float/double dedup,
     string encoding dedup, char-vs-int dedup.
     """
     filtered = [c for c in overloads if not self._is_deleted_method(c)]
     filtered = [c for c in filtered if not self._is_move_constructor(c)]
+    location = getattr(templateDecl, "location", None)
+    location_file = getattr(location, "file", None)
+    is_generated_template = (
+      templateDecl is not None
+      and os.path.basename(getattr(location_file, "name", "")) == "myMain.h"
+    )
+    if is_generated_template:
+      filtered = [
+        c for c in filtered
+        if not any(isRawPointerParam(arg.type) for arg in c.get_arguments())
+      ]
     filtered = self._dedupe_float_double(filtered)
     filtered = self._dedupe_string_encodings(filtered)
     filtered = self._dedupe_char_vs_int(filtered)
@@ -1448,11 +1460,47 @@ class Bindings:
     from ocjs_bindgen.discover import _extract_template_args, mangle_template_name
     try:
       arg_spellings = _extract_template_args(clang_type)
+      if not arg_spellings:
+        arg_spellings = _extract_template_args(clang_type.get_canonical())
     except Exception:
       return None
     if not arg_spellings:
       return None
     return mangle_template_name(container_name, arg_spellings)
+
+  @staticmethod
+  def _classify_resolved_js_spelling(spelling):
+    """Classify a concrete C++ spelling after template substitution."""
+    clean = spelling.strip()
+    while clean.startswith("const "):
+      clean = clean[len("const "):].strip()
+    clean = re.sub(r"\s*[&*]+\s*$", "", clean).strip()
+
+    if clean in {"float", "double", "long double"}:
+      return JsType("number_float", "number")
+    if clean in {
+      "char", "signed char", "unsigned char", "short", "unsigned short",
+      "int", "unsigned int", "long", "unsigned long", "long long",
+      "unsigned long long", "size_t",
+    }:
+      return JsType("number_int", "number")
+    if clean == "bool":
+      return JsType("boolean", "boolean")
+
+    handle = re.fullmatch(r"(?:occ|opencascade)::handle<(.+)>", clean)
+    if handle:
+      return JsType("object", handle.group(1).replace("::", "_"))
+
+    if "<" in clean and clean.endswith(">"):
+      from ocjs_bindgen.discover import _parse_template_spelling, mangle_template_name
+      parsed = _parse_template_spelling(clean)
+      if parsed is not None:
+        container, args = parsed
+        mangled = mangle_template_name(container.replace("::", "_"), args)
+        if mangled:
+          return JsType("object", mangled)
+
+    return JsType("object", clean.replace("::", "_"))
 
   def _resolve_template_typedef(self, type_spelling):
     """Resolve a template instantiation like NCollection_Array1<gp_Pnt> to its typedef name like TColgp_Array1OfPnt."""
@@ -1467,6 +1515,43 @@ class Bindings:
   def _classify_js_type(self, clang_type, templateDecl=None, templateArgs=None):
     """Map a C++ type to its JS runtime type category for dispatch discrimination."""
     t = self._strip_type_qualifiers(clang_type)
+
+    if templateArgs:
+      resolved = self.resolveWithCanonicalFallback(
+        t.spelling, t, templateDecl, templateArgs
+      )
+      source = re.sub(r"\s*[&*]+\s*$", "", t.spelling).replace("const ", "").strip()
+      canonical_source = re.sub(
+        r"\s*[&*]+\s*$", "", t.get_canonical().spelling
+      ).replace("const ", "").strip()
+      resolved_clean = re.sub(
+        r"\s*[&*]+\s*$", "", resolved
+      ).replace("const ", "").strip()
+      if (
+        resolved_clean
+        and "type-parameter-" not in resolved_clean
+        and resolved_clean not in {source, canonical_source}
+      ):
+        return self._classify_resolved_js_spelling(resolved_clean)
+
+    direct_decl = t.get_declaration()
+    if direct_decl and direct_decl.kind in (
+      clang.cindex.CursorKind.TYPEDEF_DECL,
+      clang.cindex.CursorKind.TYPE_ALIAS_DECL,
+    ):
+      canonical_alias_type = t.get_canonical()
+      canonical_decl = canonical_alias_type.get_declaration()
+      if (
+        canonical_alias_type.get_num_template_arguments() > 0
+        and canonical_decl
+        and canonical_decl.spelling
+      ):
+        canonical_name = self._mangle_template_js_name(
+          canonical_alias_type,
+          canonical_decl.spelling,
+        )
+        if canonical_name:
+          return JsType("object", canonical_name)
 
     if t.get_num_template_arguments() == 1:
       decl = t.get_declaration()
@@ -1542,7 +1627,6 @@ class Bindings:
       return JsType('object', nested or decl.spelling)
 
     if templateArgs and "type-parameter-" in canonical.spelling:
-      import re
       if Bindings._TYPE_PARAM_RE is None:
         Bindings._TYPE_PARAM_RE = re.compile(r'type-parameter-(\d+)-(\d+)')
       m = Bindings._TYPE_PARAM_RE.search(canonical.spelling)
@@ -2765,7 +2849,7 @@ class EmbindBindings(Bindings):
     if len(constructors) <= 1:
       return output
 
-    filtered = self._filter_overloads(constructors)
+    filtered = self._filter_overloads(constructors, templateDecl)
     filtered = [c for c in filtered if filterMethodOrProperty(theClass, c)]
     bindable = []
     for c in filtered:

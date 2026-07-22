@@ -130,7 +130,7 @@ def enumerate_occt_classes(cfg: FilterConfig, tu_info=None) -> EnumerationResult
     The template-typedef walk applies
     ``dedupeTemplateTypedefsByCanonical`` (single source of truth in
     ``pipeline.generate``) so any future canonical-collapsing logic
-    lands in exactly one place. The Handle_X drop rule and the
+    lands in exactly one place. The handle-alias drop rule and the
     LProps always-include list match the legacy script byte-for-byte
     — moved here so both consumers see the same final typedef set.
     """
@@ -138,6 +138,7 @@ def enumerate_occt_classes(cfg: FilterConfig, tu_info=None) -> EnumerationResult
 
     from filter.filterPackages import filterPackages
     from ocjs_bindgen.config.paths import occtBasePath
+    from ocjs_bindgen.filters.typedefs import isHandleTemplateTypedef
     from ocjs_bindgen.naming import getClassJsPublicName, getEnumJsPublicName
     from ocjs_bindgen.pipeline.generate import (
         SkipException,
@@ -256,13 +257,11 @@ def enumerate_occt_classes(cfg: FilterConfig, tu_info=None) -> EnumerationResult
         if is_excluded(name, cfg):
             skipped_classes.add(name)
             continue
-        # Drop Handle_X typedefs whose underlying is opencascade::handle<X>
-        # when X is itself bound (see enumerate-symbols.py's comment).
-        underlying = child.underlying_typedef_type.spelling
-        if name.startswith("Handle_") and underlying.startswith("opencascade::handle<"):
-            inner = underlying[len("opencascade::handle<"):].rstrip(">").strip()
-            if inner in classes:
-                continue
+        # Smart-handle aliases are type metadata, not independent Embind
+        # classes. The pointee class's smart_ptr registration owns the same
+        # canonical C++ TypeID regardless of the alias's spelling.
+        if isHandleTemplateTypedef(child):
+            continue
         # Skip typedefs the codegen's ``processTemplate`` would reject.
         # The codegen catches ``SkipException`` and emits nothing —
         # those aliases never produce a ``.cpp``/``.o`` artifact, so

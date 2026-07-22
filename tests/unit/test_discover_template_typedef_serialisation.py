@@ -209,6 +209,13 @@ def test_write_manifest_emits_v2_schema_discriminator_and_template_typedefs(
   tu_info = SimpleNamespace(
     templateTypedefs=[
       _typedef("TColgp_Array1OfPnt", "NCollection_Array1<gp_Pnt>"),
+      SimpleNamespace(
+        spelling="IMeshData_IPCurveHandle",
+        semantic_parent=None,
+        underlying_typedef_type=SimpleNamespace(
+          spelling="opencascade::handle<IMeshData_PCurve>",
+        ),
+      ),
     ]
   )
   discovered = {
@@ -220,6 +227,12 @@ def test_write_manifest_emits_v2_schema_discriminator_and_template_typedefs(
   assert manifest["schema"] == NCOLLECTION_MANIFEST_SCHEMA
   assert manifest["template_typedefs"] == {
     "TColgp_Array1OfPnt": "NCollection_Array1_gp_Pnt",
+  }
+  assert manifest["zero_bindable"] == {
+    "IMeshData_IPCurveHandle": {
+      "canonical": "opencascade::handle<IMeshData_PCurve>",
+      "reason": "canonical-handle-alias",
+    },
   }
   assert manifest["symbols"] == ["NCollection_Array1_gp_Pnt"]
   assert len(manifest["declarations"]) == 1

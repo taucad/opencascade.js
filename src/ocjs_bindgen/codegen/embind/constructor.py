@@ -645,7 +645,7 @@ def _merged_default_aware_tree(b, tree, class_cpp, arity, use_handle_override, t
     )
   if isinstance(tree, _dispatch.DispatchBranch):
     sp = " " * ind
-    return _dispatch._emit_branch_chain(
+    branch_code = _dispatch._emit_branch_chain(
       lambda subtree, sub_ind: _merged_default_aware_tree(
         b, subtree, class_cpp, arity, use_handle_override,
         template_decl, template_args, owning_class, sub_ind,
@@ -653,12 +653,67 @@ def _merged_default_aware_tree(b, tree, class_cpp, arity, use_handle_override, t
       tree,
       sp,
     )
+    defaultable = []
+    for subtree in tree.branches.values():
+      overloads = _tree_overloads(subtree)
+      if any(_ctor_accepts_undefined_at(b, overload, tree.arg_position) for overload in overloads):
+        defaultable.append(subtree)
+    if len(defaultable) != 1:
+      return branch_code
+
+    # A missing JS argument has no runtime type, so the normal type chain's
+    # terminal ``else`` would route it to an arbitrary required object
+    # overload. When exactly one branch owns a trailing default at the
+    # discriminator position, make that ownership explicit before applying
+    # the ordinary type checks. This is the constructor equivalent of C++
+    # overload resolution for an omitted defaulted argument.
+    default_code = _merged_default_aware_tree(
+      b, defaultable[0], class_cpp, arity, use_handle_override,
+      template_decl, template_args, owning_class, ind + 2,
+    )
+    nested_branch_code = _dispatch._emit_branch_chain(
+      lambda subtree, sub_ind: _merged_default_aware_tree(
+        b, subtree, class_cpp, arity, use_handle_override,
+        template_decl, template_args, owning_class, sub_ind,
+      ),
+      tree,
+      " " * (ind + 2),
+    )
+    return (
+      f"{sp}if (arg{tree.arg_position}.isUndefined()) {{\n"
+      f"{default_code}{sp}}}\n"
+      f"{sp}else {{\n{nested_branch_code}{sp}}}\n"
+    )
   if isinstance(tree, _dispatch.DispatchAmbiguous):
     return _merged_default_aware_tree(
       b, _dispatch.DispatchLeaf(tree.overloads[0]), class_cpp, arity,
       use_handle_override, template_decl, template_args, owning_class, ind,
     )
   return ""
+
+
+def _tree_overloads(tree):
+  """Return every constructor cursor reachable from a dispatch subtree."""
+  if isinstance(tree, _dispatch.DispatchLeaf):
+    return [tree.overload]
+  if isinstance(tree, _dispatch.DispatchAmbiguous):
+    return list(tree.overloads)
+  if isinstance(tree, _dispatch.DispatchBranch):
+    return [
+      overload
+      for subtree in tree.branches.values()
+      for overload in _tree_overloads(subtree)
+    ]
+  return []
+
+
+def _ctor_accepts_undefined_at(b, ctor, position):
+  """Whether ``position`` is one of ``ctor``'s trailing-default slots."""
+  args = list(ctor.get_arguments())
+  if position >= len(args):
+    return False
+  n_defaults = b._countTrailingDefaults(ctor)
+  return n_defaults > 0 and position >= len(args) - n_defaults
 
 
 def _primary_vs_fallback_guard(b, primary_ctor, fallback_ctors, template_decl, template_args):
@@ -732,6 +787,34 @@ def _emit_primary_chain_with_fallback(b, tree, class_cpp, arity, use_handle_over
   rest of the pipeline.
   """
   sp = " " * ind
+  if fallback_code is not None:
+    primary_guards = [
+      _primary_vs_fallback_guard(
+        b, primary, fallback_ctors, template_decl, template_args,
+      )
+      for primary in _tree_overloads(tree)
+    ]
+    if primary_guards and all(primary_guards):
+      # The primary overloads may first branch on a later parameter even
+      # though every primary shares an earlier type that distinguishes the
+      # whole family from the folded fallbacks. Guard the family first, then
+      # run its internal dispatch. Otherwise a numeric later argument can
+      # select a primary whose required leading object does not match.
+      seen = set()
+      unique_guards = [
+        guard for guard in primary_guards
+        if not (guard in seen or seen.add(guard))
+      ]
+      family_guard = " || ".join(f"({guard})" for guard in unique_guards)
+      primary_code = _merged_default_aware_tree(
+        b, tree, class_cpp, arity, use_handle_override,
+        template_decl, template_args, owning_class, ind + 2,
+      )
+      return (
+        f"{sp}if ({family_guard}) {{\n{primary_code}{sp}}}\n"
+        f"{sp}else {{\n{fallback_code}{sp}}}\n"
+      )
+
   if not isinstance(tree, _dispatch.DispatchBranch):
     # The primaries collapsed to a single reachable leaf — either one
     # genuine primary, or a set of JS-indistinguishable primaries (e.g.
@@ -1312,7 +1395,7 @@ def process_simple_constructor(b, theClass, templateDecl=None, templateArgs=None
   if len(publicConstructors) == 0:
     return output
 
-  filtered = b._filter_overloads(publicConstructors)
+  filtered = b._filter_overloads(publicConstructors, templateDecl)
   filtered = [c for c in filtered if filterMethodOrProperty(theClass, c)]
   bindable = []
   for c in filtered:
@@ -1566,7 +1649,7 @@ def process_overloaded_constructors(b, theClass, children=None, templateDecl=Non
   if len(constructors) <= 1:
     return output
 
-  filtered = b._filter_overloads(constructors)
+  filtered = b._filter_overloads(constructors, templateDecl)
   filtered = [c for c in filtered if filterMethodOrProperty(theClass, c)]
   bindable = []
   for c in filtered:

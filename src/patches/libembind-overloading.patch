@@ -3,7 +3,7 @@
 @@ -55,23 +55,195 @@
      throw new UnboundTypeError(`${message}: ` + unboundTypes.map(getTypeName).join([', ']));
    },
- 
+
 +  $getSignature__deps: ['$registeredTypes'],
 +  $getSignature: (args, keys) => {
 +    var signature = '';
@@ -199,7 +199,7 @@
 +      }
      }
    },
- 
+
 @@ -81,44 +253,82 @@
     name: The name of the symbol that's being exposed.
     value: The object itself to expose (function, class, ...)
@@ -424,7 +424,7 @@
 +      }
 +
 +      classType.registeredClass.constructor_body[argCount - 1].signatures[rawSignatureString] = unboundTypesHandler;
- 
+
        whenDependentTypesAreResolved([], rawArgTypes, (argTypes) => {
          // Insert empty slot for context type (argTypes[1]).
          argTypes.splice(1, 0, null);
@@ -519,7 +519,7 @@
    _embind_register_class_class_function: (rawClassType,
                                            methodName,
                                            argCount,
-@@ -2031,15 +2330,24 @@
+@@ -2031,15 +2330,25 @@
        }
  
        var proto = classType.registeredClass.constructor;
@@ -528,6 +528,7 @@
        if (undefined === proto[methodName]) {
          // This is the first function to be registered with this name.
          unboundTypesHandler.argCount = argCount-1;
++        unboundTypesHandler.signature = rawSignatureString;
          proto[methodName] = unboundTypesHandler;
 -      } else {
 +      } else if (
@@ -545,7 +546,7 @@
        }
  
        whenDependentTypesAreResolved([], rawArgTypes, (argTypes) => {
-@@ -2048,11 +2356,21 @@
+@@ -2048,11 +2357,21 @@
          // go into an overload table.
          var invokerArgsArray = [argTypes[0] /* return value */, null /* no class 'this'*/].concat(argTypes.slice(1) /* actual params */);
          var func = craftInvokerFunction(humanName, invokerArgsArray, null /* no class 'this'*/, rawInvoker, fn, isAsync);
