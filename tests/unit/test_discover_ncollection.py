@@ -20,12 +20,17 @@ import clang.cindex
 import pytest
 
 from ocjs_bindgen.discover import (
+  _BUILTIN_BIND_CONFLICTS,
   _build_typedef_alias_map,
   _dedupe_by_canonical_args,
+  _extract_template_args,
   _is_globally_accessible,
   _normalize_arg,
+  _scan_type_for_ncollection,
+  _serialise_template_typedef_aliases,
   _substitute_arg_spelling,
   discover_ncollection_types,
+  mangle_template_name,
 )
 from tests.conftest import _MockType, cursor_mock
 
@@ -154,9 +159,10 @@ def test_substitute_prefers_longer_keys_first() -> None:
 
 
 class _StubTuInfo:
-  def __init__(self, allChildren=None, templateTypedefs=None):
+  def __init__(self, allChildren=None, templateTypedefs=None, typedefs=None):
     self.allChildren = allChildren or []
     self.templateTypedefs = templateTypedefs or []
+    self.typedefs = typedefs or []
 
 
 def test_discover_skips_template_typedefs_when_none_present() -> None:
@@ -164,6 +170,389 @@ def test_discover_skips_template_typedefs_when_none_present() -> None:
   tu_info = _StubTuInfo()
   out = discover_ncollection_types(tu_info, lambda c, b: True)
   assert out == set()
+
+
+def test_direct_scan_discovers_arbitrarily_named_concrete_template_alias() -> None:
+  template_decl = _decl(
+    "SomeTemplate",
+    kind=clang.cindex.CursorKind.CLASS_TEMPLATE,
+  )
+  double_type = _MockType(
+    spelling="double",
+    kind=clang.cindex.TypeKind.DOUBLE,
+  )
+  canonical = _MockType(
+    spelling="SomeTemplate<>",
+    kind=clang.cindex.TypeKind.UNEXPOSED,
+    declaration=template_decl,
+    template_args=[double_type],
+  )
+  alias_decl = cursor_mock(
+    kind=clang.cindex.CursorKind.TYPE_ALIAS_DECL,
+    spelling="SomeAlias",
+  )
+  alias_type = _MockType(
+    spelling="SomeAlias",
+    kind=clang.cindex.TypeKind.TYPEDEF,
+    canonical=canonical,
+    declaration=alias_decl,
+  )
+  discovered = set()
+
+  _scan_type_for_ncollection(
+    alias_type,
+    discovered,
+    source_class="UsesSomeAlias",
+  )
+
+  assert discovered == {
+    (
+      "SomeTemplate_double",
+      "SomeTemplate",
+      ("double",),
+      "UsesSomeAlias",
+    ),
+  }
+
+
+def test_direct_scan_does_not_enroll_raw_template_specializations() -> None:
+  template_decl = _decl(
+    "SomeTemplate",
+    kind=clang.cindex.CursorKind.CLASS_TEMPLATE,
+  )
+  double_type = _MockType(
+    spelling="double",
+    kind=clang.cindex.TypeKind.DOUBLE,
+  )
+  direct_type = _MockType(
+    spelling="SomeTemplate<double>",
+    kind=clang.cindex.TypeKind.UNEXPOSED,
+    declaration=template_decl,
+    template_args=[double_type],
+  )
+  discovered = set()
+
+  _scan_type_for_ncollection(
+    direct_type,
+    discovered,
+    source_class="UsesSomeTemplateDirectly",
+  )
+
+  assert discovered == set()
+
+
+def test_direct_ncollection_scan_preserves_explicit_alias_argument() -> None:
+  template_decl = _decl(
+    "NCollection_DynamicArray",
+    kind=clang.cindex.CursorKind.CLASS_TEMPLATE,
+  )
+  typed_solid_id = _MockType(
+    spelling="BRepGraph_NodeId::Typed<BRepGraph_NodeId::Kind::Solid>",
+  )
+  solid_id = _MockType(
+    spelling="BRepGraph_SolidId",
+    canonical=typed_solid_id,
+    declaration=_decl(
+      "BRepGraph_SolidId",
+      kind=clang.cindex.CursorKind.TYPE_ALIAS_DECL,
+    ),
+  )
+  node_id = _MockType(spelling="BRepGraph_NodeId")
+  canonical = _MockType(
+    spelling="NCollection_DynamicArray<BRepGraph_NodeId>",
+    kind=clang.cindex.TypeKind.RECORD,
+    declaration=template_decl,
+    template_args=[node_id],
+  )
+  direct = _MockType(
+    spelling="NCollection_DynamicArray<BRepGraph_SolidId>",
+    kind=clang.cindex.TypeKind.RECORD,
+    canonical=canonical,
+    declaration=template_decl,
+    template_args=[solid_id],
+  )
+  discovered = set()
+
+  _scan_type_for_ncollection(
+    direct,
+    discovered,
+    source_class="BRepGraph_SolidsOfShell",
+  )
+
+  assert discovered == {
+    (
+      "NCollection_DynamicArray_BRepGraph_SolidId",
+      "NCollection_DynamicArray",
+      ("BRepGraph_SolidId",),
+      "BRepGraph_SolidsOfShell",
+    ),
+  }
+
+
+def test_direct_scan_enrolls_public_template_typedefs() -> None:
+  template_decl = _decl(
+    "SomeTemplate",
+    kind=clang.cindex.CursorKind.CLASS_TEMPLATE,
+  )
+  double_type = _MockType(
+    spelling="double",
+    kind=clang.cindex.TypeKind.DOUBLE,
+  )
+  canonical = _MockType(
+    spelling="SomeTemplate<double>",
+    kind=clang.cindex.TypeKind.UNEXPOSED,
+    declaration=template_decl,
+    template_args=[double_type],
+  )
+  alias_decl = cursor_mock(
+    kind=clang.cindex.CursorKind.TYPEDEF_DECL,
+    spelling="LegacyAlias",
+  )
+  alias_type = _MockType(
+    spelling="LegacyAlias",
+    kind=clang.cindex.TypeKind.TYPEDEF,
+    canonical=canonical,
+    declaration=alias_decl,
+  )
+  discovered = set()
+
+  _scan_type_for_ncollection(
+    alias_type,
+    discovered,
+    source_class="UsesLegacyAlias",
+  )
+
+  assert discovered == {
+    (
+      "SomeTemplate_double",
+      "SomeTemplate",
+      ("double",),
+      "UsesLegacyAlias",
+    ),
+  }
+
+
+def test_direct_scan_keeps_legacy_typedef_for_safe_ncollection_shared() -> None:
+  template_decl = _decl(
+    "NCollection_Shared",
+    kind=clang.cindex.CursorKind.CLASS_TEMPLATE,
+  )
+  dynamic_array = _MockType(
+    spelling="NCollection_DynamicArray<BRepMesh_Circle>",
+    kind=clang.cindex.TypeKind.RECORD,
+  )
+  void_type = _MockType(
+    spelling="void",
+    kind=clang.cindex.TypeKind.VOID,
+  )
+  canonical = _MockType(
+    spelling="NCollection_Shared<NCollection_DynamicArray<BRepMesh_Circle>, void>",
+    kind=clang.cindex.TypeKind.UNEXPOSED,
+    declaration=template_decl,
+    template_args=[dynamic_array, void_type],
+  )
+  alias_decl = cursor_mock(
+    kind=clang.cindex.CursorKind.TYPEDEF_DECL,
+    spelling="VectorOfCircle",
+  )
+  alias_type = _MockType(
+    spelling="VectorOfCircle",
+    kind=clang.cindex.TypeKind.TYPEDEF,
+    canonical=canonical,
+    declaration=alias_decl,
+  )
+  discovered = set()
+
+  _scan_type_for_ncollection(
+    alias_type,
+    discovered,
+    source_class="BRepMesh_CircleInspector",
+  )
+
+  assert discovered == {
+    (
+      "NCollection_Shared_NCollection_DynamicArray_BRepMesh_Circle_void",
+      "NCollection_Shared",
+      ("NCollection_DynamicArray<BRepMesh_Circle>", "void"),
+      "BRepMesh_CircleInspector",
+    ),
+  }
+
+
+def test_direct_scan_rejects_generic_alias_with_class_local_argument() -> None:
+  template_decl = _decl(
+    "SomeTemplate",
+    kind=clang.cindex.CursorKind.CLASS_TEMPLATE,
+  )
+  enclosing = _decl("Enclosing")
+  nested_decl = _decl("Nested", parent=enclosing)
+  nested_type = _MockType(
+    spelling="Enclosing::Nested",
+    kind=clang.cindex.TypeKind.RECORD,
+    declaration=nested_decl,
+  )
+  canonical = _MockType(
+    spelling="SomeTemplate<Enclosing::Nested>",
+    kind=clang.cindex.TypeKind.UNEXPOSED,
+    declaration=template_decl,
+    template_args=[nested_type],
+  )
+  alias_decl = cursor_mock(
+    kind=clang.cindex.CursorKind.TYPE_ALIAS_DECL,
+    spelling="SomeAlias",
+  )
+  alias_type = _MockType(
+    spelling="SomeAlias",
+    kind=clang.cindex.TypeKind.TYPEDEF,
+    canonical=canonical,
+    declaration=alias_decl,
+  )
+  discovered = set()
+
+  _scan_type_for_ncollection(
+    alias_type,
+    discovered,
+    template_typedef_names={"Enclosing"},
+    source_class="UsesSomeAlias",
+  )
+
+  assert discovered == set()
+
+
+def test_direct_scan_rejects_generic_alias_from_internal_namespace() -> None:
+  emscripten_ns = cursor_mock(
+    kind=clang.cindex.CursorKind.NAMESPACE,
+    spelling="emscripten",
+  )
+  internal_ns = cursor_mock(
+    kind=clang.cindex.CursorKind.NAMESPACE,
+    spelling="internal",
+    semantic_parent=emscripten_ns,
+  )
+  template_decl = _decl(
+    "SomeTemplate",
+    parent=internal_ns,
+    kind=clang.cindex.CursorKind.CLASS_TEMPLATE,
+  )
+  double_type = _MockType(
+    spelling="double",
+    kind=clang.cindex.TypeKind.DOUBLE,
+  )
+  canonical = _MockType(
+    spelling="emscripten::internal::SomeTemplate<double>",
+    kind=clang.cindex.TypeKind.UNEXPOSED,
+    declaration=template_decl,
+    template_args=[double_type],
+  )
+  alias_decl = cursor_mock(
+    kind=clang.cindex.CursorKind.TYPE_ALIAS_DECL,
+    spelling="SomeAlias",
+  )
+  alias_type = _MockType(
+    spelling="SomeAlias",
+    kind=clang.cindex.TypeKind.TYPEDEF,
+    canonical=canonical,
+    declaration=alias_decl,
+  )
+  discovered = set()
+
+  _scan_type_for_ncollection(
+    alias_type,
+    discovered,
+    source_class="UsesInternalAlias",
+  )
+
+  assert discovered == set()
+
+
+def test_direct_scan_rejects_namespace_template_until_emitter_can_qualify_it() -> None:
+  namespace = cursor_mock(
+    kind=clang.cindex.CursorKind.NAMESPACE,
+    spelling="SomeNamespace",
+  )
+  template_decl = _decl(
+    "SomeTemplate",
+    parent=namespace,
+    kind=clang.cindex.CursorKind.CLASS_TEMPLATE,
+  )
+  double_type = _MockType(
+    spelling="double",
+    kind=clang.cindex.TypeKind.DOUBLE,
+  )
+  canonical = _MockType(
+    spelling="SomeNamespace::SomeTemplate<double>",
+    kind=clang.cindex.TypeKind.UNEXPOSED,
+    declaration=template_decl,
+    template_args=[double_type],
+  )
+  alias_decl = cursor_mock(
+    kind=clang.cindex.CursorKind.TYPE_ALIAS_DECL,
+    spelling="SomeAlias",
+  )
+  alias_type = _MockType(
+    spelling="SomeAlias",
+    kind=clang.cindex.TypeKind.TYPEDEF,
+    canonical=canonical,
+    declaration=alias_decl,
+  )
+  discovered = set()
+
+  _scan_type_for_ncollection(
+    alias_type,
+    discovered,
+    source_class="UsesNamespacedAlias",
+  )
+
+  assert discovered == set()
+
+
+def test_mangle_template_name_shortens_long_names_deterministically() -> None:
+  long_argument = "NestedTemplate<" + ",".join(
+    f"ConcreteType{index}" for index in range(32)
+  ) + ">"
+
+  first = mangle_template_name("SomeTemplate", [long_argument])
+  repeated = mangle_template_name("SomeTemplate", [long_argument])
+  distinct = mangle_template_name("SomeTemplate", [long_argument + "Different"])
+
+  assert first is not None
+  assert repeated == first
+  assert distinct is not None
+  assert distinct != first
+  assert first.startswith("SomeTemplate_")
+  assert len(first.encode("utf-8")) <= 200
+
+
+def test_builtin_conflict_uses_canonical_default_template_arguments() -> None:
+  canonical_name = mangle_template_name(
+    "NCollection_IndexedDataMap",
+    [
+      "TCollection_AsciiString",
+      "TCollection_AsciiString",
+      "NCollection_DefaultHasher<TCollection_AsciiString>",
+    ],
+  )
+
+  assert canonical_name in _BUILTIN_BIND_CONFLICTS
+
+
+def test_extract_template_args_rejects_incomplete_or_dependent_arguments() -> None:
+  concrete = _MockType(
+    spelling="double",
+    kind=clang.cindex.TypeKind.DOUBLE,
+  )
+  missing = _MockType(spelling="", kind=clang.cindex.TypeKind.INVALID)
+  dependent = _MockType(
+    spelling="type-parameter-0-0",
+    kind=clang.cindex.TypeKind.UNEXPOSED,
+  )
+
+  assert _extract_template_args(
+    _MockType(template_args=[concrete, missing]),
+  ) == []
+  assert _extract_template_args(
+    _MockType(template_args=[dependent]),
+  ) == []
 
 
 # ----------------------------------------------------------------------------
@@ -189,6 +578,206 @@ def test_build_typedef_alias_map_records_underlying_spellings() -> None:
   alias_map = _build_typedef_alias_map(tu_info)
   assert alias_map["BRepGraph_SolidId"] == "BRepGraph_NodeId::Typed<BRepGraph_NodeId::Kind::Solid>"
   assert alias_map["BRepGraph_ShellId"] == "BRepGraph_NodeId::Typed<BRepGraph_NodeId::Kind::Shell>"
+
+
+def test_build_typedef_alias_map_records_namespace_public_name() -> None:
+  namespace = cursor_mock(
+    kind=clang.cindex.CursorKind.NAMESPACE,
+    spelling="IMeshData",
+  )
+  vector = _td(
+    "VectorOfCircle",
+    "NCollection_Shared<NCollection_DynamicArray<BRepMesh_Circle>>",
+  )
+  vector.semantic_parent = namespace
+
+  alias_map = _build_typedef_alias_map(
+    _StubTuInfo(templateTypedefs=[vector]),
+  )
+
+  assert alias_map["VectorOfCircle"] == (
+    "NCollection_Shared<NCollection_DynamicArray<BRepMesh_Circle>>"
+  )
+  assert alias_map["IMeshData_VectorOfCircle"] == (
+    "NCollection_Shared<NCollection_DynamicArray<BRepMesh_Circle>>"
+  )
+
+
+def test_serialise_template_alias_uses_canonical_positional_defaults() -> None:
+  namespace = cursor_mock(
+    kind=clang.cindex.CursorKind.NAMESPACE,
+    spelling="IMeshData",
+  )
+  shared_decl = _decl(
+    "NCollection_Shared",
+    kind=clang.cindex.CursorKind.CLASS_TEMPLATE,
+  )
+  dynamic_array = _MockType(
+    spelling="NCollection_DynamicArray<BRepMesh_Circle>",
+    kind=clang.cindex.TypeKind.RECORD,
+  )
+  void_type = _MockType(
+    spelling="void",
+    kind=clang.cindex.TypeKind.VOID,
+  )
+  canonical = _MockType(
+    spelling="NCollection_Shared<NCollection_DynamicArray<BRepMesh_Circle>>",
+    kind=clang.cindex.TypeKind.RECORD,
+    declaration=shared_decl,
+    template_args=[dynamic_array, void_type],
+  )
+  vector = cursor_mock(
+    kind=clang.cindex.CursorKind.TYPEDEF_DECL,
+    spelling="VectorOfCircle",
+    semantic_parent=namespace,
+  )
+  vector.underlying_typedef_type = _MockType(
+    spelling="NCollection_Shared<NCollection_DynamicArray<BRepMesh_Circle>>",
+    canonical=canonical,
+  )
+  canonical_name = (
+    "NCollection_Shared_NCollection_DynamicArray_BRepMesh_Circle_void"
+  )
+  discovered = {
+    (
+      canonical_name,
+      "NCollection_Shared",
+      ("NCollection_DynamicArray<BRepMesh_Circle>", "void"),
+      ("BRepMesh_CircleInspector",),
+    ),
+  }
+
+  aliases = _serialise_template_typedef_aliases(
+    _StubTuInfo(templateTypedefs=[vector]),
+    discovered,
+  )
+
+  assert aliases["VectorOfCircle"] == canonical_name
+  assert aliases["IMeshData_VectorOfCircle"] == canonical_name
+  assert aliases[
+    "NCollection_Shared_NCollection_DynamicArray_BRepMesh_Circle"
+  ] == canonical_name
+
+
+def test_serialise_template_alias_prefers_emitted_source_spelling() -> None:
+  data_map_decl = _decl(
+    "NCollection_DataMap",
+    kind=clang.cindex.CursorKind.CLASS_TEMPLATE,
+  )
+  key = _MockType(
+    spelling="TCollection_AsciiString",
+    kind=clang.cindex.TypeKind.RECORD,
+  )
+  value = _MockType(
+    spelling="opencascade::handle<Standard_Transient>",
+    kind=clang.cindex.TypeKind.RECORD,
+  )
+  hasher = _MockType(
+    spelling="NCollection_DefaultHasher<TCollection_AsciiString>",
+    kind=clang.cindex.TypeKind.RECORD,
+  )
+  canonical = _MockType(
+    spelling=(
+      "NCollection_DataMap<TCollection_AsciiString, "
+      "opencascade::handle<Standard_Transient>, "
+      "NCollection_DefaultHasher<TCollection_AsciiString>>"
+    ),
+    kind=clang.cindex.TypeKind.RECORD,
+    declaration=data_map_decl,
+    template_args=[key, value, hasher],
+  )
+  work_session_map = cursor_mock(
+    kind=clang.cindex.CursorKind.TYPE_ALIAS_DECL,
+    spelling="XSControl_WorkSessionMap",
+  )
+  work_session_map.underlying_typedef_type = _MockType(
+    spelling=(
+      "NCollection_DataMap<TCollection_AsciiString, "
+      "opencascade::handle<Standard_Transient>>"
+    ),
+    canonical=canonical,
+  )
+  source_name = (
+    "NCollection_DataMap_TCollection_AsciiString_handle_Standard_Transient"
+  )
+  canonical_name = (
+    f"{source_name}_NCollection_DefaultHasher_TCollection_AsciiString"
+  )
+  discovered = {
+    (
+      source_name,
+      "NCollection_DataMap",
+      (
+        "TCollection_AsciiString",
+        "opencascade::handle<Standard_Transient>",
+      ),
+      ("XSControl_WorkSession",),
+    ),
+    (
+      canonical_name,
+      "NCollection_DataMap",
+      (
+        "TCollection_AsciiString",
+        "opencascade::handle<Standard_Transient>",
+        "NCollection_DefaultHasher<TCollection_AsciiString>",
+      ),
+      ("XSControl_WorkSession",),
+    ),
+  }
+
+  aliases = _serialise_template_typedef_aliases(
+    _StubTuInfo(templateTypedefs=[work_session_map]),
+    discovered,
+  )
+
+  assert aliases["XSControl_WorkSessionMap"] == source_name
+
+
+def test_serialise_plain_typedef_alias_for_generated_template() -> None:
+  vector = _td("math_Vector", "math_VectorBase<double>")
+  canonical_name = "math_VectorBase_double"
+  discovered = {
+    (
+      canonical_name,
+      "math_VectorBase",
+      ("double",),
+      ("math_Gauss",),
+    ),
+  }
+
+  aliases = _serialise_template_typedef_aliases(
+    _StubTuInfo(typedefs=[vector]),
+    discovered,
+  )
+
+  assert aliases["math_Vector"] == canonical_name
+
+
+def test_serialise_canonical_template_name_as_type_only_alias() -> None:
+  occurrence = _td(
+    "BRepGraph_OccurrenceId",
+    "BRepGraph_NodeId::Typed<BRepGraph_NodeId::Kind::Occurrence>",
+  )
+  public_name = "NCollection_DynamicArray_BRepGraph_OccurrenceId"
+  canonical_name = (
+    "NCollection_DynamicArray_BRepGraph_NodeId_Typed_"
+    "BRepGraph_NodeId_Kind_Occurrence"
+  )
+  discovered = {
+    (
+      public_name,
+      "NCollection_DynamicArray",
+      ("BRepGraph_OccurrenceId",),
+      ("BRepGraphInc_ReverseIndex",),
+    ),
+  }
+
+  aliases = _serialise_template_typedef_aliases(
+    _StubTuInfo(templateTypedefs=[occurrence]),
+    discovered,
+  )
+
+  assert aliases[canonical_name] == public_name
 
 
 def test_build_typedef_alias_map_skips_self_referential_typedefs() -> None:

@@ -14,6 +14,7 @@ from ocjs_bindgen.codegen.bindings import EmbindBindings, TypescriptBindings
 from ocjs_bindgen.codegen.wasm_common import SkipException
 from ocjs_bindgen.config.paths import OCCT_ROOT, OCJS_ROOT, ocIncludeStatements
 from ocjs_bindgen.embind_builtins import OCJS_RBV_PREAMBLE
+from ocjs_bindgen.filters.typedefs import isHandleTemplateTypedef
 from ocjs_bindgen.naming import getClassJsPublicName, getEnumJsPublicName
 from ocjs_bindgen.predicates import shouldProcessClass
 
@@ -115,14 +116,10 @@ def filterClasses(child, customBuild):
 _FILTERED_TEMPLATE_TYPEDEFS = frozenset({
   # NOTE: `Handle_math_NotSquare` / `Handle_math_SingularMatrix` /
   # `Handle_Standard_Type` were previously listed here as name-by-name
-  # band-aids. They are now filtered structurally at the YAML link manifest
-  # level by `scripts/enumerate-symbols.py::collect_symbols` (drop
-  # `Handle_X` typedefs whose underlying type is `opencascade::handle<X>`
-  # when X is bound — the class binding emits the smart_ptr that
-  # registers the JS name "Handle_X"). The `.cpp` files are still
-  # generated and compiled here, but the link step drops them because
-  # they are absent from the YAML symbol list (see
-  # `src/buildFromYaml.py::shouldProcessSymbol`).
+  # band-aids. `isHandleTemplateTypedef` now rejects every smart-handle
+  # typedef before code generation, and the enumerator applies the same
+  # predicate before writing YAML. The pointee's `smart_ptr` binding owns
+  # the canonical C++ TypeID, so no alias fragment or selection is emitted.
   "TColStd_PackedMapOfInteger",
   "TColStd_SequenceOfAddress",
   "TopTools_IndexedDataMapOfShapeAddress",
@@ -131,9 +128,8 @@ _FILTERED_TEMPLATE_TYPEDEFS = frozenset({
 def filterTemplates(child, customBuild):
   if child.spelling in _FILTERED_TEMPLATE_TYPEDEFS:
     return False
-  # Do NOT exclude `Handle_*` typedefs. They alias `opencascade::handle<T>`
-  # and are part of OCCT's public surface; downstream resolution handles them
-  # symmetrically with the template form (see _resolve_handle_recursive).
+  if isHandleTemplateTypedef(child):
+    return False
 
   is_valid_kind = child.kind in (
     clang.cindex.CursorKind.TYPEDEF_DECL,

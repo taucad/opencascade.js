@@ -1,6 +1,6 @@
 """Shared symbol-resolution manifest registry unit tests.
 
-Covers the four canonical loaders + `resolve_requested_symbols` partition
+Covers the three canonical loaders + `resolve_requested_symbols` partition
 contract in `ocjs_bindgen.link.manifest_registry`. The registry is the
 single source of truth for both link-time `verifyBindings` and the
 post-link `validate-build.py` script; these tests pin the contract those
@@ -282,22 +282,27 @@ def test_resolve_requested_symbols_buckets_each_mechanism() -> None:
   each resolution class must partition cleanly into the four buckets.
   """
   requested = {
-    "gp_Pnt",                # directly compiled
-    "TColgp_Array1OfPnt",    # NCollection typedef alias
-    "TopoDS",                # Embind builtin
-    "DoesNotExist",          # truly missing
+    "gp_Pnt",                    # directly compiled
+    "TColgp_Array1OfPnt",        # NCollection typedef alias
+    "TopoDS",                    # Embind builtin
+    "IMeshData_IPCurveHandle",   # unsupported handle alias: truly missing
   }
   compiled = {"gp_Pnt", "NCollection_Array1_gp_Pnt"}
   alias_index = {"TColgp_Array1OfPnt": "NCollection_Array1_gp_Pnt"}
   builtins = frozenset({"TopoDS", "OCJS"})
 
-  resolution = resolve_requested_symbols(requested, compiled, alias_index, builtins)
+  resolution = resolve_requested_symbols(
+    requested,
+    compiled,
+    alias_index,
+    builtins,
+  )
 
   assert isinstance(resolution, SymbolResolution)
   assert resolution.satisfied_by_compiled == frozenset({"gp_Pnt"})
   assert resolution.alias_resolved == {"TColgp_Array1OfPnt": "NCollection_Array1_gp_Pnt"}
   assert resolution.builtin == frozenset({"TopoDS"})
-  assert resolution.truly_missing == frozenset({"DoesNotExist"})
+  assert resolution.truly_missing == frozenset({"IMeshData_IPCurveHandle"})
 
 
 def test_resolve_requested_symbols_all_resolved() -> None:

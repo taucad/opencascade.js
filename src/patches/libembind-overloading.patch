@@ -1,9 +1,9 @@
 --- src/lib/libembind.js
 +++ src/lib/libembind.js
-@@ -55,6 +55,107 @@
+@@ -55,23 +55,195 @@
      throw new UnboundTypeError(`${message}: ` + unboundTypes.map(getTypeName).join([', ']));
    },
- 
+
 +  $getSignature__deps: ['$registeredTypes'],
 +  $getSignature: (args, keys) => {
 +    var signature = '';
@@ -81,35 +81,81 @@
 +  $ensureOverloadSignatureTable__deps: ['$throwBindingError', '$getSignature', '$ensureOverloadTable', '$registeredTypes'],
 +  $ensureOverloadSignatureTable: (proto, methodName, humanName, numArguments) => {
 +    ensureOverloadTable(proto, methodName, humanName);
-+    if (undefined !== proto[methodName].overloadTable && undefined !== proto[methodName].overloadTable[numArguments] && undefined === proto[methodName].overloadTable[numArguments].signatures) {
-+      var prevFunc = proto[methodName].overloadTable[numArguments];
-+      // Inject an overload resolver function that routes to the appropriate overload based on signatures.
-+      proto[methodName].overloadTable[numArguments] = function(...args) {
-+        var keys = proto[methodName].overloadTable[args.length].signaturesArray;
-+        var signature = getSignature(args, keys);
-+        // TODO This check can be removed in -O3 level "unsafe" optimizations.
-+        if (!proto[methodName].overloadTable[args.length].signatures.hasOwnProperty(signature)) {
-+            var signatures = proto[methodName].overloadTable[args.length].signaturesArray.map(sig => '(' + sig.map(s => typeof s === 'string' ? s : registeredTypes[s].name) + ')');
-+            var params = args.map(arg => (typeof arg === 'object' && arg.constructor && arg.constructor.name) ? arg.constructor.name : typeof arg);
-+            throwBindingError(`Function '${humanName}' called with an invalid signature (${params}) - expects one of (${signatures})!`);
-+        }
-+        return proto[methodName].overloadTable[args.length].signatures[signature].apply(this, args);
-+      };
-+      // Move the previous function into the overload signature table.
-+      proto[methodName].overloadTable[numArguments].signatures = {};
-+      proto[methodName].overloadTable[numArguments].signatures[prevFunc.signature] = prevFunc;
-+      proto[methodName].overloadTable[numArguments].signaturesArray = [];
++    if (undefined === proto[methodName].overloadTable || undefined === proto[methodName].overloadTable[numArguments]) {
++      return;
++    }
++    var prevFunc = proto[methodName].overloadTable[numArguments];
++    var hasSignatures = undefined !== prevFunc.signatures;
++    // ── OCJS fix (sibling-override overload-table aliasing) ──
++    // If this prototype already owns a per-signature dispatcher, nothing to do.
++    if (hasSignatures && prevFunc.ocjsSignatureOwner === proto) {
++      return;
++    }
++    // Otherwise install a per-signature dispatcher OWNED by this prototype.
++    // `prevFunc` is either a plain member function being promoted (the original
++    // behavior) OR a base class's per-signature dispatcher inherited via the
++    // overloadTable copy made by ensureOverloadTable. In the inherited case its
++    // `signatures` map is shared with the base, so a write here (a derived class
++    // registering its own override) would corrupt the base — and a sibling that
++    // registers the same method later would overwrite the single shared slot,
++    // leaving bases / non-overriding siblings resolving to the wrong invoker
++    // ("Expected instance of <sibling>"). Forking an owned copy prevents that.
++    // Inject an overload resolver function that routes to the appropriate overload based on signatures.
++    var dispatcher = function(...args) {
++      var keys = proto[methodName].overloadTable[args.length].signaturesArray;
++      var signature = getSignature(args, keys);
++      // TODO This check can be removed in -O3 level "unsafe" optimizations.
++      if (!proto[methodName].overloadTable[args.length].signatures.hasOwnProperty(signature)) {
++          var signatures = proto[methodName].overloadTable[args.length].signaturesArray.map(sig => '(' + sig.map(s => typeof s === 'string' ? s : registeredTypes[s].name) + ')');
++          var params = args.map(arg => (typeof arg === 'object' && arg.constructor && arg.constructor.name) ? arg.constructor.name : typeof arg);
++          throwBindingError(`Function '${humanName}' called with an invalid signature (${params}) - expects one of (${signatures})!`);
++      }
++      return proto[methodName].overloadTable[args.length].signatures[signature].apply(this, args);
++    };
++    dispatcher.ocjsSignatureOwner = proto;
++    if (hasSignatures) {
++      // Inherited per-signature dispatcher: copy its maps so writes stay local.
++      dispatcher.signatures = Object.assign({}, prevFunc.signatures);
++      dispatcher.signaturesArray = prevFunc.signaturesArray.slice();
++    } else {
++      // Plain member function: move it into a fresh overload signature table.
++      dispatcher.signatures = {};
++      dispatcher.signatures[prevFunc.signature] = prevFunc;
++      dispatcher.signaturesArray = [];
 +      if (prevFunc.signatureArray) {
-+        proto[methodName].overloadTable[numArguments].signaturesArray.push(prevFunc.signatureArray);
++        dispatcher.signaturesArray.push(prevFunc.signatureArray);
 +      }
 +    }
++    proto[methodName].overloadTable[numArguments] = dispatcher;
 +  },
 +
    // Creates a function overload resolution table to the given method 'methodName' in the given prototype,
    // if the overload table doesn't yet exist.
    $ensureOverloadTable__deps: ['$throwBindingError'],
-@@ -63,6 +164,26 @@
-       var prevFunc = proto[methodName];
+   $ensureOverloadTable: (proto, methodName, humanName) => {
+-    if (undefined === proto[methodName].overloadTable) {
+-      var prevFunc = proto[methodName];
++    // ── OCJS fix (sibling-override overload-table aliasing) ──
++    // If this prototype already OWNS an overload table, nothing to do.
++    if (undefined !== proto[methodName].overloadTable &&
++        Object.prototype.hasOwnProperty.call(proto, methodName)) {
++      return;
++    }
++    // Two cases reach here: (1) proto[methodName] is a plain function with no
++    // overload table yet — the first overload registered for this name (original
++    // behavior); (2) proto[methodName] resolves to a BASE class's overload-table
++    // dispatcher, inherited (not own). The base dispatcher's closure captures the
++    // base prototype, so any write a derived class makes to its overloadTable (or
++    // the per-signature maps within) mutates the base's SHARED structures. A
++    // sibling registering the same method then overwrites the single shared slot,
++    // and the base / non-overriding siblings resolve to the wrong (last-writer)
++    // invoker — throwing "Expected instance of <sibling>". In both cases install a
++    // dispatcher OWNED by this prototype; for the inherited case seed it with a
++    // shallow copy of the base's overloadTable (per-signature maps are forked
++    // lazily by ensureOverloadSignatureTable).
++    var inheritedTable = (undefined !== proto[methodName].overloadTable) ? proto[methodName] : undefined;
++    var prevFunc = (undefined === proto[methodName].overloadTable) ? proto[methodName] : undefined;
++    {
        // Inject an overload resolver function that routes to the appropriate overload based on the number of arguments.
        proto[methodName] = function(...args) {
 +        // ── OCJS bounded C1 extension (Gate-1 hunk 1): trailing-arg arity padding ──
@@ -135,7 +181,26 @@
          // TODO This check can be removed in -O3 level "unsafe" optimizations.
          if (!proto[methodName].overloadTable.hasOwnProperty(args.length)) {
            throwBindingError(`Function '${humanName}' called with an invalid number of arguments (${args.length}) - expects one of (${proto[methodName].overloadTable})!`);
-@@ -81,44 +202,82 @@
+         }
+         return proto[methodName].overloadTable[args.length].apply(this, args);
+       };
+-      // Move the previous function into the overload table.
+       proto[methodName].overloadTable = [];
+-      proto[methodName].overloadTable[prevFunc.argCount] = prevFunc;
++      if (inheritedTable) {
++        // Inherited from a base: shallow-copy its arity slots so this prototype
++        // owns the table (writes here no longer escape to the base).
++        for (var _arity in inheritedTable.overloadTable) {
++          proto[methodName].overloadTable[_arity] = inheritedTable.overloadTable[_arity];
++        }
++      } else {
++        // First overload: move the previous plain function into the overload table.
++        proto[methodName].overloadTable[prevFunc.argCount] = prevFunc;
++      }
+     }
+   },
+
+@@ -81,44 +253,82 @@
     name: The name of the symbol that's being exposed.
     value: The object itself to expose (function, class, ...)
     numArguments: For functions, specifies the number of arguments the function takes in. For other types, unused and undefined.
@@ -234,7 +299,7 @@
      }
    },
  
-@@ -860,21 +1019,25 @@
+@@ -860,21 +1070,25 @@
    _embind_register_function__deps: [
      '$craftInvokerFunction', '$exposePublicSymbol', '$heap32VectorToArray',
      '$AsciiToString', '$replacePublicSymbol', '$embind__requireFunction',
@@ -263,7 +328,7 @@
        return [];
      });
    },
-@@ -1654,7 +1817,7 @@
+@@ -1654,7 +1868,7 @@
      '$makeLegalFunctionName', '$AsciiToString',
      '$RegisteredClass', '$RegisteredPointer', '$replacePublicSymbol',
      '$embind__requireFunction', '$throwUnboundTypeError',
@@ -272,7 +337,7 @@
    _embind_register_class: (rawType,
                             rawPointerType,
                             rawConstPointerType,
-@@ -1702,9 +1865,45 @@
+@@ -1702,9 +1916,45 @@
            if (undefined === registeredClass.constructor_body) {
              throw new BindingError(`${name} has no accessible constructor`);
            }
@@ -320,7 +385,7 @@
            }
            return body.apply(this, args);
          });
-@@ -1777,7 +1976,7 @@
+@@ -1777,7 +2027,7 @@
    _embind_register_class_constructor__deps: [
      '$heap32VectorToArray', '$embind__requireFunction',
      '$whenDependentTypesAreResolved',
@@ -329,7 +394,7 @@
    _embind_register_class_constructor: (
      rawClassType,
      argCount,
-@@ -1801,17 +2000,43 @@
+@@ -1801,17 +2051,43 @@
        if (undefined === classType.registeredClass.constructor_body) {
          classType.registeredClass.constructor_body = [];
        }
@@ -347,7 +412,7 @@
          throwUnboundTypeError(`Cannot construct ${classType.name} due to unbound types`, rawArgTypes);
 -      };
 +      }
- 
++
 +      if (undefined === classType.registeredClass.constructor_body[argCount - 1]) {
 +        classType.registeredClass.constructor_body[argCount - 1] = {
 +          func: unboundTypesHandler,
@@ -359,7 +424,7 @@
 +      }
 +
 +      classType.registeredClass.constructor_body[argCount - 1].signatures[rawSignatureString] = unboundTypesHandler;
-+
+
        whenDependentTypesAreResolved([], rawArgTypes, (argTypes) => {
          // Insert empty slot for context type (argTypes[1]).
          argTypes.splice(1, 0, null);
@@ -378,7 +443,7 @@
          return [];
        });
        return [];
-@@ -1866,7 +2091,8 @@
+@@ -1866,7 +2142,8 @@
    _embind_register_class_function__deps: [
      '$craftInvokerFunction', '$heap32VectorToArray', '$AsciiToString',
      '$embind__requireFunction', '$throwUnboundTypeError',
@@ -388,7 +453,7 @@
    _embind_register_class_function: (rawClassType,
                                      methodName,
                                      argCount,
-@@ -1900,21 +2126,34 @@
+@@ -1900,21 +2177,34 @@
  
        var proto = classType.registeredClass.instancePrototype;
        var method = proto[methodName];
@@ -425,7 +490,7 @@
  
          // Replace the initial unbound-handler-stub function with the
          // appropriate member function, now that all types are resolved. If
-@@ -1923,9 +2162,17 @@
+@@ -1923,9 +2213,17 @@
          if (undefined === proto[methodName].overloadTable) {
            // Set argCount in case an overload is registered later
            memberFunction.argCount = argCount - 2;
@@ -444,7 +509,7 @@
          }
  
          return [];
-@@ -2004,7 +2251,8 @@
+@@ -2004,7 +2302,8 @@
    _embind_register_class_class_function__deps: [
      '$craftInvokerFunction', '$ensureOverloadTable', '$heap32VectorToArray',
      '$AsciiToString', '$embind__requireFunction', '$throwUnboundTypeError',
@@ -454,7 +519,7 @@
    _embind_register_class_class_function: (rawClassType,
                                            methodName,
                                            argCount,
-@@ -2031,15 +2279,24 @@
+@@ -2031,15 +2330,25 @@
        }
  
        var proto = classType.registeredClass.constructor;
@@ -463,6 +528,7 @@
        if (undefined === proto[methodName]) {
          // This is the first function to be registered with this name.
          unboundTypesHandler.argCount = argCount-1;
++        unboundTypesHandler.signature = rawSignatureString;
          proto[methodName] = unboundTypesHandler;
 -      } else {
 +      } else if (
@@ -480,7 +546,7 @@
        }
  
        whenDependentTypesAreResolved([], rawArgTypes, (argTypes) => {
-@@ -2048,11 +2305,21 @@
+@@ -2048,11 +2357,21 @@
          // go into an overload table.
          var invokerArgsArray = [argTypes[0] /* return value */, null /* no class 'this'*/].concat(argTypes.slice(1) /* actual params */);
          var func = craftInvokerFunction(humanName, invokerArgsArray, null /* no class 'this'*/, rawInvoker, fn, isAsync);

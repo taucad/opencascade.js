@@ -94,6 +94,24 @@ def _count_unknown_tokens(source: str) -> int:
   return max(0, hits)
 
 
+def _render_type_only_aliases(
+  alias_index: dict[str, str],
+  declared_names: set[str],
+) -> str:
+  """Render public typedef names backed by an emitted canonical class."""
+  lines = []
+  identifier = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+  for alias, canonical in sorted(alias_index.items()):
+    if alias in declared_names or canonical not in declared_names:
+      continue
+    if alias == canonical:
+      continue
+    if not identifier.fullmatch(alias) or not identifier.fullmatch(canonical):
+      continue
+    lines.append(f"export type {alias} = {canonical};")
+  return "\n".join(lines) + ("\n" if lines else "")
+
+
 def _enforce_strict_types_gate(
   *,
   typescriptDefinitionOutput: str,
@@ -461,21 +479,16 @@ def _compute_yaml_class_scope(buildConfig, libraryBasePath) -> set:
         if isinstance(referenced, list):
           scope.update(referenced)
 
-  # Custom-code classes — every `build/bindings/myMain.h/*.d.ts.json` was
-  # produced by the consumer's `additionalCppCode` pipeline OR by the
-  # auto-NCollection bind generator (cross-YAML cache reuse). Only the
-  # former are consumer-defined classes whose methods can reference
-  # NCollections; skip `NCollection_*` stems to keep scope semantically
-  # tight (source-class intersections never match an NCollection name —
-  # source_classes are always OCCT class names — so the prefix-skip is
-  # purely cosmetic but stops misleading "|scope|=…" log inflation).
+  # Custom-code classes share `myMain.h` with generated template fragments.
+  # The manifest is the authoritative classifier: names are not a schema.
   custom_root = os.path.join(bindings_root, "myMain.h")
+  generated_templates = _load_full_manifest_symbols(libraryBasePath)
   if os.path.isdir(custom_root):
     for fname in os.listdir(custom_root):
       if not fname.endswith(".d.ts.json"):
         continue
       stem = fname[:-len(".d.ts.json")]
-      if stem.startswith("NCollection_"):
+      if stem in generated_templates:
         continue
       scope.add(stem)
 
@@ -1116,6 +1129,33 @@ def main():
         continue
       seen_export_names.add(name)
       deduped_exports.append(export_entry)
+
+    emitted_type_names = {entry["export"] for entry in deduped_exports}
+    emitted_type_names.update(
+      re.findall(
+        r"^export\s+(?:declare\s+)?(?:abstract\s+)?class\s+([A-Za-z_][A-Za-z0-9_]*)",
+        typescriptDefinitionOutput,
+        re.MULTILINE,
+      )
+    )
+    emitted_type_names.update(
+      re.findall(
+        r"^export\s+(?:declare\s+)?type\s+([A-Za-z_][A-Za-z0-9_]*)",
+        typescriptDefinitionOutput,
+        re.MULTILINE,
+      )
+    )
+    emitted_type_names.update(
+      re.findall(
+        r"^export\s+(?:declare\s+)?interface\s+([A-Za-z_][A-Za-z0-9_]*)",
+        typescriptDefinitionOutput,
+        re.MULTILINE,
+      )
+    )
+    typescriptDefinitionOutput += _render_type_only_aliases(
+      _load_ncollection_alias_index(BUILD_DIR),
+      emitted_type_names,
+    )
 
     typescriptDefinitionOutput += \
       "\n/**\n" + \

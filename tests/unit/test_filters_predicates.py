@@ -14,7 +14,7 @@ from unittest.mock import MagicMock
 from ocjs_bindgen.filters.enums import filterEnum
 from ocjs_bindgen.filters.include_files import filterIncludeFile
 from ocjs_bindgen.filters.source_files import filterSourceFile
-from ocjs_bindgen.filters.typedefs import filterTypedef
+from ocjs_bindgen.filters.typedefs import filterTypedef, isHandleTemplateTypedef
 
 
 def test_include_file_only_admits_hxx() -> None:
@@ -61,6 +61,25 @@ def test_filter_typedef_admits_handle_underlying(cursor_factory) -> None:
   td.underlying_typedef_type = underlying
   td.location = loc
   assert filterTypedef(td)
+
+
+def test_template_binding_rejects_handle_alias_registration(cursor_factory) -> None:
+  """A handle typedef is type metadata, not a second Embind class.
+
+  The pointee class's ``smart_ptr`` registration owns the canonical
+  ``opencascade::handle<T>`` TypeID. Emitting ``class_<HandleAlias>`` for the
+  same C++ type aborts module initialisation with a duplicate-type error.
+  """
+  canonical_decl = MagicMock(spelling="handle")
+  canonical = MagicMock(spelling="opencascade::handle<IMeshData_PCurve>")
+  canonical.get_declaration.return_value = canonical_decl
+  underlying = MagicMock(spelling="IMeshData::IPCurveHandle")
+  underlying.get_canonical.return_value = canonical
+  underlying.get_declaration.return_value = MagicMock(spelling="IPCurveHandle")
+  td = cursor_factory(spelling="IMeshData_IPCurveHandle")
+  td.underlying_typedef_type = underlying
+
+  assert isHandleTemplateTypedef(td)
 
 
 def test_filter_typedef_rejects_stdlib_underlying(cursor_factory) -> None:

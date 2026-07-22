@@ -106,13 +106,8 @@ def test_scope_includes_custom_code_class_names(tmp_path) -> None:
   assert {"BRepToolsWrapper", "ReplicadMeshData"} <= scope
 
 
-def test_scope_skips_ncollection_stems_under_mymain(tmp_path) -> None:
-  """Auto-NCollection fragments live alongside custom-code classes in
-  `build/bindings/myMain.h/` due to cross-YAML cache reuse. They must
-  NOT enter scope — R2 source_classes are always OCCT class names, so
-  an NCollection mangled name would never participate in a real
-  intersection, and including it would just inflate the |scope|= log
-  count misleadingly."""
+def test_scope_skips_all_manifest_owned_stems_under_mymain(tmp_path) -> None:
+  """Generated fragments are identified by the manifest, not a name prefix."""
   custom_dir = os.path.join(str(tmp_path), "bindings", "myMain.h")
   os.makedirs(custom_dir)
   # Real consumer custom class.
@@ -121,10 +116,27 @@ def test_scope_skips_ncollection_stems_under_mymain(tmp_path) -> None:
   # Auto-generated NCollection fragment cached from a prior build.
   with open(os.path.join(custom_dir, "NCollection_Array1_TopoDS_Shape.d.ts.json"), "w") as f:
     json.dump({".d.ts": "", "kind": "class", "exports": ["NCollection_Array1_TopoDS_Shape"]}, f)
+  with open(os.path.join(custom_dir, "SomeTemplate_double.d.ts.json"), "w") as f:
+    json.dump({".d.ts": "", "kind": "class", "exports": ["SomeTemplate_double"]}, f)
+  _write_manifest(tmp_path, [
+    {
+      "mangled_name": "NCollection_Array1_TopoDS_Shape",
+      "container": "NCollection_Array1",
+      "args": ["TopoDS_Shape"],
+      "source_classes": ["TopoDS_Iterator"],
+    },
+    {
+      "mangled_name": "SomeTemplate_double",
+      "container": "SomeTemplate",
+      "args": ["double"],
+      "source_classes": ["UsesSomeTemplate"],
+    },
+  ])
 
   scope = _compute_yaml_class_scope(_build_config(["gp_Pnt"]), str(tmp_path))
   assert "BRepToolsWrapper" in scope
   assert "NCollection_Array1_TopoDS_Shape" not in scope
+  assert "SomeTemplate_double" not in scope
 
 
 def test_scope_ignores_bindings_dir_when_absent(tmp_path) -> None:

@@ -197,3 +197,19 @@ def test_augment_canonical_key_substitutes_concrete_type() -> None:
 
   out = substitute_canonical_template_names("type-parameter-0-0", augmented)
   assert out == "gp_Pnt"
+
+
+def test_augment_maps_forward_and_definition_parameter_names_by_ordinal() -> None:
+  definition = _template_class(_type_param("TheItemType"))
+  forward = _template_class(_type_param("T"))
+  definition.canonical = forward
+  concrete = _MockType(spelling="double")
+
+  augmented = augment_template_args_with_canonical(
+    {"TheItemType": concrete},
+    definition,
+  )
+
+  assert augmented["TheItemType"] is concrete
+  assert augmented["type-parameter-0-0"] is concrete
+  assert augmented["T"] is concrete

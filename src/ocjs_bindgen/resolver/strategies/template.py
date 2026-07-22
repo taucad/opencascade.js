@@ -11,6 +11,30 @@ from __future__ import annotations
 import clang.cindex
 
 
+def _mangle_concrete_template(container, clang_type, template_args):
+    """Mangle a specialization from concrete C++ argument spellings.
+
+    TypeScript resolution maps primitive C++ types to JS-facing names
+    (``double`` to ``number``). Generated class names must instead match the
+    C++ spellings used by discovery (``NCollection_Array1_double``).
+    """
+    from ocjs_bindgen.ast.template_args import substitute_canonical_template_names
+    from ocjs_bindgen.discover import mangle_template_name
+
+    args = []
+    for index in range(clang_type.get_num_template_arguments()):
+        arg_type = clang_type.get_template_argument_type(index)
+        if arg_type is None:
+            return None
+        canonical = arg_type.get_canonical()
+        spelling = canonical.spelling or arg_type.spelling
+        spelling = substitute_canonical_template_names(spelling, template_args)
+        if not spelling or "type-parameter-" in spelling:
+            return None
+        args.append(spelling)
+    return mangle_template_name(container, args) if args else None
+
+
 def resolve_template_type(self, clang_type, templateDecl=None, templateArgs=None):
     """Resolve template types via AST using generic C++ type resolution.
 
@@ -200,7 +224,11 @@ def resolve_template_type(self, clang_type, templateDecl=None, templateArgs=None
                 break
             resolved_args.append(resolved_arg)
         if all_resolved and resolved_args:
-            resolver_mangled = container + "_" + "_".join(resolved_args)
+            resolver_mangled = _mangle_concrete_template(
+                container,
+                t,
+                templateArgs,
+            ) or (container + "_" + "_".join(resolved_args))
             if resolver_mangled != mangled:
                 # Fallback path: resolver-side mangling differs from the
                 # canonical-spelling-based one (rare — happens when the

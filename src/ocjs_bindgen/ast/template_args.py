@@ -165,6 +165,35 @@ def augment_template_args_with_canonical(template_args, template_class):
         # paths.
         if param.spelling and param.spelling in augmented:
             augmented[canonical_key] = augmented[param.spelling]
+
+    # OCCT forward-declares some templates with a DIFFERENT parameter name than
+    # the definition — e.g. `template<typename T> class math_VectorBase;` then
+    # `template<typename TheItemType> class math_VectorBase {...}`. libclang
+    # renders injected-class-name arguments (a method's `const math_VectorBase&`)
+    # using the FORWARD-DECLARATION parameter name ("T"), but `template_class`
+    # here is the definition (parameters named "TheItemType"), so
+    # `replace_template_args` keyed on "TheItemType" never substitutes the "T"
+    # in the rendered spelling and emits an uncompilable `math_VectorBase<T>`.
+    # Map the canonical (first-declaration) parameter names onto the same
+    # ordinal values so either spelling substitutes.
+    canonical_class = getattr(template_class, "canonical", None)
+    if canonical_class is not None and canonical_class != template_class:
+        canonical_params = [
+            c
+            for c in canonical_class.get_children()
+            if c.kind
+            in (
+                clang.cindex.CursorKind.TEMPLATE_TYPE_PARAMETER,
+                clang.cindex.CursorKind.TEMPLATE_NON_TYPE_PARAMETER,
+                clang.cindex.CursorKind.TEMPLATE_TEMPLATE_PARAMETER,
+            )
+        ]
+        for ordinal, param in enumerate(canonical_params):
+            if not param.spelling or param.spelling in augmented:
+                continue
+            value = augmented.get(f"type-parameter-0-{ordinal}")
+            if value is not None:
+                augmented[param.spelling] = value
     return augmented
 
 

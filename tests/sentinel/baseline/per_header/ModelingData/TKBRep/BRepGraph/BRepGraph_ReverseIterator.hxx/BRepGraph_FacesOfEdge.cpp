@@ -4585,6 +4585,23 @@
 #include "LProp_NotDefined.hxx"
 #include "LProp_SLProps3d.hxx"
 #include "LProp_Status.hxx"
+#include "ProjLib.hxx"
+#include "ProjLib_CompProjectedCurve.hxx"
+#include "ProjLib_ComputeApprox.hxx"
+#include "ProjLib_ComputeApproxOnPolarSurface.hxx"
+#include "ProjLib_Cone.hxx"
+#include "ProjLib_Cylinder.hxx"
+#include "ProjLib_HCompProjectedCurve.hxx"
+#include "ProjLib_HProjectedCurve.hxx"
+#include "ProjLib_Plane.hxx"
+#include "ProjLib_PrjFunc.hxx"
+#include "ProjLib_PrjResolve.hxx"
+#include "ProjLib_ProjectOnPlane.hxx"
+#include "ProjLib_ProjectOnSurface.hxx"
+#include "ProjLib_ProjectedCurve.hxx"
+#include "ProjLib_Projector.hxx"
+#include "ProjLib_Sphere.hxx"
+#include "ProjLib_Torus.hxx"
 #include "gce_ErrorType.hxx"
 #include "gce_MakeCirc.hxx"
 #include "gce_MakeCirc2d.hxx"
@@ -4643,6 +4660,13 @@ namespace ocjs {
 }
 
 
+using Extrema_GGExtPC_Adaptor2d_Curve2d_Extrema_Curve2dTool_Extrema_ExtPElC2d_gp_Pnt2d_gp_Vec2d_Extrema_POnCurv2d_NCollection_Sequence_Extrema_POnCurv2d_Extrema_GGenExtPC_Adaptor2d_Curve2d_255e67ef2564152f = Extrema_GGExtPC<Adaptor2d_Curve2d, Extrema_Curve2dTool, Extrema_ExtPElC2d, gp_Pnt2d, gp_Vec2d, Extrema_POnCurv2d, NCollection_Sequence<Extrema_POnCurv2d>, Extrema_GGenExtPC<Adaptor2d_Curve2d, Extrema_Curve2dTool, Extrema_POnCurv2d, gp_Pnt2d, Extrema_GFuncExtPC<Adaptor2d_Curve2d, Extrema_Curve2dTool, Extrema_POnCurv2d, gp_Pnt2d, gp_Vec2d, NCollection_Sequence<Extrema_POnCurv2d>>>>;
+using Extrema_GGExtPC_Adaptor3d_Curve_Extrema_CurveTool_Extrema_ExtPElC_gp_Pnt_gp_Vec_Extrema_POnCurv_NCollection_Sequence_Extrema_POnCurv_Extrema_GGenExtPC_Adaptor3d_Curve_Extrema_CurveToo_9726d4281525f8db = Extrema_GGExtPC<Adaptor3d_Curve, Extrema_CurveTool, Extrema_ExtPElC, gp_Pnt, gp_Vec, Extrema_POnCurv, NCollection_Sequence<Extrema_POnCurv>, Extrema_GGenExtPC<Adaptor3d_Curve, Extrema_CurveTool, Extrema_POnCurv, gp_Pnt, Extrema_GFuncExtPC<Adaptor3d_Curve, Extrema_CurveTool, Extrema_POnCurv, gp_Pnt, gp_Vec, NCollection_Sequence<Extrema_POnCurv>>>>;
+using GeomLProp_SLPropsBase_handle_Geom_Surface_LProp_SurfaceUtils_DirectAccess = GeomLProp_SLPropsBase<opencascade::handle<Geom_Surface>, LProp_SurfaceUtils::DirectAccess>;
+using IntPolyh_Array_IntPolyh_Edge = IntPolyh_Array<IntPolyh_Edge>;
+using IntPolyh_Array_IntPolyh_Point = IntPolyh_Array<IntPolyh_Point>;
+using IntPolyh_Array_IntPolyh_PointNormal = IntPolyh_Array<IntPolyh_PointNormal>;
+using IntPolyh_Array_IntPolyh_Triangle = IntPolyh_Array<IntPolyh_Triangle>;
 using NCollection_Array1_AppParCurves_ConstraintCouple = NCollection_Array1<AppParCurves_ConstraintCouple>;
 using NCollection_Array1_AppParCurves_MultiBSpCurve = NCollection_Array1<AppParCurves_MultiBSpCurve>;
 using NCollection_Array1_AppParCurves_MultiCurve = NCollection_Array1<AppParCurves_MultiCurve>;
@@ -4843,7 +4867,6 @@ using NCollection_Array1_handle_TCollection_HAsciiString = NCollection_Array1<op
 using NCollection_Array1_handle_TDF_Attribute = NCollection_Array1<opencascade::handle<TDF_Attribute>>;
 using NCollection_Array1_int = NCollection_Array1<int>;
 using NCollection_Array1_math_ValueAndWeight = NCollection_Array1<math_ValueAndWeight>;
-using NCollection_Array1_std_pair_unsignedint_int = NCollection_Array1<std::pair<unsigned int, int>>;
 using NCollection_Array1_unsignedchar = NCollection_Array1<unsigned char>;
 using NCollection_Array2_Extrema_POnCurv = NCollection_Array2<Extrema_POnCurv>;
 using NCollection_Array2_Extrema_POnCurv2d = NCollection_Array2<Extrema_POnCurv2d>;
@@ -4883,9 +4906,11 @@ using NCollection_DataMap_BRepGraph_RefUID_BRepGraph_RefId = NCollection_DataMap
 using NCollection_DataMap_BRepGraph_UID_BRepGraph_NodeId = NCollection_DataMap<BRepGraph_UID, BRepGraph_NodeId>;
 using NCollection_DataMap_TCollection_AsciiString_RWObj_Material = NCollection_DataMap<TCollection_AsciiString, RWObj_Material>;
 using NCollection_DataMap_TCollection_AsciiString_TCollection_AsciiString = NCollection_DataMap<TCollection_AsciiString, TCollection_AsciiString>;
+using NCollection_DataMap_TCollection_AsciiString_TCollection_AsciiString_NCollection_DefaultHasher_TCollection_AsciiString = NCollection_DataMap<TCollection_AsciiString, TCollection_AsciiString, NCollection_DefaultHasher<TCollection_AsciiString>>;
 using NCollection_DataMap_TCollection_AsciiString_TopoDS_Shape = NCollection_DataMap<TCollection_AsciiString, TopoDS_Shape>;
 using NCollection_DataMap_TCollection_AsciiString_handle_STEPCAFControl_ExternFile = NCollection_DataMap<TCollection_AsciiString, opencascade::handle<STEPCAFControl_ExternFile>>;
 using NCollection_DataMap_TCollection_AsciiString_handle_Standard_Transient = NCollection_DataMap<TCollection_AsciiString, opencascade::handle<Standard_Transient>>;
+using NCollection_DataMap_TCollection_AsciiString_handle_Standard_Transient_NCollection_DefaultHasher_TCollection_AsciiString = NCollection_DataMap<TCollection_AsciiString, opencascade::handle<Standard_Transient>, NCollection_DefaultHasher<TCollection_AsciiString>>;
 using NCollection_DataMap_TCollection_AsciiString_int = NCollection_DataMap<TCollection_AsciiString, int>;
 using NCollection_DataMap_TCollection_ExtendedString_TCollection_ExtendedString = NCollection_DataMap<TCollection_ExtendedString, TCollection_ExtendedString>;
 using NCollection_DataMap_TCollection_ExtendedString_double = NCollection_DataMap<TCollection_ExtendedString, double>;
@@ -4893,7 +4918,7 @@ using NCollection_DataMap_TCollection_ExtendedString_handle_CDM_MetaData = NColl
 using NCollection_DataMap_TCollection_ExtendedString_handle_NCollection_HArray1_double = NCollection_DataMap<TCollection_ExtendedString, opencascade::handle<NCollection_HArray1<double>>>;
 using NCollection_DataMap_TCollection_ExtendedString_handle_NCollection_HArray1_int = NCollection_DataMap<TCollection_ExtendedString, opencascade::handle<NCollection_HArray1<int>>>;
 using NCollection_DataMap_TCollection_ExtendedString_int = NCollection_DataMap<TCollection_ExtendedString, int>;
-using NCollection_DataMap_TCollection_ExtendedString_unsignedchar = NCollection_DataMap<TCollection_ExtendedString, unsigned char>;
+using NCollection_DataMap_TCollection_ExtendedString_uint8_t = NCollection_DataMap<TCollection_ExtendedString, uint8_t>;
 using NCollection_DataMap_TDF_Label_TDF_Label = NCollection_DataMap<TDF_Label, TDF_Label>;
 using NCollection_DataMap_TDF_Label_int = NCollection_DataMap<TDF_Label, int>;
 using NCollection_DataMap_TopoDS_Shape_BOPDS_CoupleOfPaveBlocks_TopTools_ShapeMapHasher = NCollection_DataMap<TopoDS_Shape, BOPDS_CoupleOfPaveBlocks, TopTools_ShapeMapHasher>;
@@ -4940,9 +4965,9 @@ using NCollection_DataMap_handle_TDF_Attribute_handle_TDF_Attribute = NCollectio
 using NCollection_DataMap_handle_XCAFDimTolObjects_GeomToleranceObject_handle_XCAFDimTolObjects_DatumObject = NCollection_DataMap<opencascade::handle<XCAFDimTolObjects_GeomToleranceObject>, opencascade::handle<XCAFDimTolObjects_DatumObject>>;
 using NCollection_DataMap_handle_XCAFDoc_VisMaterial_handle_XCAFDoc_VisMaterial = NCollection_DataMap<opencascade::handle<XCAFDoc_VisMaterial>, opencascade::handle<XCAFDoc_VisMaterial>>;
 using NCollection_DataMap_int_NCollection_List_TopoDS_Shape = NCollection_DataMap<int, NCollection_List<TopoDS_Shape>>;
-using NCollection_DataMap_int_NCollection_PackedMap_int = NCollection_DataMap<int, NCollection_PackedMap<int>>;
+using NCollection_DataMap_int_NCollection_PackedMap_int_NCollection_DefaultHasher_int = NCollection_DataMap<int, NCollection_PackedMap<int>, NCollection_DefaultHasher<int>>;
+using NCollection_DataMap_int_TColStd_PackedMapOfInteger = NCollection_DataMap<int, TColStd_PackedMapOfInteger>;
 using NCollection_DataMap_int_TopoDS_Shape = NCollection_DataMap<int, TopoDS_Shape>;
-using NCollection_DataMap_int_bool = NCollection_DataMap<int, bool>;
 using NCollection_DataMap_int_handle_MAT_BasicElt = NCollection_DataMap<int, opencascade::handle<MAT_BasicElt>>;
 using NCollection_DataMap_int_int = NCollection_DataMap<int, int>;
 using NCollection_DoubleMap_int_TDF_Label = NCollection_DoubleMap<int, TDF_Label>;
@@ -4980,40 +5005,30 @@ using NCollection_DynamicArray_BRepGraphInc_VertexDef = NCollection_DynamicArray
 using NCollection_DynamicArray_BRepGraphInc_VertexRef = NCollection_DynamicArray<BRepGraphInc::VertexRef>;
 using NCollection_DynamicArray_BRepGraphInc_WireDef = NCollection_DynamicArray<BRepGraphInc::WireDef>;
 using NCollection_DynamicArray_BRepGraphInc_WireRef = NCollection_DynamicArray<BRepGraphInc::WireRef>;
+using NCollection_DynamicArray_BRepGraph_ChildRefId = NCollection_DynamicArray<BRepGraph_ChildRefId>;
 using NCollection_DynamicArray_BRepGraph_CoEdgeId = NCollection_DynamicArray<BRepGraph_CoEdgeId>;
+using NCollection_DynamicArray_BRepGraph_CoEdgeRefId = NCollection_DynamicArray<BRepGraph_CoEdgeRefId>;
 using NCollection_DynamicArray_BRepGraph_CompSolidId = NCollection_DynamicArray<BRepGraph_CompSolidId>;
 using NCollection_DynamicArray_BRepGraph_CompoundId = NCollection_DynamicArray<BRepGraph_CompoundId>;
 using NCollection_DynamicArray_BRepGraph_EdgeId = NCollection_DynamicArray<BRepGraph_EdgeId>;
 using NCollection_DynamicArray_BRepGraph_FaceId = NCollection_DynamicArray<BRepGraph_FaceId>;
+using NCollection_DynamicArray_BRepGraph_FaceRefId = NCollection_DynamicArray<BRepGraph_FaceRefId>;
 using NCollection_DynamicArray_BRepGraph_NodeId = NCollection_DynamicArray<BRepGraph_NodeId>;
-using NCollection_DynamicArray_BRepGraph_NodeId_Typed_BRepGraph_NodeId_Kind_Occurrence = NCollection_DynamicArray<BRepGraph_NodeId::Typed<BRepGraph_NodeId::Kind::Occurrence>>;
-using NCollection_DynamicArray_BRepGraph_NodeId_Typed_BRepGraph_NodeId_Kind_Product = NCollection_DynamicArray<BRepGraph_NodeId::Typed<BRepGraph_NodeId::Kind::Product>>;
-using NCollection_DynamicArray_BRepGraph_NodeId_Typed_BRepGraph_NodeId_Kind_Shell = NCollection_DynamicArray<BRepGraph_NodeId::Typed<BRepGraph_NodeId::Kind::Shell>>;
-using NCollection_DynamicArray_BRepGraph_NodeId_Typed_BRepGraph_NodeId_Kind_Solid = NCollection_DynamicArray<BRepGraph_NodeId::Typed<BRepGraph_NodeId::Kind::Solid>>;
-using NCollection_DynamicArray_BRepGraph_NodeId_Typed_BRepGraph_NodeId_Kind_Wire = NCollection_DynamicArray<BRepGraph_NodeId::Typed<BRepGraph_NodeId::Kind::Wire>>;
+using NCollection_DynamicArray_BRepGraph_OccurrenceId = NCollection_DynamicArray<BRepGraph_OccurrenceId>;
+using NCollection_DynamicArray_BRepGraph_OccurrenceRefId = NCollection_DynamicArray<BRepGraph_OccurrenceRefId>;
+using NCollection_DynamicArray_BRepGraph_PolygonOnTriRepId = NCollection_DynamicArray<BRepGraph_PolygonOnTriRepId>;
+using NCollection_DynamicArray_BRepGraph_ProductId = NCollection_DynamicArray<BRepGraph_ProductId>;
 using NCollection_DynamicArray_BRepGraph_RefId = NCollection_DynamicArray<BRepGraph_RefId>;
-using NCollection_DynamicArray_BRepGraph_RefId_Typed_BRepGraph_RefId_Kind_Child = NCollection_DynamicArray<BRepGraph_RefId::Typed<BRepGraph_RefId::Kind::Child>>;
-using NCollection_DynamicArray_BRepGraph_RefId_Typed_BRepGraph_RefId_Kind_CoEdge = NCollection_DynamicArray<BRepGraph_RefId::Typed<BRepGraph_RefId::Kind::CoEdge>>;
-using NCollection_DynamicArray_BRepGraph_RefId_Typed_BRepGraph_RefId_Kind_Face = NCollection_DynamicArray<BRepGraph_RefId::Typed<BRepGraph_RefId::Kind::Face>>;
-using NCollection_DynamicArray_BRepGraph_RefId_Typed_BRepGraph_RefId_Kind_Occurrence = NCollection_DynamicArray<BRepGraph_RefId::Typed<BRepGraph_RefId::Kind::Occurrence>>;
-using NCollection_DynamicArray_BRepGraph_RefId_Typed_BRepGraph_RefId_Kind_Shell = NCollection_DynamicArray<BRepGraph_RefId::Typed<BRepGraph_RefId::Kind::Shell>>;
-using NCollection_DynamicArray_BRepGraph_RefId_Typed_BRepGraph_RefId_Kind_Solid = NCollection_DynamicArray<BRepGraph_RefId::Typed<BRepGraph_RefId::Kind::Solid>>;
-using NCollection_DynamicArray_BRepGraph_RefId_Typed_BRepGraph_RefId_Kind_Vertex = NCollection_DynamicArray<BRepGraph_RefId::Typed<BRepGraph_RefId::Kind::Vertex>>;
-using NCollection_DynamicArray_BRepGraph_RefId_Typed_BRepGraph_RefId_Kind_Wire = NCollection_DynamicArray<BRepGraph_RefId::Typed<BRepGraph_RefId::Kind::Wire>>;
 using NCollection_DynamicArray_BRepGraph_RefUID = NCollection_DynamicArray<BRepGraph_RefUID>;
-using NCollection_DynamicArray_BRepGraph_RepId_Typed_BRepGraph_RepId_Kind_PolygonOnTri = NCollection_DynamicArray<BRepGraph_RepId::Typed<BRepGraph_RepId::Kind::PolygonOnTri>>;
-using NCollection_DynamicArray_BRepGraph_RepId_Typed_BRepGraph_RepId_Kind_Triangulation = NCollection_DynamicArray<BRepGraph_RepId::Typed<BRepGraph_RepId::Kind::Triangulation>>;
-using NCollection_DynamicArray_BRepGraph_ReverseIterator_CompSolidOfSolidRefTraits_ParentId = NCollection_DynamicArray<BRepGraph_ReverseIterator::CompSolidOfSolidRefTraits::ParentId>;
-using NCollection_DynamicArray_BRepGraph_ReverseIterator_CompoundOfChildRefTraits_ParentId = NCollection_DynamicArray<BRepGraph_ReverseIterator::CompoundOfChildRefTraits::ParentId>;
-using NCollection_DynamicArray_BRepGraph_ReverseIterator_EdgeOfVertexRefTraits_ParentId = NCollection_DynamicArray<BRepGraph_ReverseIterator::EdgeOfVertexRefTraits::ParentId>;
-using NCollection_DynamicArray_BRepGraph_ReverseIterator_FaceOfWireRefTraits_ParentId = NCollection_DynamicArray<BRepGraph_ReverseIterator::FaceOfWireRefTraits::ParentId>;
-using NCollection_DynamicArray_BRepGraph_ReverseIterator_ProductOfOccurrenceRefTraits_ParentId = NCollection_DynamicArray<BRepGraph_ReverseIterator::ProductOfOccurrenceRefTraits::ParentId>;
-using NCollection_DynamicArray_BRepGraph_ReverseIterator_ShellOfFaceRefTraits_ParentId = NCollection_DynamicArray<BRepGraph_ReverseIterator::ShellOfFaceRefTraits::ParentId>;
-using NCollection_DynamicArray_BRepGraph_ReverseIterator_SolidOfShellRefTraits_ParentId = NCollection_DynamicArray<BRepGraph_ReverseIterator::SolidOfShellRefTraits::ParentId>;
-using NCollection_DynamicArray_BRepGraph_ReverseIterator_WireOfCoEdgeRefTraits_ParentId = NCollection_DynamicArray<BRepGraph_ReverseIterator::WireOfCoEdgeRefTraits::ParentId>;
+using NCollection_DynamicArray_BRepGraph_ShellId = NCollection_DynamicArray<BRepGraph_ShellId>;
+using NCollection_DynamicArray_BRepGraph_ShellRefId = NCollection_DynamicArray<BRepGraph_ShellRefId>;
+using NCollection_DynamicArray_BRepGraph_SolidId = NCollection_DynamicArray<BRepGraph_SolidId>;
+using NCollection_DynamicArray_BRepGraph_SolidRefId = NCollection_DynamicArray<BRepGraph_SolidRefId>;
+using NCollection_DynamicArray_BRepGraph_TriangulationRepId = NCollection_DynamicArray<BRepGraph_TriangulationRepId>;
 using NCollection_DynamicArray_BRepGraph_UID = NCollection_DynamicArray<BRepGraph_UID>;
-using NCollection_DynamicArray_BRepMesh_Circle = NCollection_DynamicArray<BRepMesh_Circle>;
-using NCollection_DynamicArray_BRepMesh_Vertex = NCollection_DynamicArray<BRepMesh_Vertex>;
+using NCollection_DynamicArray_BRepGraph_VertexRefId = NCollection_DynamicArray<BRepGraph_VertexRefId>;
+using NCollection_DynamicArray_BRepGraph_WireId = NCollection_DynamicArray<BRepGraph_WireId>;
+using NCollection_DynamicArray_BRepGraph_WireRefId = NCollection_DynamicArray<BRepGraph_WireRefId>;
 using NCollection_DynamicArray_ExtremaPC_ExtremumResult = NCollection_DynamicArray<ExtremaPC::ExtremumResult>;
 using NCollection_DynamicArray_MathRoot_NullInterval = NCollection_DynamicArray<MathRoot::NullInterval>;
 using NCollection_DynamicArray_NCollection_DynamicArray_BOPDS_Pair = NCollection_DynamicArray<NCollection_DynamicArray<BOPDS_Pair>>;
@@ -5305,10 +5320,10 @@ using NCollection_IndexedMap_Message_MetricType = NCollection_IndexedMap<Message
 using NCollection_IndexedMap_TCollection_AsciiString = NCollection_IndexedMap<TCollection_AsciiString>;
 using NCollection_IndexedMap_TDF_Label = NCollection_IndexedMap<TDF_Label>;
 using NCollection_IndexedMap_TopoDS_Shape_TopTools_ShapeMapHasher = NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher>;
-using NCollection_IndexedMap_double = NCollection_IndexedMap<double>;
 using NCollection_IndexedMap_handle_BOPDS_PaveBlock = NCollection_IndexedMap<opencascade::handle<BOPDS_PaveBlock>>;
 using NCollection_IndexedMap_handle_Standard_Transient = NCollection_IndexedMap<opencascade::handle<Standard_Transient>>;
 using NCollection_IndexedMap_handle_TDF_Attribute = NCollection_IndexedMap<opencascade::handle<TDF_Attribute>>;
+using NCollection_LinearVector_NCollection_Vec3_double = NCollection_LinearVector<NCollection_Vec3<double>>;
 using NCollection_List_BOPAlgo_CheckResult = NCollection_List<BOPAlgo_CheckResult>;
 using NCollection_List_BOPDS_Pave = NCollection_List<BOPDS_Pave>;
 using NCollection_List_BOPTools_ConnexityBlock = NCollection_List<BOPTools_ConnexityBlock>;
@@ -5344,7 +5359,6 @@ using NCollection_List_TopBas_TestInterference = NCollection_List<TopBas_TestInt
 using NCollection_List_TopoDS_Shape = NCollection_List<TopoDS_Shape>;
 using NCollection_List_double = NCollection_List<double>;
 using NCollection_List_gp_Pnt = NCollection_List<gp_Pnt>;
-using NCollection_List_gp_Pnt2d = NCollection_List<gp_Pnt2d>;
 using NCollection_List_handle_BOPDS_PaveBlock = NCollection_List<opencascade::handle<BOPDS_PaveBlock>>;
 using NCollection_List_handle_BRepMesh_DiscretAlgoFactory = NCollection_List<opencascade::handle<BRepMesh_DiscretAlgoFactory>>;
 using NCollection_List_handle_BRep_CurveRepresentation = NCollection_List<opencascade::handle<BRep_CurveRepresentation>>;
@@ -5367,6 +5381,7 @@ using NCollection_List_handle_TDF_AttributeDelta = NCollection_List<opencascade:
 using NCollection_List_handle_TDF_Delta = NCollection_List<opencascade::handle<TDF_Delta>>;
 using NCollection_List_handle_TNaming_NamedShape = NCollection_List<opencascade::handle<TNaming_NamedShape>>;
 using NCollection_List_int = NCollection_List<int>;
+using NCollection_List_uint8_t = NCollection_List<uint8_t>;
 using NCollection_List_unsignedchar = NCollection_List<unsigned char>;
 using NCollection_Map_BOPDS_Pair = NCollection_Map<BOPDS_Pair>;
 using NCollection_Map_TCollection_AsciiString = NCollection_Map<TCollection_AsciiString>;
@@ -5376,6 +5391,7 @@ using NCollection_Map_handle_BOPDS_PaveBlock = NCollection_Map<opencascade::hand
 using NCollection_Map_handle_TDF_Attribute = NCollection_Map<opencascade::handle<TDF_Attribute>>;
 using NCollection_Map_handle_TNaming_NamedShape = NCollection_Map<opencascade::handle<TNaming_NamedShape>>;
 using NCollection_Map_int = NCollection_Map<int>;
+using NCollection_PackedMap_int = NCollection_PackedMap<int>;
 using NCollection_Sequence_AppParCurves_MultiBSpCurve = NCollection_Sequence<AppParCurves_MultiBSpCurve>;
 using NCollection_Sequence_AppParCurves_MultiCurve = NCollection_Sequence<AppParCurves_MultiCurve>;
 using NCollection_Sequence_BRepBlend_PointOnRst = NCollection_Sequence<BRepBlend_PointOnRst>;
@@ -5520,7 +5536,45 @@ using NCollection_Sequence_handle_Units_Unit = NCollection_Sequence<opencascade:
 using NCollection_Sequence_handle_XCAFDimTolObjects_DatumObject = NCollection_Sequence<opencascade::handle<XCAFDimTolObjects_DatumObject>>;
 using NCollection_Sequence_handle_XCAFDimTolObjects_DimensionObject = NCollection_Sequence<opencascade::handle<XCAFDimTolObjects_DimensionObject>>;
 using NCollection_Sequence_handle_XCAFDimTolObjects_GeomToleranceObject = NCollection_Sequence<opencascade::handle<XCAFDimTolObjects_GeomToleranceObject>>;
-using NCollection_Sequence_int = NCollection_Sequence<int>;EMSCRIPTEN_BINDINGS(BRepGraph_FacesOfEdge) {
+using NCollection_Sequence_int = NCollection_Sequence<int>;
+using NCollection_Shared_NCollection_Array1_BRepMesh_Vertex_void = NCollection_Shared<NCollection_Array1<BRepMesh_Vertex>, void>;
+using NCollection_Shared_NCollection_Array1_int_void = NCollection_Shared<NCollection_Array1<int>, void>;
+using NCollection_Shared_NCollection_DataMap_IMeshData_Face_NCollection_Shared_NCollection_List_int_void = NCollection_Shared<NCollection_DataMap<IMeshData_Face *, NCollection_Shared<NCollection_List<int>>>, void>;
+using NCollection_Shared_NCollection_DataMap_IMeshData_Face_handle_NCollection_Shared_NCollection_Map_IMeshData_Edge_void = NCollection_Shared<NCollection_DataMap<IMeshData_Face *, opencascade::handle<NCollection_Shared<NCollection_Map<IMeshData_Edge *>>>>, void>;
+using NCollection_Shared_NCollection_DataMap_TopoDS_Shape_int_TopTools_ShapeMapHasher_void = NCollection_Shared<NCollection_DataMap<TopoDS_Shape, int, TopTools_ShapeMapHasher>, void>;
+using NCollection_Shared_NCollection_DataMap_int_NCollection_Shared_NCollection_List_int_void = NCollection_Shared<NCollection_DataMap<int, NCollection_Shared<NCollection_List<int>>>, void>;
+using NCollection_Shared_NCollection_DataMap_int_bool_void = NCollection_Shared<NCollection_DataMap<int, bool>, void>;
+using NCollection_Shared_NCollection_DynamicArray_BRepMesh_Circle_void = NCollection_Shared<NCollection_DynamicArray<BRepMesh_Circle>, void>;
+using NCollection_Shared_NCollection_DynamicArray_BRepMesh_Triangle_void = NCollection_Shared<NCollection_DynamicArray<BRepMesh_Triangle>, void>;
+using NCollection_Shared_NCollection_DynamicArray_BRepMesh_Vertex_void = NCollection_Shared<NCollection_DynamicArray<BRepMesh_Vertex>, void>;
+using NCollection_Shared_NCollection_DynamicArray_IMeshData_Edge_void = NCollection_Shared<NCollection_DynamicArray<IMeshData_Edge *>, void>;
+using NCollection_Shared_NCollection_DynamicArray_TopAbs_Orientation_void = NCollection_Shared<NCollection_DynamicArray<TopAbs_Orientation>, void>;
+using NCollection_Shared_NCollection_DynamicArray_bool_void = NCollection_Shared<NCollection_DynamicArray<bool>, void>;
+using NCollection_Shared_NCollection_DynamicArray_handle_IMeshData_Edge_void = NCollection_Shared<NCollection_DynamicArray<opencascade::handle<IMeshData_Edge>>, void>;
+using NCollection_Shared_NCollection_DynamicArray_handle_IMeshData_Face_void = NCollection_Shared<NCollection_DynamicArray<opencascade::handle<IMeshData_Face>>, void>;
+using NCollection_Shared_NCollection_DynamicArray_handle_IMeshData_PCurve_void = NCollection_Shared<NCollection_DynamicArray<opencascade::handle<IMeshData_PCurve>>, void>;
+using NCollection_Shared_NCollection_DynamicArray_handle_IMeshData_Wire_void = NCollection_Shared<NCollection_DynamicArray<opencascade::handle<IMeshData_Wire>>, void>;
+using NCollection_Shared_NCollection_DynamicArray_int_void = NCollection_Shared<NCollection_DynamicArray<int>, void>;
+using NCollection_Shared_NCollection_EBTree_int_Bnd_Box2d_void = NCollection_Shared<NCollection_EBTree<int, Bnd_Box2d>, void>;
+using NCollection_Shared_NCollection_IndexedDataMap_BRepMesh_Edge_BRepMesh_PairOfIndex_void = NCollection_Shared<NCollection_IndexedDataMap<BRepMesh_Edge, BRepMesh_PairOfIndex>, void>;
+using NCollection_Shared_NCollection_IndexedDataMap_IMeshData_Face_NCollection_Shared_NCollection_List_handle_IMeshData_PCurve_void = NCollection_Shared<NCollection_IndexedDataMap<IMeshData_Face *, NCollection_Shared<NCollection_List<opencascade::handle<IMeshData_PCurve>>>>, void>;
+using NCollection_Shared_NCollection_IndexedMap_double_void = NCollection_Shared<NCollection_IndexedMap<double>, void>;
+using NCollection_Shared_NCollection_List_gp_Pnt2d_void = NCollection_Shared<NCollection_List<gp_Pnt2d>, void>;
+using NCollection_Shared_NCollection_List_handle_IMeshData_PCurve_void = NCollection_Shared<NCollection_List<opencascade::handle<IMeshData_PCurve>>, void>;
+using NCollection_Shared_NCollection_List_int_void = NCollection_Shared<NCollection_List<int>, void>;
+using NCollection_Shared_NCollection_Map_BRepMesh_OrientedEdge_void = NCollection_Shared<NCollection_Map<BRepMesh_OrientedEdge>, void>;
+using NCollection_Shared_NCollection_Map_IMeshData_Edge_void = NCollection_Shared<NCollection_Map<IMeshData_Edge *>, void>;
+using NCollection_Shared_NCollection_Map_IMeshData_Face_void = NCollection_Shared<NCollection_Map<IMeshData_Face *>, void>;
+using NCollection_Shared_NCollection_Map_double_void = NCollection_Shared<NCollection_Map<double>, void>;
+using NCollection_Shared_NCollection_PackedMap_int_void = NCollection_Shared<NCollection_PackedMap<int>, void>;
+using NCollection_Shared_NCollection_Sequence_Bnd_B2_double_void = NCollection_Shared<NCollection_Sequence<Bnd_B2<double>>, void>;
+using NCollection_Shared_NCollection_Sequence_double_void = NCollection_Shared<NCollection_Sequence<double>, void>;
+using NCollection_Shared_NCollection_Sequence_int_void = NCollection_Shared<NCollection_Sequence<int>, void>;
+using NCollection_Shared_Standard_Mutex_void = NCollection_Shared<Standard_Mutex, void>;
+using NCollection_TListIterator_HLRAlgo_Interference = NCollection_TListIterator<HLRAlgo_Interference>;
+using NCollection_Vec3_double = NCollection_Vec3<double>;
+using math_VectorBase_double = math_VectorBase<double>;
+using math_VectorBase_int = math_VectorBase<int>;EMSCRIPTEN_BINDINGS(BRepGraph_FacesOfEdge) {
   class_<BRepGraph_FacesOfEdge>("BRepGraph_FacesOfEdge")
     .constructor<const BRepGraph &, const NCollection_DynamicArray_BRepGraph_FaceId &>()
     .constructor<const BRepGraph &, const NCollection_DynamicArray_BRepGraph_FaceId &, const uint32_t>()

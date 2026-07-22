@@ -217,6 +217,12 @@ def test_write_manifest_emits_v2_schema_discriminator_and_template_typedefs(
   manifest_path = write_manifest(discovered, str(tmp_path), tuInfo=tu_info)
   with open(manifest_path) as f:
     manifest = json.load(f)
+  assert set(manifest) == {
+    "schema",
+    "symbols",
+    "declarations",
+    "template_typedefs",
+  }
   assert manifest["schema"] == NCOLLECTION_MANIFEST_SCHEMA
   assert manifest["template_typedefs"] == {
     "TColgp_Array1OfPnt": "NCollection_Array1_gp_Pnt",

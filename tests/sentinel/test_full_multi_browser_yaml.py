@@ -35,8 +35,65 @@ import pytest
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+FULL_YAML = REPO_ROOT / "build-configs" / "full.yml"
 FULL_MULTI_YAML = REPO_ROOT / "build-configs" / "full_multi.yml"
 BROWSER_YAML = REPO_ROOT / "build-configs" / "full_multi_browser.yml"
+
+CONTRIBUTOR_SYMBOLS = frozenset({
+    "BRepApprox_TheComputeLineBezierOfApprox",
+    "BRepApprox_TheComputeLineOfApprox",
+    "GccAna_Circ2d2TanOn",
+    "GccAna_Circ2d2TanRad",
+    "GccAna_Circ2d3Tan",
+    "GccAna_Circ2dTanCen",
+    "GccAna_Circ2dTanOnRad",
+    "GccAna_Lin2d2Tan",
+    "GccAna_Lin2dTanObl",
+    "GccAna_Lin2dTanPar",
+    "GccAna_Lin2dTanPer",
+    "GccEnt",
+    "Geom2dGcc_Circ2d2TanOn",
+    "Geom2dGcc_Circ2d2TanOnGeo",
+    "Geom2dGcc_Circ2d2TanOnIter",
+    "Geom2dGcc_Circ2d2TanRad",
+    "Geom2dGcc_Circ2d2TanRadGeo",
+    "Geom2dGcc_Circ2d3Tan",
+    "Geom2dGcc_Circ2d3TanIter",
+    "Geom2dGcc_Circ2dTanCen",
+    "Geom2dGcc_Circ2dTanCenGeo",
+    "Geom2dGcc_Circ2dTanOnRad",
+    "Geom2dGcc_Circ2dTanOnRadGeo",
+    "Geom2dGcc_Lin2d2Tan",
+    "Geom2dGcc_Lin2d2TanIter",
+    "Geom2dGcc_Lin2dTanObl",
+    "Geom2dGcc_Lin2dTanOblIter",
+    "GeomInt_TheComputeLineBezierOfWLApprox",
+    "GeomInt_TheComputeLineOfWLApprox",
+    "ProjLib",
+    "ProjLib_CompProjectedCurve",
+    "ProjLib_ComputeApprox",
+    "ProjLib_ComputeApproxOnPolarSurface",
+    "ProjLib_Cone",
+    "ProjLib_Cylinder",
+    "ProjLib_Plane",
+    "ProjLib_PrjFunc",
+    "ProjLib_PrjResolve",
+    "ProjLib_ProjectOnPlane",
+    "ProjLib_ProjectOnSurface",
+    "ProjLib_ProjectedCurve",
+    "ProjLib_Projector",
+    "ProjLib_Sphere",
+    "ProjLib_Torus",
+})
+
+UNBINDABLE_HANDLE_ALIASES = frozenset({
+    "IMeshData_ICurveArrayAdaptorHandle",
+    "IMeshData_ICurveHandle",
+    "IMeshData_IEdgeHandle",
+    "IMeshData_IFaceHandle",
+    "IMeshData_IPCurveHandle",
+    "IMeshData_IWireHandle",
+})
 
 # Allowed scope delta vs full_multi.yml. Empty by design — the browser
 # variant is a *flag* delta, not a scope delta. Add entries here only
@@ -52,6 +109,13 @@ def browser_yaml_config() -> dict:
             f"docs/research/ocjs-replicad-multi-link-warning-audit.md."
         )
     return yaml.safe_load(BROWSER_YAML.read_text())
+
+
+@pytest.fixture(scope="module")
+def full_yaml_config() -> dict:
+    if not FULL_YAML.exists():
+        pytest.fail(f"full.yml missing at {FULL_YAML}.")
+    return yaml.safe_load(FULL_YAML.read_text())
 
 
 @pytest.fixture(scope="module")
@@ -150,3 +214,36 @@ class TestBrowserBuildIdentity:
             "If intentional, add the delta to BROWSER_SCOPE_EXEMPT in this "
             "file with a one-line rationale."
         )
+
+    def test_should_keep_all_full_build_symbol_sets_equal_and_retain_bindable_contributor_symbols(
+        self,
+        browser_yaml_config: dict,
+        full_multi_yaml_config: dict,
+        full_yaml_config: dict,
+    ) -> None:
+        symbol_sets = {
+            name: frozenset(
+                entry["symbol"] for entry in config["mainBuild"]["bindings"]
+            )
+            for name, config in {
+                "single": full_yaml_config,
+                "multi": full_multi_yaml_config,
+                "browser": browser_yaml_config,
+            }.items()
+        }
+
+        assert symbol_sets["single"] == symbol_sets["multi"] == symbol_sets["browser"]
+        for name, symbols in symbol_sets.items():
+            assert len(symbols) == 4_475, (
+                f"{name} full-build config has {len(symbols)} symbols; expected 4,475"
+            )
+            assert CONTRIBUTOR_SYMBOLS <= symbols, (
+                f"{name} full-build config is missing contributor symbols: "
+                f"{sorted(CONTRIBUTOR_SYMBOLS - symbols)}"
+            )
+            selected_aliases = UNBINDABLE_HANDLE_ALIASES & symbols
+            assert not selected_aliases, (
+                f"{name} full-build config selects non-bindable handle aliases: "
+                f"{sorted(selected_aliases)}"
+            )
+        assert len(CONTRIBUTOR_SYMBOLS) == 44
