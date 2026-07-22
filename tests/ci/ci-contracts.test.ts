@@ -369,8 +369,8 @@ describe('CI contracts', () => {
 
   it('should keep the final aggregate free of custom timing API code', () => {
     const ci = workflow('docker.yml');
-    expect(ci.jobs['ci-required'].permissions).toEqual({ contents: 'read' });
-    expect(ci.jobs['ci-required'].steps).toHaveLength(1);
+    expect(ci.jobs['ci-gate'].permissions).toEqual({ contents: 'read' });
+    expect(ci.jobs['ci-gate'].steps).toHaveLength(1);
     const source = fs.readFileSync(path.join(ROOT, '.github/workflows/docker.yml'), 'utf8');
     expect(source).not.toContain('Summarize workflow timing');
     expect(source).not.toContain('/actions/runs/${process.env.GITHUB_RUN_ID}/jobs');

@@ -107,14 +107,14 @@ The bare-default column is only relevant if you invoke `build-wasm.sh` without `
 
 | Responsibility | Owner |
 | --- | --- |
-| Source, workflow, shell, Python, ST/MT, bindgen, browser, package, template, and docs-candidate tests | `.github/workflows/docker.yml` → `ci-required` |
+| Source, workflow, shell, Python, ST/MT, bindgen, browser, package, template, and docs-candidate tests | `.github/workflows/docker.yml` → `CI gate` |
 | Dedicated docs typecheck, lint, prose, unit, build, and post-build budgets | `.github/workflows/docs-site.yml` → `docs-required` |
 | Branch and release GHCR images, SBOM/provenance, signing, npm publication, and registry verification | `.github/workflows/docker.yml` |
 | Vercel preview/production docs deployment | Vercel Git integration rooted at `docs-site/` |
 | GHCR branch/cache expiry without deleting releases or referrers | `.github/workflows/ghcr-retention.yml` |
 | Dependency and pinned-action updates | `.github/dependabot.yml` |
 
-Only `ci-required` is suitable as an always-present required check. The dedicated docs workflow is path-filtered; its `docs-required` aggregate is evidence for docs changes, not a repository-wide required check.
+Only `CI gate` is suitable as an always-present required check. The dedicated docs workflow is path-filtered; its `docs-required` aggregate is evidence for docs changes, not a repository-wide required check.
 
 The candidate workflow builds every Docker stage natively on amd64 and arm64 for pushes. Each final image links all six ST/MT outputs and passes the same runtime contract on its native host; bindgen-base regenerates, compiles, links, and runs its custom fixture on both hosts. Native toolchains are allowed to produce different bytes, so the tested amd64 outputs are the canonical npm inputs while both tested image digests are required for GHCR promotion. The workflow packs the amd64 outputs into one immutable tarball and gives the no-checkout npm job only that tarball plus its hashes and identity record. The exact tarball then runs as ST and MT in Chromium, Firefox, and WebKit; the broader starter-template integration suite remains Chromium-only. Pull requests and manual runs use the amd64 candidate matrix without publication. Push runs queue and are never canceled; superseded pull-request runs may be canceled.
 
@@ -161,7 +161,7 @@ git add package.json package-lock.json CHANGELOG.md
 git commit -m "release: 3.0.0"
 git push origin master
 
-# After ci-required succeeds for that exact commit:
+# After CI gate succeeds for that exact commit:
 git tag -a v3.0.0 -m "v3.0.0"
 git push origin v3.0.0
 ```

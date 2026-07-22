@@ -954,8 +954,8 @@ jobs:
             echo "- GHCR signatures: verified for all three promoted stages"
           } >> "$GITHUB_STEP_SUMMARY"
 
-  ci-required:
-    name: ci-required
+  ci-gate:
+    name: CI gate
     if: always()
     needs: [preflight, quality, candidate-gate, package-gate, registry-verify]
     runs-on: ubuntu-latest
