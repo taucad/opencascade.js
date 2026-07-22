@@ -69,12 +69,6 @@ CONTRIBUTOR_SYMBOLS = frozenset({
     "Geom2dGcc_Lin2dTanOblIter",
     "GeomInt_TheComputeLineBezierOfWLApprox",
     "GeomInt_TheComputeLineOfWLApprox",
-    "IMeshData_ICurveArrayAdaptorHandle",
-    "IMeshData_ICurveHandle",
-    "IMeshData_IEdgeHandle",
-    "IMeshData_IFaceHandle",
-    "IMeshData_IPCurveHandle",
-    "IMeshData_IWireHandle",
     "ProjLib",
     "ProjLib_CompProjectedCurve",
     "ProjLib_ComputeApprox",
@@ -90,6 +84,15 @@ CONTRIBUTOR_SYMBOLS = frozenset({
     "ProjLib_Projector",
     "ProjLib_Sphere",
     "ProjLib_Torus",
+})
+
+UNBINDABLE_HANDLE_ALIASES = frozenset({
+    "IMeshData_ICurveArrayAdaptorHandle",
+    "IMeshData_ICurveHandle",
+    "IMeshData_IEdgeHandle",
+    "IMeshData_IFaceHandle",
+    "IMeshData_IPCurveHandle",
+    "IMeshData_IWireHandle",
 })
 
 # Allowed scope delta vs full_multi.yml. Empty by design — the browser
@@ -212,7 +215,7 @@ class TestBrowserBuildIdentity:
             "file with a one-line rationale."
         )
 
-    def test_should_keep_all_full_build_symbol_sets_equal_and_retain_contributor_symbols(
+    def test_should_keep_all_full_build_symbol_sets_equal_and_retain_bindable_contributor_symbols(
         self,
         browser_yaml_config: dict,
         full_multi_yaml_config: dict,
@@ -231,8 +234,16 @@ class TestBrowserBuildIdentity:
 
         assert symbol_sets["single"] == symbol_sets["multi"] == symbol_sets["browser"]
         for name, symbols in symbol_sets.items():
+            assert len(symbols) == 4_475, (
+                f"{name} full-build config has {len(symbols)} symbols; expected 4,475"
+            )
             assert CONTRIBUTOR_SYMBOLS <= symbols, (
                 f"{name} full-build config is missing contributor symbols: "
                 f"{sorted(CONTRIBUTOR_SYMBOLS - symbols)}"
             )
-        assert len(CONTRIBUTOR_SYMBOLS) == 50
+            selected_aliases = UNBINDABLE_HANDLE_ALIASES & symbols
+            assert not selected_aliases, (
+                f"{name} full-build config selects non-bindable handle aliases: "
+                f"{sorted(selected_aliases)}"
+            )
+        assert len(CONTRIBUTOR_SYMBOLS) == 44

@@ -99,7 +99,6 @@ class SymbolResolution:
   satisfied_by_compiled: frozenset[str]
   alias_resolved: dict[str, str] = field(default_factory=dict)
   builtin: frozenset[str] = frozenset()
-  zero_bindable: dict[str, dict[str, str]] = field(default_factory=dict)
   truly_missing: frozenset[str] = frozenset()
 
 
@@ -172,31 +171,6 @@ def load_ncollection_alias_index(build_dir: str) -> dict[str, str]:
   return dict(typedef_aliases)
 
 
-def load_zero_bindable_symbols(build_dir: str) -> dict[str, dict[str, str]]:
-  """Load structurally classified public aliases with no distinct TypeID."""
-  manifest_path = os.path.join(build_dir, "ncollection-manifest.json")
-  if not os.path.isfile(manifest_path):
-    return {}
-  with open(manifest_path) as f:
-    manifest = json.load(f)
-  schema = manifest.get("schema")
-  if schema != NCOLLECTION_MANIFEST_SCHEMA:
-    raise ManifestSchemaError(
-      f"ncollection-manifest.json schema {schema!r} != "
-      f"{NCOLLECTION_MANIFEST_SCHEMA!r}; regenerate via "
-      "`pnpm nx run ocjs:generate`"
-    )
-  entries = manifest.get("zero_bindable")
-  if entries is None:
-    return {}
-  if not isinstance(entries, dict):
-    raise ManifestSchemaError(
-      "ncollection-manifest.json v2 `zero_bindable` field must be an object; "
-      "regenerate via `pnpm nx run ocjs:generate`"
-    )
-  return dict(entries)
-
-
 def builtin_binding_symbols(build_dir: str) -> frozenset[str]:
   """Return every Embind registration name from the `bind-symbols` NX
   stage's `additional-bind-symbols.json` manifest.
@@ -253,7 +227,6 @@ def resolve_requested_symbols(
   compiled: set[str],
   alias_index: dict[str, str],
   builtins: frozenset[str],
-  zero_bindable: dict[str, dict[str, str]] | None = None,
 ) -> SymbolResolution:
   """Partition `requested` across the four resolution mechanisms.
 
@@ -269,9 +242,7 @@ def resolve_requested_symbols(
   satisfied: set[str] = set()
   alias_resolved: dict[str, str] = {}
   builtin_hits: set[str] = set()
-  zero_bindable_hits: dict[str, dict[str, str]] = {}
   truly_missing: set[str] = set()
-  zero_bindable = zero_bindable or {}
   for sym in requested:
     if sym in compiled:
       satisfied.add(sym)
@@ -283,14 +254,10 @@ def resolve_requested_symbols(
     if sym in builtins:
       builtin_hits.add(sym)
       continue
-    if sym in zero_bindable:
-      zero_bindable_hits[sym] = zero_bindable[sym]
-      continue
     truly_missing.add(sym)
   return SymbolResolution(
     satisfied_by_compiled=frozenset(satisfied),
     alias_resolved=alias_resolved,
     builtin=frozenset(builtin_hits),
-    zero_bindable=zero_bindable_hits,
     truly_missing=frozenset(truly_missing),
   )

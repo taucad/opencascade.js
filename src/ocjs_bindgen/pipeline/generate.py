@@ -116,14 +116,10 @@ def filterClasses(child, customBuild):
 _FILTERED_TEMPLATE_TYPEDEFS = frozenset({
   # NOTE: `Handle_math_NotSquare` / `Handle_math_SingularMatrix` /
   # `Handle_Standard_Type` were previously listed here as name-by-name
-  # band-aids. They are now filtered structurally at the YAML link manifest
-  # level by `scripts/enumerate-symbols.py::collect_symbols` (drop
-  # `Handle_X` typedefs whose underlying type is `opencascade::handle<X>`
-  # when X is bound — the class binding emits the smart_ptr that
-  # registers the JS name "Handle_X"). The `.cpp` files are still
-  # generated and compiled here, but the link step drops them because
-  # they are absent from the YAML symbol list (see
-  # `src/buildFromYaml.py::shouldProcessSymbol`).
+  # band-aids. `isHandleTemplateTypedef` now rejects every smart-handle
+  # typedef before code generation, and the enumerator applies the same
+  # predicate before writing YAML. The pointee's `smart_ptr` binding owns
+  # the canonical C++ TypeID, so no alias fragment or selection is emitted.
   "TColStd_PackedMapOfInteger",
   "TColStd_SequenceOfAddress",
   "TopTools_IndexedDataMapOfShapeAddress",

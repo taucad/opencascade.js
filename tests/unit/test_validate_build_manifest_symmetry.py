@@ -161,7 +161,7 @@ def symmetry_build(tmp_path):
     "TColgp_Array1OfPnt",
     "TopTools_ListOfShape",
     "TopoDS",
-    "SomeClass_That_Was_Never_Compiled",
+    "IMeshData_IPCurveHandle",
   ]
   return build_dir, requested
 
@@ -231,7 +231,7 @@ def test_validate_symbols_passes_iff_truly_missing_empty(symmetry_build) -> None
   }
   failing = vb.validate_symbols(failing_config, build_dir)
   assert failing["pass"] is False
-  assert failing["missing"] == ["SomeClass_That_Was_Never_Compiled"]
+  assert failing["missing"] == ["IMeshData_IPCurveHandle"]
 
   passing_config = {
     "mainBuild": {
@@ -239,7 +239,7 @@ def test_validate_symbols_passes_iff_truly_missing_empty(symmetry_build) -> None
       "bindings": [
         {"symbol": s}
         for s in requested
-        if s != "SomeClass_That_Was_Never_Compiled"
+        if s != "IMeshData_IPCurveHandle"
       ],
     },
   }
@@ -269,7 +269,7 @@ def test_validate_symbols_emits_v3_manifest_shape(symmetry_build) -> None:
   }
   result = vb.validate_symbols(config, build_dir)
 
-  for field_name in (
+  assert set(result) == {
     "requested",
     "compiled",
     "missing",
@@ -277,8 +277,7 @@ def test_validate_symbols_emits_v3_manifest_shape(symmetry_build) -> None:
     "builtin",
     "extra_compiled",
     "pass",
-  ):
-    assert field_name in result, f"manifest field missing: {field_name}"
+  }
 
   # alias_resolved entries are {alias, canonical} pairs (sorted by alias)
   aliases = [entry["alias"] for entry in result["alias_resolved"]]

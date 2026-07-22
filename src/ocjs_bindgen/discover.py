@@ -899,28 +899,6 @@ def _serialise_template_typedef_aliases(tuInfo, discovered):
     return out
 
 
-def _serialise_zero_bindable_typedefs(tuInfo):
-    """Record public aliases that cannot own an independent Embind TypeID."""
-    from ocjs_bindgen.filters.typedefs import isHandleTemplateTypedef
-    from ocjs_bindgen.naming import getClassJsPublicName
-
-    out = {}
-    for typedef in getattr(tuInfo, "templateTypedefs", []) or []:
-        if not isHandleTemplateTypedef(typedef):
-            continue
-        canonical = typedef.underlying_typedef_type
-        get_canonical = getattr(canonical, "get_canonical", None)
-        if callable(get_canonical):
-            canonical = get_canonical()
-        spelling = getattr(canonical, "spelling", "") or typedef.underlying_typedef_type.spelling
-        spelling = spelling.replace("occ::handle<", "opencascade::handle<")
-        out[getClassJsPublicName(typedef)] = {
-            "canonical": spelling,
-            "reason": "canonical-handle-alias",
-        }
-    return out
-
-
 def write_manifest(discovered, build_dir, tuInfo=None):
     """Write the NCollection manifest JSON for the link step.
 
@@ -952,7 +930,6 @@ def write_manifest(discovered, build_dir, tuInfo=None):
         "symbols": sorted(entry[0] for entry in discovered),
         "declarations": [],
         "template_typedefs": {},
-        "zero_bindable": {},
     }
     for entry in sorted(discovered):
         mangled, container, args, sources = entry
@@ -965,8 +942,6 @@ def write_manifest(discovered, build_dir, tuInfo=None):
     if tuInfo is not None:
         typedef_aliases = _serialise_template_typedef_aliases(tuInfo, discovered)
         manifest["template_typedefs"] = dict(sorted(typedef_aliases.items()))
-        zero_bindable = _serialise_zero_bindable_typedefs(tuInfo)
-        manifest["zero_bindable"] = dict(sorted(zero_bindable.items()))
         # Diagnostic: surface the producer-side counts so silent drops
         # (e.g. headers unparseable in this env) are visible in the
         # generate log without having to instrument downstream.

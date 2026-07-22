@@ -33,9 +33,6 @@ from ocjs_bindgen.link.manifest_registry import (
     load_ncollection_alias_index as _load_ncollection_alias_index,
 )
 from ocjs_bindgen.link.manifest_registry import (
-    load_zero_bindable_symbols as _load_zero_bindable_symbols,
-)
-from ocjs_bindgen.link.manifest_registry import (
     resolve_requested_symbols as _resolve_requested_symbols,
 )
 
@@ -276,13 +273,9 @@ def verifyBindings(bindings, libraryBasePath) -> bool:
     return
   alias_index = _load_ncollection_alias_index(libraryBasePath)
   builtins = _builtin_binding_symbols(libraryBasePath)
-  zero_bindable = _load_zero_bindable_symbols(libraryBasePath)
-  resolution = _resolve_requested_symbols(
-    missing, compiled, alias_index, builtins, zero_bindable
-  )
+  resolution = _resolve_requested_symbols(missing, compiled, alias_index, builtins)
   alias_resolved = resolution.alias_resolved
   builtin_hits = resolution.builtin
-  zero_bindable_hits = resolution.zero_bindable
   truly_missing = resolution.truly_missing
 
   if alias_resolved:
@@ -308,18 +301,6 @@ def verifyBindings(bindings, libraryBasePath) -> bool:
       print(f"  - {name} (builtin)", flush=True)
     if len(builtin_hits) > 20:
       print(f"  ... and {len(builtin_hits) - 20} more", flush=True)
-
-  if zero_bindable_hits:
-    print(
-      f"INFO: {len(zero_bindable_hits)} of {len(bindings)} requested bindings "
-      "are structurally zero-bindable aliases with no independent Embind TypeID:",
-      flush=True,
-    )
-    for name, metadata in sorted(zero_bindable_hits.items())[:20]:
-      print(
-        f"  - {name} -> {metadata['canonical']} ({metadata['reason']})",
-        flush=True,
-      )
 
   if truly_missing:
     # V10 — hard-fail unconditionally. Phase 1's `resolve_requested_symbols`

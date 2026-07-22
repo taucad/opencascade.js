@@ -33,7 +33,6 @@ from ocjs_bindgen.link.manifest_registry import (  # noqa: E402
     builtin_binding_symbols,
     collect_compiled_symbols,
     load_ncollection_alias_index,
-    load_zero_bindable_symbols,
     resolve_requested_symbols,
 )
 from ocjs_bindgen.provenance.clock import build_datetime  # noqa: E402
@@ -90,11 +89,8 @@ def validate_symbols(config, build_dir):
     compiled = collect_compiled_symbols(build_dir)
     alias_index = load_ncollection_alias_index(build_dir)
     builtins = builtin_binding_symbols(build_dir)
-    zero_bindable = load_zero_bindable_symbols(build_dir)
     requested = {b["symbol"] for b in _all_requested_bindings(config)}
-    resolution = resolve_requested_symbols(
-        requested, compiled, alias_index, builtins, zero_bindable
-    )
+    resolution = resolve_requested_symbols(requested, compiled, alias_index, builtins)
 
     alias_canonicals = {canonical for canonical in resolution.alias_resolved.values()}
     extra_compiled = len(compiled - requested - alias_canonicals)
@@ -108,10 +104,6 @@ def validate_symbols(config, build_dir):
             for a, c in sorted(resolution.alias_resolved.items())
         ],
         "builtin": sorted(resolution.builtin),
-        "zero_bindable": [
-            {"symbol": symbol, **metadata}
-            for symbol, metadata in sorted(resolution.zero_bindable.items())
-        ],
         "extra_compiled": extra_compiled,
         "pass": not resolution.truly_missing,
     }
