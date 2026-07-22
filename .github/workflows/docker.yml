@@ -897,30 +897,31 @@ jobs:
           npm init --yes >/dev/null
           npm install --ignore-scripts --no-audit --no-fund "@taucad/opencascade.js@$VERSION"
           npm audit signatures
-          node --input-type=module -e "
-            import fs from 'node:fs';
-            import path from 'node:path';
-            import { fileURLToPath } from 'node:url';
-            import init from '@taucad/opencascade.js';
-            import initMulti from '@taucad/opencascade.js/multi';
-            const root = path.dirname(fileURLToPath(import.meta.resolve('@taucad/opencascade.js/wasm')));
-            for (const load of [init, initMulti]) {
-              const oc = await load({ locateFile: file => path.join(root, file) });
-              const box = new oc.BRepPrimAPI_MakeBox(1, 2, 3);
-              const shape = box.Shape();
-              try {
-                if (shape.IsNull()) process.exit(1);
-              } finally {
-                shape.delete();
-                box.delete();
-                oc.PThread?.terminateAllThreads?.();
-              }
+          cat > verify-runtime.mjs <<'NODE'
+          import fs from 'node:fs';
+          import path from 'node:path';
+          import { fileURLToPath } from 'node:url';
+          import init from '@taucad/opencascade.js';
+          import initMulti from '@taucad/opencascade.js/multi';
+          const root = path.dirname(fileURLToPath(import.meta.resolve('@taucad/opencascade.js/wasm')));
+          for (const load of [init, initMulti]) {
+            const oc = await load({ locateFile: file => path.join(root, file) });
+            const box = new oc.BRepPrimAPI_MakeBox(1, 2, 3);
+            const shape = box.Shape();
+            try {
+              if (shape.IsNull()) process.exit(1);
+            } finally {
+              shape.delete();
+              box.delete();
+              oc.PThread?.terminateAllThreads?.();
             }
-            for (const name of ['opencascade_full.provenance.json', 'opencascade_full_multi.provenance.json']) {
-              const p = JSON.parse(fs.readFileSync(path.join(root, name)));
-              if (p.source.opencascadejsCommit !== process.env.FULL_SHA) process.exit(1);
-            }
-          "
+          }
+          for (const name of ['opencascade_full.provenance.json', 'opencascade_full_multi.provenance.json']) {
+            const p = JSON.parse(fs.readFileSync(path.join(root, name)));
+            if (p.source.opencascadejsCommit !== process.env.FULL_SHA) process.exit(1);
+          }
+          NODE
+          node verify-runtime.mjs
           cd ..
           for stage in final-single final-multi bindgen-base; do
             case "$stage" in

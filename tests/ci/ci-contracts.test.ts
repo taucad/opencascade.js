@@ -365,6 +365,13 @@ describe('CI contracts', () => {
     expect(source).not.toContain('OCJS_CONFIG=debug');
   });
 
+  it('should launch the registry runtime check without worker-unsafe Node flags', () => {
+    const source = fs.readFileSync(path.join(ROOT, '.github/workflows/docker.yml'), 'utf8');
+    expect(source).toContain("cat > verify-runtime.mjs <<'NODE'");
+    expect(source).toContain('node verify-runtime.mjs');
+    expect(source).not.toContain('node --input-type=module -e');
+  });
+
   it('should run generated-source checks before the dist-only package gate', () => {
     const ci = workflow('docker.yml');
     const packageGate = ci.jobs['package-assemble'].steps.find(
