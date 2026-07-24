@@ -145,6 +145,21 @@ describe('CI contracts', () => {
     });
   });
 
+  it('should fast-forward the upstream PR branch without triggering duplicate CI', () => {
+    const mirror = workflow('mirror-upstream-pr-head.yml');
+    const step = mirror.jobs.mirror.steps.find(
+      ({ name }: { name?: string }) => name === 'Fast-forward upstream PR branch',
+    );
+
+    expect(mirror.on.push.branches).toEqual(['main']);
+    expect(mirror.permissions).toEqual({ contents: 'write' });
+    expect(mirror.jobs.mirror.if).toBe("github.repository == 'taucad/opencascade.js'");
+    expect(step.env.GH_TOKEN).toBe('${{ github.token }}');
+    expect(step.run).toContain('git/refs/heads/occt-v8-emscripten-5');
+    expect(step.run).toContain('-f sha="${GITHUB_SHA}"');
+    expect(step.run).toContain('-F force=false');
+  });
+
   it('should keep every ESLint relative import in clean checkouts', () => {
     for (const relative of [
       'tools/eslint-plugin/index.js',
