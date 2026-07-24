@@ -168,6 +168,37 @@ def test_patched_libembind_contains_canonical_hunks(tmp_path: Path) -> None:
     )
 
 
+def test_signature_order_is_reserved_before_dependency_resolution(
+    tmp_path: Path,
+) -> None:
+    """Same-arity dispatch order must follow registration, not callback order."""
+    source = _apply_patch(tmp_path).read_text()
+    sections = (
+        source[
+            source.index("_embind_register_class_function:"):
+            source.index("_embind_register_class_class_function__deps:")
+        ],
+        source[
+            source.index("_embind_register_class_class_function:"):
+            source.index("_embind_register_class_class_property__deps:")
+        ],
+    )
+
+    for section in sections:
+        reserve = section.index("signaturesArray.push(rawSignatureArray)")
+        callback = section.index(
+            "whenDependentTypesAreResolved([], rawArgTypes"
+        )
+        resolve_in_place = section.index("rawSignatureArray[i] = signatureArray[i]")
+
+        assert reserve < callback < resolve_in_place
+        assert "signaturesArray.push(signatureArray)" not in section
+
+    instance_section = sections[0]
+    assert "if (undefined === method)" in instance_section
+    assert "method.className !== classType.name" not in instance_section
+
+
 def test_patched_libembind_has_no_forbidden_hunks(tmp_path: Path) -> None:
     """Rule 5 of the trailing-default-emission policy: no dispatcher precedence
     inversion. Hunks 5 (cross-arity type-aware fallback) and 6

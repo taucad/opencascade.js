@@ -453,7 +453,7 @@
    _embind_register_class_function: (rawClassType,
                                      methodName,
                                      argCount,
-@@ -1900,21 +2177,34 @@
+@@ -1900,21 +2177,42 @@
  
        var proto = classType.registeredClass.instancePrototype;
        var method = proto[methodName];
@@ -461,11 +461,15 @@
 +
 +      var rawSignatureArray = rawArgTypes.slice(2);
 +      var rawSignatureString = rawSignatureArray.join(', ');
-+      if (undefined === method || (undefined === method.overloadTable && method.className !== classType.name && method.signature === rawSignatureString)) {
-         // This is the first overload to be registered, OR we are replacing a
-         // function in the base class with a function in the derived class.
++      unboundTypesHandler.signature = rawSignatureString;
++      unboundTypesHandler.signatureArray = rawSignatureArray;
++      if (undefined === method) {
+-        // This is the first overload to be registered, OR we are replacing a
+-        // function in the base class with a function in the derived class.
++        // This is the first overload to be registered. Inherited methods take
++        // the signature-table path below so base/derived resolution timing
++        // cannot change whether the derived method is a dispatcher.
          unboundTypesHandler.argCount = argCount - 2;
-+        unboundTypesHandler.signature = rawSignatureString;
          unboundTypesHandler.className = classType.name;
          proto[methodName] = unboundTypesHandler;
 -      } else {
@@ -476,36 +480,41 @@
          // There was an existing function with the same name registered. Set up
          // a function overload routing table.
          ensureOverloadTable(proto, methodName, humanName);
-+        unboundTypesHandler.signature = rawSignatureString;
          proto[methodName].overloadTable[argCount - 2] = unboundTypesHandler;
 +      } else {
 +        ensureOverloadSignatureTable(proto, methodName, humanName, argCount - 2);
 +        proto[methodName].overloadTable[argCount - 2].signatures[rawSignatureString] = unboundTypesHandler;
++        // Reserve source-registration order before dependency callbacks run.
++        proto[methodName].overloadTable[argCount - 2].signaturesArray.push(rawSignatureArray);
        }
  
        whenDependentTypesAreResolved([], rawArgTypes, (argTypes) => {
          var memberFunction = craftInvokerFunction(humanName, argTypes, classType, rawInvoker, context, isAsync);
 +        var signatureArray = rawSignatureArray.map(a => cppTypeToJsType(a));
-+        var signatureString = signatureArray.join(', ');
++        // Preserve the reserved slot (and inherited references to it) while
++        // replacing raw type ids with their resolved JS dispatch types.
++        for (var i = 0; i < signatureArray.length; i++) {
++          rawSignatureArray[i] = signatureArray[i];
++        }
++        var signatureString = rawSignatureArray.join(', ');
  
          // Replace the initial unbound-handler-stub function with the
          // appropriate member function, now that all types are resolved. If
-@@ -1923,9 +2213,17 @@
+@@ -1923,9 +2213,16 @@
          if (undefined === proto[methodName].overloadTable) {
            // Set argCount in case an overload is registered later
            memberFunction.argCount = argCount - 2;
 +          memberFunction.signature = signatureString;
-+          memberFunction.signatureArray = signatureArray;
++          memberFunction.signatureArray = rawSignatureArray;
            proto[methodName] = memberFunction;
 -        } else {
 +        } else if (undefined === proto[methodName].overloadTable[argCount - 2].signatures) {
 +          memberFunction.signature = signatureString;
-+          memberFunction.signatureArray = signatureArray;
++          memberFunction.signatureArray = rawSignatureArray;
            proto[methodName].overloadTable[argCount - 2] = memberFunction;
 +        } else {
 +          delete proto[methodName].overloadTable[argCount - 2].signatures[rawSignatureString];
 +          proto[methodName].overloadTable[argCount - 2].signatures[signatureString] = memberFunction;
-+          proto[methodName].overloadTable[argCount - 2].signaturesArray.push(signatureArray);
          }
  
          return [];
@@ -519,16 +528,17 @@
    _embind_register_class_class_function: (rawClassType,
                                            methodName,
                                            argCount,
-@@ -2031,15 +2330,25 @@
+@@ -2031,15 +2330,27 @@
        }
  
        var proto = classType.registeredClass.constructor;
 +      var rawSignatureArray = rawArgTypes.slice(1);
 +      var rawSignatureString = rawSignatureArray.join(', ');
++      unboundTypesHandler.signature = rawSignatureString;
++      unboundTypesHandler.signatureArray = rawSignatureArray;
        if (undefined === proto[methodName]) {
          // This is the first function to be registered with this name.
          unboundTypesHandler.argCount = argCount-1;
-+        unboundTypesHandler.signature = rawSignatureString;
          proto[methodName] = unboundTypesHandler;
 -      } else {
 +      } else if (
@@ -538,34 +548,38 @@
          // There was an existing function with the same name registered. Set up
          // a function overload routing table.
          ensureOverloadTable(proto, methodName, humanName);
-+        unboundTypesHandler.signature = rawSignatureString;
          proto[methodName].overloadTable[argCount-1] = unboundTypesHandler;
 +      } else {
 +        ensureOverloadSignatureTable(proto, methodName, humanName, argCount - 1);
 +        proto[methodName].overloadTable[argCount-1].signatures[rawSignatureString] = unboundTypesHandler;
++        // Reserve source-registration order before dependency callbacks run.
++        proto[methodName].overloadTable[argCount-1].signaturesArray.push(rawSignatureArray);
        }
  
        whenDependentTypesAreResolved([], rawArgTypes, (argTypes) => {
-@@ -2048,11 +2357,21 @@
+@@ -2048,11 +2357,24 @@
          // go into an overload table.
          var invokerArgsArray = [argTypes[0] /* return value */, null /* no class 'this'*/].concat(argTypes.slice(1) /* actual params */);
          var func = craftInvokerFunction(humanName, invokerArgsArray, null /* no class 'this'*/, rawInvoker, fn, isAsync);
 +        var signatureArray = rawSignatureArray.map(a => cppTypeToJsType(a));
-+        var signatureString = signatureArray.join(', ');
++        // Preserve the reserved slot while resolving its raw type ids.
++        for (var i = 0; i < signatureArray.length; i++) {
++          rawSignatureArray[i] = signatureArray[i];
++        }
++        var signatureString = rawSignatureArray.join(', ');
          if (undefined === proto[methodName].overloadTable) {
            func.argCount = argCount-1;
 +          func.signature = signatureString;
-+          func.signatureArray = signatureArray;
++          func.signatureArray = rawSignatureArray;
            proto[methodName] = func;
 -        } else {
 +        } else if (undefined === proto[methodName].overloadTable[argCount-1].signatures) {
 +          func.signature = signatureString;
-+          func.signatureArray = signatureArray;
++          func.signatureArray = rawSignatureArray;
            proto[methodName].overloadTable[argCount-1] = func;
 +        } else {
 +          delete proto[methodName].overloadTable[argCount-1].signatures[rawSignatureString];
 +          proto[methodName].overloadTable[argCount-1].signatures[signatureString] = func;
-+          proto[methodName].overloadTable[argCount-1].signaturesArray.push(signatureArray);
          }
  
          if (classType.registeredClass.__derivedClasses) {
