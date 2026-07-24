@@ -37,8 +37,8 @@ routine release and is deliberately outside this skill.
    gh release list --limit 20
    gh run list --workflow docker.yml --limit 10
    npm view ocjs dist-tags versions --json
-   npx --yes vercel@56.5.0 project inspect opencascade-js
-   npx --yes vercel@56.5.0 list opencascade-js
+   npx --yes vercel@56.5.0 project inspect opencascade.js --scope taucad
+   npx --yes vercel@56.5.0 list --scope taucad --cwd .
    ```
 
 3. Report the checked version, pending plan files, open release PRs, registry
