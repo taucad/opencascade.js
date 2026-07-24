@@ -438,7 +438,7 @@ intentionally **not** rolled up into this hub:
 - API delta and migration: [`BREAKING_CHANGES.md`](BREAKING_CHANGES.md)
 - Version log: [`CHANGELOG.md`](CHANGELOG.md)
 - Build system / `mimalloc` default rationale: [`BUILD_SYSTEM.md`](BUILD_SYSTEM.md)
-- Modular ST/MT subpath packaging (`@taucad/opencascade.js` vs `/multi`): see the package MT guide above
+- Modular ST/MT subpath packaging (`ocjs` vs `/multi`): see the package MT guide above
 - Cross-origin isolation for browser threading (SAB + COOP/COEP): see the package MT guide above
 - Libembind overloading patch: [`src/patches/libembind-overloading.patch`](src/patches/libembind-overloading.patch)
 - Build YAML (MT): [`build-configs/full_multi.yml`](build-configs/full_multi.yml)

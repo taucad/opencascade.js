@@ -1,6 +1,6 @@
 ---
 title: Quickstart — npm
-description: Install @taucad/opencascade.js, render a 60×40×20 box with a 3 mm fillet, and export GLB.
+description: Install ocjs, render a 60×40×20 box with a 3 mm fillet, and export GLB.
 ---
 
 Target time: **4 minutes** from an empty directory to an orbit-controlled box
@@ -14,15 +14,15 @@ in your browser.
 ## 1. Install
 
 ```bash
-pnpm add @taucad/opencascade.js@beta three
+pnpm add ocjs@canary three
 pnpm add -D @types/three typescript
 ```
 
 ## 2. Initialise OCCT once
 
 ```typescript title="src/ocjs-init.ts"
-import init from '@taucad/opencascade.js';
-import wasmUrl from '@taucad/opencascade.js/wasm?url';
+import init from 'ocjs';
+import wasmUrl from 'ocjs/wasm?url';
 
 let ocPromise: ReturnType<typeof init> | undefined;
 export const getOc = () => (ocPromise ??= init({ locateFile: () => wasmUrl }));
@@ -56,7 +56,7 @@ exit so the C++ heap doesn't leak.
 ## 4. Export to GLB
 
 ```typescript title="src/shape-to-glb.ts"
-import type { TopoDS_Shape } from '@taucad/opencascade.js';
+import type { TopoDS_Shape } from 'ocjs';
 import { getOc } from './ocjs-init';
 
 export const shapeToGlb = async (shape: TopoDS_Shape): Promise<Uint8Array> => {
@@ -109,7 +109,7 @@ renderer.setAnimationLoop(() => renderer.render(scene, camera));
 
 Visit `localhost:5173` and you'll see a filleted gray box you can orbit.
 
-> **Want threading?** For batch meshing and boolean workloads, import `@taucad/opencascade.js/multi` instead of the default export. Browser deployments require COOP/COEP headers — see the [Multi-threaded build guide](../guides/multi-threading) and [Bundler & locateFile — Multi-threaded variant](../guides/bundler-locatefile#multi-threaded-variant).
+> **Want threading?** For batch meshing and boolean workloads, import `ocjs/multi` instead of the default export. Browser deployments require COOP/COEP headers — see the [Multi-threaded build guide](../guides/multi-threading) and [Bundler & locateFile — Multi-threaded variant](../guides/bundler-locatefile#multi-threaded-variant).
 
 ## Next steps
 

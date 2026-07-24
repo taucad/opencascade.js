@@ -11,7 +11,7 @@ of or is based on facilities provided by the Open CASCADE Technology software.
 
 ---
 
-This package, @taucad/opencascade.js, ships compiled object code derived from
+This package, ocjs, ships compiled object code derived from
 the Open CASCADE Technology libraries (https://www.opencascade.com/), used
 under the LGPL-2.1 with the Open CASCADE exception above. See LICENSE for the
 full text of the GNU Lesser General Public License, version 2.1.

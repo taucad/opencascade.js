@@ -9,7 +9,7 @@ export default defineConfig({
     format: 'es',
   },
   optimizeDeps: {
-    exclude: ['@taucad/opencascade.js', '@taucad/opencascade.js/multi'],
+    exclude: ['ocjs', 'ocjs/multi'],
   },
   server: {
     port: 3003,

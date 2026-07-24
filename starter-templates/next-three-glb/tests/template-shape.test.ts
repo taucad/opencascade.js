@@ -5,7 +5,7 @@
  * `starter-templates/<name>/tests/**` so the whole fork runs a single
  * vitest invocation — no per-template runner is wired). Assertions cover the
  * load-bearing surface a consumer first encounters: README presence, the
- * canonical `@taucad/opencascade.js` dep, the `ocjs-<name>` package name,
+ * canonical `ocjs` dep, the `ocjs-<name>` package name,
  * the optional CI-gated lockfile, and the canonical memoized-Promise
  * singleton in `lib/ocjs-init.ts`.
  */
@@ -39,16 +39,16 @@ describe(`starter-templates/${TEMPLATE_NAME} shape`, () => {
     expect(pkg.name).toBe(EXPECTED_PACKAGE_NAME);
   });
 
-  it('package.json depends on the scoped @taucad/opencascade.js, not the unscoped opencascade.js', () => {
+  it('package.json depends on ocjs, not the legacy opencascade.js', () => {
     const pkg = readPackageJson();
     const deps = { ...(pkg.dependencies ?? {}), ...(pkg.devDependencies ?? {}) };
     expect(
-      Object.prototype.hasOwnProperty.call(deps, '@taucad/opencascade.js'),
-      `package.json must list "@taucad/opencascade.js" as a dependency. Got keys: ${Object.keys(deps).join(', ')}`,
+      Object.prototype.hasOwnProperty.call(deps, 'ocjs'),
+      `package.json must list "ocjs" as a dependency. Got keys: ${Object.keys(deps).join(', ')}`,
     ).toBe(true);
     expect(
       Object.prototype.hasOwnProperty.call(deps, 'opencascade.js'),
-      'package.json must NOT list the unscoped "opencascade.js" — v3 uses the scoped fork @taucad/opencascade.js.',
+      'package.json must NOT list the unscoped "opencascade.js" — v3 uses the maintained ocjs package.',
     ).toBe(false);
   });
 

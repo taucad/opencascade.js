@@ -72,7 +72,7 @@ docker run --rm -it -v "$(pwd):/src" --entrypoint bash \
 
 | Tag family                  | Manifest list                 | Built on                                                                            |
 | --------------------------- | ----------------------------- | ----------------------------------------------------------------------------------- |
-| Branch, master, and release | `linux/amd64` + `linux/arm64` | `ubuntu-latest` (amd64) + `ubuntu-24.04-arm` (arm64), GitHub Actions native runners |
+| Branch, main, and release | `linux/amd64` + `linux/arm64` | `ubuntu-latest` (amd64) + `ubuntu-24.04-arm` (arm64), GitHub Actions native runners |
 
 Every push ships full manifest lists so Apple Silicon and ARM Linux hosts pull
 the native architecture transparently. CI links and smokes each image natively,
@@ -138,7 +138,7 @@ Diff the SBOM across image digests in CI to flag unexpected dep bumps.
 
 ## Image stages
 
-The [Dockerfile](https://github.com/taucad/opencascade.js/blob/master/Dockerfile)
+The [Dockerfile](https://github.com/taucad/opencascade.js/blob/main/Dockerfile)
 is multi-stage with five logical stages, three of which are published:
 
 | Stage                      | Published as       | Contents                                                                        |

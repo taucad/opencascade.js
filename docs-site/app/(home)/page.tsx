@@ -9,7 +9,7 @@ import { GITHUB_REPO_URL } from '../../lib/site';
 const personaCards = [
   {
     title: 'npm consumer',
-    description: 'Install `@taucad/opencascade.js@beta`, render a box, export STEP. 4 minutes.',
+    description: 'Install `ocjs@canary`, render a box, export STEP. 4 minutes.',
     href: '/docs/package/getting-started/quick-start-npm',
     cta: 'Start with npm',
     icon: 'lib:npm',
@@ -90,8 +90,8 @@ const v3Pillars = [
   },
 ] as const;
 
-const CHANGELOG_URL = `${GITHUB_REPO_URL}/blob/master/CHANGELOG.md`;
-const BREAKING_CHANGES_URL = `${GITHUB_REPO_URL}/blob/master/BREAKING_CHANGES.md`;
+const CHANGELOG_URL = `${GITHUB_REPO_URL}/blob/main/CHANGELOG.md`;
+const BREAKING_CHANGES_URL = `${GITHUB_REPO_URL}/blob/main/BREAKING_CHANGES.md`;
 
 const personaIconClass = (iconKind: 'brand' | 'lucide' | 'lucide-tinted'): string => {
   if (iconKind === 'brand') {

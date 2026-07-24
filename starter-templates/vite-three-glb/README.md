@@ -1,12 +1,12 @@
 # vite-three-glb
 
-Vite 6 + TS + three.js 0.180+ + `@taucad/opencascade.js@beta`. Builds a box-with-hole compound shape, meshes it to GLB via `RWGltf_CafWriter`, and renders it through three.js with `OrbitControls`.
+Vite 6 + TS + three.js 0.180+ + `ocjs@canary`. Builds a box-with-hole compound shape, meshes it to GLB via `RWGltf_CafWriter`, and renders it through three.js with `OrbitControls`.
 
 ## Stack
 
 - Vite 6 (`pnpm dev` → http://localhost:5173)
 - three.js 0.180+ (GLTFLoader + OrbitControls from `three/examples/jsm`)
-- `@taucad/opencascade.js@beta` loaded once via a memoized `Promise` in `src/ocjs-init.ts`
+- `ocjs@canary` loaded once via a memoized `Promise` in `src/ocjs-init.ts`
 
 ## Files
 

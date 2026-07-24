@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 export const DIST_FILES = [
+  'api-reference.json',
   'opencascade_full.build-manifest.json',
   'opencascade_full.d.ts',
   'opencascade_full.js',
@@ -60,13 +61,13 @@ if (process.argv[1] === new URL(import.meta.url).pathname) {
     if (packJson !== -1) {
       const packed = JSON.parse(fs.readFileSync(process.argv[packJson + 1], 'utf8'));
       validateExactFiles(packed[0].files.map(({ path: file }) => file), PACKAGE_FILES, 'npm tarball');
-      console.log('npm tarball contains exactly 18 files');
+      console.log('npm tarball contains exactly 19 files');
       process.exit(0);
     }
     const directory = path.resolve(process.argv[2] ?? 'dist');
     validateDist(directory);
     if (process.env.OCJS_EXPECTED_SHA) validateProvenance(directory, process.env.OCJS_EXPECTED_SHA);
-    console.log('candidate dist contains exactly 12 non-empty files');
+    console.log('candidate dist contains exactly 13 non-empty files');
   } catch (error) {
     console.error(error.message);
     process.exit(1);

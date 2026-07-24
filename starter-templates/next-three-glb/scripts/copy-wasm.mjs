@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * postinstall — copy `opencascade_full.wasm` from the resolved
- * `@taucad/opencascade.js` package into `public/` so Next 15 can serve it
+ * `ocjs` package into `public/` so Next 15 can serve it
  * as a static asset under `/opencascade_full.wasm`.
  *
  * We resolve via `import.meta.resolve` rather than hard-coding
@@ -19,7 +19,7 @@ const PROJECT_ROOT = path.resolve(__dirname, '..');
 const PUBLIC_DIR = path.join(PROJECT_ROOT, 'public');
 const DEST = path.join(PUBLIC_DIR, 'opencascade_full.wasm');
 
-const SRC_URL = import.meta.resolve('@taucad/opencascade.js/wasm');
+const SRC_URL = import.meta.resolve('ocjs/wasm');
 const SRC = fileURLToPath(SRC_URL);
 
 await fs.mkdir(PUBLIC_DIR, { recursive: true });

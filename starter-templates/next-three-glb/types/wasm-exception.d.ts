@@ -1,6 +1,6 @@
 // WebAssembly JS Exception Handling — `WebAssembly.Exception` is implemented
 // in every modern browser and Node 22+, but the TS 5.9 `lib.dom.d.ts` does
-// not yet ship the declaration. `@taucad/opencascade.js` uses
+// not yet ship the declaration. `ocjs` uses
 // `WebAssembly.Exception` as the canonical OCCT failure carrier, so we
 // augment the ambient namespace here. Drop this block once TS `lib.dom`
 // catches up to the WebAssembly exception-handling proposal.

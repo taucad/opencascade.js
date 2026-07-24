@@ -1,6 +1,6 @@
 {
   "schema": 2,
-  "project": "@taucad/opencascade.js",
+  "project": "ocjs",
   "generatedAt": "2026-05-14T10:46:52.392Z",
   "manifest": {
     "wasm_bytes": 41127360,

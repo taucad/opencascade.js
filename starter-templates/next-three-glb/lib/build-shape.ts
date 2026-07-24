@@ -1,4 +1,4 @@
-import type { OpenCascadeInstance, TopoDS_Shape } from '@taucad/opencascade.js';
+import type { OpenCascadeInstance, TopoDS_Shape } from 'ocjs';
 
 /**
  * Build a representative compound: a box with a cylindrical hole cut through it.

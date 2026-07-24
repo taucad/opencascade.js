@@ -45,5 +45,60 @@
       "{projectRoot}/src/ocjs_bindgen/ast/**/*",
       "{projectRoot}/src/ocjs_bindgen/config/**/*.py"
     ]
+  },
+  "release": {
+    "groups": {
+      "ocjs": {
+        "projects": ["ocjs"],
+        "projectsRelationship": "fixed",
+        "versionPlans": {
+          "ignorePatternsForPlanCheck": [
+            ".agents/**",
+            "docs-site/**",
+            "docs/**",
+            "tests/**",
+            "starter-templates/**",
+            "experiments/**",
+            ".github/ISSUE_TEMPLATE/**",
+            ".github/PULL_REQUEST_TEMPLATE.md",
+            ".github/workflows/ghcr-retention.yml",
+            ".github/workflows/mirror-upstream-pr-head.yml",
+            "BENCHMARKS.md",
+            "CONTRIBUTING.md",
+            "MAINTAINER.md",
+            "SECURITY.md"
+          ]
+        },
+        "version": {
+          "specifierSource": "version-plans",
+          "currentVersionResolver": "disk",
+          "deleteVersionPlans": true
+        },
+        "changelog": {
+          "file": "CHANGELOG.md",
+          "createRelease": false,
+          "renderOptions": {
+            "authors": true,
+            "commitReferences": true,
+            "versionTitleDate": true
+          }
+        },
+        "releaseTag": {
+          "pattern": "v{version}",
+          "requireSemver": true,
+          "strictPreid": true
+        }
+      }
+    },
+    "changelog": {
+      "workspaceChangelog": false,
+      "projectChangelogs": false
+    },
+    "git": {
+      "commit": false,
+      "tag": false,
+      "push": false,
+      "stageChanges": false
+    }
   }
 }

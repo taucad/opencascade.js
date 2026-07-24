@@ -189,36 +189,35 @@
         "command": "echo 'Build complete. Outputs in dist/'"
       }
     },
-    "docs": {
+    "api-reference": {
       "executor": "nx:run-commands",
       "cache": true,
       "inputs": [
-        "{projectRoot}/scripts/generate-docs.mjs",
+        "{projectRoot}/scripts/generate-api-reference.mjs",
         "{projectRoot}/scripts/lib/dts-parser.mjs",
+        "{projectRoot}/scripts/lib/source-date-epoch.mjs",
+        "{projectRoot}/build/bindings/**/*.d.ts.json",
         "{projectRoot}/dist/opencascade_full.d.ts",
-        "{projectRoot}/dist/opencascade_full.build-manifest.json"
+        "{projectRoot}/dist/opencascade_full.js.symbols",
+        "{projectRoot}/dist/opencascade_full.build-manifest.json",
+        "{projectRoot}/dist/opencascade_full.provenance.json",
+        "{projectRoot}/package.json",
+        { "env": "OCJS_EXPECTED_SHA" },
+        { "env": "OCJS_PACKAGE_VERSION" },
+        { "env": "OCJS_SOURCE_COMMIT" },
+        { "env": "SOURCE_DATE_EPOCH" }
       ],
-      "outputs": ["{projectRoot}/docs-site/data/"],
+      "outputs": ["{projectRoot}/dist/api-reference.json"],
       "options": {
-        "command": "node scripts/generate-docs.mjs",
+        "command": "node scripts/generate-api-reference.mjs",
         "cwd": "{projectRoot}"
       }
     },
-    "docs-api-data": {
+    "docs-sync": {
       "executor": "nx:run-commands",
-      "cache": true,
-      "dependsOn": ["docs"],
-      "inputs": [
-        "{projectRoot}/docs-site/scripts/generate-api-data.mjs",
-        "{projectRoot}/docs-site/data/index.json"
-      ],
-      "outputs": [
-        "{projectRoot}/docs-site/data/api-tree.json",
-        "{projectRoot}/docs-site/data/api-type-index.json",
-        "{projectRoot}/docs-site/data/api-search-index.json"
-      ],
+      "cache": false,
       "options": {
-        "command": "node docs-site/scripts/generate-api-data.mjs --in ./data",
+        "command": "node docs-site/scripts/sync-api-reference.mjs",
         "cwd": "{projectRoot}"
       }
     },

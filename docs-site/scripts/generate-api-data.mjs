@@ -208,7 +208,9 @@ const main = async () => {
   const indexPath = join(inDir, 'index.json');
   const indexRaw = await fs.readFile(indexPath, 'utf8').catch((err) => {
     console.error(`generate-api-data: cannot read ${indexPath}: ${err.message}`);
-    console.error('Run `pnpm nx run ocjs:docs` from the fork root to regenerate the data shards first.');
+    console.error(
+      'Run `npm exec nx -- run ocjs:docs-sync` from the fork root to regenerate the data shards first.',
+    );
     process.exit(1);
   });
   const index = JSON.parse(indexRaw);

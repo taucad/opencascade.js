@@ -1,4 +1,4 @@
-import type { OpenCascadeInstance, TopoDS_Shape } from '@taucad/opencascade.js';
+import type { OpenCascadeInstance, TopoDS_Shape } from 'ocjs';
 
 export type ShapeKind = 'box' | 'sphere' | 'cylinder';
 

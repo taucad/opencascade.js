@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { parse } from 'yaml';
 import { branchSlug, deriveRelease } from '../../scripts/ci-release.mjs';
+import { validateRequestedVersion } from '../../scripts/prepare-release.mjs';
 import { DIST_FILES, PACKAGE_FILES, validateExactFiles } from '../../scripts/package-candidate.mjs';
 import { selectVersions } from '../../scripts/ghcr-retention.mjs';
 
@@ -22,57 +23,123 @@ describe('CI contracts', () => {
       refName: 'feature/npm',
       sha: SHA,
       commitEpoch: EPOCH,
-      packageVersion: '3.0.0-beta.3',
+      packageVersion: '3.0.0-beta.0',
     });
     expect(feature).toMatchObject({
-      version: '3.0.0-beta-d5736f09-20260507',
+      version: '3.0.0-canary.d5736f09',
       channel: 'canary',
       branchSlug: 'feature-npm',
-      publish: true,
+      npmPublish: true,
+      ghcrPromote: true,
     });
     expect(deriveRelease({
       event: 'push',
-      ref: 'refs/heads/master',
-      refName: 'master',
+      ref: 'refs/heads/main',
+      refName: 'main',
       sha: SHA,
       commitEpoch: EPOCH,
-      packageVersion: '3.0.0-beta.3',
-    }).channel).toBe('beta');
+      packageVersion: '3.0.0-beta.0',
+      commitSubject: 'feat(bindings): add symbols',
+    })).toMatchObject({ kind: 'main', channel: 'none', npmPublish: false, ghcrPromote: true });
     expect(deriveRelease({
       event: 'pull_request',
       ref: 'refs/pull/1/merge',
       refName: '1/merge',
       sha: SHA,
       commitEpoch: EPOCH,
-      packageVersion: '3.0.0-beta.3',
-    }).publish).toBe(false);
+      packageVersion: '3.0.0-beta.0',
+    }).npmPublish).toBe(false);
     expect(branchSlug('feature/'.concat('very-long-segment-'.repeat(8)))).toHaveLength(64);
   });
 
-  it('should require annotated release tags and exact package versions', () => {
+  it('should classify only exact release-PR merges as beta or stable publications', () => {
+    const stableReleaseFiles = [
+      '.nx/version-plans/feature.md',
+      'CHANGELOG.md',
+      'package-lock.json',
+      'package.json',
+    ];
     expect(deriveRelease({
       event: 'push',
-      ref: 'refs/tags/v3.0.0-rc.1',
-      refName: 'v3.0.0-rc.1',
+      ref: 'refs/heads/main',
+      refName: 'main',
       sha: SHA,
       commitEpoch: EPOCH,
-      packageVersion: '3.0.0-rc.1',
-      tagObjectType: 'tag',
-    })).toMatchObject({ version: '3.0.0-rc.1', channel: 'rc', publish: true });
-    expect(() => deriveRelease({
+      packageVersion: '3.0.0-beta.1',
+      commitSubject: 'chore(release): ocjs v3.0.0-beta.1',
+      changedFiles: stableReleaseFiles,
+    })).toMatchObject({
+      version: '3.0.0-beta.1',
+      channel: 'beta',
+      npmPublish: true,
+      isRelease: true,
+      prerelease: true,
+      releaseTag: 'v3.0.0-beta.1',
+    });
+    expect(deriveRelease({
       event: 'push',
-      ref: 'refs/tags/v3.0.0',
-      refName: 'v3.0.0',
+      ref: 'refs/heads/main',
+      refName: 'main',
       sha: SHA,
       commitEpoch: EPOCH,
       packageVersion: '3.0.0',
-      tagObjectType: 'commit',
-    })).toThrow('must be annotated');
+      commitSubject: 'chore(release): ocjs v3.0.0',
+      changedFiles: stableReleaseFiles,
+    })).toMatchObject({ channel: 'latest', kind: 'stable-release', prerelease: false });
+    expect(() => deriveRelease({
+      event: 'push',
+      ref: 'refs/heads/main',
+      refName: 'main',
+      sha: SHA,
+      commitEpoch: EPOCH,
+      packageVersion: '3.0.0-rc.1',
+      commitSubject: 'chore(release): ocjs v3.0.0-rc.1',
+      changedFiles: stableReleaseFiles,
+    })).toThrow('unsupported release prerelease');
+    expect(() => deriveRelease({
+      event: 'push',
+      ref: 'refs/heads/main',
+      refName: 'main',
+      sha: SHA,
+      commitEpoch: EPOCH,
+      packageVersion: '3.0.0',
+      commitSubject: 'chore(release): ocjs v3.0.0',
+      changedFiles: [...stableReleaseFiles, 'src/late-change.ts'],
+    })).toThrow('unexpected files');
+  });
+
+  it('should validate explicit beta and stable versions against Version Plans', () => {
+    expect(validateRequestedVersion({
+      currentVersion: '3.0.0-beta.0',
+      plannedStableVersion: '3.0.0',
+      requestedVersion: '3.0.0-beta.1',
+    })).toEqual({ channel: 'beta', version: '3.0.0-beta.1' });
+    expect(validateRequestedVersion({
+      currentVersion: '3.0.0-beta.1',
+      plannedStableVersion: '3.0.0',
+      requestedVersion: '3.0.0',
+    })).toEqual({ channel: 'stable', version: '3.0.0' });
+    expect(validateRequestedVersion({
+      currentVersion: '3.0.0',
+      plannedStableVersion: '3.1.0',
+      requestedVersion: '3.1.0-beta.1',
+    })).toEqual({ channel: 'beta', version: '3.1.0-beta.1' });
+    expect(() => validateRequestedVersion({
+      currentVersion: '3.0.0-beta.1',
+      plannedStableVersion: '3.1.0',
+      requestedVersion: '3.0.0-beta.2',
+    })).toThrow('Version Plans resolve');
+    expect(() => validateRequestedVersion({
+      currentVersion: '3.0.0-beta.1',
+      plannedStableVersion: '3.0.0',
+      requestedVersion: '3.0.0-beta.3',
+    })).toThrow('next beta');
   });
 
   it('should keep the package allowlists exact', () => {
-    expect(DIST_FILES).toHaveLength(12);
-    expect(PACKAGE_FILES).toHaveLength(18);
+    expect(DIST_FILES).toHaveLength(13);
+    expect(PACKAGE_FILES).toHaveLength(19);
+    expect(DIST_FILES).toContain('api-reference.json');
     expect(() => validateExactFiles([...DIST_FILES, 'stale.wasm'], DIST_FILES, 'dist'))
       .toThrow('extra=[stale.wasm]');
   });
@@ -409,6 +476,36 @@ describe('CI contracts', () => {
     expect(source).not.toContain('OCJS_CONFIG=debug');
   });
 
+  it('should reserve moving GHCR aliases for stable releases', () => {
+    const source = fs.readFileSync(path.join(ROOT, '.github/workflows/docker.yml'), 'utf8');
+    expect(source).toContain('PRERELEASE: ${{ needs.preflight.outputs.prerelease }}');
+    expect(source).toContain(
+      'if [ "$IS_RELEASE" = true ] && [ "$PRERELEASE" = false ]; then',
+    );
+    expect(source).toContain('tags=("$VERSION-$prefix" "sha-${FULL_SHA:0:8}-$prefix")');
+  });
+
+  it('should finalize releases and deploy Vercel only from the verified candidate', () => {
+    const ci = workflow('docker.yml');
+    const source = fs.readFileSync(path.join(ROOT, '.github/workflows/docker.yml'), 'utf8');
+    expect(ci.jobs['release-finalize'].needs).toEqual(['preflight', 'registry-verify']);
+    expect(ci.jobs['release-finalize'].permissions).toEqual({ contents: 'write' });
+    expect(ci.jobs['release-finalize'].if).toContain("needs.registry-verify.result == 'success'");
+    expect(ci.jobs['vercel-preview'].needs).toEqual(['preflight', 'package-assemble', 'ci-gate']);
+    expect(ci.jobs['vercel-preview'].if).toContain(
+      'github.event.pull_request.head.repo.full_name == github.repository',
+    );
+    expect(ci.jobs['vercel-production'].needs).toEqual(['preflight', 'package-assemble', 'ci-gate']);
+    expect(ci.jobs['vercel-production'].concurrency).toEqual({
+      group: 'vercel-production',
+      'cancel-in-progress': false,
+    });
+    expect(source).toContain('vercel@56.5.0 deploy --prebuilt --token=');
+    expect(source).toContain('vercel@56.5.0 deploy --prebuilt --prod --token=');
+    expect(source).toContain('git/ref/heads/main');
+    expect(source).toContain('export OCJS_API_REFERENCE_SOURCE="$TARBALL"');
+  });
+
   it('should launch the registry runtime check without worker-unsafe Node flags', () => {
     const source = fs.readFileSync(path.join(ROOT, '.github/workflows/docker.yml'), 'utf8');
     expect(source).toContain("cat > verify-runtime.mjs <<'NODE'");
@@ -449,9 +546,9 @@ describe('CI contracts', () => {
         );
       }
     }
-    expect(ci.jobs['ghcr-promote'].if).toContain("needs.preflight.outputs.publish == 'true'");
-    expect(ci.jobs['npm-publish'].if).toContain("needs.preflight.outputs.publish == 'true'");
-    expect(ci.jobs['registry-verify'].if).toContain("needs.preflight.outputs.publish == 'true'");
+    expect(ci.jobs['ghcr-promote'].if).toContain("needs.preflight.outputs.ghcr_promote == 'true'");
+    expect(ci.jobs['npm-publish'].if).toContain("needs.preflight.outputs.npm_publish == 'true'");
+    expect(ci.jobs['registry-verify'].if).toContain("needs.preflight.outputs.npm_publish == 'true'");
   });
 
   it('should pin every workflow action to a full commit', () => {

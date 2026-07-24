@@ -1,6 +1,6 @@
 'use client';
 
-import init from '@taucad/opencascade.js';
+import init from 'ocjs';
 
 let cached: ReturnType<typeof init> | null = null;
 

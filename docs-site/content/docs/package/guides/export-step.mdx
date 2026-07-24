@@ -9,7 +9,7 @@ writers depending on whether you need an assembly tree.
 ## Single shape — STEPControl_Writer
 
 ```typescript
-import type { TopoDS_Shape } from '@taucad/opencascade.js';
+import type { TopoDS_Shape } from 'ocjs';
 import { getOc } from './ocjs-init';
 
 export const shapeToStep = async (shape: TopoDS_Shape): Promise<Uint8Array> => {

@@ -262,7 +262,7 @@ COPY src ./src
 COPY tsconfig.json* ./
 COPY build-configs ./build-configs
 COPY build-wasm.sh ./build-wasm.sh
-COPY scripts/enumerate-symbols.py scripts/validate-build.py scripts/generate-docs.mjs ./scripts/
+COPY scripts/enumerate-symbols.py scripts/validate-build.py scripts/generate-api-reference.mjs ./scripts/
 COPY scripts/lib ./scripts/lib
 COPY bindgen-filters.yaml ./bindgen-filters.yaml
 RUN chmod +x build-wasm.sh

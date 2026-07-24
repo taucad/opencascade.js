@@ -11,9 +11,6 @@ importers:
       '@orama/orama':
         specifier: ^3.1.7
         version: 3.1.18
-      '@taucad/opencascade.js':
-        specifier: beta
-        version: 3.0.0-beta.3
       '@vercel/og':
         specifier: ^0.6.5
         version: 0.6.8
@@ -44,6 +41,9 @@ importers:
       next:
         specifier: ^16.2.6
         version: 16.2.6(@babel/core@7.29.0)(@playwright/test@1.60.0)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
+      ocjs:
+        specifier: file:..
+        version: file:..
       react:
         specifier: ^19.1.0
         version: 19.2.6
@@ -1547,10 +1547,6 @@ packages:
 
   '@tailwindcss/postcss@4.3.0':
     resolution: {integrity: sha512-Jm05Tjx+9yCLGv5qw1c+84Psds8MnyrEQYCB+FFk2lgGiUjlRqdxke4mVTuYrj2xnVZqKim2Apr5ySuQRYAw/w==}
-
-  '@taucad/opencascade.js@3.0.0-beta.3':
-    resolution: {integrity: sha512-6ZOeP2Ke3cfJ9chA6CKSYl9MdKjC/L1lXpuRC/W2aswxfXSFHnl1kSsMJeqilKT1BGxqELYB7bfvrNMNtzC4kw==}
-    engines: {node: '>=22'}
 
   '@testing-library/dom@10.4.1':
     resolution: {integrity: sha512-o4PXJQidqJl82ckFaXUeoAW+XysPLauYI43Abki5hABd853iMhitooc6znOnczgbTYmEP6U6/y1ZyKAIsvMKGg==}
@@ -3785,6 +3781,10 @@ packages:
     resolution: {integrity: sha512-gXah6aZrcUxjWg2zR2MwouP2eHlCBzdV4pygudehaKXSGW4v2AsRQUK+lwwXhii6KFZcunEnmSUoYp5CXibxtA==}
     engines: {node: '>= 0.4'}
 
+  ocjs@file:..:
+    resolution: {directory: .., type: directory}
+    engines: {node: '>=22'}
+
   oniguruma-parser@0.12.2:
     resolution: {integrity: sha512-6HVa5oIrgMC6aA6WF6XyyqbhRPJrKR02L20+2+zpDtO5QAzGHAUGw5TKQvwi5vctNnRHkJYmjAhRVQF2EKdTQw==}
 
@@ -5855,8 +5855,6 @@ snapshots:
       '@tailwindcss/oxide': 4.3.0
       postcss: 8.5.15
       tailwindcss: 4.3.0
-
-  '@taucad/opencascade.js@3.0.0-beta.3': {}
 
   '@testing-library/dom@10.4.1':
     dependencies:
@@ -8697,6 +8695,8 @@ snapshots:
       call-bound: 1.0.4
       define-properties: 1.2.1
       es-object-atoms: 1.1.1
+
+  ocjs@file:..: {}
 
   oniguruma-parser@0.12.2: {}
 

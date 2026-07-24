@@ -3,7 +3,6 @@ name: ci
 on:
   push:
     branches: ['**']
-    tags: ['v*']
   pull_request:
   workflow_dispatch:
 
@@ -25,9 +24,12 @@ jobs:
       branch_slug: ${{ steps.release.outputs.branch_slug }}
       channel: ${{ steps.release.outputs.channel }}
       full_sha: ${{ steps.release.outputs.full_sha }}
+      ghcr_promote: ${{ steps.release.outputs.ghcr_promote }}
       is_release: ${{ steps.release.outputs.is_release }}
       kind: ${{ steps.release.outputs.kind }}
-      publish: ${{ steps.release.outputs.publish }}
+      npm_publish: ${{ steps.release.outputs.npm_publish }}
+      prerelease: ${{ steps.release.outputs.prerelease }}
+      release_tag: ${{ steps.release.outputs.release_tag }}
       source_date_epoch: ${{ steps.release.outputs.source_date_epoch }}
       version: ${{ steps.release.outputs.version }}
     steps:
@@ -55,9 +57,10 @@ jobs:
         run: |
           set -euo pipefail
           epoch="$(git show -s --format=%ct "$SHA")"
-          tag_type=""
-          if [[ "$REF" == refs/tags/* ]]; then
-            tag_type="$(git cat-file -t "$REF")"
+          if git rev-parse "$SHA^" >/dev/null 2>&1; then
+            git diff --name-only "$SHA^" "$SHA" > "$RUNNER_TEMP/changed-files.txt"
+          else
+            git diff-tree --root --no-commit-id --name-only -r "$SHA" > "$RUNNER_TEMP/changed-files.txt"
           fi
           node scripts/ci-release.mjs \
             --event "$EVENT" \
@@ -66,13 +69,16 @@ jobs:
             --sha "$SHA" \
             --commit-epoch "$epoch" \
             --package-version "$(node -p "require('./package.json').version")" \
-            --tag-object-type "$tag_type"
+            --commit-subject "$(git show -s --format=%s "$SHA")" \
+            --changed-files-file "$RUNNER_TEMP/changed-files.txt"
 
       - name: Fast syntax checks
         run: |
           node --check scripts/ci-release.mjs
           node --check scripts/browser-runtime-matrix.mjs
+          node --check scripts/generate-api-reference.mjs
           node --check scripts/package-candidate.mjs
+          node --check scripts/prepare-release.mjs
           node --check scripts/ghcr-retention.mjs
           node --check scripts/lib/*.mjs
           node --check docs-site/scripts/*.mjs
@@ -85,6 +91,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
 
       - name: Set up Node
         uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
@@ -101,6 +109,28 @@ jobs:
           npm run test:ci
           bash -n build-wasm.sh scripts/*.sh
           shellcheck build-wasm.sh scripts/*.sh
+
+      - name: Require Version Plans for package-affecting pull requests
+        if: github.event_name == 'pull_request'
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          subject="$(git show -s --format=%s "$HEAD")"
+          if [[ "$subject" == "chore(release): ocjs v"* ]]; then
+            git diff --name-only "$BASE" "$HEAD" > "$RUNNER_TEMP/release-files.txt"
+            node scripts/ci-release.mjs \
+              --event push \
+              --ref refs/heads/main \
+              --ref-name main \
+              --sha "$HEAD" \
+              --commit-epoch "$(git show -s --format=%ct "$HEAD")" \
+              --package-version "$(node -p "require('./package.json').version")" \
+              --commit-subject "$subject" \
+              --changed-files-file "$RUNNER_TEMP/release-files.txt" >/dev/null
+          else
+            npx nx release plan:check --base="$BASE" --head="$HEAD"
+          fi
 
       - name: Install uv
         run: |
@@ -129,6 +159,21 @@ jobs:
         run: |
           .venv/bin/ruff check src scripts tests
           .venv/bin/pytest tests/unit tests/bindgen
+
+  docs-prose:
+    name: docs · prose
+    needs: preflight
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Vale
+        uses: vale-cli/vale-action@85f9f7f2c5f449ac0ae5b66662961bae3f77ca6a # v2.1.2
+        with:
+          version: 3.9.1
+          files: docs-site/content/docs
+          fail_on_error: true
+          vale_flags: '--config=docs-site/.vale.ini'
 
   candidate-validation:
     name: candidate · ${{ matrix.stage }} · amd64
@@ -246,6 +291,25 @@ jobs:
               OCJS_OUTPUT_DIR=/opencascade.js/dist \
                 .venv/bin/pytest tests/integration tests/sentinel
             '
+
+      - name: Generate package-owned API reference
+        if: matrix.stage == 'final-single'
+        env:
+          DIST: ${{ runner.temp }}/e2e
+          FULL_SHA: ${{ needs.preflight.outputs.full_sha }}
+          IMAGE: ocjs:e2e-${{ matrix.stage }}
+          SOURCE_DATE_EPOCH: ${{ needs.preflight.outputs.source_date_epoch }}
+          VERSION: ${{ needs.preflight.outputs.version }}
+        run: |
+          docker run --rm \
+            --entrypoint bash \
+            -v "$DIST:/opencascade.js/dist" \
+            -e OCJS_EXPECTED_SHA="$FULL_SHA" \
+            -e OCJS_PACKAGE_VERSION="$VERSION" \
+            -e SOURCE_DATE_EPOCH \
+            "$IMAGE" -lc \
+              'cd /opencascade.js && npx nx run ocjs:api-reference --skip-nx-cache'
+          test -s "$DIST/api-reference.json"
 
       - name: Upload ST/MT package outputs
         if: matrix.stage != 'bindgen-base'
@@ -387,6 +451,25 @@ jobs:
               OCJS_OUTPUT_DIR=/opencascade.js/dist \
                 .venv/bin/pytest tests/integration tests/sentinel
             '
+
+      - name: Generate package-owned API reference
+        if: matrix.arch == 'amd64' && matrix.stage == 'final-single'
+        env:
+          DIST: ${{ runner.temp }}/e2e
+          FULL_SHA: ${{ needs.preflight.outputs.full_sha }}
+          IMAGE: ocjs:e2e-${{ matrix.stage }}
+          SOURCE_DATE_EPOCH: ${{ needs.preflight.outputs.source_date_epoch }}
+          VERSION: ${{ needs.preflight.outputs.version }}
+        run: |
+          docker run --rm \
+            --entrypoint bash \
+            -v "$DIST:/opencascade.js/dist" \
+            -e OCJS_EXPECTED_SHA="$FULL_SHA" \
+            -e OCJS_PACKAGE_VERSION="$VERSION" \
+            -e SOURCE_DATE_EPOCH \
+            "$IMAGE" -lc \
+              'cd /opencascade.js && npx nx run ocjs:api-reference --skip-nx-cache'
+          test -s "$DIST/api-reference.json"
 
       - name: Upload ST/MT package outputs
         if: matrix.arch == 'amd64' && matrix.stage != 'bindgen-base'
@@ -635,6 +718,7 @@ jobs:
       - name: Test docs against candidate
         env:
           OCJS_PACKAGE_TARBALL: ${{ runner.temp }}/candidate/candidate.tgz
+          OCJS_EXPECTED_SHA: ${{ needs.preflight.outputs.full_sha }}
           SOURCE_DATE_EPOCH: ${{ needs.preflight.outputs.source_date_epoch }}
         run: scripts/test-candidate-docs.sh
 
@@ -655,7 +739,7 @@ jobs:
     name: ghcr · ${{ matrix.stage }}
     if: >-
       always() &&
-      needs.preflight.outputs.publish == 'true' &&
+      needs.preflight.outputs.ghcr_promote == 'true' &&
       needs.preflight.result == 'success' &&
       needs.candidate-build.result == 'success' &&
       needs.package-gate.result == 'success'
@@ -690,6 +774,7 @@ jobs:
           BRANCH: ${{ needs.preflight.outputs.branch_slug }}
           FULL_SHA: ${{ needs.preflight.outputs.full_sha }}
           IS_RELEASE: ${{ needs.preflight.outputs.is_release }}
+          PRERELEASE: ${{ needs.preflight.outputs.prerelease }}
           STAGE: ${{ matrix.stage }}
           VERSION: ${{ needs.preflight.outputs.version }}
         run: |
@@ -698,8 +783,10 @@ jobs:
             final-multi) prefix=multi-threaded; branch_prefix=multi-threaded-branch ;;
             bindgen-base) prefix=bindgen-base; branch_prefix=bindgen-base-branch ;;
           esac
-          if [ "$IS_RELEASE" = true ]; then
+          if [ "$IS_RELEASE" = true ] && [ "$PRERELEASE" = false ]; then
             tags=("$prefix" "$VERSION-$prefix" "sha-${FULL_SHA:0:8}-$prefix")
+          elif [ "$IS_RELEASE" = true ]; then
+            tags=("$VERSION-$prefix" "sha-${FULL_SHA:0:8}-$prefix")
           else
             tags=("$branch_prefix-$BRANCH" "$branch_prefix-$BRANCH-$FULL_SHA")
           fi
@@ -730,7 +817,7 @@ jobs:
     name: npm · publish
     if: >-
       always() &&
-      needs.preflight.outputs.publish == 'true' &&
+      needs.preflight.outputs.npm_publish == 'true' &&
       needs.preflight.result == 'success' &&
       needs.package-assemble.result == 'success' &&
       needs.package-gate.result == 'success'
@@ -786,9 +873,9 @@ jobs:
             }
           }
           NODE
-          if npm view "@taucad/opencascade.js@$VERSION" version >/dev/null 2>&1; then
+          if npm view "ocjs@$VERSION" version >/dev/null 2>&1; then
             mkdir -p existing
-            npm pack "@taucad/opencascade.js@$VERSION" --ignore-scripts --pack-destination existing >/dev/null
+            npm pack "ocjs@$VERSION" --ignore-scripts --pack-destination existing >/dev/null
             existing="$(find existing -name '*.tgz' -type f -print -quit)"
             test "$(sha256sum "$existing" | cut -d' ' -f1)" = "$(cat candidate.sha256)"
             for provenance in \
@@ -797,7 +884,7 @@ jobs:
               test "$(tar -xOf "$existing" "$provenance" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>process.stdout.write(JSON.parse(s).source.opencascadejsCommit))")" = "$FULL_SHA"
             done
             export ATTESTATION_URL
-            ATTESTATION_URL="$(npm view "@taucad/opencascade.js@$VERSION" dist.attestations.url)"
+            ATTESTATION_URL="$(npm view "ocjs@$VERSION" dist.attestations.url)"
             node --input-type=module <<'NODE'
           const response = await fetch(process.env.ATTESTATION_URL);
           if (!response.ok) throw new Error(`npm attestation endpoint returned ${response.status}`);
@@ -832,7 +919,7 @@ jobs:
     name: registries
     if: >-
       always() &&
-      needs.preflight.outputs.publish == 'true' &&
+      needs.preflight.outputs.npm_publish == 'true' &&
       needs.preflight.result == 'success' &&
       needs.package-assemble.result == 'success' &&
       needs.ghcr-promote.result == 'success' &&
@@ -864,12 +951,12 @@ jobs:
         working-directory: ${{ runner.temp }}/candidate
         run: |
           for _ in $(seq 1 30); do
-            npm view "@taucad/opencascade.js@$VERSION" version >/dev/null 2>&1 && break
+            npm view "ocjs@$VERSION" version >/dev/null 2>&1 && break
             sleep 10
           done
-          test "$(npm view "@taucad/opencascade.js@$VERSION" dist.integrity)" = "$(cat candidate.sha512)"
+          test "$(npm view "ocjs@$VERSION" dist.integrity)" = "$(cat candidate.sha512)"
           export ATTESTATION_URL
-          ATTESTATION_URL="$(npm view "@taucad/opencascade.js@$VERSION" dist.attestations.url)"
+          ATTESTATION_URL="$(npm view "ocjs@$VERSION" dist.attestations.url)"
           node --input-type=module <<'NODE'
           const response = await fetch(process.env.ATTESTATION_URL);
           if (!response.ok) throw new Error(`npm attestation endpoint returned ${response.status}`);
@@ -898,15 +985,15 @@ jobs:
           mkdir install
           cd install
           npm init --yes >/dev/null
-          npm install --ignore-scripts --no-audit --no-fund "@taucad/opencascade.js@$VERSION"
+          npm install --ignore-scripts --no-audit --no-fund "ocjs@$VERSION"
           npm audit signatures
           cat > verify-runtime.mjs <<'NODE'
           import fs from 'node:fs';
           import path from 'node:path';
           import { fileURLToPath } from 'node:url';
-          import init from '@taucad/opencascade.js';
-          import initMulti from '@taucad/opencascade.js/multi';
-          const root = path.dirname(fileURLToPath(import.meta.resolve('@taucad/opencascade.js/wasm')));
+          import init from 'ocjs';
+          import initMulti from 'ocjs/multi';
+          const root = path.dirname(fileURLToPath(import.meta.resolve('ocjs/wasm')));
           for (const load of [init, initMulti]) {
             const oc = await load({ locateFile: file => path.join(root, file) });
             const box = new oc.BRepPrimAPI_MakeBox(1, 2, 3);
@@ -946,7 +1033,7 @@ jobs:
             echo "## Published candidate"
             echo
             echo '```sh'
-            echo "npm install @taucad/opencascade.js@$VERSION"
+            echo "npm install ocjs@$VERSION"
             echo '```'
             echo
             echo "- Source: \`$FULL_SHA\`"
@@ -954,10 +1041,76 @@ jobs:
             echo "- GHCR signatures: verified for all three promoted stages"
           } >> "$GITHUB_STEP_SUMMARY"
 
+  release-finalize:
+    name: release · tag and GitHub Release
+    if: >-
+      always() &&
+      needs.preflight.outputs.is_release == 'true' &&
+      needs.preflight.result == 'success' &&
+      needs.registry-verify.result == 'success'
+    needs: [preflight, registry-verify]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout verified release commit
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+
+      - name: Create or verify annotated tag
+        env:
+          FULL_SHA: ${{ needs.preflight.outputs.full_sha }}
+          TAG: ${{ needs.preflight.outputs.release_tag }}
+        run: |
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+            git fetch origin "refs/tags/$TAG:refs/tags/$TAG"
+            test "$(git cat-file -t "refs/tags/$TAG")" = tag
+            test "$(git rev-list -n 1 "$TAG")" = "$FULL_SHA"
+          else
+            git config user.name github-actions[bot]
+            git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+            git tag -a "$TAG" "$FULL_SHA" -m "$TAG"
+            git push origin "refs/tags/$TAG"
+          fi
+
+      - name: Create or verify GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PRERELEASE: ${{ needs.preflight.outputs.prerelease }}
+          TAG: ${{ needs.preflight.outputs.release_tag }}
+          VERSION: ${{ needs.preflight.outputs.version }}
+        run: |
+          awk -v version="$VERSION" '
+            $0 ~ "^#{1,2} v?" version "([ (]|$)" { found=1; next }
+            found && /^#{1,2} / { exit }
+            found { print }
+            END { if (!found) exit 2 }
+          ' CHANGELOG.md > "$RUNNER_TEMP/release-notes.md"
+          test -s "$RUNNER_TEMP/release-notes.md"
+          if gh release view "$TAG" --json tagName,name,isDraft,isPrerelease,url > "$RUNNER_TEMP/release.json" 2>/dev/null; then
+            test "$(jq -r .tagName "$RUNNER_TEMP/release.json")" = "$TAG"
+            test "$(jq -r .name "$RUNNER_TEMP/release.json")" = "$TAG"
+            test "$(jq -r .isDraft "$RUNNER_TEMP/release.json")" = false
+            test "$(jq -r .isPrerelease "$RUNNER_TEMP/release.json")" = "$PRERELEASE"
+          else
+            args=("$TAG" --verify-tag --title "$TAG" --notes-file "$RUNNER_TEMP/release-notes.md")
+            if [ "$PRERELEASE" = true ]; then args+=(--prerelease); fi
+            gh release create "${args[@]}"
+          fi
+          {
+            echo "## Verified release"
+            echo
+            echo "- Version: \`$VERSION\`"
+            echo "- Install: \`npm install ocjs@$VERSION\`"
+            echo "- npm: https://www.npmjs.com/package/ocjs/v/$VERSION"
+            echo "- GitHub: https://github.com/$GITHUB_REPOSITORY/releases/tag/$TAG"
+          } >> "$GITHUB_STEP_SUMMARY"
+
   ci-gate:
     name: CI gate
     if: always()
-    needs: [preflight, quality, candidate-gate, package-gate, registry-verify]
+    needs: [preflight, quality, docs-prose, candidate-gate, package-gate, registry-verify, release-finalize]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -965,18 +1118,165 @@ jobs:
       - name: Require validation and applicable publication
         env:
           CANDIDATE: ${{ needs.candidate-gate.result }}
+          DOCS_PROSE: ${{ needs.docs-prose.result }}
           PACKAGE: ${{ needs.package-gate.result }}
           PREFLIGHT: ${{ needs.preflight.result }}
-          PUBLISH: ${{ needs.preflight.outputs.publish }}
+          PUBLISH: ${{ needs.preflight.outputs.npm_publish }}
           QUALITY: ${{ needs.quality.result }}
           REGISTRY: ${{ needs.registry-verify.result }}
+          RELEASE: ${{ needs.release-finalize.result }}
+          IS_RELEASE: ${{ needs.preflight.outputs.is_release }}
         run: |
           test "$PREFLIGHT" = success
           test "$QUALITY" = success
           test "$CANDIDATE" = success
+          test "$DOCS_PROSE" = success
           test "$PACKAGE" = success
           if [ "$PUBLISH" = true ]; then
             test "$REGISTRY" = success
           else
             test "$REGISTRY" = skipped
           fi
+          if [ "$IS_RELEASE" = true ]; then
+            test "$RELEASE" = success
+          else
+            test "$RELEASE" = skipped
+          fi
+
+  vercel-preview:
+    name: vercel · preview
+    if: >-
+      always() &&
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      needs.preflight.result == 'success' &&
+      needs.package-assemble.result == 'success' &&
+      needs.ci-gate.result == 'success'
+    needs: [preflight, package-assemble, ci-gate]
+    runs-on: ubuntu-latest
+    environment: Preview
+    permissions:
+      contents: read
+    env:
+      VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Download exact docs candidate
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: ${{ needs.package-assemble.outputs.artifact }}
+          path: ${{ runner.temp }}/candidate
+
+      - name: Build and deploy prebuilt preview
+        env:
+          FULL_SHA: ${{ needs.preflight.outputs.full_sha }}
+          TARBALL: ${{ runner.temp }}/candidate/candidate.tgz
+        run: |
+          node - "$PWD/docs-site/package.json" "$TARBALL" <<'NODE'
+          const fs = require('node:fs');
+          const path = require('node:path');
+          const [manifestPath, tarball] = process.argv.slice(2);
+          const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+          manifest.dependencies.ocjs = `file:${path.resolve(tarball)}`;
+          fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+          NODE
+          cd docs-site
+          corepack pnpm@9.15.9 install --ignore-workspace --no-frozen-lockfile --ignore-scripts
+          cd ..
+          export OCJS_API_REFERENCE_SOURCE="$TARBALL"
+          npx --yes vercel@56.5.0 pull --yes --environment=preview --token="$VERCEL_TOKEN"
+          npx --yes vercel@56.5.0 build --token="$VERCEL_TOKEN"
+          url="$(npx --yes vercel@56.5.0 deploy --prebuilt --token="$VERCEL_TOKEN")"
+          feed_hash="$(
+            tar -xOf "$TARBALL" package/dist/api-reference.json |
+              node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>process.stdout.write(JSON.parse(s).inputs.bindings.sha256))"
+          )"
+          {
+            echo "## Vercel preview"
+            echo
+            echo "- URL: $url"
+            echo "- Source: \`$FULL_SHA\`"
+            echo "- API bindings: \`$feed_hash\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  vercel-production:
+    name: vercel · production
+    if: >-
+      always() &&
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/main' &&
+      needs.preflight.result == 'success' &&
+      needs.package-assemble.result == 'success' &&
+      needs.ci-gate.result == 'success'
+    needs: [preflight, package-assemble, ci-gate]
+    runs-on: ubuntu-latest
+    environment: Production
+    concurrency:
+      group: vercel-production
+      cancel-in-progress: false
+    permissions:
+      contents: read
+    env:
+      VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Download exact docs candidate
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: ${{ needs.package-assemble.outputs.artifact }}
+          path: ${{ runner.temp }}/candidate
+
+      - name: Build exact production candidate
+        env:
+          TARBALL: ${{ runner.temp }}/candidate/candidate.tgz
+        run: |
+          node - "$PWD/docs-site/package.json" "$TARBALL" <<'NODE'
+          const fs = require('node:fs');
+          const path = require('node:path');
+          const [manifestPath, tarball] = process.argv.slice(2);
+          const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+          manifest.dependencies.ocjs = `file:${path.resolve(tarball)}`;
+          fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+          NODE
+          cd docs-site
+          corepack pnpm@9.15.9 install --ignore-workspace --no-frozen-lockfile --ignore-scripts
+          cd ..
+          export OCJS_API_REFERENCE_SOURCE="$TARBALL"
+          npx --yes vercel@56.5.0 pull --yes --environment=production --token="$VERCEL_TOKEN"
+          npx --yes vercel@56.5.0 build --prod --token="$VERCEL_TOKEN"
+
+      - name: Deploy only while this run is current main
+        env:
+          FULL_SHA: ${{ needs.preflight.outputs.full_sha }}
+          GH_TOKEN: ${{ github.token }}
+          TARBALL: ${{ runner.temp }}/candidate/candidate.tgz
+        run: |
+          current="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq .object.sha)"
+          if [ "$current" != "$FULL_SHA" ]; then
+            {
+              echo "## Vercel production skipped"
+              echo
+              echo "Run source \`$FULL_SHA\` is stale; current main is \`$current\`."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          url="$(npx --yes vercel@56.5.0 deploy --prebuilt --prod --token="$VERCEL_TOKEN")"
+          feed_hash="$(
+            tar -xOf "$TARBALL" package/dist/api-reference.json |
+              node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>process.stdout.write(JSON.parse(s).inputs.bindings.sha256))"
+          )"
+          {
+            echo "## Vercel production"
+            echo
+            echo "- URL: $url"
+            echo "- Source: \`$FULL_SHA\`"
+            echo "- API bindings: \`$feed_hash\`"
+          } >> "$GITHUB_STEP_SUMMARY"

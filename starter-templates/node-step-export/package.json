@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "version": "0.0.0",
-  "description": "v3 starter: headless Node 22+ CLI exporting a STEP AP214 file from @taucad/opencascade.js.",
+  "description": "v3 starter: headless Node 22+ CLI exporting a STEP AP214 file from ocjs.",
   "bin": {
     "ocjs-step": "./bin/ocjs-step.mjs"
   },
@@ -14,7 +14,7 @@
     "smoke": "tsx src/main.ts --shape sphere --radius 10 --out smoke.step && node ./scripts/assert-step-magic.mjs smoke.step"
   },
   "dependencies": {
-    "@taucad/opencascade.js": "beta"
+    "ocjs": "file:../.."
   },
   "devDependencies": {
     "@types/node": "^25.9.1",

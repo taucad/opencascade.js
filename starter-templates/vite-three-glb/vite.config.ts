@@ -6,7 +6,7 @@ export default defineConfig({
     sourcemap: true,
   },
   optimizeDeps: {
-    exclude: ['@taucad/opencascade.js'],
+    exclude: ['ocjs'],
   },
   server: {
     headers: {

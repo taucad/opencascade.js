@@ -33,22 +33,32 @@
 
 ## Quickstart (npm)
 
-> Upgrading from v2? See **[BREAKING_CHANGES.md](BREAKING_CHANGES.md)** for the v3 migration guide (package rename, ESM-only loading, exception decode pattern, OCCT V8 API).
+`ocjs` is the Tau-maintained fork and npm distribution of OpenCascade.js. Its source remains in [`taucad/opencascade.js`](https://github.com/taucad/opencascade.js);
+it is not an official Open CASCADE Technology distribution.
+
+> Migrating from v2 or `@taucad/opencascade.js`? See
+> **[BREAKING_CHANGES.md](BREAKING_CHANGES.md)** for the package rename,
+> ESM-only loading, exception decode pattern, and OCCT V8 API changes.
 
 ```bash
-pnpm add @taucad/opencascade.js@beta
-# or: npm install @taucad/opencascade.js@beta
+pnpm add ocjs@canary
+# or: npm install ocjs@canary
 ```
 
-The package is ESM-only with a default-export `init` function. Pass `locateFile` so the Emscripten loader can resolve the wasm binary from your bundler's output (browser) or `node_modules` layout (Node). Both runtimes reach the binary through the `@taucad/opencascade.js/wasm` subpath export — no `dist/...` deep imports required.
+The package is ESM-only with a default-export `init` function. Pass `locateFile` so the Emscripten loader can resolve the wasm binary from your bundler's output (browser) or `node_modules` layout (Node). Both runtimes reach the binary through the `ocjs/wasm` subpath export — no `dist/...` deep imports required.
+
+Build-time tools can consume the deterministic API-reference feed through
+`ocjs/api-reference.json`. It includes the parsed class/member hierarchy, the
+full source commit, build provenance, and exact input hashes; site-specific
+routes and search indexes remain consumer-derived.
 
 ```ts
 // Node
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import init from '@taucad/opencascade.js';
+import init from 'ocjs';
 
-const WASM_DIR = dirname(fileURLToPath(import.meta.resolve('@taucad/opencascade.js/wasm')));
+const WASM_DIR = dirname(fileURLToPath(import.meta.resolve('ocjs/wasm')));
 
 const oc = await init({
   locateFile: (filename: string) => join(WASM_DIR, filename),
@@ -60,8 +70,8 @@ const shape = box.Shape();
 
 ```ts
 // Vite / browser
-import init from '@taucad/opencascade.js';
-import wasmUrl from '@taucad/opencascade.js/wasm?url';
+import init from 'ocjs';
+import wasmUrl from 'ocjs/wasm?url';
 
 const oc = await init({ locateFile: () => wasmUrl });
 ```
@@ -76,9 +86,9 @@ For batch meshing, boolean grids, and STEP→glTF pipelines that benefit from OC
 // Node
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import init from '@taucad/opencascade.js/multi';
+import init from 'ocjs/multi';
 
-const WASM_DIR = dirname(fileURLToPath(import.meta.resolve('@taucad/opencascade.js/multi/wasm')));
+const WASM_DIR = dirname(fileURLToPath(import.meta.resolve('ocjs/multi/wasm')));
 
 const oc = await init({
   locateFile: (filename: string) => join(WASM_DIR, filename),
@@ -93,8 +103,8 @@ pool.SetNbDefaultThreadsToLaunch(pool.NbThreads()); // let each call use all wor
 
 ```ts
 // Vite / browser (requires COOP/COEP headers — see docs)
-import init from '@taucad/opencascade.js/multi';
-import wasmUrl from '@taucad/opencascade.js/multi/wasm?url';
+import init from 'ocjs/multi';
+import wasmUrl from 'ocjs/multi/wasm?url';
 
 const oc = await init({ locateFile: () => wasmUrl });
 
@@ -110,7 +120,7 @@ Browsers require `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Emb
 
 Pre-built images are published to [ghcr.io/taucad/opencascade.js](https://github.com/taucad/opencascade.js/pkgs/container/opencascade.js):
 
-- **Every push**—branches, `master`, and release tags—publishes multi-arch manifest lists (`linux/amd64` + `linux/arm64`) after each architecture builds, links, and passes its native runtime smoke.
+- **Every push**—branches and `main`—publishes multi-arch manifest lists (`linux/amd64` + `linux/arm64`) after each architecture builds, links, and passes its native runtime smoke.
 
 No local build required.
 
@@ -149,7 +159,7 @@ Docker resolves the right architecture from every published manifest list automa
 - **OCCT 8.0.0** — 1,085 commits of improvements; 22-31% faster boolean operations
 - **Emscripten 5.0.1** — LLVM 17, modern WASM features
 - **Native WASM Exceptions** — `-fwasm-exceptions` replaces JS invoke trampolines; decodable end-to-end via `getExceptionMessage`
-- **ESM-only distribution** — `"type": "module"`; default export is single-threaded `opencascade_full.{js,wasm,d.ts}`; multi-threaded `opencascade_full_multi.{js,wasm,d.ts}` ships under `@taucad/opencascade.js/multi` and `/multi/wasm`
+- **ESM-only distribution** — `"type": "module"`; default export is single-threaded `opencascade_full.{js,wasm,d.ts}`; multi-threaded `opencascade_full_multi.{js,wasm,d.ts}` ships under `ocjs/multi` and `/multi/wasm`
 - **Full TypeScript bindings** — Doxygen-derived JSDoc rendered correctly in Monaco IntelliSense
 - **Suffix-free overloads** — single symbol per class with val-based dispatcher, no more `_2`/`_3` subclasses (measured at ~264 ns/call, <0.011% of wall time on typical CAD models — see [BENCHMARKS.md](BENCHMARKS.md))
 - **Reproducible builds** — `DEPS.json` pins every dependency to an exact commit; per-build `provenance.json` sidecar
@@ -180,7 +190,9 @@ See [CHANGELOG.md](CHANGELOG.md) for the full v3.0.0 entry. For empirical eviden
 
 ## Contributing
 
-Contributions are welcome! See [TODO.md](TODO.md) for the current backlog and [MAINTAINER.md](MAINTAINER.md) for build-from-source instructions.
+Contributions are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md), see
+[TODO.md](TODO.md) for the current backlog, and use
+[MAINTAINER.md](MAINTAINER.md) for build-from-source instructions.
 
 ## License
 

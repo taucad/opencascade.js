@@ -3,7 +3,7 @@ title: Render with three.js
 description: OCCT shape → GLB → three.js GLTFLoader with orbit controls and lights.
 ---
 
-`@taucad/opencascade.js` produces GLB bytes through OCCT's XCAF + `RWGltf_CafWriter`
+`ocjs` produces GLB bytes through OCCT's XCAF + `RWGltf_CafWriter`
 pipeline. three.js consumes GLB via `GLTFLoader`. The whole flow is in-browser —
 no server round-trip.
 
@@ -69,4 +69,4 @@ See [Export glTF / GLB](./export-gltf) for the full pipeline including PBR mater
 
 For batch shape conversion (multi-shape assemblies, edges-as-fat-lines,
 hover-highlight), [`replicad-threejs-helper`](https://github.com/sgenoud/replicad)
-wraps the common patterns and works with `@taucad/opencascade.js@beta` directly.
+wraps the common patterns and works with `ocjs@canary` directly.

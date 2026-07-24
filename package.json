@@ -1,7 +1,7 @@
 {
-  "name": "@taucad/opencascade.js",
-  "version": "3.0.0-beta.3",
-  "description": "Port of the OpenCascade CAD library to JavaScript and WebAssembly via Emscripten.",
+  "name": "ocjs",
+  "version": "3.0.0-beta.0",
+  "description": "Tau-maintained OpenCascade CAD bindings for JavaScript and WebAssembly via Emscripten.",
   "keywords": [
     "opencascade",
     "occt",
@@ -39,6 +39,7 @@
       "default": "./dist/opencascade_full_multi.js"
     },
     "./multi/wasm": "./dist/opencascade_full_multi.wasm",
+    "./api-reference.json": "./dist/api-reference.json",
     "./package.json": "./package.json"
   },
   "files": [
@@ -54,6 +55,7 @@
     "dist/opencascade_full_multi.js.symbols",
     "dist/opencascade_full_multi.build-manifest.json",
     "dist/opencascade_full_multi.provenance.json",
+    "dist/api-reference.json",
     "CHANGELOG.md",
     "BREAKING_CHANGES.md",
     "LICENSE",
@@ -66,6 +68,7 @@
     "access": "public"
   },
   "scripts": {
+    "release:prepare": "node scripts/prepare-release.mjs",
     "test": "vitest run",
     "test:ci": "CI=true vitest run tests/ci tests/readme-shape.test.ts tests/docs-layout.test.ts tests/yaml-schema-doc-parity.test.ts starter-templates/*/tests",
     "test:smoke": "vitest run tests/smoke/",
@@ -82,6 +85,7 @@
     "@types/node": "~24.0.15",
     "eslint": "^9.32.0",
     "nx": "22.5.2",
+    "semver": "^7.7.2",
     "typescript": "^5.9.3",
     "vitest": "^4.1.0",
     "typescript-eslint": "^8.56.1",

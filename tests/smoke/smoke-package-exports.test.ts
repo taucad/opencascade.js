@@ -9,15 +9,16 @@ import packageJson from '../../package.json' with { type: 'json' };
  * Validates the `exports` map in `package.json`.
  *
  * The contract:
- *   - `@taucad/opencascade.js`         → ESM entry + types
- *   - `@taucad/opencascade.js/wasm`    → opencascade_full.wasm (canonical
+ *   - `ocjs`         → ESM entry + types
+ *   - `ocjs/wasm`    → opencascade_full.wasm (canonical
  *                                        locateFile target for every bundler)
- *   - `@taucad/opencascade.js/multi`   → multi-threaded ESM entry + types
- *   - `@taucad/opencascade.js/multi/wasm` → opencascade_full_multi.wasm
- *   - `@taucad/opencascade.js/package.json` → readable for tooling
+ *   - `ocjs/multi`   → multi-threaded ESM entry + types
+ *   - `ocjs/multi/wasm` → opencascade_full_multi.wasm
+ *   - `ocjs/api-reference.json` → deterministic build-time API feed
+ *   - `ocjs/package.json` → readable for tooling
  *
  * The subpath export is what lets consumers write
- *   `import wasmUrl from '@taucad/opencascade.js/wasm?url'`
+ *   `import wasmUrl from 'ocjs/wasm?url'`
  * across Vite, Bun, Node, and Deno without reaching into `dist/...` directly.
  *
  * If any of these contracts break, every starter template and doc snippet
@@ -32,7 +33,7 @@ describe('package exports — wasm subpath contract', () => {
     const wasmTarget = exportsMap['./wasm'];
     expect(
       wasmTarget,
-      'package.json#exports must include a "./wasm" subpath so consumers can write `import wasmUrl from \'@taucad/opencascade.js/wasm?url\'`',
+      'package.json#exports must include a "./wasm" subpath so consumers can write `import wasmUrl from \'ocjs/wasm?url\'`',
     ).toBe('./dist/opencascade_full.wasm');
   });
 
@@ -47,6 +48,15 @@ describe('package exports — wasm subpath contract', () => {
   it('should expose ./package.json so tooling (npm explore, manifests) can read the manifest', () => {
     const exportsMap = packageJson.exports as Record<string, unknown>;
     expect(exportsMap['./package.json']).toBe('./package.json');
+  });
+
+  it('should expose the packaged API-reference feed', () => {
+    const exportsMap = packageJson.exports as Record<string, unknown>;
+    const files = packageJson.files as readonly string[];
+    expect(exportsMap['./api-reference.json']).toBe('./dist/api-reference.json');
+    expect(files).toContain('dist/api-reference.json');
+    expect(basename(fileURLToPath(import.meta.resolve('ocjs/api-reference.json'))))
+      .toBe('api-reference.json');
   });
 
   it('should include the wasm file in the published files allowlist', () => {
@@ -75,37 +85,37 @@ describe('package exports — wasm subpath contract', () => {
     expect(files).toContain('dist/opencascade_full_multi.provenance.json');
   });
 
-  it('should resolve @taucad/opencascade.js/multi to the MT loader the exports map declares', () => {
-    const url = import.meta.resolve('@taucad/opencascade.js/multi');
+  it('should resolve ocjs/multi to the MT loader the exports map declares', () => {
+    const url = import.meta.resolve('ocjs/multi');
     expect(url.startsWith('file://'), `Expected file:// URL, got ${url}`).toBe(true);
     const resolvedPath = fileURLToPath(url);
     expect(basename(resolvedPath)).toBe('opencascade_full_multi.js');
     expect(dirname(resolvedPath).endsWith('/dist')).toBe(true);
   });
 
-  it('should resolve @taucad/opencascade.js/multi/wasm to the MT wasm the exports map declares', () => {
-    const url = import.meta.resolve('@taucad/opencascade.js/multi/wasm');
+  it('should resolve ocjs/multi/wasm to the MT wasm the exports map declares', () => {
+    const url = import.meta.resolve('ocjs/multi/wasm');
     const resolvedPath = fileURLToPath(url);
     expect(basename(resolvedPath)).toBe('opencascade_full_multi.wasm');
     expect(dirname(resolvedPath).endsWith('/dist')).toBe(true);
   });
 
-  it('should resolve @taucad/opencascade.js/wasm to the same file the exports map declares', async () => {
+  it('should resolve ocjs/wasm to the same file the exports map declares', async () => {
     // Self-reference resolution: a Node ESM package can import its own
     // subpath exports via `import.meta.resolve(name + subpath)`. This is
     // the same code path bundlers and downstream consumers exercise.
-    const url = import.meta.resolve('@taucad/opencascade.js/wasm');
+    const url = import.meta.resolve('ocjs/wasm');
     expect(url.startsWith('file://'), `Expected file:// URL, got ${url}`).toBe(true);
     const resolvedPath = fileURLToPath(url);
     expect(basename(resolvedPath)).toBe('opencascade_full.wasm');
     expect(dirname(resolvedPath).endsWith('/dist')).toBe(true);
   });
 
-  it('should resolve @taucad/opencascade.js/wasm to an existing file when the build artifact is present', () => {
+  it('should resolve ocjs/wasm to an existing file when the build artifact is present', () => {
     // Skip gracefully when the dist artifact has not been built yet — the
     // exports-map shape is already asserted above, so the wasm contract is
     // fully covered without requiring a 27 MB binary at test time.
-    const url = import.meta.resolve('@taucad/opencascade.js/wasm');
+    const url = import.meta.resolve('ocjs/wasm');
     const resolvedPath = fileURLToPath(url);
     const distWasm = join(dirname(resolvedPath), basename(resolvedPath));
     if (!existsSync(distWasm)) {
@@ -116,11 +126,11 @@ describe('package exports — wasm subpath contract', () => {
 
   it('should boot an OCCT instance via the canonical /wasm-subpath locateFile pattern (full round-trip)', async () => {
     // The runnable equivalent of the docs snippet:
-    //   const WASM_DIR = dirname(fileURLToPath(import.meta.resolve('@taucad/opencascade.js/wasm')));
+    //   const WASM_DIR = dirname(fileURLToPath(import.meta.resolve('ocjs/wasm')));
     //   await init({ locateFile: (f) => join(WASM_DIR, f) });
     // If this passes, every doc/snippet that follows the same pattern works
     // end-to-end against the package's `exports` map.
-    const wasmUrl = import.meta.resolve('@taucad/opencascade.js/wasm');
+    const wasmUrl = import.meta.resolve('ocjs/wasm');
     const wasmPath = fileURLToPath(wasmUrl);
     if (!existsSync(wasmPath)) return;
     const WASM_DIR = dirname(wasmPath);

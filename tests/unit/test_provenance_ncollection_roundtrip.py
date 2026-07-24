@@ -65,7 +65,7 @@ def _finalised_sidecar(tmp_path, prov_mod, ncollection_kwargs: dict) -> dict:
   ``finalize`` copies ``build/provenance.json`` to
   ``<wasm_dir>/<variant>.provenance.json`` once the variant name can
   be derived from the YAML — the test asserts on that final sidecar
-  because it's the file every downstream consumer (`generate-docs.mjs`,
+  because it's the file every downstream consumer (`generate-api-reference.mjs`,
   `docker-e2e-validate.sh`) actually reads.
   """
   yaml_path = _make_minimal_yaml(tmp_path)

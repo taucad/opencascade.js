@@ -3,6 +3,7 @@
   "pages": [
     "init-function",
     "module-shape",
-    "exception-classes"
+    "exception-classes",
+    "api-reference-data"
   ]
 }

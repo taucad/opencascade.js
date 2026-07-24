@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import { GITHUB_REPO_URL } from '../lib/site';
 
 const UPSTREAM_REPO_URL = 'https://github.com/donalffons/opencascade.js';
-const LICENSE_URL = `${GITHUB_REPO_URL}/blob/master/LICENSE`;
+const LICENSE_URL = `${GITHUB_REPO_URL}/blob/main/LICENSE`;
 
 const footerLinkClass = 'text-fd-muted-foreground hover:text-fd-primary hover:underline';
 

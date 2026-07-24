@@ -2,16 +2,16 @@ import { describe, it, expect } from 'vitest';
 import { fileURLToPath } from 'node:url';
 import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import initMulti from '@taucad/opencascade.js/multi';
+import initMulti from 'ocjs/multi';
 import { initOCMulti, multiWasmExists } from './helpers.js';
 
 const sabAvailable = typeof SharedArrayBuffer !== 'undefined';
 
 describe('multi-threaded package subpath', () => {
   it.skipIf(!multiWasmExists)(
-    'should boot via @taucad/opencascade.js/multi and expose a thread pool with more than one worker',
+    'should boot via ocjs/multi and expose a thread pool with more than one worker',
     async () => {
-      const wasmUrl = import.meta.resolve('@taucad/opencascade.js/multi/wasm');
+      const wasmUrl = import.meta.resolve('ocjs/multi/wasm');
       const wasmPath = fileURLToPath(wasmUrl);
       if (!existsSync(wasmPath)) return;
 

@@ -26,7 +26,7 @@ const DocsPageRoute = async ({ params }: PageProps): Promise<React.JSX.Element> 
 
   const MdxContent = page.data.body;
   const markdownUrl = `${page.url}.mdx`;
-  const githubUrl = `${GITHUB_REPO_URL}/blob/master/${DOCS_DIR}/${page.path}`;
+  const githubUrl = `${GITHUB_REPO_URL}/blob/main/${DOCS_DIR}/${page.path}`;
 
   return (
     <DocsPage toc={page.data.toc} full={page.data.full}>
