@@ -173,6 +173,7 @@ jobs:
           version: 3.9.1
           files: docs-site/content/docs
           fail_on_error: true
+          filter_mode: nofilter
           vale_flags: '--config=docs-site/.vale.ini'
 
   candidate-validation:

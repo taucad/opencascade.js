@@ -449,6 +449,15 @@ describe('CI contracts', () => {
       .toBeLessThan(names.indexOf('Python quality and unit tests'));
   });
 
+  it('should lint the complete docs corpus without relying on the PR diff API', () => {
+    const ci = workflow('docker.yml');
+    const vale = ci.jobs['docs-prose'].steps.find(
+      ({ name }: { name?: string }) => name === 'Vale',
+    );
+    expect(vale.with.filter_mode).toBe('nofilter');
+    expect(vale.with.fail_on_error).toBe(true);
+  });
+
   it('should keep the final aggregate free of custom timing API code', () => {
     const ci = workflow('docker.yml');
     expect(ci.jobs['ci-gate'].permissions).toEqual({ contents: 'read' });

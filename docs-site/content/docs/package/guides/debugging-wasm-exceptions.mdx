@@ -33,7 +33,7 @@ try {
 and returns the text OCCT actually attached to the exception (e.g.
 `"BRepFilletAPI_MakeFillet: Empty argument"`).
 
-## Why not just `error.message`?
+## Why not `error.message`?
 
 `WebAssembly.Exception` is a JS host object — its `message` field is empty for
 C++-thrown values. The actual text lives in C++ memory, addressable only by
