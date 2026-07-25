@@ -254,7 +254,12 @@ from ocjs_bindgen.link.rewrite import (  # noqa: E402
 )
 
 
-def verifyBindings(bindings, libraryBasePath) -> bool:
+def verifyBindings(
+  bindings,
+  libraryBasePath,
+  *,
+  custom_compiled_root=None,
+) -> bool:
   """Verify every requested binding has a compiled `.o`, an NCollection
   typedef alias resolving to a compiled canonical, or an Embind builtin
   registration in `build/additional-bind-symbols.json`.
@@ -267,7 +272,12 @@ def verifyBindings(bindings, libraryBasePath) -> bool:
   positive (typedef aliases, builtins) out of `truly_missing` by
   construction.
   """
-  compiled = _collect_compiled_symbols(libraryBasePath)
+  additional_roots = (
+    (custom_compiled_root,)
+    if custom_compiled_root
+    else ()
+  )
+  compiled = _collect_compiled_symbols(libraryBasePath, additional_roots)
   requested = {b["symbol"] for b in bindings}
   missing = requested - compiled
   if not missing:
@@ -992,9 +1002,17 @@ def main():
     }, source_root=custom_bindings_root, output_root=custom_compiled_root)
     print("Custom code bindings done.", flush=True)
 
-    verifyBindings(buildConfig["mainBuild"]["bindings"], libraryBasePath)
+    verifyBindings(
+      buildConfig["mainBuild"]["bindings"],
+      libraryBasePath,
+      custom_compiled_root=custom_compiled_root,
+    )
     for extraBuild in buildConfig["extraBuilds"]:
-      verifyBindings(extraBuild, libraryBasePath)
+      verifyBindings(
+        extraBuild,
+        libraryBasePath,
+        custom_compiled_root=custom_compiled_root,
+      )
     print("All bindings verified.", flush=True)
 
   # Keep generated custom fragments in the YAML-owned scratch tree for both

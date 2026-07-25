@@ -67,7 +67,7 @@ def _all_requested_bindings(config):
     return bindings
 
 
-def validate_symbols(config, build_dir):
+def validate_symbols(config, build_dir, *, custom_compiled_root=None):
     """Bucket every YAML-requested symbol via `manifest_registry`.
 
     V2 — replaces the original `requested - compiled` arithmetic that
@@ -88,7 +88,12 @@ def validate_symbols(config, build_dir):
     Returns the manifest-shaped dict consumed by main() to populate
     `manifest["symbols"]`.
     """
-    compiled = collect_compiled_symbols(build_dir)
+    additional_roots = (
+        (custom_compiled_root,)
+        if custom_compiled_root
+        else ()
+    )
+    compiled = collect_compiled_symbols(build_dir, additional_roots)
     alias_index = load_ncollection_alias_index(build_dir)
     builtins = builtin_binding_symbols(build_dir)
     requested = {b["symbol"] for b in _all_requested_bindings(config)}
@@ -279,7 +284,16 @@ def main():
     all_pass = True
 
     # 1. Symbol validation
-    sym_result = validate_symbols(config, build_dir)
+    sym_result = validate_symbols(
+        config,
+        build_dir,
+        custom_compiled_root=os.path.join(
+            build_dir,
+            "link-work",
+            config_hash,
+            "compiled-bindings",
+        ),
+    )
     n_aliased = len(sym_result["alias_resolved"])
     n_builtin = len(sym_result["builtin"])
     if sym_result["pass"]:

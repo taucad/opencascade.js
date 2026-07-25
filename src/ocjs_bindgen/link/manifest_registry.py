@@ -102,7 +102,10 @@ class SymbolResolution:
   truly_missing: frozenset[str] = frozenset()
 
 
-def collect_compiled_symbols(build_dir: str) -> set[str]:
+def collect_compiled_symbols(
+  build_dir: str,
+  additional_roots: tuple[str, ...] = (),
+) -> set[str]:
   """Return every symbol whose `<name>.cpp.o` exists under `build_dir`.
 
   Walks `compiled-bindings/` first (the layout `compileBindings.py`
@@ -114,6 +117,7 @@ def collect_compiled_symbols(build_dir: str) -> set[str]:
   candidates = [
     os.path.join(build_dir, "compiled-bindings"),
     os.path.join(build_dir, "bindings"),
+    *additional_roots,
   ]
   for root in candidates:
     if not os.path.isdir(root):
