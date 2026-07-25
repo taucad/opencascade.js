@@ -19,13 +19,19 @@ import os
 import re
 import subprocess
 import sys
+from pathlib import Path
 
+from ocjs_bindgen.build_state import _write_json_atomic
 from ocjs_bindgen.provenance.clock import build_datetime
 
 OCJS_ROOT = os.environ.get("OCJS_ROOT", os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 OCCT_ROOT = os.environ.get("OCCT_ROOT", "")
 BUILD_DIR = os.path.join(OCJS_ROOT, "build")
 PROVENANCE_FILE = os.path.join(BUILD_DIR, "provenance.json")
+LINK_REPORT_FILE = os.environ.get(
+    "OCJS_LINK_REPORT",
+    os.path.join(BUILD_DIR, "link-report.json"),
+)
 
 
 def _file_hash(path: str) -> str:
@@ -107,6 +113,20 @@ def _get_python_version() -> str:
     return f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
 
 
+def _get_command_version(command: list[str]) -> str:
+    try:
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        output = (result.stdout or result.stderr).strip()
+        return output.splitlines()[0] if result.returncode == 0 and output else "unknown"
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return "unknown"
+
+
 def _filter_hash() -> str:
     filter_file = os.path.join(OCJS_ROOT, "src", "filter", "filterPackages.py")
     if os.path.exists(filter_file):
@@ -179,10 +199,7 @@ def _load() -> dict:
 
 
 def _save(data: dict) -> None:
-    os.makedirs(BUILD_DIR, exist_ok=True)
-    with open(PROVENANCE_FILE, "w") as f:
-        json.dump(data, f, indent=2, sort_keys=True)
-        f.write("\n")
+    _write_json_atomic(Path(PROVENANCE_FILE), data)
 
 
 def _build_compile_flags(opt: str, lto: bool, exceptions: str) -> list:
@@ -219,7 +236,17 @@ def _load_deps_json() -> dict:
             data = json.load(f)
         deps = data.get("dependencies", {})
         return {
-            name: {k: v for k, v in info.items() if k in ("commit", "docker_digest", "emsdk_version", "version")}
+            name: {
+                k: v
+                for k, v in info.items()
+                if k in (
+                    "commit",
+                    "docker_digest",
+                    "docker_image",
+                    "emsdk_version",
+                    "version",
+                )
+            }
             for name, info in deps.items()
         }
     except (json.JSONDecodeError, KeyError):
@@ -239,6 +266,10 @@ def init() -> None:
     thread_slug = "multi" if "multi" in threading else "single"
     built_at = build_datetime()
     build_id = f"{built_at.strftime('%Y%m%dT%H%M%S')}-{opt.lstrip('-')}-{lto_slug}-{thread_slug}"
+    pinned_deps = _load_deps_json()
+    emscripten_dep = pinned_deps.get("emscripten", {})
+    builder_image = emscripten_dep.get("docker_image", "")
+    builder_digest = emscripten_dep.get("docker_digest", "")
 
     cache_key_parts = [
         opt.lstrip("-"),
@@ -259,13 +290,22 @@ def init() -> None:
             "llvm": _get_llvm_version(),
             "wasmOpt": _get_wasm_opt_version(),
             "python": _get_python_version(),
+            "node": _get_command_version(["node", "--version"]),
+            "npm": _get_command_version(["npm", "--version"]),
+            "cmake": _get_command_version(["cmake", "--version"]),
+            "doxygen": _get_command_version(["doxygen", "--version"]),
+            "builder": (
+                f"{builder_image}@{builder_digest}"
+                if builder_image and builder_digest
+                else "unknown"
+            ),
         },
 
         "source": {
             "occtCommit": _git_commit(OCCT_ROOT),
             "opencascadejsCommit": _ocjs_source_commit(),
             "filterPackagesHash": _filter_hash(),
-            "pinnedDeps": _load_deps_json(),
+            "pinnedDeps": pinned_deps,
         },
 
         "compilation": {
@@ -326,16 +366,15 @@ def add_linking(
     does NOT expose CLI flags for them so an out-of-band caller can't
     write values that contradict what the link actually produced.
     """
-    prov = _load()
-    if not prov:
-        return
-
-    prov["linking"] = {
+    link_report = {
+      "schema": "ocjs-link-report-v1",
+      "linking": {
         "yamlConfig": os.path.basename(yaml_config) if yaml_config else "",
         "yamlConfigHash": yaml_hash,
         "boundSymbols": bound_symbols,
         "symbolList": symbol_list or [],
         "emccFlags": emcc_flags or [],
+      },
     }
 
     opt_reduction = "0.0%"
@@ -343,20 +382,27 @@ def add_linking(
         reduction_pct = (1 - post_opt_size / pre_opt_size) * 100
         opt_reduction = f"{reduction_pct:.1f}%"
 
-    prov["postProcessing"] = {
+    link_report["postProcessing"] = {
         "wasmOptFlags": wasm_opt_flags or [],
         "preOptSize": pre_opt_size,
         "postOptSize": post_opt_size,
         "optReduction": opt_reduction,
     }
 
-    prov["nCollectionManifest"] = {
+    link_report["nCollectionManifest"] = {
         "linked": ncollection_linked,
         "total": ncollection_total,
         "dropped": ncollection_dropped,
     }
+    _write_json_atomic(Path(LINK_REPORT_FILE), link_report)
 
-    _save(prov)
+    prov = _load()
+    if prov:
+        prov.update({
+            key: link_report[key]
+            for key in ("linking", "postProcessing", "nCollectionManifest")
+        })
+        _save(prov)
 
 
 def _variant_name_from_yaml(yaml_path: str) -> str:
@@ -375,11 +421,38 @@ def finalize(wasm_dir: str = "", yaml_config: str = "") -> None:
     prov = _load()
     if not prov:
         return
+    if os.path.isfile(LINK_REPORT_FILE):
+        with open(LINK_REPORT_FILE) as f:
+            link_report = json.load(f)
+        prov.update({
+            key: link_report[key]
+            for key in ("linking", "postProcessing", "nCollectionManifest")
+            if key in link_report
+        })
 
     if wasm_dir and os.path.isdir(wasm_dir):
-        wasm_files = [f for f in os.listdir(wasm_dir) if f.endswith(".wasm")]
-        js_files = [f for f in os.listdir(wasm_dir) if f.endswith(".js") and not f.endswith(".d.ts")]
-        dts_files = [f for f in os.listdir(wasm_dir) if f.endswith(".d.ts")]
+        manifest_path = os.environ.get("OCJS_ARTIFACT_MANIFEST")
+        if manifest_path:
+            with open(manifest_path) as f:
+                artifact_manifest = json.load(f)
+            selected_files = []
+            for entry in artifact_manifest.get("files", []):
+                name = entry["path"]
+                full = os.path.join(wasm_dir, name)
+                if _stat_file(full) != entry["size"] or _file_hash(full) != entry["sha256"]:
+                    raise ValueError(f"materialized artifact does not match inventory: {name}")
+                selected_files.append(name)
+        else:
+            variant = _variant_name_from_yaml(yaml_config) if yaml_config else ""
+            prefix = f"{variant}." if variant else ""
+            selected_files = [
+                name
+                for name in os.listdir(wasm_dir)
+                if not prefix or name.startswith(prefix)
+            ]
+        wasm_files = sorted(f for f in selected_files if f.endswith(".wasm"))
+        js_files = sorted(f for f in selected_files if f.endswith(".js") and not f.endswith(".d.ts"))
+        dts_files = sorted(f for f in selected_files if f.endswith(".d.ts"))
 
         outputs = {}
         for wf in wasm_files:
@@ -413,12 +486,9 @@ def finalize(wasm_dir: str = "", yaml_config: str = "") -> None:
     filename = f"{variant}.provenance.json" if variant else "provenance.json"
     dest = os.path.join(wasm_dir, filename) if wasm_dir else PROVENANCE_FILE
 
-    with open(PROVENANCE_FILE, "w") as f:
-        json.dump(prov, f, indent=2, sort_keys=True)
-        f.write("\n")
+    _write_json_atomic(Path(PROVENANCE_FILE), prov)
     if dest != PROVENANCE_FILE:
-        import shutil
-        shutil.copy2(PROVENANCE_FILE, dest)
+        _write_json_atomic(Path(dest), prov)
         print(f"Provenance written to {dest}")
 
 

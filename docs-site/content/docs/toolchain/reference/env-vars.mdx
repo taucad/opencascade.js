@@ -23,10 +23,8 @@ command line, in CI, or in `build-configs/configurations.json`.
 | Variable | Default | Effect |
 |---|---|---|
 | `OCJS_CONFIG` | `single-threaded` | Named preset from `configurations.json`. Alternative to the `--config <name>` CLI flag — both end up at the same place. |
-| `OCJS_PARALLEL_JOBS` | CPU count | Max parallel compile jobs. |
-| `OCJS_CACHE_DIR` | `./cache` | Where to store cached `.o` files and bindgen output. |
-| `OCJS_BUILD_DIR` | `./build` | Intermediate build outputs. |
-| `OCJS_DIST_DIR` | `./dist` | Final wasm + JS + .d.ts artifacts. |
+| `OCJS_COMPILE_WORKERS` | Up to 8 | Max parallel binding-object compile workers. Worker count changes execution only, not cache identity. |
+| `BUILD_DIR` | `./build` | Canonical intermediate root. Custom values are rejected because Nx owns the fixed output graph. |
 
 ## Docker-specific
 
@@ -35,7 +33,7 @@ command line, in CI, or in `build-configs/configurations.json`.
 | `OCJS_DEPS_VERSION` | from `DEPS.json` | Override the dep pinning (OCCT, freetype, rapidjson). |
 | `OCJS_EMSDK_DIR` | `/deps/emsdk` | Location of the emscripten SDK inside the image. |
 | `OCJS_PYTHON` | `python3` | Python interpreter for the bindgen. |
-| `OCJS_OUTPUT_DIR` | `/src` (in container) / `./dist` (host) | Where the link step writes the final `.wasm`, `.js`, `.d.ts`, and `.build-manifest.json`. In-container default is `/src` so the canonical single-mount Quickstart (`docker run -v "$(pwd):/src" …`) writes outputs next to the YAML automatically. Override to a separate path if you need outputs outside the bind-mount. |
+| `OCJS_OUTPUT_DIR` | `/src` (in container) / `./dist` (host) | Destination for the uncached materialization step. The cached `link-core` remains internal, so a cache hit still fills a newly empty mount before validation and provenance finalization. |
 
 ## Diagnostics
 
@@ -53,7 +51,7 @@ command line, in CI, or in `build-configs/configurations.json`.
 # the default).
 OCJS_CONFIG=single-threaded-smallest \
 OCJS_STRICT_TYPES=1 \
-OCJS_PARALLEL_JOBS=8 \
+OCJS_COMPILE_WORKERS=8 \
 ./build-wasm.sh link build-configs/edge-runtime.yml
 ```
 

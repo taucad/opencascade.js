@@ -33,6 +33,7 @@ const assert = (condition, message) => {
 
 const readJson = async (file) => JSON.parse(await fsp.readFile(file, 'utf8'));
 const writeJson = async (file, value) => fsp.writeFile(file, `${JSON.stringify(value)}\n`);
+const codePointCompare = (a, b) => a < b ? -1 : a > b ? 1 : 0;
 const shardKey = (moduleName, toolkitName, packageName) =>
   `${moduleName}__${toolkitName}__${packageName}`;
 
@@ -162,14 +163,14 @@ const writeSiteData = async (feed, output) => {
   const modules = [];
   const searchIndex = [];
 
-  for (const moduleNode of feed.modules) {
+  for (const moduleNode of [...feed.modules].sort((a, b) => codePointCompare(a.name, b.name))) {
     const toolkits = [];
-    for (const toolkit of moduleNode.toolkits) {
+    for (const toolkit of [...moduleNode.toolkits].sort((a, b) => codePointCompare(a.name, b.name))) {
       const packages = [];
-      for (const packageNode of toolkit.packages) {
+      for (const packageNode of [...toolkit.packages].sort((a, b) => codePointCompare(a.name, b.name))) {
         const key = shardKey(moduleNode.name, toolkit.name, packageNode.name);
         const owner = `${moduleNode.name}/${toolkit.name}/${packageNode.name}`;
-        const classes = [...packageNode.classes].sort((a, b) => a.name.localeCompare(b.name));
+        const classes = [...packageNode.classes].sort((a, b) => codePointCompare(a.name, b.name));
         await writeJson(path.join(output, `${key}.json`), {
           schema: 2,
           shard: key,
@@ -200,7 +201,13 @@ const writeSiteData = async (feed, output) => {
       toolkits,
     });
   }
-  searchIndex.sort((a, b) => a.q.localeCompare(b.q));
+  searchIndex.sort((a, b) => {
+    for (const key of ['q', 'n', 'k', 'p', 's', 'a']) {
+      const order = codePointCompare(a[key] ?? '', b[key] ?? '');
+      if (order) return order;
+    }
+    return 0;
+  });
 
   const index = {
     schema: 2,

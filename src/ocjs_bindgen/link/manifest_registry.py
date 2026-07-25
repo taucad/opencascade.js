@@ -118,7 +118,9 @@ def collect_compiled_symbols(build_dir: str) -> set[str]:
   for root in candidates:
     if not os.path.isdir(root):
       continue
-    for _dirpath, _dirnames, filenames in os.walk(root):
+    for _dirpath, dirnames, filenames in os.walk(root):
+      dirnames.sort()
+      filenames.sort()
       for fname in filenames:
         if fname.endswith(".cpp.o"):
           compiled.add(fname[:-6])

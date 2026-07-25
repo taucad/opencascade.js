@@ -52,7 +52,7 @@ runs benefit from Nx's content-addressed cache:
 
 | Subcommand                                      | What it does                                                                                                                                                                        |
 | ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `link <yaml>`                                   | End-to-end build. Nx walks `apply-patches → pch → generate → compile-bindings → compile-sources → link` with cache reuse — fresh container = full build, cached re-run = link only. |
+| `link <yaml>`                                   | End-to-end build. Nx caches the canonical `link-core`, then always materializes its exact inventory into the requested output directory before validation and provenance. |
 | `compile-bindings`, `compile-sources`, `pch`, … | Run an individual Nx target                                                                                                                                                         |
 | `validate <yaml>`                               | Validate YAML without building                                                                                                                                                      |
 | `nx <args…>`                                    | Pass-through to `npx nx` (escape hatch)                                                                                                                                             |

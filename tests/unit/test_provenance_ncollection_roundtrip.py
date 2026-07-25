@@ -41,6 +41,7 @@ def provenance_module(tmp_path, monkeypatch):
   directly.
   """
   monkeypatch.setenv("OCJS_ROOT", str(tmp_path))
+  monkeypatch.setenv("SOURCE_DATE_EPOCH", "0")
   import provenance
   importlib.reload(provenance)
   os.makedirs(provenance.BUILD_DIR, exist_ok=True)

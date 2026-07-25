@@ -1,7 +1,6 @@
 #!/usr/bin/python3
 
 import errno
-import hashlib
 import json
 import os
 from collections.abc import Callable
@@ -21,78 +20,6 @@ from ocjs_bindgen.predicates import shouldProcessClass
 libraryBasePath = OCJS_ROOT + "/build/bindings"
 buildDirectory = OCJS_ROOT + "/build"
 occtBasePath = OCCT_ROOT + "/src/"
-
-GENERATOR_HASH_FILE = os.path.join(libraryBasePath, ".generator-hash")
-
-def _generator_source_hash() -> str:
-  """Hash all Python source files that affect binding generation."""
-  h = hashlib.sha256()
-  src_dir = os.path.join(OCJS_ROOT, "src")
-  for root, dirs, files in os.walk(src_dir):
-    dirs[:] = [d for d in sorted(dirs) if d != "__pycache__"]
-    for fname in sorted(files):
-      if fname.endswith(".py"):
-        fpath = os.path.join(root, fname)
-        with open(fpath, "rb") as f:
-          h.update(f.read())
-  return h.hexdigest()[:16]
-
-def _check_generator_hash_and_clean():
-  """Compare current generator code hash to stored hash; purge stale outputs on mismatch."""
-  current_hash = _generator_source_hash()
-
-  stored_hash = ""
-  if os.path.exists(GENERATOR_HASH_FILE):
-    with open(GENERATOR_HASH_FILE) as f:
-      stored_hash = f.read().strip()
-
-  if stored_hash == current_hash:
-    return
-
-  if stored_hash:
-    print(f"Generator code changed (was {stored_hash[:8]}..., now {current_hash[:8]}...). Purging stale .d.ts.json and .cpp files.")
-  else:
-    print("No generator hash found. Will regenerate all bindings.")
-
-  target = libraryBasePath
-  if os.path.islink(target):
-    target = os.path.realpath(target)
-
-  count = 0
-  for dirpath, _dirnames, filenames in os.walk(target):
-    for fname in filenames:
-      if fname.endswith(".d.ts.json") or (fname.endswith(".cpp") and not fname.endswith(".cpp.o")):
-        os.remove(os.path.join(dirpath, fname))
-        count += 1
-  if count > 0:
-    print(f"  Removed {count} stale generated files.")
-
-  # Also purge orphaned `.cpp.o` files in `compiled-bindings/`. Without this,
-  # a generator-code change that renames a binding (e.g. promoting nested
-  # `TopoView_FaceOps` → `BRepGraph_TopoView_FaceOps`) leaves the previous
-  # object file behind. The link step then folds both into the same wasm and
-  # Embind's `class_<…>("TopoView")` registration from the orphan collides
-  # with the new `class_<BRepGraph::TopoView>("BRepGraph_TopoView")` one,
-  # surfacing as runtime `Cannot call X due to unbound types` when the
-  # second registration's TypeID for an inner class never lands.
-  compiled_root = os.path.join(os.path.dirname(target.rstrip("/")), "compiled-bindings")
-  if os.path.isdir(compiled_root):
-    obj_count = 0
-    for dirpath, _dirnames, filenames in os.walk(compiled_root):
-      bindings_dirpath = dirpath.replace(compiled_root, target, 1)
-      for fname in filenames:
-        if not fname.endswith(".cpp.o"):
-          continue
-        source_cpp = os.path.join(bindings_dirpath, fname[:-2])  # strip ".o"
-        if not os.path.exists(source_cpp):
-          os.remove(os.path.join(dirpath, fname))
-          obj_count += 1
-    if obj_count > 0:
-      print(f"  Removed {obj_count} orphaned compiled-binding object files.")
-
-  os.makedirs(os.path.dirname(GENERATOR_HASH_FILE), exist_ok=True)
-  with open(GENERATOR_HASH_FILE, "w") as f:
-    f.write(current_hash)
 
 def mkdirp(name: str) -> None:
   try:
@@ -479,7 +406,12 @@ referenceTypeTemplateDefs = \
   OCJS_RBV_PREAMBLE + \
   "\n"
 
-def generateCustomCodeBindings(customCode, known_exports=None):
+def generateCustomCodeBindings(
+  customCode,
+  known_exports=None,
+  *,
+  output_dir=None,
+):
   """Generate Embind C++ and TypeScript fragments for the YAML's `additionalCppCode` block.
 
   Callers MUST pass `known_exports` so cross-class references inside the
@@ -501,10 +433,13 @@ def generateCustomCodeBindings(customCode, known_exports=None):
   this preserves the contract for any standalone caller while still avoiding
   the "every sibling reference is `unknown`" baseline failure mode.
   """
-  try:
-    os.makedirs(libraryBasePath)
-  except Exception:
-    pass
+  global buildDirectory, libraryBasePath
+  previous_build_directory = buildDirectory
+  previous_library_base_path = libraryBasePath
+  if output_dir is not None:
+    libraryBasePath = os.path.abspath(output_dir)
+    buildDirectory = os.path.dirname(libraryBasePath)
+  os.makedirs(libraryBasePath, exist_ok=True)
 
   embindPreamble = ocIncludeStatements + "\n" + referenceTypeTemplateDefs + "\n" + customCode
 
@@ -528,8 +463,12 @@ def generateCustomCodeBindings(customCode, known_exports=None):
   # sibling custom classes) would collapse to `unknown` via the fallback in
   # `TypescriptBindings.resolve_type`. See the `TypescriptBindings` class
   # docstring for the full contract.
-  process(tuInfo, ".cpp", embindGenerationFuncClasses, embindGenerationFuncTemplates, embindGenerationFuncEnums, embindPreamble, True)
-  process(tuInfo, ".d.ts.json", typescriptGenerationFuncClasses, typescriptGenerationFuncTemplates, typescriptGenerationFuncEnums, "", True)
+  try:
+    process(tuInfo, ".cpp", embindGenerationFuncClasses, embindGenerationFuncTemplates, embindGenerationFuncEnums, embindPreamble, True)
+    process(tuInfo, ".d.ts.json", typescriptGenerationFuncClasses, typescriptGenerationFuncTemplates, typescriptGenerationFuncEnums, "", True)
+  finally:
+    buildDirectory = previous_build_directory
+    libraryBasePath = previous_library_base_path
 
 if __name__ == "__main__":
   import argparse
@@ -552,8 +491,6 @@ if __name__ == "__main__":
     os.makedirs(libraryBasePath)
   except Exception:
     pass
-
-  _check_generator_hash_and_clean()
 
   # Phase 1: Discovery scan
   scan_tuInfo = TuInfo("")

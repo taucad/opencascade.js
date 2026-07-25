@@ -11,6 +11,7 @@
       { "env": "OCJS_EXCEPTIONS" },
       { "env": "OCJS_EH_MODE" },
       { "env": "OCJS_SIMD" },
+      { "env": "OCJS_RELAXED_SIMD" },
       { "env": "THREADING" },
       { "env": "OCJS_DEFINES" },
       { "env": "OCJS_UNDEFINES" }
@@ -24,11 +25,23 @@
       { "env": "OCJS_BIGINT" },
       { "env": "OCJS_SKIP_WASM_OPT" },
       { "env": "BINARYEN_EXTRA_PASSES" },
-      { "env": "OCJS_MALLOC" }
+      { "env": "OCJS_MALLOC" },
+      { "env": "OCJS_LINK_OPT" }
     ],
-    "toolchain": [{ "runtime": "emcc --version 2>/dev/null || echo not-installed" }],
-    "depsVersion": ["{projectRoot}/DEPS.json"],
-    "generatorCode": ["{projectRoot}/src/**/*.py", "{projectRoot}/bindgen-filters.yaml"],
+    "toolchain": [
+      { "runtime": "emcc --version 2>/dev/null || echo not-installed" },
+      { "runtime": "wasm-opt --version 2>/dev/null || echo not-installed" }
+    ],
+    "depsVersion": [
+      "{projectRoot}/DEPS.json",
+      "{projectRoot}/pyproject.toml",
+      "{projectRoot}/uv.lock"
+    ],
+    "generatorCode": [
+      "{projectRoot}/src/**/*.py",
+      "{projectRoot}/scripts/generate-bindings.py",
+      "{projectRoot}/bindgen-filters.yaml"
+    ],
     "buildScript": ["{projectRoot}/build-wasm.sh"],
     "patchScripts": ["{projectRoot}/src/patches/*.py", "{projectRoot}/src/patches/*.patch"],
     "compileBindingsScript": [

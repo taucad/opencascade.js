@@ -28,6 +28,7 @@ from filter.filterPackages import filterPackages
 
 from .flags import (
     EXTRA_COMPILE_FLAGS,
+    PATH_PREFIX_FLAGS,
     SIMD_FLAGS,
     WASM_EXCEPTION_FLAGS,
     write_build_flags,
@@ -87,6 +88,8 @@ def getGlobalIncludes() -> tuple[list[str], list[str], list[str]]:
     deprecatedIncludeFiles: list[str] = []
     additionalIncludePaths: list[str] = []
     for dirpath, dirnames, filenames in os.walk(occtBasePath):
+        dirnames.sort()
+        filenames.sort()
         dirName = os.path.basename(dirpath)
         if dirName and not filterPackages(dirName):
             dirnames.clear()
@@ -266,9 +269,10 @@ def _get_parse_libcxx_include_paths() -> list[str]:
         matches = glob.glob(
             os.path.join(VENDORED_LLVM17_DIR, "include", "*", "c++", "v1", "__config_site")
         )
-        if matches:
+        matches.sort()
+        if len(matches) == 1:
             config_site_inc = os.path.dirname(matches[0])
-        else:
+        elif not matches:
             raise RuntimeError(
                 "libc++ __config_site not found under "
                 f"{VENDORED_LLVM17_DIR}/include/. Searched both "
@@ -279,6 +283,11 @@ def _get_parse_libcxx_include_paths() -> list[str]:
                 "verification should catch corruption). Without "
                 "__config_site libc++'s `__config` fails to parse and "
                 "every NCollection template degrades to ': int'."
+            )
+        else:
+            raise RuntimeError(
+                "multiple libc++ __config_site candidates found; "
+                + ", ".join(matches)
             )
 
     libc_incs = _get_host_libc_includes()
@@ -360,46 +369,48 @@ def buildFlatIncludes() -> str:
     needed for type resolution during compilation but don't affect WASM binary
     size. Package filtering is applied at the `.o` compile/link level.
     """
-    import shutil
+    from pathlib import Path
 
-    if os.path.isdir(FLAT_INCLUDE_DIR):
-        shutil.rmtree(FLAT_INCLUDE_DIR)
-    os.makedirs(FLAT_INCLUDE_DIR)
+    from ocjs_bindgen.build_state import replace_tree
 
     header_exts = {".hxx", ".h", ".lxx", ".gxx", ".pxx"}
-    count = 0
-    for dirpath, _dirnames, filenames in os.walk(occtBasePath):
+    headers: dict[str, list[str]] = {}
+    for dirpath, dirnames, filenames in os.walk(occtBasePath):
+        dirnames.sort()
+        filenames.sort()
         for fname in filenames:
             if os.path.splitext(fname)[1].lower() in header_exts:
-                target = os.path.join(FLAT_INCLUDE_DIR, fname)
-                if not os.path.exists(target):
-                    os.symlink(
-                        os.path.abspath(os.path.join(dirpath, fname)), target
-                    )
-                    count += 1
+                headers.setdefault(fname, []).append(
+                    os.path.abspath(os.path.join(dirpath, fname))
+                )
+    collisions = {
+        name: paths
+        for name, paths in headers.items()
+        if len(paths) > 1
+    }
+    if collisions:
+        detail = "; ".join(
+            f"{name}=[{', '.join(paths)}]"
+            for name, paths in sorted(collisions.items())
+        )
+        raise RuntimeError(f"duplicate flat OCCT headers: {detail}")
+
+    destination = Path(FLAT_INCLUDE_DIR)
+
+    def populate(stage: Path) -> None:
+        for name, (source,) in sorted(headers.items()):
+            target = stage / name
+            target.symlink_to(os.path.relpath(source, target.parent))
+
+    replace_tree(destination, populate)
+    count = len(headers)
     print(f"Flat includes: {count} files symlinked into {FLAT_INCLUDE_DIR}/")
     return FLAT_INCLUDE_DIR
 
 
-def _get_cmake_include_dir():
-    """Return the CMake-collected OCCT include directory if it exists."""
-    cmake_inc = os.path.join(OCJS_ROOT, "build", "occt-cmake", "include", "opencascade")
-    if os.path.isdir(cmake_inc):
-        return cmake_inc
-    return None
-
-
 def getFlatIncludePaths() -> list[str]:
-    """Return the minimal set of -I paths using the flat include directory.
-
-    Prefers CMake-collected headers when available (from emcmake cmake build),
-    falling back to the symlink-based flat include directory.
-    """
-    cmake_inc = _get_cmake_include_dir()
-    paths = [FLAT_INCLUDE_DIR] + additionalIncludePaths
-    if cmake_inc:
-        paths.insert(0, cmake_inc)
-    return paths
+    """Return the canonical, generated OCCT include topology."""
+    return [FLAT_INCLUDE_DIR] + additionalIncludePaths
 
 
 _PARSE_STUBS_DIR = os.path.join(
@@ -425,7 +436,7 @@ def getAdditionalBindCodeParseIncludePaths() -> list[str]:
          ``emcc -c`` compile preceding the parse uses the real headers
          — the stubs are AST-extraction-only.
       2. The OCCT/freetype/rapidjson include set used by ``emcc -c``. A
-         built tree uses the CMake-collected or flat OCCT include directory;
+         built tree uses the canonical flat OCCT include directory;
          a clean checkout falls back to the source package include
          directories discovered by :func:`getGlobalIncludes`. The fallback
          lets quality tests exercise this parser after ``setup`` without
@@ -443,11 +454,9 @@ def getAdditionalBindCodeParseIncludePaths() -> list[str]:
     if os.path.isdir(parse_stubs):
         paths.append(parse_stubs)
 
-    materialized_occt_paths = [
-        path
-        for path in (_get_cmake_include_dir(), FLAT_INCLUDE_DIR)
-        if path and os.path.isdir(path)
-    ]
+    materialized_occt_paths = (
+        [FLAT_INCLUDE_DIR] if os.path.isdir(FLAT_INCLUDE_DIR) else []
+    )
     if materialized_occt_paths:
         paths.extend(materialized_occt_paths)
     else:
@@ -467,7 +476,8 @@ def buildPch(threading: str = "single-threaded") -> None:
     PCH instead of reparsing them. Combined with flat includes, this gives
     ~25× compilation speedup.
     """
-    with open(PCH_HEADER, "w") as f:
+    temporary_header = f"{PCH_HEADER}.tmp-{os.getpid()}"
+    with open(temporary_header, "w") as f:
         f.write("#ifndef OCJS_PCH_H\n#define OCJS_PCH_H\n")
         f.write(ocIncludeStatements)
         _occt_leaked_macros = ["CONSTRUCTOR", "DESTRUCTOR", "OPTIONAL", "DEFINE"]
@@ -477,6 +487,7 @@ def buildPch(threading: str = "single-threaded") -> None:
         f.write("#include <emscripten/bind.h>\n")
         f.write("#include <functional>\n")
         f.write("#endif\n")
+    os.replace(temporary_header, PCH_HEADER)
 
     OPT_LEVEL = os.environ.get("OCJS_OPT", "-O0")
     USE_LTO = os.environ.get("OCJS_LTO", "0") == "1"
@@ -490,6 +501,7 @@ def buildPch(threading: str = "single-threaded") -> None:
         *exception_flags,
         *SIMD_FLAGS,
         *EXTRA_COMPILE_FLAGS,
+        *PATH_PREFIX_FLAGS,
         "-DIGNORE_NO_ATOMICS=1",
         "-DOCCT_NO_PLUGINS",
         "-frtti",
@@ -518,11 +530,20 @@ def buildPch(threading: str = "single-threaded") -> None:
     command = [c for c in command if c]
 
     print(f"Building PCH ({len(ocIncludeFiles)} headers)...")
-    result = subprocess.run(command, capture_output=True, text=True)
-    if result.returncode != 0:
-        print("PCH compilation failed!")
-        print(result.stderr)
-        raise RuntimeError("PCH compilation failed")
+    temporary_pch = f"{PCH_FILE}.tmp-{os.getpid()}"
+    compile_command = [*command[:-1], temporary_pch]
+    try:
+        result = subprocess.run(compile_command, capture_output=True, text=True)
+        if result.returncode != 0:
+            print("PCH compilation failed!")
+            print(result.stderr)
+            raise RuntimeError("PCH compilation failed")
+        os.replace(temporary_pch, PCH_FILE)
+    finally:
+        try:
+            os.unlink(temporary_pch)
+        except FileNotFoundError:
+            pass
 
     size_mb = os.path.getsize(PCH_FILE) / (1024 * 1024)
     print(f"PCH ready: {PCH_FILE} ({size_mb:.0f} MB)")

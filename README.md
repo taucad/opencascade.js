@@ -136,7 +136,7 @@ docker run --rm \
 
 For cached iterative builds (link-only reruns in ≤ 5 min), see the named-volume recipe in [MAINTAINER.md](MAINTAINER.md#docker-end-to-end-validation). Apple Silicon runs natively from the manifest list — no `--platform` flag required.
 
-The entrypoint dispatches subcommands (`link`, `compile-bindings`, `compile-sources`, `pch`, `generate`, `apply-patches`) through `npx nx run ocjs:<target>`. `link` is the end-to-end command — Nx's `dependsOn` graph pulls every upstream step with cache reuse, so a fresh container performs a full build and cached re-runs replay only the link. Use `docker run … --help` for the complete reference, or `docker run … nx <args>` as an escape hatch into raw Nx.
+The entrypoint dispatches subcommands (`link`, `compile-bindings`, `compile-sources`, `pch`, `generate`, `apply-patches`) through `npx nx run ocjs:<target>`. `link` is the end-to-end command: Nx caches the canonical internal `link-core`, then an uncached step materializes its exact inventory into `OCJS_OUTPUT_DIR` before validation and provenance finalization. A cache hit therefore still populates a fresh bind mount without relinking. Use `docker run … --help` for the complete reference, or `docker run … nx <args>` as an escape hatch into raw Nx.
 
 ## Tags
 

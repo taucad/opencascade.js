@@ -76,9 +76,10 @@ docker run --rm \
 
 `link` is the end-to-end command. Inside the container Nx's `dependsOn`
 graph walks every upstream step (apply-patches → pch → generate →
-compile-bindings → compile-sources → link) with cache reuse, so a fresh
-container performs a full build and cached re-runs replay only the link
-step.
+compile-bindings → compile-sources → link-core → materialize → validate →
+provenance) with cache reuse. `link-core` owns the canonical cached bytes;
+materialization is deliberately uncached so a hit still populates a fresh
+bind mount without relinking.
 
 Output lands next to `mybuild.yml`:
 

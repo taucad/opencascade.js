@@ -5,7 +5,6 @@ from pathlib import Path
 
 import pytest
 
-
 _SCRIPT = Path(__file__).parents[2] / "src" / "extract-docs.py"
 _SPEC = importlib.util.spec_from_file_location("extract_docs", _SCRIPT)
 assert _SPEC is not None and _SPEC.loader is not None

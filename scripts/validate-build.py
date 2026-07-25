@@ -22,6 +22,7 @@ import json
 import os
 import sys
 from argparse import ArgumentParser
+from pathlib import Path
 
 OCJS_ROOT = os.environ.get("OCJS_ROOT", os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.join(OCJS_ROOT, "src"))
@@ -29,6 +30,7 @@ sys.path.insert(0, os.path.join(OCJS_ROOT, "src"))
 # V2 — single source of truth for symbol resolution. Both link-time
 # (`yaml_build.verifyBindings`) and post-link (this script) read through
 # the same loaders so the two views of "missing" can never disagree.
+from ocjs_bindgen.build_state import _write_json_atomic  # noqa: E402
 from ocjs_bindgen.link.manifest_registry import (  # noqa: E402
     builtin_binding_symbols,
     collect_compiled_symbols,
@@ -164,14 +166,13 @@ def validate_binding_report(build_dir):
 
 
 def stable_binding_report(report):
-    """Keep only binding facts that do not change between cold and cached builds."""
+    """Drop cache-execution counters from older binding reports."""
     if report is None:
         return None
     return {
-        "total": report.get("total", 0),
-        "failed": report.get("failed", 0),
-        "error_categories": report.get("error_categories", {}),
-        "failures": report.get("failures", []),
+        key: value
+        for key, value in report.items()
+        if key not in {"cached", "succeeded"}
     }
 
 
@@ -327,11 +328,10 @@ def main():
         all_pass = False
 
     # 4. Binding report (informational, path-corrected by V4)
-    binding_report = validate_binding_report(build_dir)
+    binding_report = stable_binding_report(validate_binding_report(build_dir))
     if binding_report:
-        print(f"  [INFO] Binding report: {binding_report.get('succeeded', '?')} succeeded, "
-              f"{binding_report.get('failed', '?')} failed, "
-              f"{binding_report.get('cached', '?')} cached")
+        print(f"  [INFO] Binding report: {binding_report.get('total', '?')} total, "
+              f"{binding_report.get('failed', '?')} failed")
 
     # 5. Any-type reasons summary (V6 — sourced from build/any-type-report.json)
     any_reasons = merge_any_reasons(build_dir)
@@ -349,13 +349,11 @@ def main():
         "symbols": sym_result,
         "outputs": wasm_results,
         "runtime_helpers": helper_result,
-        "binding_report": stable_binding_report(binding_report),
+        "binding_report": binding_report,
     }
 
     os.makedirs(os.path.dirname(os.path.abspath(json_output)), exist_ok=True)
-    with open(json_output, "w") as f:
-        json.dump(manifest, f, indent=2, sort_keys=True)
-        f.write("\n")
+    _write_json_atomic(Path(json_output), manifest)
     print(f"\n  Manifest written to {json_output}")
 
     if all_pass:

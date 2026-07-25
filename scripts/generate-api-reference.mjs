@@ -143,6 +143,8 @@ function emptyIndexNode() {
   return new Map();
 }
 
+export const codePointCompare = (a, b) => a < b ? -1 : a > b ? 1 : 0;
+
 function ensurePath(modules, classify) {
   if (!modules.has(classify.module)) {
     modules.set(classify.module, {
@@ -178,11 +180,11 @@ function indexToOrderedJson(modules) {
       const packages = [];
       let tCount = 0;
       for (const [, pNode] of tNode.packages) {
-        pNode.classes.sort((a, b) => a.name.localeCompare(b.name));
+        pNode.classes.sort((a, b) => codePointCompare(a.name, b.name));
         packages.push(pNode);
         tCount += pNode.classes.length;
       }
-      packages.sort((a, b) => a.name.localeCompare(b.name));
+      packages.sort((a, b) => codePointCompare(a.name, b.name));
       toolkits.push({
         name: tNode.name,
         headline: tNode.headline,
@@ -191,7 +193,7 @@ function indexToOrderedJson(modules) {
       });
       mCount += tCount;
     }
-    toolkits.sort((a, b) => a.name.localeCompare(b.name));
+    toolkits.sort((a, b) => codePointCompare(a.name, b.name));
     arr.push({
       name: mNode.name,
       headline: mNode.headline,
@@ -215,7 +217,7 @@ function indexToOrderedJson(modules) {
     const aix = ai === -1 ? ORDER.length : ai;
     const bix = bi === -1 ? ORDER.length : bi;
     if (aix !== bix) return aix - bix;
-    return a.name.localeCompare(b.name);
+    return codePointCompare(a.name, b.name);
   });
   return arr;
 }
@@ -261,6 +263,7 @@ async function main() {
   }
 
   const modules = emptyIndexNode();
+  const classSources = new Map();
 
   for (const file of files) {
     const raw = await fs.readFile(file, 'utf8');
@@ -289,6 +292,13 @@ async function main() {
     }
 
     const pkgNode = ensurePath(modules, classify);
+    const classKey = [classify.module, classify.toolkit, classify.package, parsed.name].join('/');
+    if (classSources.has(classKey)) {
+      throw new Error(
+        `duplicate API class ${classKey}: ${classSources.get(classKey)}, ${path.relative(ROOT, file)}`,
+      );
+    }
+    classSources.set(classKey, path.relative(ROOT, file));
     pkgNode.classes.push(parsed);
   }
 

@@ -13,16 +13,17 @@
     },
     "apply-patches": {
       "executor": "nx:run-commands",
-      "cache": true,
+      "cache": false,
       "dependsOn": ["setup"],
       "inputs": [
         "patchScripts",
         "buildScript",
+        "{projectRoot}/scripts/patch-state.py",
         "depsVersion",
         { "env": "OCJS_CONFIG" },
         { "runtime": "git -C deps/OCCT rev-parse HEAD 2>/dev/null || echo missing" }
       ],
-      "outputs": ["{projectRoot}/build/patches-applied"],
+      "outputs": ["{projectRoot}/build/patches-applied.json"],
       "options": {
         "command": "./build-wasm.sh apply-patches",
         "cwd": "{projectRoot}"
@@ -40,9 +41,7 @@
         "generatorCode",
         "depsVersion",
         { "env": "OCJS_CONFIG" },
-        { "runtime": "git -C deps/OCCT rev-parse HEAD 2>/dev/null || echo missing" },
-        { "runtime": "git -C deps/OCCT diff HEAD --stat 2>/dev/null | shasum -a 256 || echo clean" },
-        { "dependentTasksOutputFiles": "**/patches-applied", "transitive": false }
+        { "dependentTasksOutputFiles": "**/patches-applied.json", "transitive": false }
       ],
       "outputs": [
         "{projectRoot}/build/pch.h.pch",
@@ -55,18 +54,42 @@
         "cwd": "{projectRoot}"
       }
     },
+    "docs": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "dependsOn": ["apply-patches"],
+      "inputs": [
+        "{projectRoot}/src/extract-docs.py",
+        "{projectRoot}/src/occt-docs.doxyfile",
+        "{projectRoot}/build/patches-applied.json",
+        { "runtime": "doxygen --version 2>/dev/null || echo missing" }
+      ],
+      "outputs": ["{projectRoot}/build/occt-docs.json"],
+      "options": {
+        "command": "./build-wasm.sh docs",
+        "cwd": "{projectRoot}"
+      }
+    },
     "generate": {
       "executor": "nx:run-commands",
       "cache": true,
-      "dependsOn": ["setup", "pch"],
+      "dependsOn": ["docs", "pch"],
       "inputs": [
         "generatorCode",
         "buildScript",
         "depsVersion",
         { "env": "OCJS_CONFIG" },
-        { "runtime": "git -C deps/OCCT rev-parse HEAD 2>/dev/null || echo missing" }
+        { "env": "OCJS_BINDGEN_CONFIG" },
+        { "runtime": "shasum -a 256 \"${OCJS_BINDGEN_CONFIG:-bindgen-filters.yaml}\" 2>/dev/null || echo missing-config" },
+        { "dependentTasksOutputFiles": "**/occt-docs.json", "transitive": false },
+        { "dependentTasksOutputFiles": "**/patches-applied.json", "transitive": true }
       ],
-      "outputs": ["{projectRoot}/build/bindings/", "{projectRoot}/build/ncollection-manifest.json"],
+      "outputs": [
+        "{projectRoot}/build/bindings/",
+        "{projectRoot}/build/bindings-manifest.json",
+        "{projectRoot}/build/ncollection-manifest.json",
+        "{projectRoot}/build/any-type-report.json"
+      ],
       "options": {
         "command": "./build-wasm.sh generate",
         "cwd": "{projectRoot}"
@@ -82,7 +105,10 @@
         "buildScript",
         "compileBindingsScript",
         { "env": "OCJS_CONFIG" },
-        { "dependentTasksOutputFiles": "**/*.cpp", "transitive": false }
+        { "dependentTasksOutputFiles": "**/*.cpp", "transitive": false },
+        { "dependentTasksOutputFiles": "**/bindings-manifest.json", "transitive": false },
+        { "dependentTasksOutputFiles": "**/patches-applied.json", "transitive": true },
+        "{projectRoot}/build/pch.h.pch"
       ],
       "outputs": ["{projectRoot}/build/compiled-bindings/"],
       "options": {
@@ -100,13 +126,23 @@
         "buildScript",
         "patchScripts",
         "depsVersion",
+        { "runtime": "cmake --version 2>/dev/null || echo missing" },
         { "env": "OCJS_CONFIG" },
-        { "runtime": "git -C deps/OCCT rev-parse HEAD 2>/dev/null || echo missing" },
-        { "runtime": "git -C deps/OCCT diff HEAD --stat 2>/dev/null | shasum -a 256 || echo clean" }
+        { "dependentTasksOutputFiles": "**/patches-applied.json", "transitive": false },
+        "{projectRoot}/build/build-flags.json"
       ],
-      "outputs": ["{projectRoot}/build/occt-cmake/", "{projectRoot}/build/.cmake-lib-dir"],
+      "outputs": ["{projectRoot}/build/occt-libraries/"],
       "options": {
         "command": "./build-wasm.sh sources",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "compile": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "dependsOn": ["compile-bindings", "compile-sources"],
+      "options": {
+        "command": "echo 'Compilation complete'",
         "cwd": "{projectRoot}"
       }
     },
@@ -127,10 +163,11 @@
         "bindSymbolsScript",
         "buildScript",
         "toolchain",
+        "depsVersion",
         { "env": "OCJS_YAML" },
         { "env": "OCJS_CONFIG" },
         { "runtime": "shasum -a 256 \"${OCJS_YAML:-/dev/null}\" 2>/dev/null || echo no-yaml" },
-        { "runtime": "git -C deps/OCCT rev-parse HEAD 2>/dev/null || echo missing" }
+        { "dependentTasksOutputFiles": "**/patches-applied.json", "transitive": false }
       ],
       "outputs": ["{projectRoot}/build/additional-bind-symbols.json"],
       "options": {
@@ -138,7 +175,7 @@
         "cwd": "{projectRoot}"
       }
     },
-    "link": {
+    "link-core": {
       "executor": "nx:run-commands",
       "cache": true,
       "dependsOn": ["compile-bindings", "compile-sources", "generate", "bind-symbols"],
@@ -150,41 +187,68 @@
         "linkScript",
         "patchScripts",
         { "env": "OCJS_YAML" },
-        { "env": "OCJS_OUTPUT_DIR" },
         { "env": "OCJS_CONFIG" },
         { "env": "OCJS_STRICT_TYPES" },
         { "runtime": "shasum -a 256 \"${OCJS_YAML:-/dev/null}\" 2>/dev/null || echo no-yaml" },
         { "runtime": "shasum -a 256 \"{projectRoot}/src/vendor/pristine-libembind.js\" 2>/dev/null || echo no-pristine" },
-        { "dependentTasksOutputFiles": "**/*", "transitive": false }
+        { "dependentTasksOutputFiles": "**/compiled-bindings/**/*.cpp.o", "transitive": false },
+        { "dependentTasksOutputFiles": "**/compiled-bindings/**/*.identity", "transitive": false },
+        { "dependentTasksOutputFiles": "**/occt-libraries/**/*.a", "transitive": false },
+        { "dependentTasksOutputFiles": "**/occt-libraries/manifest.json", "transitive": false },
+        { "dependentTasksOutputFiles": "**/bindings/**/*.d.ts.json", "transitive": false },
+        { "dependentTasksOutputFiles": "**/ncollection-manifest.json", "transitive": false },
+        { "dependentTasksOutputFiles": "**/additional-bind-symbols.json", "transitive": false }
       ],
-      "outputs": ["{projectRoot}/dist/"],
+      "outputs": [
+        "{projectRoot}/build/link-core/",
+        "{projectRoot}/build/link-core.manifest.json",
+        "{projectRoot}/build/link-core.link-report.json"
+      ],
       "options": {
-        "command": "./build-wasm.sh link \"${OCJS_YAML}\"",
+        "command": "./build-wasm.sh link-core \"${OCJS_YAML}\"",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "materialize": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "dependsOn": ["link-core"],
+      "options": {
+        "command": "./build-wasm.sh materialize \"${OCJS_YAML}\"",
         "cwd": "{projectRoot}"
       }
     },
     "validate": {
       "executor": "nx:run-commands",
       "cache": false,
-      "dependsOn": ["link"],
+      "dependsOn": ["materialize"],
       "options": {
-        "command": ".venv/bin/python scripts/validate-build.py \"${OCJS_YAML}\" dist/ --build-dir build",
+        "command": ".venv/bin/python scripts/validate-build.py \"${OCJS_YAML}\" \"${OCJS_OUTPUT_DIR:-dist}\" --build-dir build",
         "cwd": "{projectRoot}"
       }
     },
     "provenance": {
       "executor": "nx:run-commands",
       "cache": false,
-      "dependsOn": ["link"],
+      "dependsOn": ["validate"],
       "options": {
         "command": "./build-wasm.sh provenance \"${OCJS_YAML}\"",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "link": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "dependsOn": ["provenance"],
+      "options": {
+        "command": "echo 'Link, validation, and provenance complete'",
         "cwd": "{projectRoot}"
       }
     },
     "build": {
       "executor": "nx:run-commands",
       "cache": false,
-      "dependsOn": ["validate", "provenance"],
+      "dependsOn": ["link"],
       "options": {
         "command": "echo 'Build complete. Outputs in dist/'"
       }
@@ -192,6 +256,7 @@
     "api-reference": {
       "executor": "nx:run-commands",
       "cache": true,
+      "dependsOn": ["provenance"],
       "inputs": [
         "{projectRoot}/scripts/generate-api-reference.mjs",
         "{projectRoot}/scripts/lib/dts-parser.mjs",
@@ -216,6 +281,7 @@
     "docs-sync": {
       "executor": "nx:run-commands",
       "cache": false,
+      "dependsOn": ["api-reference"],
       "options": {
         "command": "node docs-site/scripts/sync-api-reference.mjs",
         "cwd": "{projectRoot}"

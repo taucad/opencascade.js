@@ -78,18 +78,18 @@
 +
 +  // Creates a function overload signature resolution table to the given method 'methodName' in the given prototype,
 +  // if the overload signature table doesn't yet exist.
-+  $ensureOverloadSignatureTable__deps: ['$throwBindingError', '$getSignature', '$ensureOverloadTable', '$registeredTypes'],
-+  $ensureOverloadSignatureTable: (proto, methodName, humanName, numArguments) => {
++  $createOwnedSignatureDispatcher__deps: ['$throwBindingError', '$getSignature', '$ensureOverloadTable', '$registeredTypes'],
++  $createOwnedSignatureDispatcher: (proto, methodName, humanName, numArguments) => {
 +    ensureOverloadTable(proto, methodName, humanName);
 +    if (undefined === proto[methodName].overloadTable || undefined === proto[methodName].overloadTable[numArguments]) {
-+      return;
++      return proto[methodName];
 +    }
 +    var prevFunc = proto[methodName].overloadTable[numArguments];
 +    var hasSignatures = undefined !== prevFunc.signatures;
 +    // ── OCJS fix (sibling-override overload-table aliasing) ──
 +    // If this prototype already owns a per-signature dispatcher, nothing to do.
 +    if (hasSignatures && prevFunc.ocjsSignatureOwner === proto) {
-+      return;
++      return prevFunc;
 +    }
 +    // Otherwise install a per-signature dispatcher OWNED by this prototype.
 +    // `prevFunc` is either a plain member function being promoted (the original
@@ -126,7 +126,7 @@
 +        dispatcher.signaturesArray.push(prevFunc.signatureArray);
 +      }
 +    }
-+    proto[methodName].overloadTable[numArguments] = dispatcher;
++    return proto[methodName].overloadTable[numArguments] = dispatcher;
 +  },
 +
    // Creates a function overload resolution table to the given method 'methodName' in the given prototype,
@@ -152,7 +152,7 @@
 +    // invoker — throwing "Expected instance of <sibling>". In both cases install a
 +    // dispatcher OWNED by this prototype; for the inherited case seed it with a
 +    // shallow copy of the base's overloadTable (per-signature maps are forked
-+    // lazily by ensureOverloadSignatureTable).
++    // lazily by createOwnedSignatureDispatcher).
 +    var inheritedTable = (undefined !== proto[methodName].overloadTable) ? proto[methodName] : undefined;
 +    var prevFunc = (undefined === proto[methodName].overloadTable) ? proto[methodName] : undefined;
 +    {
@@ -200,7 +200,7 @@
      }
    },
 
-@@ -81,44 +253,82 @@
+@@ -81,44 +253,81 @@
     name: The name of the symbol that's being exposed.
     value: The object itself to expose (function, class, ...)
     numArguments: For functions, specifies the number of arguments the function takes in. For other types, unused and undefined.
@@ -212,7 +212,7 @@
 -  $exposePublicSymbol__deps: ['$ensureOverloadTable', '$throwBindingError'],
 -  $exposePublicSymbol__docs: '/** @param {number=} numArguments */',
 -  $exposePublicSymbol: (name, value, numArguments) => {
-+  $exposePublicSymbol__deps: ['$ensureOverloadTable', '$throwBindingError', '$ensureOverloadSignatureTable'],
++  $exposePublicSymbol__deps: ['$ensureOverloadTable', '$throwBindingError', '$createOwnedSignatureDispatcher'],
 +  $exposePublicSymbol__docs: `/**
 +    @param {number=} numArguments,
 +    @param {string=} rawSignature,
@@ -238,7 +238,7 @@
 +        (undefined === Module[name].overloadTable && Module[name].argCount === numArguments)
 +        || (undefined !== Module[name].overloadTable && undefined !== Module[name].overloadTable[numArguments])
 +      ) {
-+        ensureOverloadSignatureTable(Module, name, name, numArguments);
++        createOwnedSignatureDispatcher(Module, name, name, numArguments);
 +        Module[name].overloadTable[numArguments].signatures[rawSignature] = value;
 +      } else {
 +        // We are exposing a function with the same name as an existing function. Create an overload table and a function selector
@@ -285,7 +285,6 @@
 +          throwBindingError(`Cannot register multiple overloads of a function with the same number of arguments (${numArguments})!`);
 +        }
 +        Module[name].overloadTable[numArguments].signatures[signatureString] = value;
-+        Module[name].overloadTable[numArguments].signaturesArray.push(signatureArray);
 +      } else {
 +        Module[name].overloadTable[numArguments] = value;
 +        Module[name].overloadTable[numArguments].signature = signatureString;
@@ -299,7 +298,7 @@
      }
    },
  
-@@ -860,21 +1070,25 @@
+@@ -860,21 +1069,36 @@
    _embind_register_function__deps: [
      '$craftInvokerFunction', '$exposePublicSymbol', '$heap32VectorToArray',
      '$AsciiToString', '$replacePublicSymbol', '$embind__requireFunction',
@@ -315,16 +314,28 @@
 +    var rawSignatureArray = argTypes.slice(1);
 +    var rawSignatureString = rawSignatureArray.join(', ');
  
-     exposePublicSymbol(name, function() {
+-    exposePublicSymbol(name, function() {
++    var unboundTypesHandler = function() {
        throwUnboundTypeError(`Cannot call ${name} due to unbound types`, argTypes);
 -    }, argCount - 1);
-+    }, argCount - 1, rawSignatureString);
++    };
++    unboundTypesHandler.signatureArray = rawSignatureArray;
++    exposePublicSymbol(name, unboundTypesHandler, argCount - 1, rawSignatureString);
++    if (undefined !== Module[name].overloadTable &&
++        undefined !== Module[name].overloadTable[argCount - 1].signaturesArray &&
++        !Module[name].overloadTable[argCount - 1].signaturesArray.includes(rawSignatureArray)) {
++      // Reserve source-registration order before dependency callbacks run.
++      Module[name].overloadTable[argCount - 1].signaturesArray.push(rawSignatureArray);
++    }
  
      whenDependentTypesAreResolved([], argTypes, (argTypes) => {
        var invokerArgsArray = [argTypes[0] /* return value */, null /* no class 'this'*/].concat(argTypes.slice(1) /* actual params */);
 -      replacePublicSymbol(name, craftInvokerFunction(name, invokerArgsArray, null /* no class 'this'*/, rawInvoker, fn, isAsync), argCount - 1);
-+      var signatureArray = rawSignatureArray.map(a => cppTypeToJsType(a));
-+      replacePublicSymbol(name, craftInvokerFunction(name, invokerArgsArray, null /* no class 'this'*/, rawInvoker, fn, isAsync), argCount - 1, signatureArray, rawSignatureString);
++      var resolvedSignatureArray = rawSignatureArray.map(a => cppTypeToJsType(a));
++      for (var i = 0; i < resolvedSignatureArray.length; i++) {
++        rawSignatureArray[i] = resolvedSignatureArray[i];
++      }
++      replacePublicSymbol(name, craftInvokerFunction(name, invokerArgsArray, null /* no class 'this'*/, rawInvoker, fn, isAsync), argCount - 1, rawSignatureArray, rawSignatureString);
        return [];
      });
    },
@@ -394,7 +405,7 @@
    _embind_register_class_constructor: (
      rawClassType,
      argCount,
-@@ -1801,17 +2051,43 @@
+@@ -1801,17 +2061,47 @@
        if (undefined === classType.registeredClass.constructor_body) {
          classType.registeredClass.constructor_body = [];
        }
@@ -424,6 +435,8 @@
 +      }
 +
 +      classType.registeredClass.constructor_body[argCount - 1].signatures[rawSignatureString] = unboundTypesHandler;
++      // Reserve source-registration order before dependency callbacks run.
++      classType.registeredClass.constructor_body[argCount - 1].signaturesArray.push(rawSignatureArray);
 
        whenDependentTypesAreResolved([], rawArgTypes, (argTypes) => {
          // Insert empty slot for context type (argTypes[1]).
@@ -432,14 +445,16 @@
 +
 +        delete classType.registeredClass.constructor_body[argCount - 1].signatures[rawSignatureString];
 +        var func = craftInvokerFunction(humanName, argTypes, null, invoker, rawConstructor);
-+        var signatureArray = rawSignatureArray.map(a => cppTypeToJsType(a));
-+        var signatureString = signatureArray.join(', ');
++        var resolvedSignatureArray = rawSignatureArray.map(a => cppTypeToJsType(a));
++        for (var i = 0; i < resolvedSignatureArray.length; i++) {
++          rawSignatureArray[i] = resolvedSignatureArray[i];
++        }
++        var signatureString = rawSignatureArray.join(', ');
 +
 +        if (undefined !== classType.registeredClass.constructor_body[argCount - 1].func) {
 +          classType.registeredClass.constructor_body[argCount - 1].func = func;
 +        }
 +        classType.registeredClass.constructor_body[argCount - 1].signatures[signatureString] = func;
-+        classType.registeredClass.constructor_body[argCount - 1].signaturesArray.push(signatureArray);
          return [];
        });
        return [];
@@ -449,7 +464,7 @@
      '$embind__requireFunction', '$throwUnboundTypeError',
 -    '$whenDependentTypesAreResolved', '$getFunctionName'],
 +    '$whenDependentTypesAreResolved', '$getFunctionName',
-+    '$cppTypeToJsType', '$ensureOverloadSignatureTable'],
++    '$cppTypeToJsType', '$createOwnedSignatureDispatcher'],
    _embind_register_class_function: (rawClassType,
                                      methodName,
                                      argCount,
@@ -466,12 +481,12 @@
 +      if (undefined === method) {
 -        // This is the first overload to be registered, OR we are replacing a
 -        // function in the base class with a function in the derived class.
-+        // This is the first overload to be registered. Inherited methods take
-+        // the signature-table path below so base/derived resolution timing
-+        // cannot change whether the derived method is a dispatcher.
++        // First registrations use the same owned dispatcher representation.
++        // Inherited methods take the same signature-table path regardless of timing.
          unboundTypesHandler.argCount = argCount - 2;
          unboundTypesHandler.className = classType.name;
          proto[methodName] = unboundTypesHandler;
++        createOwnedSignatureDispatcher(proto, methodName, humanName, argCount - 2);
 -      } else {
 +      } else if (
 +        (undefined === proto[methodName].overloadTable && proto[methodName].argCount !== argCount - 2)
@@ -482,7 +497,7 @@
          ensureOverloadTable(proto, methodName, humanName);
          proto[methodName].overloadTable[argCount - 2] = unboundTypesHandler;
 +      } else {
-+        ensureOverloadSignatureTable(proto, methodName, humanName, argCount - 2);
++        createOwnedSignatureDispatcher(proto, methodName, humanName, argCount - 2);
 +        proto[methodName].overloadTable[argCount - 2].signatures[rawSignatureString] = unboundTypesHandler;
 +        // Reserve source-registration order before dependency callbacks run.
 +        proto[methodName].overloadTable[argCount - 2].signaturesArray.push(rawSignatureArray);
@@ -524,7 +539,7 @@
      '$AsciiToString', '$embind__requireFunction', '$throwUnboundTypeError',
 -    '$whenDependentTypesAreResolved', '$getFunctionName'],
 +    '$whenDependentTypesAreResolved', '$getFunctionName',
-+    '$cppTypeToJsType', '$ensureOverloadSignatureTable'],
++    '$cppTypeToJsType', '$createOwnedSignatureDispatcher'],
    _embind_register_class_class_function: (rawClassType,
                                            methodName,
                                            argCount,
@@ -537,9 +552,10 @@
 +      unboundTypesHandler.signature = rawSignatureString;
 +      unboundTypesHandler.signatureArray = rawSignatureArray;
        if (undefined === proto[methodName]) {
-         // This is the first function to be registered with this name.
+-        // This is the first function to be registered with this name.
          unboundTypesHandler.argCount = argCount-1;
          proto[methodName] = unboundTypesHandler;
++        createOwnedSignatureDispatcher(proto, methodName, humanName, argCount - 1);
 -      } else {
 +      } else if (
 +        (undefined === proto[methodName].overloadTable && proto[methodName].argCount !== argCount - 1)
@@ -550,7 +566,7 @@
          ensureOverloadTable(proto, methodName, humanName);
          proto[methodName].overloadTable[argCount-1] = unboundTypesHandler;
 +      } else {
-+        ensureOverloadSignatureTable(proto, methodName, humanName, argCount - 1);
++        createOwnedSignatureDispatcher(proto, methodName, humanName, argCount - 1);
 +        proto[methodName].overloadTable[argCount-1].signatures[rawSignatureString] = unboundTypesHandler;
 +        // Reserve source-registration order before dependency callbacks run.
 +        proto[methodName].overloadTable[argCount-1].signaturesArray.push(rawSignatureArray);

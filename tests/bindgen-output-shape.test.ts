@@ -120,10 +120,14 @@ describe.skipIf(!bindingsExist())('Generated bindings shape — input-passthroug
     const src = readBindingFile(['FoundationClasses/TKMath/gp/gp_Trsf.hxx/gp_Trsf.cpp']);
     if (src === null) return;
 
-    // The input-passthrough lambda must take theX/theY/theZ as parameters
-    // and forward them; no `double theX = 0;` style default-init.
-    const transformsBlock = /optional_override\(\[\]\(const gp_Trsf& self, double theX, double theY, double theZ\)/;
-    expect(transformsBlock.test(src), 'gp_Trsf::Transforms lambda must take primitive output params by value').toBe(true);
+    // The input-passthrough lambda must preserve caller-supplied values while
+    // allowing the trailing slots to be omitted.
+    const transformsBlock =
+      /optional_override\(\[\]\(const gp_Trsf& self, std::optional<double> theX, std::optional<double> theY, std::optional<double> theZ\)[\s\S]*?self\.Transforms\(_ocjs_theX, _ocjs_theY, _ocjs_theZ\)/;
+    expect(
+      transformsBlock.test(src),
+      'gp_Trsf::Transforms lambda must unwrap and forward all three optional input/output params',
+    ).toBe(true);
 
     expect(
       /optional_override\(\[\]\(const gp_Trsf& self\)[^{]*\{[\s\S]*?double theX\s*=\s*0\s*;/m.test(src),

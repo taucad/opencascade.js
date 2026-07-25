@@ -52,6 +52,9 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 import clang.cindex  # noqa: E402
+import pytest  # noqa: E402
+
+from ocjs_bindgen.codegen import rbv as _rbv  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Fakes — duck-typed against the clang surface the three helpers reach.
@@ -158,6 +161,7 @@ def _load_helpers():
     dedented = "\n".join(line[2:] if line.startswith("  ") else line for line in block.splitlines())
     namespace: dict = {
         "clang": clang,
+        "_rbv": _rbv,
         # Faked predicate boundary (real predicates have their own sentinels).
         "shouldStripParam": lambda t, m: t.strip,
         "isPrimitiveOutputParam": lambda t: t.primitive_output,
@@ -168,6 +172,12 @@ def _load_helpers():
 
 
 _NS = _load_helpers()
+
+
+@pytest.fixture(autouse=True)
+def _fake_rbv_predicates(monkeypatch):
+    monkeypatch.setattr(_rbv, "shouldStripParam", lambda t, m: t.strip)
+    monkeypatch.setattr(_rbv, "isPrimitiveOutputParam", lambda t: t.primitive_output)
 
 
 class _Binder:

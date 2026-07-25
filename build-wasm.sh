@@ -55,6 +55,8 @@ Commands:
   full <yaml>           Full pipeline: apply-patches + pch + generate + bindings + sources + bind-symbols + link
   apply-patches         Apply OCCT source patches (idempotent — all 4 OCCT patches + libembind patch are hard requirements)
   link <yaml>           Link only (reuses compiled .o files, fastest)
+  link-core <yaml>      Link into the internal cache-owned artifact directory
+  materialize <yaml>    Copy cached artifacts to OCJS_OUTPUT_DIR
   bind-symbols <yaml>   Extract Embind registrations to build/additional-bind-symbols.json (run before link)
   pch                   Rebuild flat includes + precompiled header
   generate              Generate binding .cpp files from OCCT headers
@@ -80,7 +82,6 @@ Environment Variables:
   OCJS_EXCEPTIONS       Native WASM exceptions: 0|1 (default: 0)
   THREADING             Threading mode: single-threaded|multi-threaded (default: single-threaded)
   OCJS_STRICT_DEPS      Fail on dependency commit mismatch: 0|1 (default: 0)
-  OCJS_FORCE_GENERATE   Force regeneration of all bindings: 0|1 (default: 0)
 
 Examples:
   # Full build with a named configuration
@@ -150,7 +151,6 @@ if [ "${1:-}" = "clean-generated" ]; then
     count=$(find "$target" \( -name "*.d.ts.json" -o \( -name "*.cpp" ! -name "*.cpp.o" \) \) | wc -l | tr -d ' ')
     find "$target" -name "*.d.ts.json" -delete 2>/dev/null || true
     find "$target" -name "*.cpp" ! -name "*.cpp.o" -delete 2>/dev/null || true
-    rm -f "$SCRIPT_DIR/build/bindings/.generator-hash" 2>/dev/null || true
     echo "  Removed $count generated files."
   else
     echo "  No build/bindings directory found."
@@ -246,7 +246,7 @@ if warnings:
     if os.environ.get('OCJS_STRICT_DEPS', '') == '1':
         print('ERROR: --strict deps check failed. Set OCJS_STRICT_DEPS=0 to override.', file=sys.stderr)
         sys.exit(1)
-" || true
+"
 fi
 
 # ── Pre-scan for --config flag ────────────────────────────────────────
@@ -314,10 +314,13 @@ export OCJS_SIMD="${OCJS_SIMD:-0}"
 export OCJS_RELAXED_SIMD="${OCJS_RELAXED_SIMD:-0}"
 export OCJS_BIGINT="${OCJS_BIGINT:-0}"
 export OCJS_MALLOC="${OCJS_MALLOC:-dlmalloc}"
-export OCJS_FORCE_GENERATE="${OCJS_FORCE_GENERATE:-0}"
 export THREADING="${THREADING:-single-threaded}"
 export PYTHONPATH="$OCJS_ROOT/src:${PYTHONPATH:-}"
 export BUILD_DIR="${BUILD_DIR:-$OCJS_ROOT/build}"
+if [ "$BUILD_DIR" != "$OCJS_ROOT/build" ]; then
+  echo "ERROR: custom BUILD_DIR is unsupported; use $OCJS_ROOT/build" >&2
+  exit 1
+fi
 OCJS_OUTPUT_DIR="${OCJS_OUTPUT_DIR:-$OCJS_ROOT/dist}"
 if [[ "$OCJS_OUTPUT_DIR" != /* ]]; then
   OCJS_OUTPUT_DIR="$OCJS_ROOT/$OCJS_OUTPUT_DIR"
@@ -397,7 +400,6 @@ print(f'  Generated Standard_Version.hxx (OCCT {major}.{minor}.{maint})')
 
 step_pch() {
   echo "═══ Rebuilding flat includes + PCH ═══"
-  _ensure_standard_version_hxx
   rm -f build/pch.h.pch build/pch.h
   rm -rf build/occt-includes
   "$OCJS_PYTHON" -c "
@@ -419,27 +421,16 @@ step_docs() {
 step_generate() {
   echo "═══ Generating bindings from OCCT headers ═══"
 
-  step_docs
-
   find "$OCJS_ROOT/src" -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
-
-  if [ "${OCJS_FORCE_GENERATE:-0}" = "1" ]; then
-    echo "  Force regeneration: clearing existing .d.ts.json and .cpp files"
-    local target="$OCJS_ROOT/build/bindings"
-    [ -L "$target" ] && target="$(readlink -f "$target")"
-    if [ -d "$target" ]; then
-      find "$target" -name "*.d.ts.json" -delete 2>/dev/null || true
-      find "$target" -name "*.cpp" ! -name "*.cpp.o" -delete 2>/dev/null || true
-      rm -f "$OCJS_ROOT/build/bindings/.generator-hash" 2>/dev/null || true
-    fi
-  fi
 
   local config="${OCJS_BINDGEN_CONFIG:-$OCJS_ROOT/bindgen-filters.yaml}"
   if [ -f "$config" ]; then
     echo "  Using bindgen config: $config"
     export OCJS_BINDGEN_CONFIG="$config"
   fi
-  "$OCJS_PYTHON" -m ocjs_bindgen --config "$config"
+  "$OCJS_PYTHON" scripts/generate-bindings.py \
+    --config "$config" \
+    --build-dir "$BUILD_DIR"
   echo ""
 }
 
@@ -458,6 +449,12 @@ step_sources() {
 step_sources_cmake() {
   local cmake_build_dir="$OCJS_ROOT/build/occt-cmake"
   local lib_dir="$cmake_build_dir/lin32/clang/lib"
+  local cmake_identity
+  cmake_identity="$("$OCJS_PYTHON" scripts/cmake-state.py identity --root "$OCJS_ROOT")"
+  "$OCJS_PYTHON" scripts/cmake-state.py prepare \
+    --root "$OCJS_ROOT" \
+    --scratch "$cmake_build_dir" \
+    --identity "$cmake_identity"
   local existing_lib_count=0
 
   if [ -d "$lib_dir" ]; then
@@ -490,6 +487,14 @@ step_sources_cmake() {
 
   local cflags="$OCJS_OPT -DIGNORE_NO_ATOMICS=1 -DOCCT_NO_PLUGINS -DHAVE_RAPIDJSON"
   local cxxflags="$cflags -frtti"
+  local prefix_map
+  for prefix_map in \
+    "$OCJS_ROOT=/ocjs" \
+    "$OCCT_ROOT=/occt" \
+    "$EMSDK=/emsdk"; do
+    cflags="$cflags -ffile-prefix-map=$prefix_map -fmacro-prefix-map=$prefix_map"
+    cxxflags="$cxxflags -ffile-prefix-map=$prefix_map -fmacro-prefix-map=$prefix_map"
+  done
 
   if [ "$OCJS_LTO" = "1" ]; then
     cflags="$cflags -flto"
@@ -569,7 +574,15 @@ step_sources_cmake() {
   lib_count="$(find "$lib_dir" -maxdepth 1 -type f -name '*.a' -print | wc -l | tr -d ' ')"
   echo "  CMake produced $lib_count static libraries in $lib_dir"
 
-  echo "$lib_dir" > "$OCJS_ROOT/build/.cmake-lib-dir"
+  "$OCJS_PYTHON" scripts/cmake-state.py complete \
+    --root "$OCJS_ROOT" \
+    --scratch "$cmake_build_dir" \
+    --identity "$cmake_identity"
+  "$OCJS_PYTHON" scripts/cmake-state.py publish \
+    --root "$OCJS_ROOT" \
+    --source "$lib_dir" \
+    --destination "$BUILD_DIR/occt-libraries" \
+    --identity "$cmake_identity"
 }
 
 step_dts() {
@@ -644,6 +657,33 @@ step_link() {
   echo ""
 }
 
+step_link_core() {
+  local yaml="$1"
+  local core_dir="$BUILD_DIR/link-core"
+  rm -rf "$core_dir"
+  rm -f "$BUILD_DIR/link-core.manifest.json" "$BUILD_DIR/link-core.link-report.json"
+  mkdir -p "$core_dir"
+  export OCJS_OUTPUT_DIR="$core_dir"
+  export OCJS_LINK_REPORT="$BUILD_DIR/link-core.link-report.json"
+  step_link "$yaml"
+  "$OCJS_PYTHON" scripts/artifact-state.py write \
+    --source "$core_dir" \
+    --manifest "$BUILD_DIR/link-core.manifest.json"
+}
+
+step_materialize() {
+  local yaml="$1"
+  local build_js build_base marker
+  build_js=$(awk '$1 == "name:" {print $2; exit}' "$yaml")
+  build_base="${build_js%.js}"
+  marker="$BUILD_DIR/materialized/$OCJS_CONFIG-$build_base.json"
+  "$OCJS_PYTHON" scripts/artifact-state.py materialize \
+    --source "$BUILD_DIR/link-core" \
+    --manifest "$BUILD_DIR/link-core.manifest.json" \
+    --destination "$OCJS_OUTPUT_DIR" \
+    --marker "$marker"
+}
+
 step_apply_patches() {
   # The four OCCT source patches below are HARD REQUIREMENTS for every
   # supported build (single-threaded and multi-threaded alike). The legacy
@@ -653,10 +693,9 @@ step_apply_patches() {
   # depending on which symbols the consumer pulls in).
   echo "═══ Applying OCCT source patches ═══"
 
-  if [ -d "$OCCT_ROOT/.git" ]; then
-    echo "  Reverting OCCT source tree to clean state..."
-    git -C "$OCCT_ROOT" checkout -- . 2>/dev/null || true
-  fi
+  "$OCJS_PYTHON" scripts/patch-state.py prepare \
+    --root "$OCCT_ROOT" \
+    --manifest "$BUILD_DIR/patches-applied.json"
 
   echo "  Applying using-statement / V8 bugfix patches..."
   "$OCJS_PYTHON" src/patches/patch_using_statements.py
@@ -666,11 +705,16 @@ step_apply_patches() {
   "$OCJS_PYTHON" src/patches/patch_noexcept_destructors.py
   echo "  Applying STEPCAFControl_Controller DynamicType patch..."
   "$OCJS_PYTHON" src/patches/patch_stepcaf_dyntype.py
+  _ensure_standard_version_hxx
   echo "  All patches applied."
 
   step_patch_embind
 
-  date +%s > "$BUILD_DIR/patches-applied"
+  "$OCJS_PYTHON" scripts/patch-state.py write \
+    --root "$OCCT_ROOT" \
+    --manifest "$BUILD_DIR/patches-applied.json" \
+    --patch-root "$OCJS_ROOT/src/patches" \
+    --embind "$EMSDK/upstream/emscripten/src/lib/libembind.js"
   echo ""
 }
 
@@ -809,6 +853,8 @@ if [ $# -eq 0 ]; then
   echo "  dts <yaml>       Regenerate .d.ts only from existing fragments (no compile/link)"
   echo "  bind-symbols <yaml> Extract Embind registrations -> build/additional-bind-symbols.json"
   echo "  link <yaml>      Link WASM binary from YAML config"
+  echo "  link-core <yaml> Link into the internal cache-owned artifact directory"
+  echo "  materialize <yaml> Copy cached artifacts to OCJS_OUTPUT_DIR"
   echo "  full <yaml>      Full pipeline (apply-patches + pch + generate + bindings + sources + link)"
   echo "  clean-generated  Remove generated .d.ts.json and .cpp (handles symlinks)"
   echo "  clean-objects    Remove compiled .o files from compiled-bindings/ (handles symlinks)"
@@ -846,7 +892,7 @@ while [ $# -gt 0 ]; do
       YAML_CONFIG="$(cd "$(dirname "$1")" && pwd)/$(basename "$1")"
       shift
       ;;
-    dts|link|full|provenance|bind-symbols)
+    dts|link|link-core|materialize|full|provenance|bind-symbols)
       COMMANDS+=("$1")
       shift
       if [ $# -eq 0 ]; then
@@ -879,9 +925,14 @@ for cmd in "${COMMANDS[@]}"; do
     docs)      step_docs ;;
     generate)  step_generate ;;
     bindings)  validate_build_flags && step_bindings ;;
-    sources)   step_sources ;;
+    sources)   validate_build_flags && step_sources ;;
     dts)       step_dts "$YAML_CONFIG" ;;
     bind-symbols) step_bind_symbols "$YAML_CONFIG" ;;
+    link-core)
+      validate_build_flags
+      step_link_core "$YAML_CONFIG"
+      ;;
+    materialize) step_materialize "$YAML_CONFIG" ;;
     link)
       # `link` must be self-contained when invoked as the Docker
       # ENTRYPOINT — no separate `provenance`/`validate` runs precede
@@ -909,6 +960,7 @@ for cmd in "${COMMANDS[@]}"; do
       # absorb every historical false positive in validate-build.py; any
       # surviving failure is a real link gap and must fail the wrapper.
       "$OCJS_PYTHON" "$OCJS_ROOT/scripts/validate-build.py" "$YAML_CONFIG" "$OCJS_OUTPUT_DIR" --build-dir "$BUILD_DIR"
+      "$OCJS_PYTHON" src/provenance.py finalize --wasm-dir "$OCJS_OUTPUT_DIR" --yaml "$YAML_CONFIG"
       echo ""
       ;;
     validate)
@@ -952,6 +1004,9 @@ else:
       # seeded for standalone CLI use, which we now serve by having
       # `finalize` no-op cleanly when the scratchpad is absent.
       echo "═══ Generating build provenance ═══"
+      export OCJS_LINK_REPORT="$BUILD_DIR/link-core.link-report.json"
+      export OCJS_ARTIFACT_MANIFEST="$BUILD_DIR/link-core.manifest.json"
+      "$OCJS_PYTHON" src/provenance.py init
       "$OCJS_PYTHON" src/provenance.py finalize --wasm-dir "$OCJS_OUTPUT_DIR" --yaml "${YAML_CONFIG:-}"
       echo ""
       ;;
@@ -975,6 +1030,7 @@ else:
       echo "═══ Post-build validation ═══"
       # V10 — unconditional hard-fail. See `link` subcommand for rationale.
       "$OCJS_PYTHON" "$OCJS_ROOT/scripts/validate-build.py" "$YAML_CONFIG" "$OCJS_OUTPUT_DIR" --build-dir "$BUILD_DIR"
+      "$OCJS_PYTHON" src/provenance.py finalize --wasm-dir "$OCJS_OUTPUT_DIR" --yaml "$YAML_CONFIG"
       echo ""
       ;;
   esac
@@ -982,22 +1038,6 @@ done
 
 END_TIME=$(date +%s)
 ELAPSED=$((END_TIME - START_TIME))
-
-# ── Finalize provenance ──────────────────────────────────────────────
-#
-# Promotes the `build/provenance.json` scratchpad seeded by `init` (in
-# either `link` or `full`) and updated by `step_link` (`add_linking`)
-# into `<output>/<variant>.provenance.json`. Stderr is no longer
-# suppressed — when finalize fails (missing scratchpad, unwritable
-# output dir, etc.) it now surfaces instead of silently dropping the
-# artefact and tripping the CI smoke `Assert smoke artefacts present`
-# step later. `|| true` is retained so non-YAML-driven commands
-# (`pch`, `apply-patches`, `bindings`) that legitimately have nothing
-# to finalize don't fail the wrapper.
-
-if [ -n "$YAML_CONFIG" ]; then
-  "$OCJS_PYTHON" src/provenance.py finalize --wasm-dir "$OCJS_OUTPUT_DIR" --yaml "$YAML_CONFIG" || true
-fi
 
 echo ""
 echo "╔══════════════════════════════════════════════════════════╗"

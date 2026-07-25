@@ -20,8 +20,9 @@ from __future__ import annotations
 
 import json
 import os
+from pathlib import Path
 
-from ocjs_bindgen.provenance.clock import build_datetime
+from ocjs_bindgen.build_state import _write_json_atomic
 
 USE_WASM_EXCEPTIONS: bool = os.environ.get("OCJS_EXCEPTIONS", "0") == "1"
 _EH_MODE: str = os.environ.get("OCJS_EH_MODE", "wasm")
@@ -56,6 +57,21 @@ def _parse_extra_compile_flags() -> list[str]:
 
 
 EXTRA_COMPILE_FLAGS: list[str] = _parse_extra_compile_flags()
+
+
+PATH_PREFIX_FLAGS: list[str] = []
+for _root_env, _virtual_root in (
+    ("OCJS_ROOT", "/ocjs"),
+    ("OCCT_ROOT", "/occt"),
+    ("EMSDK", "/emsdk"),
+):
+    _actual_root = os.environ.get(_root_env)
+    if not _actual_root:
+        continue
+    PATH_PREFIX_FLAGS.extend([
+        f"-ffile-prefix-map={_actual_root}={_virtual_root}",
+        f"-fmacro-prefix-map={_actual_root}={_virtual_root}",
+    ])
 
 # `BUILD_FLAGS_PATH` is derived from the `BUILD_DIR` constant in `paths.py`.
 # Resolving it lazily inside the read/write helpers keeps the module
@@ -122,10 +138,8 @@ def write_build_flags(path: str = "") -> None:
     if not path:
         path = BUILD_FLAGS_PATH
     flags = _current_build_flags()
-    flags["timestamp"] = build_datetime().isoformat()
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w") as f:
-        json.dump(flags, f, indent=2)
+    _write_json_atomic(Path(path), flags)
     print(f"Build flags written to {path}")
 
 

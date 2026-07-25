@@ -262,7 +262,9 @@ COPY src ./src
 COPY tsconfig.json* ./
 COPY build-configs ./build-configs
 COPY build-wasm.sh ./build-wasm.sh
-COPY scripts/enumerate-symbols.py scripts/validate-build.py scripts/generate-api-reference.mjs ./scripts/
+COPY scripts/artifact-state.py scripts/cmake-state.py scripts/enumerate-symbols.py \
+     scripts/generate-bindings.py scripts/patch-state.py scripts/validate-build.py \
+     scripts/generate-api-reference.mjs ./scripts/
 COPY scripts/lib ./scripts/lib
 COPY bindgen-filters.yaml ./bindgen-filters.yaml
 RUN chmod +x build-wasm.sh
@@ -322,9 +324,7 @@ RUN mkdir -p build/bindings build/sources
 # and emsdk's per-run scratch. Without this chmod, the first non-root run
 # fails with EACCES when Nx tries to create its .nx subdirectory under
 # /opencascade.js (root:root mode 0755 by default).
-RUN npx nx run ocjs:apply-patches && \
-    npx nx run ocjs:pch && \
-    npx nx run ocjs:generate && \
+RUN npx nx run ocjs:generate && \
     echo "── Pruning generated .cpp/.h sources (kept: .d.ts.json + PCH) ────" && \
     find build/bindings -type f -name '*.cpp' -delete && \
     find build/bindings -type f -name '*.h' -delete && \
@@ -403,23 +403,12 @@ ENV THREADING=single-threaded
 # files, then compiles them, then prunes the source files + CMake scratch.
 # .o files for bindings + OCCT static .a libs are kept (needed for link).
 RUN --mount=type=cache,target=/emsdk/upstream/emscripten/cache,id=ocjs-emsdk-${OCJS_CONFIG},sharing=locked \
-    npx nx run ocjs:generate && \
-    npx nx run ocjs:compile-bindings && \
-    npx nx run ocjs:compile-sources && \
+    npx nx run ocjs:compile && \
     echo "── Pruning compile intermediates (kept: .o files + OCCT .a libs) ──" && \
     find build/bindings -type f -name '*.cpp' -delete && \
     find build/bindings -type f -name '*.h' -delete && \
     find build -type f -name '*.cpp.o.d' -delete && \
-    if [ -d build/occt-cmake ]; then \
-      find build/occt-cmake -mindepth 1 -maxdepth 2 \
-        ! -path 'build/occt-cmake/lin32' \
-        ! -path 'build/occt-cmake/lin32/clang' \
-        -prune -exec rm -rf {} + ; \
-      find build/occt-cmake/lin32/clang -mindepth 1 -maxdepth 1 \
-        ! -name lib \
-        ! -name bin \
-        -exec rm -rf {} + ; \
-    fi && \
+    rm -rf build/occt-cmake && \
     echo "── Re-applying non-root perms (folded; bindgen-base chmod stale here) ──" && \
     chmod -R go+w /opencascade.js/.nx /opencascade.js/build
 
@@ -435,23 +424,12 @@ ENV OCJS_CONFIG=multi-threaded
 ENV THREADING=multi-threaded
 
 RUN --mount=type=cache,target=/emsdk/upstream/emscripten/cache,id=ocjs-emsdk-${OCJS_CONFIG},sharing=locked \
-    npx nx run ocjs:generate && \
-    npx nx run ocjs:compile-bindings && \
-    npx nx run ocjs:compile-sources && \
+    npx nx run ocjs:compile && \
     echo "── Pruning compile intermediates (kept: .o files + OCCT .a libs) ──" && \
     find build/bindings -type f -name '*.cpp' -delete && \
     find build/bindings -type f -name '*.h' -delete && \
     find build -type f -name '*.cpp.o.d' -delete && \
-    if [ -d build/occt-cmake ]; then \
-      find build/occt-cmake -mindepth 1 -maxdepth 2 \
-        ! -path 'build/occt-cmake/lin32' \
-        ! -path 'build/occt-cmake/lin32/clang' \
-        -prune -exec rm -rf {} + ; \
-      find build/occt-cmake/lin32/clang -mindepth 1 -maxdepth 1 \
-        ! -name lib \
-        ! -name bin \
-        -exec rm -rf {} + ; \
-    fi && \
+    rm -rf build/occt-cmake && \
     echo "── Re-applying non-root perms (folded; bindgen-base chmod stale here) ──" && \
     chmod -R go+w /opencascade.js/.nx /opencascade.js/build
 
