@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 
@@ -86,3 +87,42 @@ def test_should_not_accept_partial_object_when_compiler_fails(
   assert result.returncode == 1
   assert not object_path.exists()
   assert list(tmp_path.glob("*.tmp-*")) == []
+
+
+def test_should_reuse_objects_when_only_other_fragments_or_js_patch_change(
+  tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+  build = tmp_path / "build"
+  build.mkdir()
+  pch = build / "pch.h.pch"
+  pch.write_bytes(b"pch")
+  patch_manifest = {
+    "schema": "ocjs-patch-state-v1",
+    "dependencyCommit": "occt-a",
+    "dependencyFiles": [{"path": "header.hxx", "sha256": "a"}],
+    "libembind": {"sha256": "js-a"},
+  }
+  binding_manifest = {
+    "schema": "ocjs-content-ledger-v1",
+    "sha256": "tree-a",
+    "files": [{"path": "A.cpp", "sha256": "a"}],
+  }
+  (build / "patches-applied.json").write_text(json.dumps(patch_manifest))
+  (build / "bindings-manifest.json").write_text(json.dumps(binding_manifest))
+  monkeypatch.setattr(compileBindings, "BUILD_DIR", str(build))
+  monkeypatch.setattr(compileBindings, "PCH_FILE", str(pch))
+  monkeypatch.setattr(compileBindings, "_compiler_identity", lambda: "emcc")
+
+  before = compileBindings._shared_identity_context()
+  patch_manifest["libembind"] = {"sha256": "js-b"}
+  binding_manifest["sha256"] = "tree-b"
+  binding_manifest["files"] = [{"path": "B.cpp", "sha256": "b"}]
+  (build / "patches-applied.json").write_text(json.dumps(patch_manifest))
+  (build / "bindings-manifest.json").write_text(json.dumps(binding_manifest))
+  after_unrelated_change = compileBindings._shared_identity_context()
+
+  assert after_unrelated_change == before
+
+  patch_manifest["dependencyFiles"] = [{"path": "header.hxx", "sha256": "b"}]
+  (build / "patches-applied.json").write_text(json.dumps(patch_manifest))
+  assert compileBindings._shared_identity_context()["dependency_identity"] != before["dependency_identity"]
