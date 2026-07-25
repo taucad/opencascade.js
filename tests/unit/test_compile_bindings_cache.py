@@ -126,3 +126,46 @@ def test_should_reuse_objects_when_only_other_fragments_or_js_patch_change(
   patch_manifest["dependencyFiles"] = [{"path": "header.hxx", "sha256": "b"}]
   (build / "patches-applied.json").write_text(json.dumps(patch_manifest))
   assert compileBindings._shared_identity_context()["dependency_identity"] != before["dependency_identity"]
+
+
+def test_should_remove_stale_object_when_recompile_fails(
+  tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+  source_root = tmp_path / "sources"
+  output_root = tmp_path / "objects"
+  source = source_root / "Binding.cpp"
+  source.parent.mkdir()
+  source.write_text("changed")
+  object_path = Path(
+    compileBindings._cpp_to_object_path(
+      str(source),
+      str(source_root),
+      str(output_root),
+    )
+  )
+  object_path.parent.mkdir()
+  object_path.write_bytes(b"stale")
+  Path(f"{object_path}.identity").write_text("old\n")
+
+  class Failed:
+    returncode = 1
+    stderr = "error: injected"
+
+  monkeypatch.setattr(compileBindings, "_compile_command", lambda _args, _item: ["fake"])
+  monkeypatch.setattr(compileBindings, "compile_atomic", lambda _command, _output: Failed())
+
+  result = compileBindings.buildOneFile({
+    "threading": "single-threaded",
+    "source_root": str(source_root),
+    "output_root": str(output_root),
+    "identity_context": {
+      "pch_identity": "pch",
+      "dependency_identity": "deps",
+      "generator_identity": "generator",
+      "compiler_identity": "compiler",
+    },
+  }, str(source))
+
+  assert result["status"] == "failed"
+  assert not object_path.exists()
+  assert not Path(f"{object_path}.identity").exists()
