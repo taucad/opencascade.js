@@ -21,6 +21,7 @@ def _write_json_atomic(path: Path, value: Any) -> None:
   path.parent.mkdir(parents=True, exist_ok=True)
   fd, temporary = tempfile.mkstemp(prefix=f".{path.name}.tmp-", dir=path.parent)
   try:
+    os.fchmod(fd, 0o644)
     with os.fdopen(fd, "wb") as stream:
       stream.write(_canonical_json(value) + b"\n")
     os.replace(temporary, path)
