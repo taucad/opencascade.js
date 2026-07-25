@@ -476,3 +476,27 @@ def test_verify_bindings_clean_input_emits_nothing(tmp_path, capsys) -> None:
   captured = capsys.readouterr()
   assert captured.out == ""
   assert captured.err == ""
+
+
+def test_verify_bindings_accepts_yaml_custom_compiled_object(tmp_path) -> None:
+  """A class declared by ``additionalCppCode`` is compiled into the
+  YAML-owned link-work tree, not the global compiled-bindings tree.
+  """
+  library_base = _write_compiled_bindings_tree(tmp_path, ["TopoDS_Shape"])
+  custom_compiled_root = os.path.join(
+    str(tmp_path),
+    "link-work",
+    "fixture-hash",
+    "compiled-bindings",
+  )
+  os.makedirs(custom_compiled_root, exist_ok=True)
+  with open(os.path.join(custom_compiled_root, "Test.cpp.o"), "wb"):
+    pass
+  _write_ncollection_manifest(tmp_path, [])
+  _write_bind_symbols_manifest(tmp_path)
+
+  verifyBindings(
+    [{"symbol": "TopoDS_Shape"}, {"symbol": "Test"}],
+    library_base,
+    custom_compiled_root=custom_compiled_root,
+  )
