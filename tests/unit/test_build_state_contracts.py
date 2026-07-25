@@ -3,11 +3,13 @@ from __future__ import annotations
 import errno
 import json
 import os
+import stat
 from pathlib import Path
 
 import pytest
 
 from ocjs_bindgen.build_state import (
+  _write_json_atomic,
   build_content_ledger,
   materialize_ledger,
   replace_tree,
@@ -37,6 +39,14 @@ def test_should_change_identity_when_equal_size_content_changes(tmp_path: Path) 
   path.write_text("other")
 
   assert build_content_ledger(root)["sha256"] != first["sha256"]
+
+
+def test_should_publish_atomic_json_readable_by_non_owner(tmp_path: Path) -> None:
+  path = tmp_path / "manifest.json"
+
+  _write_json_atomic(path, {"state": "ready"})
+
+  assert stat.S_IMODE(path.stat().st_mode) & 0o044 == 0o044
 
 
 def test_should_reject_duplicate_logical_paths_with_every_source(tmp_path: Path) -> None:
