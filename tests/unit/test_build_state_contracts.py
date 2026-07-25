@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import errno
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -65,6 +67,27 @@ def test_should_preserve_live_tree_when_staged_publication_fails(tmp_path: Path)
     replace_tree(destination, fail)
 
   assert sorted(path.name for path in destination.iterdir()) == ["kept.txt"]
+
+
+def test_should_replace_a_tree_when_the_live_directory_is_on_an_overlay_layer(
+  tmp_path: Path,
+  monkeypatch: pytest.MonkeyPatch,
+) -> None:
+  destination = tmp_path / "destination"
+  destination.mkdir()
+  (destination / "old.txt").write_text("old")
+  real_replace = os.replace
+
+  def reject_lower_layer_rename(source: Path | str, target: Path | str) -> None:
+    if Path(source) == destination:
+      raise OSError(errno.EXDEV, "Invalid cross-device link")
+    real_replace(source, target)
+
+  monkeypatch.setattr(os, "replace", reject_lower_layer_rename)
+
+  replace_tree(destination, lambda stage: (stage / "new.txt").write_text("new"))
+
+  assert sorted(path.name for path in destination.iterdir()) == ["new.txt"]
 
 
 def test_should_materialize_exact_files_without_clobbering_unowned_content(tmp_path: Path) -> None:

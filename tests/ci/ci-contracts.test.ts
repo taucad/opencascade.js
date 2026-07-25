@@ -456,6 +456,7 @@ describe('CI contracts', () => {
     );
     expect(vale.with.filter_mode).toBe('nofilter');
     expect(vale.with.fail_on_error).toBe(true);
+    expect(vale.with.reporter).toBe('github-actions');
   });
 
   it('should keep the final aggregate free of custom timing API code', () => {
