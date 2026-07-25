@@ -459,6 +459,16 @@ describe('CI contracts', () => {
     expect(vale.with.reporter).toBe('local');
   });
 
+  it('should keep Nx and build state readable and writable for non-root consumers', () => {
+    const source = fs.readFileSync(path.join(ROOT, 'Dockerfile'), 'utf8');
+    const permissionCommand =
+      'chmod -R go+rwX /opencascade.js/.nx /opencascade.js/build';
+    expect(source.split(permissionCommand)).toHaveLength(4);
+    expect(source).not.toContain(
+      'chmod -R go+w /opencascade.js/.nx /opencascade.js/build',
+    );
+  });
+
   it('should keep the final aggregate free of custom timing API code', () => {
     const ci = workflow('docker.yml');
     expect(ci.jobs['ci-gate'].permissions).toEqual({ contents: 'read' });
