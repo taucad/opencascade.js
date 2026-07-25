@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import errno
 import hashlib
 import json
 import os
@@ -87,7 +88,12 @@ def replace_tree(destination: Path, populate: Callable[[Path], None]) -> None:
     backup_exists = False
     if destination.exists():
       backup.unlink(missing_ok=True) if backup.is_file() else shutil.rmtree(backup, ignore_errors=True)
-      os.replace(destination, backup)
+      try:
+        os.replace(destination, backup)
+      except OSError as error:
+        if error.errno != errno.EXDEV:
+          raise
+        shutil.move(destination, backup)
       backup_exists = True
     try:
       os.replace(stage, destination)
