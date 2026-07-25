@@ -246,8 +246,6 @@ nohup env ./build-wasm.sh full <yaml> > build.log 2>&1 &
 
 ./build-wasm.sh link <yaml>        # Link only (fastest, reuses .o files)
 ./build-wasm.sh validate <yaml>    # Validate config without building
-./build-wasm.sh cache-list         # List cached compilations
-./build-wasm.sh cache-gc [n]       # Clean old cache entries
 ./build-wasm.sh --help             # Full usage information
 ```
 
@@ -289,6 +287,12 @@ SOURCE_DATE_EPOCH=<commit-epoch> \
 ```
 
 The single `LINK_BUDGET_S` environment variable controls the full consumer-link ceiling. Timing remains in logs; distributable provenance and build-manifest sidecars contain reproducible build facts only.
+
+The weekly/manual `reproducibility.yml` workflow builds two isolated
+Linux/amd64 `final-single` images in parallel with cold caches, runs the
+runtime smoke against both, and compares their exact artifact ledgers. Stable
+publication calls the same workflow for the release commit and cannot publish
+until it passes. Each cold job enforces the 165-minute runner ceiling.
 
 ## Additional Documentation
 

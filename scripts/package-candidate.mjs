@@ -2,6 +2,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 
 export const DIST_FILES = [
   'api-reference.json',
@@ -38,6 +39,46 @@ export const validateExactFiles = (actual, expected, label) => {
   }
 };
 
+const walkFiles = (directory, relative = '') => {
+  const current = path.join(directory, relative);
+  return fs.readdirSync(current, { withFileTypes: true })
+    .sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0)
+    .flatMap((entry) => {
+      const child = path.join(relative, entry.name);
+      return entry.isDirectory() ? walkFiles(directory, child) : [child.replaceAll(path.sep, '/')];
+    });
+};
+
+export const artifactLedger = (directory) => walkFiles(directory).map((file) => {
+  const contents = fs.readFileSync(path.join(directory, file));
+  return {
+    path: file,
+    size: contents.byteLength,
+    sha256: crypto.createHash('sha256').update(contents).digest('hex'),
+  };
+});
+
+export const compareArtifactLedgers = (first, second) => {
+  const firstByPath = new Map(first.map((entry) => [entry.path, entry]));
+  const secondByPath = new Map(second.map((entry) => [entry.path, entry]));
+  const paths = [...new Set([...firstByPath.keys(), ...secondByPath.keys()])].sort();
+  const differences = paths.filter((file) =>
+    JSON.stringify(firstByPath.get(file)) !== JSON.stringify(secondByPath.get(file)));
+  if (differences.length) {
+    throw new Error(`artifact ledgers differ: ${differences.join(', ')}`);
+  }
+};
+
+export const requireSinglePackResult = (packed) => {
+  if (!Array.isArray(packed) || packed.length !== 1) {
+    const candidates = Array.isArray(packed)
+      ? packed.map(({ filename }) => filename ?? '<unnamed>').join(', ')
+      : '<non-array>';
+    throw new Error(`npm pack must return exactly one tarball; candidates=[${candidates}]`);
+  }
+  return packed[0];
+};
+
 export const validateDist = (directory) => {
   const files = fs.readdirSync(directory).sort();
   validateExactFiles(files, DIST_FILES, 'dist');
@@ -57,10 +98,24 @@ export const validateProvenance = (directory, fullSha) => {
 
 if (process.argv[1] === new URL(import.meta.url).pathname) {
   try {
+    const writeLedger = process.argv.indexOf('--write-ledger');
+    if (writeLedger !== -1) {
+      const ledger = artifactLedger(path.resolve(process.argv[writeLedger + 1]));
+      fs.writeFileSync(process.argv[writeLedger + 2], `${JSON.stringify(ledger)}\n`);
+      process.exit(0);
+    }
+    const compareLedgers = process.argv.indexOf('--compare-ledgers');
+    if (compareLedgers !== -1) {
+      const first = JSON.parse(fs.readFileSync(process.argv[compareLedgers + 1], 'utf8'));
+      const second = JSON.parse(fs.readFileSync(process.argv[compareLedgers + 2], 'utf8'));
+      compareArtifactLedgers(first, second);
+      process.exit(0);
+    }
     const packJson = process.argv.indexOf('--pack-json');
     if (packJson !== -1) {
       const packed = JSON.parse(fs.readFileSync(process.argv[packJson + 1], 'utf8'));
-      validateExactFiles(packed[0].files.map(({ path: file }) => file), PACKAGE_FILES, 'npm tarball');
+      const candidate = requireSinglePackResult(packed);
+      validateExactFiles(candidate.files.map(({ path: file }) => file), PACKAGE_FILES, 'npm tarball');
       console.log('npm tarball contains exactly 19 files');
       process.exit(0);
     }

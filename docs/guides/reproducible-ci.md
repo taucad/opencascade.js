@@ -8,6 +8,19 @@ Reproducibility for an OCCT WASM build means: given the same source revision, pi
 
 This guide walks each layer and shows the discipline downstream consumers should adopt.
 
+## Repository reproducibility gate
+
+The repository's weekly/manual `reproducibility.yml` workflow builds
+`final-single` twice in isolated `linux/amd64` jobs with BuildKit caches
+disabled. Both jobs run the runtime smoke and emit a complete artifact ledger;
+the comparison job requires every path, size, and SHA-256 digest to match.
+Stable publication calls this same workflow for the release commit before npm
+publication. Each cold runner must finish within 165 minutes.
+
+Ordinary push and pull-request builds keep Nx and BuildKit caching enabled.
+Native ARM candidates prove the same public and runtime behavior, but byte
+equality is intentionally limited to the same architecture and toolchain.
+
 ## Layer 1: Pin the image by SHA
 
 The `:beta` tag floats — every release advances it. For reproducible CI, pin to the image manifest digest:

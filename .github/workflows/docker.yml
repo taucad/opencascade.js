@@ -41,7 +41,7 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
-          node-version: '24'
+          node-version-file: '.nvmrc'
           cache: npm
 
       - name: Install locked Node tools
@@ -97,7 +97,7 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
-          node-version: '24'
+          node-version-file: '.nvmrc'
           cache: npm
 
       - name: Install locked Node tools
@@ -193,7 +193,7 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
-          node-version: '24'
+          node-version-file: '.nvmrc'
           cache: npm
 
       - name: Install test runner
@@ -343,7 +343,7 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
-          node-version: '24'
+          node-version-file: '.nvmrc'
           cache: npm
 
       - name: Install test runner
@@ -551,16 +551,14 @@ jobs:
       - name: Download single-threaded outputs
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
-          pattern: npm-dist-single-${{ github.run_id }}
+          name: npm-dist-single-${{ github.run_id }}
           path: ${{ runner.temp }}/single
-          merge-multiple: true
 
       - name: Download multi-threaded outputs
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
-          pattern: npm-dist-multi-${{ github.run_id }}
+          name: npm-dist-multi-${{ github.run_id }}
           path: ${{ runner.temp }}/multi
-          merge-multiple: true
 
       - name: Assemble exact same-run dist
         env:
@@ -575,8 +573,11 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
-          node-version: '24'
+          node-version-file: '.nvmrc'
           cache: npm
+
+      - name: Pin npm pack implementation
+        run: npm install --global npm@11.5.1
 
       - name: Install locked test tools
         run: npm ci --ignore-scripts --no-audit --no-fund
@@ -643,7 +644,7 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
-          node-version: '24'
+          node-version-file: '.nvmrc'
           cache: npm
       - run: npm ci --ignore-scripts --no-audit --no-fund
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
@@ -666,7 +667,7 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
-          node-version: '24'
+          node-version-file: '.nvmrc'
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: ${{ needs.package-assemble.outputs.artifact }}
@@ -687,7 +688,7 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
-          node-version: '24'
+          node-version-file: '.nvmrc'
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: ${{ needs.package-assemble.outputs.artifact }}
@@ -711,7 +712,7 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
-          node-version: '24'
+          node-version-file: '.nvmrc'
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: ${{ needs.package-assemble.outputs.artifact }}
@@ -814,6 +815,16 @@ jobs:
           digest="$(docker buildx imagetools inspect "${REGISTRY_IMAGE}:${tags[0]}" --format '{{json .Manifest}}' | jq -r '.digest')"
           cosign sign --yes "${REGISTRY_IMAGE}@${digest}"
 
+  release-reproducibility:
+    name: release · reproducibility
+    if: needs.preflight.outputs.is_release == 'true'
+    needs: preflight
+    uses: ./.github/workflows/reproducibility.yml
+    with:
+      expected_sha: ${{ needs.preflight.outputs.full_sha }}
+      source_date_epoch: ${{ needs.preflight.outputs.source_date_epoch }}
+      version: ${{ needs.preflight.outputs.version }}
+
   npm-publish:
     name: npm · publish
     if: >-
@@ -821,8 +832,9 @@ jobs:
       needs.preflight.outputs.npm_publish == 'true' &&
       needs.preflight.result == 'success' &&
       needs.package-assemble.result == 'success' &&
-      needs.package-gate.result == 'success'
-    needs: [preflight, package-assemble, package-gate]
+      needs.package-gate.result == 'success' &&
+      (needs.preflight.outputs.is_release != 'true' || needs.release-reproducibility.result == 'success')
+    needs: [preflight, package-assemble, package-gate, release-reproducibility]
     runs-on: ubuntu-latest
     concurrency:
       group: npm-${{ needs.preflight.outputs.channel }}
@@ -843,7 +855,7 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
-          node-version: '24'
+          node-version-file: '.nvmrc'
           registry-url: https://registry.npmjs.org
       - name: Use OIDC-capable npm
         run: npm install --global npm@11.5.1
@@ -937,7 +949,7 @@ jobs:
           path: ${{ runner.temp }}/candidate
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
-          node-version: '24'
+          node-version-file: '.nvmrc'
           registry-url: https://registry.npmjs.org
       - name: Use the publication npm version
         run: npm install --global npm@11.5.1
