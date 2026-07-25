@@ -29,7 +29,55 @@ def _status(root: Path) -> list[str]:
   )
 
 
-def prepare(root: Path, manifest_path: Path) -> None:
+def _record(path: Path, logical_path: str) -> dict[str, str | int]:
+  if not path.is_file():
+    raise RuntimeError(f"owned patched dependency path is not a file: {logical_path}")
+  data = path.read_bytes()
+  return {
+    "path": logical_path,
+    "size": len(data),
+    "sha256": hashlib.sha256(data).hexdigest(),
+  }
+
+
+def _state(
+  root: Path,
+  patch_root: Path,
+  embind_path: Path,
+  dependency_paths: list[str] | None = None,
+) -> dict[str, object]:
+  dependency_paths = dependency_paths if dependency_paths is not None else _status(root)
+  files = [
+    _record(root / relative, relative)
+    for relative in dependency_paths
+  ]
+  patch_files = [
+    _record(path, path.name)
+    for path in sorted(patch_root.glob("*"), key=lambda candidate: candidate.name)
+    if path.suffix in {".py", ".patch"}
+  ]
+  embind = embind_path.read_bytes()
+  return {
+    "schema": "ocjs-patch-state-v1",
+    "dependencyCommit": subprocess.check_output(
+      ["git", "-C", str(root), "rev-parse", "HEAD"],
+      text=True,
+    ).strip(),
+    "dependencyFiles": files,
+    "patchInputs": patch_files,
+    "libembind": {
+      "size": len(embind),
+      "sha256": hashlib.sha256(embind).hexdigest(),
+    },
+  }
+
+
+def prepare(
+  root: Path,
+  manifest_path: Path,
+  patch_root: Path,
+  embind_path: Path,
+) -> None:
   dirty = _status(root)
   if not dirty:
     return
@@ -46,6 +94,11 @@ def prepare(root: Path, manifest_path: Path) -> None:
       "unowned OCCT dependency changes must be resolved before patching: "
       + ", ".join(unexpected)
     )
+  try:
+    if _state(root, patch_root, embind_path, dirty) == manifest:
+      return
+  except RuntimeError:
+    pass
   for relative in sorted(owned):
     tracked = subprocess.run(
       ["git", "-C", str(root), "ls-files", "--error-unmatch", "--", relative],
@@ -66,42 +119,7 @@ def write(
   patch_root: Path,
   embind_path: Path,
 ) -> None:
-  files = []
-  for relative in _status(root):
-    path = root / relative
-    if not path.is_file():
-      raise RuntimeError(f"owned patched dependency path is not a file: {relative}")
-    data = path.read_bytes()
-    files.append({
-      "path": relative,
-      "size": len(data),
-      "sha256": hashlib.sha256(data).hexdigest(),
-    })
-  patch_files = []
-  for path in sorted(patch_root.glob("*"), key=lambda candidate: candidate.name):
-    if path.suffix not in {".py", ".patch"}:
-      continue
-    data = path.read_bytes()
-    patch_files.append({
-      "path": path.name,
-      "size": len(data),
-      "sha256": hashlib.sha256(data).hexdigest(),
-    })
-  embind = embind_path.read_bytes()
-  payload = {
-    "schema": "ocjs-patch-state-v1",
-    "dependencyCommit": subprocess.check_output(
-      ["git", "-C", str(root), "rev-parse", "HEAD"],
-      text=True,
-    ).strip(),
-    "dependencyFiles": files,
-    "patchInputs": patch_files,
-    "libembind": {
-      "size": len(embind),
-      "sha256": hashlib.sha256(embind).hexdigest(),
-    },
-  }
-  _write_json_atomic(manifest_path, payload)
+  _write_json_atomic(manifest_path, _state(root, patch_root, embind_path))
 
 
 def main() -> None:
@@ -112,11 +130,11 @@ def main() -> None:
   parser.add_argument("--patch-root", type=Path)
   parser.add_argument("--embind", type=Path)
   args = parser.parse_args()
-  if args.command == "prepare":
-    prepare(args.root, args.manifest)
-    return
   if args.patch_root is None or args.embind is None:
-    parser.error("write requires --patch-root and --embind")
+    parser.error(f"{args.command} requires --patch-root and --embind")
+  if args.command == "prepare":
+    prepare(args.root, args.manifest, args.patch_root, args.embind)
+    return
   write(args.root, args.manifest, args.patch_root, args.embind)
 
 

@@ -695,7 +695,9 @@ step_apply_patches() {
 
   "$OCJS_PYTHON" scripts/patch-state.py prepare \
     --root "$OCCT_ROOT" \
-    --manifest "$BUILD_DIR/patches-applied.json"
+    --manifest "$BUILD_DIR/patches-applied.json" \
+    --patch-root "$OCJS_ROOT/src/patches" \
+    --embind "$EMSDK/upstream/emscripten/src/lib/libembind.js"
 
   echo "  Applying using-statement / V8 bugfix patches..."
   "$OCJS_PYTHON" src/patches/patch_using_statements.py
