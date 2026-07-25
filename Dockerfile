@@ -319,7 +319,7 @@ RUN mkdir -p build/bindings build/sources
 # applying chmod in-place inside the same RUN, the perms commit alongside
 # the original file content with zero duplication.
 #
-# Consumers running with `docker run -u "$(id -u):$(id -g)"` need writable
+# Consumers running with `docker run -u "$(id -u):$(id -g)"` need readable and writable
 # locations for Nx's content-addressed cache (.nx), build outputs (build/),
 # and emsdk's per-run scratch. Without this chmod, the first non-root run
 # fails with EACCES when Nx tries to create its .nx subdirectory under
@@ -331,7 +331,7 @@ RUN npx nx run ocjs:generate && \
     rm -rf /root/.npm/_cacache && \
     echo "── Setting non-root execution perms (folded; avoids 2 GB chmod layer) ──" && \
     mkdir -p /opencascade.js/.nx && \
-    chmod -R go+w /opencascade.js/.nx /opencascade.js/build && \
+    chmod -R go+rwX /opencascade.js/.nx /opencascade.js/build && \
     chmod go+w /opencascade.js && \
     echo "── Allowing git on vendored OCCT/rapidjson/freetype for non-root runs ──" && \
     git config --system --add safe.directory '*' && \
@@ -410,7 +410,7 @@ RUN --mount=type=cache,target=/emsdk/upstream/emscripten/cache,id=ocjs-emsdk-${O
     find build -type f -name '*.cpp.o.d' -delete && \
     rm -rf build/occt-cmake && \
     echo "── Re-applying non-root perms (folded; bindgen-base chmod stale here) ──" && \
-    chmod -R go+w /opencascade.js/.nx /opencascade.js/build
+    chmod -R go+rwX /opencascade.js/.nx /opencascade.js/build
 
 # ═════════════════════════════════════════════════════════════════════════════
 # Stage 3b: compiled-multi-threaded
@@ -431,7 +431,7 @@ RUN --mount=type=cache,target=/emsdk/upstream/emscripten/cache,id=ocjs-emsdk-${O
     find build -type f -name '*.cpp.o.d' -delete && \
     rm -rf build/occt-cmake && \
     echo "── Re-applying non-root perms (folded; bindgen-base chmod stale here) ──" && \
-    chmod -R go+w /opencascade.js/.nx /opencascade.js/build
+    chmod -R go+rwX /opencascade.js/.nx /opencascade.js/build
 
 # ═════════════════════════════════════════════════════════════════════════════
 # Stage 4a: final-single  (published as ghcr.io/taucad/opencascade.js:single-threaded)
