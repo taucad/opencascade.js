@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import {
@@ -53,5 +53,33 @@ describe('deterministic artifact contracts', () => {
     expect(() => requireSinglePackResult([{ filename: 'a.tgz' }, { filename: 'b.tgz' }]))
       .toThrowError(/a\.tgz.*b\.tgz/);
     expect(requireSinglePackResult([{ filename: 'only.tgz' }])).toEqual({ filename: 'only.tgz' });
+  });
+
+  it('should separate cached linking from destination materialization', () => {
+    const project = JSON.parse(readFileSync('project.json', 'utf8'));
+    expect(project.targets['link-core'].cache).toBe(true);
+    expect(project.targets['link-core'].inputs).not.toContainEqual({ env: 'OCJS_OUTPUT_DIR' });
+    expect(project.targets.materialize).toMatchObject({
+      cache: false,
+      dependsOn: ['link-core'],
+    });
+    expect(project.targets.validate.dependsOn).toEqual(['materialize']);
+    expect(project.targets.provenance.dependsOn).toEqual(['validate']);
+  });
+
+  it('should keep exact tool and artifact cardinality in hosted workflows', () => {
+    const workflow = readFileSync('.github/workflows/docker.yml', 'utf8');
+    const reproducibility = readFileSync('.github/workflows/reproducibility.yml', 'utf8');
+    expect(workflow).not.toContain('merge-multiple: true');
+    expect(workflow).not.toContain("node-version: '24'");
+    expect(workflow).toContain("node-version-file: '.nvmrc'");
+    expect(workflow).not.toContain('/actions/runs/');
+    expect(reproducibility).toContain('max-parallel: 2');
+    expect(reproducibility).toContain('no-cache: true');
+    expect(reproducibility).toContain('--compare-ledgers');
+    expect(reproducibility).toContain('test "$elapsed" -le 9900');
+    expect(
+      reproducibility.match(/ref: \$\{\{ needs\.prepare\.outputs\.full_sha \}\}/g),
+    ).toHaveLength(2);
   });
 });
