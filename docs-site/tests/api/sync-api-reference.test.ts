@@ -22,7 +22,7 @@ const createFeed = async () => {
       ['FixtureModule__TKFixture__Fix', 'FixtureModule__TKFixture__Bar'].map(async (key) => [
         key,
         JSON.parse(await readFile(join(FIXTURES, `${key}.json`), 'utf8')).classes,
-      ]),
+      ] as const),
     ),
   );
   const modules = (index.modules as FixtureModule[]).map((module) => ({
