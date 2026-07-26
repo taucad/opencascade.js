@@ -191,6 +191,16 @@ describe('CI contracts', () => {
     }
   });
 
+  it('should reuse candidate outputs for multi-threaded runtime assertions', () => {
+    const ci = workflow('docker.yml');
+    for (const jobName of ['candidate-validation', 'candidate-build']) {
+      const step = ci.jobs[jobName].steps.find(
+        ({ name }: { name?: string }) => name === 'Docker consumer behavior',
+      );
+      expect(step.env.OCJS_DOCKER_OUTPUT_DIR).toBe('${{ runner.temp }}/e2e');
+    }
+  });
+
   it('should select only expired, unprotected GHCR versions', () => {
     const now = Date.parse('2026-07-21T00:00:00Z');
     const version = (id: number, created_at: string, tags: string[], name = `sha256:${id}`) => ({
