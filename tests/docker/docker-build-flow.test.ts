@@ -22,8 +22,6 @@ import {
   dockerTestsEnabled,
 } from './docker-helpers.js';
 
-const LINK_TIMEOUT = 900_000; // 15 min — cold-ish custom link on the warm image cache.
-const FAST_TIMEOUT = 180_000; // schema-rejection cases fail fast but allow container startup.
 const STAGE = process.env.OCJS_DOCKER_STAGE ?? 'all';
 const CANDIDATE_OUTPUT_DIR = process.env.OCJS_DOCKER_OUTPUT_DIR;
 
@@ -55,7 +53,6 @@ describe.skipIf(!dockerTestsEnabled() || !['all', 'final-single'].includes(STAGE
       // Symbol filtering: an unlisted OCCT class is absent from the build.
       expect(typeof oc.TopoDS_Face).toBe('undefined');
     },
-    LINK_TIMEOUT,
   );
 
   it(
@@ -64,7 +61,6 @@ describe.skipIf(!dockerTestsEnabled() || !['all', 'final-single'].includes(STAGE
       const { status } = runLink(SINGLE_IMAGE, 'errorUnknownProp1.yml', 'err1');
       expect(status).not.toBe(0);
     },
-    FAST_TIMEOUT,
   );
 
   it(
@@ -73,7 +69,6 @@ describe.skipIf(!dockerTestsEnabled() || !['all', 'final-single'].includes(STAGE
       const { status } = runLink(SINGLE_IMAGE, 'errorUnknownProp2.yml', 'err2');
       expect(status).not.toBe(0);
     },
-    FAST_TIMEOUT,
   );
 
 });
@@ -131,7 +126,6 @@ describe.skipIf(!dockerTestsEnabled() || !['all', 'final-multi'].includes(STAGE)
 
       oc.PThread?.terminateAllThreads?.();
     },
-    LINK_TIMEOUT,
   );
 
 });
@@ -200,6 +194,5 @@ describe.skipIf(!dockerTestsEnabled() || !['all', 'final-single'].includes(STAGE
       const cancelledBody = cancelledFuse.Shape();
       expect(cancelledBody.IsNull()).toBe(true);
     },
-    LINK_TIMEOUT,
   );
 });
