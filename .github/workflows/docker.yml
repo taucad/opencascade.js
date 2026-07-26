@@ -247,6 +247,7 @@ jobs:
           IMAGE: ocjs:e2e-${{ matrix.stage }}
           OCJS_DOCKER_STAGE: ${{ matrix.stage }}
           OCJS_DOCKER_TESTS: 1
+          OCJS_DOCKER_OUTPUT_DIR: ${{ runner.temp }}/e2e
         run: |
           if [ "$OCJS_DOCKER_STAGE" = final-single ]; then
             export OCJS_DOCKER_SINGLE_IMAGE="$IMAGE"
@@ -406,6 +407,7 @@ jobs:
           IMAGE: ocjs:e2e-${{ matrix.stage }}
           OCJS_DOCKER_STAGE: ${{ matrix.stage }}
           OCJS_DOCKER_TESTS: 1
+          OCJS_DOCKER_OUTPUT_DIR: ${{ runner.temp }}/e2e
         run: |
           if [ "$OCJS_DOCKER_STAGE" = final-single ]; then
             export OCJS_DOCKER_SINGLE_IMAGE="$IMAGE"
