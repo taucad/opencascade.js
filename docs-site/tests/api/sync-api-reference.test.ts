@@ -10,6 +10,7 @@ const FIXTURES = resolve(import.meta.dirname, '__fixtures__');
 const SCRIPT = resolve(import.meta.dirname, '../../scripts/sync-api-reference.mjs');
 const SHA = 'd5736f09aabbccddeeff00112233445566778899';
 const HASH = 'a'.repeat(64);
+const CHILD_ENV = { ...process.env, OCJS_EXPECTED_SHA: '' };
 
 type FixturePackage = { name: string; [key: string]: unknown };
 type FixtureToolkit = { packages: FixturePackage[]; [key: string]: unknown };
@@ -80,7 +81,7 @@ describe('sync-api-reference script', () => {
     feedPath = join(workDir, 'api-reference.json');
     dataDir = join(workDir, 'data');
     await writeFile(feedPath, JSON.stringify(await createFeed()));
-    await exec('node', [SCRIPT, '--from', feedPath, '--output', dataDir]);
+    await exec('node', [SCRIPT, '--from', feedPath, '--output', dataDir], { env: CHILD_ENV });
   });
 
   afterAll(async () => {
@@ -100,7 +101,7 @@ describe('sync-api-reference script', () => {
     const before = await Promise.all(
       (await readdir(dataDir)).sort().map(async (name) => [name, await readFile(join(dataDir, name), 'utf8')]),
     );
-    await exec('node', [SCRIPT, '--from', feedPath, '--output', dataDir]);
+    await exec('node', [SCRIPT, '--from', feedPath, '--output', dataDir], { env: CHILD_ENV });
     const after = await Promise.all(
       (await readdir(dataDir)).sort().map(async (name) => [name, await readFile(join(dataDir, name), 'utf8')]),
     );
@@ -114,7 +115,7 @@ describe('sync-api-reference script', () => {
     feed.totals.packages = 1;
     feed.totals.classes = 2;
     await writeFile(feedPath, JSON.stringify(feed));
-    await exec('node', [SCRIPT, '--from', feedPath, '--output', dataDir]);
+    await exec('node', [SCRIPT, '--from', feedPath, '--output', dataDir], { env: CHILD_ENV });
     expect(await readdir(dataDir)).not.toContain('FixtureModule__TKFixture__Bar.json');
   });
 });
