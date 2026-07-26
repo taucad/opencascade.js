@@ -309,7 +309,7 @@ jobs:
             -e OCJS_PACKAGE_VERSION="$VERSION" \
             -e SOURCE_DATE_EPOCH \
             "$IMAGE" -lc \
-              'cd /opencascade.js && npx nx run ocjs:api-reference --skip-nx-cache'
+              'cd /opencascade.js && npx nx run ocjs:api-reference --skip-nx-cache --excludeTaskDependencies'
           test -s "$DIST/api-reference.json"
 
       - name: Upload ST/MT package outputs
@@ -468,7 +468,7 @@ jobs:
             -e OCJS_PACKAGE_VERSION="$VERSION" \
             -e SOURCE_DATE_EPOCH \
             "$IMAGE" -lc \
-              'cd /opencascade.js && npx nx run ocjs:api-reference --skip-nx-cache'
+              'cd /opencascade.js && npx nx run ocjs:api-reference --skip-nx-cache --excludeTaskDependencies'
           test -s "$DIST/api-reference.json"
 
       - name: Upload ST/MT package outputs
