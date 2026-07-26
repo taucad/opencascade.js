@@ -409,6 +409,7 @@ describe('CI contracts', () => {
     expect(ci.jobs['candidate-build']['timeout-minutes']).toBe(165);
     expect(reproducibility.jobs['cold-build']['timeout-minutes']).toBe(165);
     expect(e2e).not.toContain('LINK_BUDGET_S');
+    expect(e2e).not.toContain('LINK_ELAPSED');
     expect(
       fs.readFileSync(path.join(ROOT, '.github/workflows/docker.yml'), 'utf8'),
     ).not.toContain('LINK_BUDGET_S');
