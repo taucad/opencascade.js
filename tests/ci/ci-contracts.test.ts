@@ -179,6 +179,18 @@ describe('CI contracts', () => {
     }
   });
 
+  it('should generate the API reference without rebuilding tested candidate outputs', () => {
+    const ci = workflow('docker.yml');
+    for (const jobName of ['candidate-validation', 'candidate-build']) {
+      const step = ci.jobs[jobName].steps.find(
+        ({ name }: { name?: string }) => name === 'Generate package-owned API reference',
+      );
+      expect(step.run).toContain(
+        'npx nx run ocjs:api-reference --skip-nx-cache --excludeTaskDependencies',
+      );
+    }
+  });
+
   it('should select only expired, unprotected GHCR versions', () => {
     const now = Date.parse('2026-07-21T00:00:00Z');
     const version = (id: number, created_at: string, tags: string[], name = `sha256:${id}`) => ({
