@@ -60,12 +60,12 @@ def _hash_tree() -> dict[str, str]:
     return digests
 
 
-def _load_baseline() -> dict[str, str]:
-    """Parse `<sha>  <relpath>` lines from the frozen baseline."""
-    if not BASELINE_TREE.is_file():
-        pytest.fail(f"Baseline manifest missing: {BASELINE_TREE}")
+def _load_baseline(path=BASELINE_TREE) -> dict[str, str]:
+    """Parse `<sha>  <relpath>` lines from a frozen baseline."""
+    if not path.is_file():
+        pytest.fail(f"Baseline manifest missing: {path}")
     digests: dict[str, str] = {}
-    for line in BASELINE_TREE.read_text().splitlines():
+    for line in path.read_text().splitlines():
         line = line.strip()
         if not line:
             continue
@@ -74,6 +74,14 @@ def _load_baseline() -> dict[str, str]:
             pytest.fail(f"Malformed baseline line: {line!r}")
         digests[rel] = sha
     return digests
+
+
+def test_cpp_hashes_match_across_platform_baselines() -> None:
+    canonical = _load_baseline(REPO_ROOT / "tests/sentinel/baseline/full_tree.sha256")
+    linux = _load_baseline(REPO_ROOT / "tests/sentinel/baseline/linux/full_tree.sha256")
+    canonical_cpp = {path: digest for path, digest in canonical.items() if path.endswith(".cpp")}
+    linux_cpp = {path: digest for path, digest in linux.items() if path.endswith(".cpp")}
+    assert linux_cpp == canonical_cpp
 
 
 @pytest.fixture(scope="module")
