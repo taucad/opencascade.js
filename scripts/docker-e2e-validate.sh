@@ -324,5 +324,4 @@ node "$SCRIPT_DIR/docker-js-smoke.mjs" "$CANDIDATE_JS" || _fail "JS smoke test f
 _section "RESULT: Docker E2E validation PASSED"
 echo "  Image:       $IMAGE_TAG"
 echo "  Config:      $BUILD_CONFIG_ABS"
-echo "  Link wall:   ${LINK_ELAPSED}s"
 echo "  Output dir:  $OUTPUT_DIR"
