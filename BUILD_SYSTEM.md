@@ -142,7 +142,7 @@ SOURCE_DATE_EPOCH=<commit-epoch> \
 ./scripts/docker-e2e-validate.sh
 ```
 
-Use `final-multi` with `build-configs/full_multi.yml`, or `bindgen-base` without a full-build config. `LINK_BUDGET_S` controls the one consumer-link ceiling. Build timing and cache observations stay in logs; the published provenance and build-manifest sidecars deliberately exclude execution-local state so their bytes can prove host independence.
+Use `final-multi` with `build-configs/full_multi.yml`, or `bindgen-base` without a full-build config. Hosted candidate and reproducibility jobs enforce the 165-minute execution ceiling at the job boundary so architecture- and configuration-specific phases share the same total budget. Build timing and cache observations stay in logs; the published provenance and build-manifest sidecars deliberately exclude execution-local state so their bytes can prove host independence.
 
 ### How the components flow together
 

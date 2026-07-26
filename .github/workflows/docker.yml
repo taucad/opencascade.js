@@ -182,7 +182,7 @@ jobs:
     if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
     needs: preflight
     runs-on: ubuntu-latest
-    timeout-minutes: 360
+    timeout-minutes: 165
     strategy:
       fail-fast: false
       matrix:
@@ -240,7 +240,6 @@ jobs:
           OCJS_E2E_OUTPUT_DIR: ${{ runner.temp }}/e2e
           OCJS_EXPECTED_SHA: ${{ needs.preflight.outputs.full_sha }}
           SOURCE_DATE_EPOCH: ${{ needs.preflight.outputs.source_date_epoch }}
-          LINK_BUDGET_S: 1200
         run: scripts/docker-e2e-validate.sh
 
       - name: Docker consumer behavior
@@ -328,7 +327,7 @@ jobs:
     if: github.event_name == 'push'
     needs: preflight
     runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
-    timeout-minutes: 360
+    timeout-minutes: 165
     permissions:
       contents: read
       packages: write
@@ -399,7 +398,6 @@ jobs:
           OCJS_E2E_OUTPUT_DIR: ${{ runner.temp }}/e2e
           OCJS_EXPECTED_SHA: ${{ needs.preflight.outputs.full_sha }}
           SOURCE_DATE_EPOCH: ${{ needs.preflight.outputs.source_date_epoch }}
-          LINK_BUDGET_S: 1200
         run: scripts/docker-e2e-validate.sh
 
       - name: Docker consumer behavior

@@ -27,7 +27,6 @@
 #   OCJS_E2E_IMAGE         Pre-built image (CI); skips Phase 0 build.
 #   OCJS_E2E_BUILD_CONFIG  YAML under repo root (default: build-configs/full.yml).
 #   OCJS_E2E_STAGE         final-single | final-multi | bindgen-base.
-#   LINK_BUDGET_S          Default: 1200 (20 min).
 #   OCJS_E2E_CPUS          Default: host CPU count (nproc); GHA ubuntu-latest has 4
 #   OCJS_DOCKER_PLATFORM   Optional docker --platform (e.g. linux/amd64)
 #   OCJS_E2E_OUTPUT_DIR    Default: $REPO_ROOT/docker-e2e-output
@@ -54,7 +53,6 @@ BUILD_CONFIG_DEFAULT="$REPO_ROOT/build-configs/full.yml"
 BUILD_CONFIG="${OCJS_E2E_BUILD_CONFIG:-$BUILD_CONFIG_DEFAULT}"
 OCJS_E2E_STAGE="${OCJS_E2E_STAGE:-final-single}"
 OUTPUT_DIR="${OCJS_E2E_OUTPUT_DIR:-$REPO_ROOT/docker-e2e-output}"
-LINK_BUDGET_S="${LINK_BUDGET_S:-1200}"
 DOCKER_CPUS="$(_resolve_docker_cpus "${OCJS_E2E_CPUS:-}")"
 SKIP_BUILD=0
 PLATFORM_FLAGS=()
@@ -252,16 +250,9 @@ mkdir -p "$OUTPUT_DIR"
 CANDIDATE_JS="$OUTPUT_DIR/${ARTIFACT_BASENAME}.js"
 PROV_FILE="$OUTPUT_DIR/${ARTIFACT_BASENAME}.provenance.json"
 
-_section "Phase 2/5  Bounded consumer link against ${ARTIFACT_BASENAME}"
-LINK_START=$(date +%s)
+_section "Phase 2/5  Consumer link against ${ARTIFACT_BASENAME}"
 _run_link "$BUILD_CONFIG_ABS"
-LINK_END=$(date +%s)
-LINK_ELAPSED=$((LINK_END - LINK_START))
-echo "  Link wall time: ${LINK_ELAPSED}s (budget ${LINK_BUDGET_S}s)"
-if [ "$LINK_ELAPSED" -gt "$LINK_BUDGET_S" ]; then
-  _fail "Consumer link (${LINK_ELAPSED}s) exceeded budget (${LINK_BUDGET_S}s)."
-fi
-_ok "Consumer link within budget"
+_ok "Consumer link"
 
 _section "Phase 3/5  Asserting output artefacts"
 EXPECTED_ARTIFACTS=(
