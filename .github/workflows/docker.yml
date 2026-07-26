@@ -856,7 +856,7 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
-          node-version-file: '.nvmrc'
+          node-version: '24.10.0'
           registry-url: https://registry.npmjs.org
       - name: Use OIDC-capable npm
         run: npm install --global npm@11.5.1
@@ -950,7 +950,7 @@ jobs:
           path: ${{ runner.temp }}/candidate
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
-          node-version-file: '.nvmrc'
+          node-version: '24.10.0'
           registry-url: https://registry.npmjs.org
       - name: Use the publication npm version
         run: npm install --global npm@11.5.1
