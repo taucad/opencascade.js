@@ -15,7 +15,7 @@ The repository's weekly/manual `reproducibility.yml` workflow builds
 disabled. Both jobs run the runtime smoke and emit a complete artifact ledger;
 the comparison job requires every path, size, and SHA-256 digest to match.
 Stable publication calls this same workflow for the release commit before npm
-publication. Each cold runner must finish within 165 minutes.
+publication. Each cold runner uses GitHub's native four-hour job timeout.
 
 Ordinary push and pull-request builds keep Nx and BuildKit caching enabled.
 Native ARM candidates prove the same public and runtime behavior, but byte

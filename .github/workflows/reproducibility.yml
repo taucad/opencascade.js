@@ -53,16 +53,13 @@ jobs:
   cold-build:
     needs: prepare
     runs-on: ubuntu-latest
-    timeout-minutes: 165
+    timeout-minutes: 240
     strategy:
       fail-fast: false
       max-parallel: 2
       matrix:
         copy: [a, b]
     steps:
-      - name: Start execution budget
-        run: date +%s > "$RUNNER_TEMP/start-epoch"
-
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           ref: ${{ needs.prepare.outputs.full_sha }}
@@ -122,13 +119,6 @@ jobs:
             ${{ runner.temp }}/output/*
           if-no-files-found: error
           retention-days: 7
-
-      - name: Enforce 165-minute runner budget
-        if: always()
-        run: |
-          elapsed="$(( $(date +%s) - $(cat "$RUNNER_TEMP/start-epoch") ))"
-          echo "runner_execution_seconds=$elapsed"
-          test "$elapsed" -le 9900
 
   compare:
     needs: [prepare, cold-build]

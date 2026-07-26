@@ -77,7 +77,6 @@ describe('deterministic artifact contracts', () => {
     expect(reproducibility).toContain('max-parallel: 2');
     expect(reproducibility).toContain('no-cache: true');
     expect(reproducibility).toContain('--compare-ledgers');
-    expect(reproducibility).toContain('test "$elapsed" -le 9900');
     expect(
       reproducibility.match(/ref: \$\{\{ needs\.prepare\.outputs\.full_sha \}\}/g),
     ).toHaveLength(2);

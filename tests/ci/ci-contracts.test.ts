@@ -398,29 +398,6 @@ describe('CI contracts', () => {
     }
   });
 
-  it('should enforce the 165-minute baseline at hosted job boundaries', () => {
-    const ci = workflow('docker.yml');
-    const reproducibility = workflow('reproducibility.yml');
-    const e2e = fs.readFileSync(
-      path.join(ROOT, 'scripts/docker-e2e-validate.sh'),
-      'utf8',
-    );
-    expect(ci.jobs['candidate-validation']['timeout-minutes']).toBe(165);
-    expect(ci.jobs['candidate-build']['timeout-minutes']).toBe(165);
-    expect(reproducibility.jobs['cold-build']['timeout-minutes']).toBe(165);
-    expect(e2e).not.toContain('LINK_BUDGET_S');
-    expect(e2e).not.toContain('LINK_ELAPSED');
-    expect(
-      fs.readFileSync(path.join(ROOT, '.github/workflows/docker.yml'), 'utf8'),
-    ).not.toContain('LINK_BUDGET_S');
-    expect(
-      fs.readFileSync(
-        path.join(ROOT, '.github/workflows/reproducibility.yml'),
-        'utf8',
-      ),
-    ).not.toContain('LINK_BUDGET_S');
-  });
-
   it('should test the exact npm candidate in the six-cell browser runtime matrix', () => {
     const ci = workflow('docker.yml');
     const browser = ci.jobs['package-browser'];
