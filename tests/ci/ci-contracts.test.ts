@@ -201,6 +201,16 @@ describe('CI contracts', () => {
     }
   });
 
+  it('should provision pnpm for isolated docs lifecycle scripts', () => {
+    const source = fs.readFileSync(
+      path.join(ROOT, 'scripts/test-candidate-docs.sh'),
+      'utf8',
+    );
+    const provision = source.indexOf('corepack enable --install-directory "$COREPACK_BIN"');
+    expect(provision).toBeGreaterThan(-1);
+    expect(source.indexOf('pnpm typecheck')).toBeGreaterThan(provision);
+  });
+
   it('should select only expired, unprotected GHCR versions', () => {
     const now = Date.parse('2026-07-21T00:00:00Z');
     const version = (id: number, created_at: string, tags: string[], name = `sha256:${id}`) => ({
