@@ -602,6 +602,18 @@ describe('CI contracts', () => {
     expect(ci.jobs['registry-verify'].if).toContain("needs.preflight.outputs.npm_publish == 'true'");
   });
 
+  it('should provision Node without a checkout in artifact-only registry jobs', () => {
+    const ci = workflow('docker.yml');
+    const nodeVersion = fs.readFileSync(path.join(ROOT, '.nvmrc'), 'utf8').trim();
+    for (const jobName of ['npm-publish', 'registry-verify']) {
+      const setupNode = ci.jobs[jobName].steps.find(
+        ({ uses }: { uses?: string }) => uses?.startsWith('actions/setup-node@'),
+      );
+      expect(setupNode.with, jobName).toMatchObject({ 'node-version': nodeVersion });
+      expect(setupNode.with, jobName).not.toHaveProperty('node-version-file');
+    }
+  });
+
   it('should pin every workflow action to a full commit', () => {
     for (const name of fs.readdirSync(path.join(ROOT, '.github/workflows'))) {
       if (!name.endsWith('.yml')) continue;
