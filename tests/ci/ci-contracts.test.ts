@@ -376,12 +376,11 @@ describe('CI contracts', () => {
     }
   });
 
-  it('should run one bounded final link and reuse the minimal bindgen fixture', () => {
+  it('should run one final link and reuse the minimal bindgen fixture', () => {
     const source = fs.readFileSync(path.join(ROOT, 'scripts/docker-e2e-validate.sh'), 'utf8');
     const fixture = (name: string) => parse(
       fs.readFileSync(path.join(ROOT, 'tests/docker/fixtures', name), 'utf8'),
     );
-    expect(source).toContain('LINK_BUDGET_S="${LINK_BUDGET_S:-1200}"');
     expect(source).toContain('tests/docker/fixtures/simple.yml');
     expect(source).toContain('docker-js-smoke.mjs" "$OUTPUT_DIR/customBuild.simple.js" simple');
     for (const name of ['simple.yml', 'multi-threaded.yml', 'progress-indicator.yml']) {
@@ -397,6 +396,28 @@ describe('CI contracts', () => {
     ]) {
       expect(source).not.toContain(obsolete);
     }
+  });
+
+  it('should enforce the 165-minute baseline at hosted job boundaries', () => {
+    const ci = workflow('docker.yml');
+    const reproducibility = workflow('reproducibility.yml');
+    const e2e = fs.readFileSync(
+      path.join(ROOT, 'scripts/docker-e2e-validate.sh'),
+      'utf8',
+    );
+    expect(ci.jobs['candidate-validation']['timeout-minutes']).toBe(165);
+    expect(ci.jobs['candidate-build']['timeout-minutes']).toBe(165);
+    expect(reproducibility.jobs['cold-build']['timeout-minutes']).toBe(165);
+    expect(e2e).not.toContain('LINK_BUDGET_S');
+    expect(
+      fs.readFileSync(path.join(ROOT, '.github/workflows/docker.yml'), 'utf8'),
+    ).not.toContain('LINK_BUDGET_S');
+    expect(
+      fs.readFileSync(
+        path.join(ROOT, '.github/workflows/reproducibility.yml'),
+        'utf8',
+      ),
+    ).not.toContain('LINK_BUDGET_S');
   });
 
   it('should test the exact npm candidate in the six-cell browser runtime matrix', () => {
