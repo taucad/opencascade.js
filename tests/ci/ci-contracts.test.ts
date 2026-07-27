@@ -551,8 +551,8 @@ describe('CI contracts', () => {
       group: 'vercel-production',
       'cancel-in-progress': false,
     });
-    expect(source).toContain('vercel@56.5.0 deploy --prebuilt --token=');
-    expect(source).toContain('vercel@56.5.0 deploy --prebuilt --prod --token=');
+    expect(source).toContain('vercel@56.5.0 deploy --prebuilt --archive=tgz --token=');
+    expect(source).toContain('vercel@56.5.0 deploy --prebuilt --archive=tgz --prod --token=');
     expect(source).toContain('git/ref/heads/main');
     expect(source).toContain('export OCJS_API_REFERENCE_SOURCE="$TARBALL"');
   });

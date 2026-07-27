@@ -1205,7 +1205,7 @@ jobs:
           export OCJS_API_REFERENCE_SOURCE="$TARBALL"
           npx --yes vercel@56.5.0 pull --yes --environment=preview --token="$VERCEL_TOKEN"
           npx --yes vercel@56.5.0 build --token="$VERCEL_TOKEN"
-          url="$(npx --yes vercel@56.5.0 deploy --prebuilt --token="$VERCEL_TOKEN")"
+          url="$(npx --yes vercel@56.5.0 deploy --prebuilt --archive=tgz --token="$VERCEL_TOKEN")"
           feed_hash="$(
             tar -xOf "$TARBALL" package/dist/api-reference.json |
               node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>process.stdout.write(JSON.parse(s).inputs.bindings.sha256))"
@@ -1284,7 +1284,7 @@ jobs:
             } >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
-          url="$(npx --yes vercel@56.5.0 deploy --prebuilt --prod --token="$VERCEL_TOKEN")"
+          url="$(npx --yes vercel@56.5.0 deploy --prebuilt --archive=tgz --prod --token="$VERCEL_TOKEN")"
           feed_hash="$(
             tar -xOf "$TARBALL" package/dist/api-reference.json |
               node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>process.stdout.write(JSON.parse(s).inputs.bindings.sha256))"
