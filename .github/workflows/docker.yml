@@ -1199,6 +1199,7 @@ jobs:
           fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
           NODE
           cd docs-site
+          corepack enable
           corepack pnpm@9.15.9 install --ignore-workspace --no-frozen-lockfile --ignore-scripts
           cd ..
           export OCJS_API_REFERENCE_SOURCE="$TARBALL"
@@ -1261,6 +1262,7 @@ jobs:
           fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
           NODE
           cd docs-site
+          corepack enable
           corepack pnpm@9.15.9 install --ignore-workspace --no-frozen-lockfile --ignore-scripts
           cd ..
           export OCJS_API_REFERENCE_SOURCE="$TARBALL"
