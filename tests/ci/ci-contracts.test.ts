@@ -3,7 +3,7 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { parse } from 'yaml';
-import { branchSlug, deriveRelease } from '../../scripts/ci-release.mjs';
+import { deriveRelease } from '../../scripts/ci-release.mjs';
 import { validateRequestedVersion } from '../../scripts/prepare-release.mjs';
 import { DIST_FILES, PACKAGE_FILES, validateExactFiles } from '../../scripts/package-candidate.mjs';
 import { selectVersions } from '../../scripts/ghcr-retention.mjs';
@@ -16,26 +16,25 @@ const workflow = (name: string) => parse(
 );
 
 describe('CI contracts', () => {
-  it('should derive immutable branch versions and channel ownership', () => {
-    const feature = deriveRelease({
-      event: 'push',
+  it('should reserve publication for main pushes and manual branch canaries', () => {
+    const manualCanary = deriveRelease({
+      event: 'workflow_dispatch',
       ref: 'refs/heads/feature/npm',
-      refName: 'feature/npm',
       sha: SHA,
       commitEpoch: EPOCH,
       packageVersion: '3.0.0-beta.0',
     });
-    expect(feature).toMatchObject({
+    expect(manualCanary).toMatchObject({
       version: '3.0.0-canary.d5736f09',
       channel: 'canary',
-      branchSlug: 'feature-npm',
+      kind: 'manual-canary',
       npmPublish: true,
       ghcrPromote: true,
     });
+    expect(manualCanary).not.toHaveProperty('branchSlug');
     expect(deriveRelease({
       event: 'push',
       ref: 'refs/heads/main',
-      refName: 'main',
       sha: SHA,
       commitEpoch: EPOCH,
       packageVersion: '3.0.0-beta.0',
@@ -44,12 +43,29 @@ describe('CI contracts', () => {
     expect(deriveRelease({
       event: 'pull_request',
       ref: 'refs/pull/1/merge',
-      refName: '1/merge',
       sha: SHA,
       commitEpoch: EPOCH,
       packageVersion: '3.0.0-beta.0',
-    }).npmPublish).toBe(false);
-    expect(branchSlug('feature/'.concat('very-long-segment-'.repeat(8)))).toHaveLength(64);
+    })).toMatchObject({
+      kind: 'pull-request',
+      channel: 'none',
+      npmPublish: false,
+      ghcrPromote: false,
+    });
+    expect(() => deriveRelease({
+      event: 'push',
+      ref: 'refs/heads/feature/npm',
+      sha: SHA,
+      commitEpoch: EPOCH,
+      packageVersion: '3.0.0-beta.0',
+    })).toThrow('automatic push must target main');
+    expect(() => deriveRelease({
+      event: 'workflow_dispatch',
+      ref: 'refs/tags/v3.0.0',
+      sha: SHA,
+      commitEpoch: EPOCH,
+      packageVersion: '3.0.0-beta.0',
+    })).toThrow('manual canary ref must be a branch');
   });
 
   it('should classify only exact release-PR merges as beta or stable publications', () => {
@@ -219,8 +235,18 @@ describe('CI contracts', () => {
     const branch = Array.from({ length: 7 }, (_, index) =>
       version(index + 1, `2026-07-${String(19 - index).padStart(2, '0')}T00:00:00Z`, ['branch-feature-x']),
     );
+    const canary = (offset: number, stage: string) => Array.from({ length: 7 }, (_, index) =>
+      version(
+        offset + index,
+        `2026-07-${String(19 - index).padStart(2, '0')}T00:00:00Z`,
+        [`canary-${String(offset + index).padStart(8, '0')}-${stage}`],
+      ),
+    );
     const selected = selectVersions([
       ...branch,
+      ...canary(30, 'single-threaded'),
+      ...canary(40, 'multi-threaded'),
+      ...canary(50, 'bindgen-base'),
       version(20, '2026-01-01T00:00:00Z', ['3.0.0-single-threaded']),
       version(21, '2026-01-01T00:00:00Z', ['sha256-deadbeef.sig']),
       version(22, '2026-01-01T00:00:00Z', [], 'sha256:orphan'),
@@ -229,14 +255,19 @@ describe('CI contracts', () => {
       version(25, '2026-01-01T00:00:00Z', ['sha256-deadbeef.att']),
       version(26, '2026-01-01T00:00:00Z', ['buildcache-amd64-final-single']),
       version(27, '2026-01-02T00:00:00Z', ['buildcache-amd64-final-single']),
+      version(60, '2026-01-01T00:00:00Z', [
+        'canary-12345678-single-threaded',
+        'unexpected',
+      ]),
     ], { now, referencedDigests: new Set(['sha256:referenced']) });
-    expect(selected.map(({ id }) => id)).toEqual([7, 22, 26]);
+    expect(selected.map(({ id }) => id)).toEqual([7, 22, 26, 36, 46, 56]);
   });
 
-  it('should run every branch and PR while preserving every push publication', () => {
+  it('should run automatically only for main and pull requests targeting main', () => {
     const ci = workflow('docker.yml');
-    expect(ci.on.push.branches).toEqual(['**']);
-    expect(ci.on).toHaveProperty('pull_request', null);
+    expect(ci.on.push.branches).toEqual(['main']);
+    expect(ci.on.pull_request.branches).toEqual(['main']);
+    expect(ci.on).toHaveProperty('workflow_dispatch', null);
     expect(ci.concurrency['cancel-in-progress']).toContain("github.event_name == 'pull_request'");
     expect(ci.jobs['npm-publish'].concurrency).toMatchObject({
       queue: 'max',
@@ -284,6 +315,10 @@ describe('CI contracts', () => {
     expect(validation.strategy.matrix).toEqual({
       stage: ['final-single', 'final-multi', 'bindgen-base'],
     });
+    expect(validation.if).toBe("github.event_name == 'pull_request'");
+    expect(build.if).toBe(
+      "github.event_name == 'push' || github.event_name == 'workflow_dispatch'",
+    );
 
     const rows = build.strategy.matrix.stage.flatMap((stage: string) =>
       build.strategy.matrix.arch.map((arch: string) => ({ stage, arch })),
@@ -314,6 +349,60 @@ describe('CI contracts', () => {
       'select(.annotations["vnd.docker.reference.type"] != "attestation-manifest")',
     );
     expect(source).toContain('test "$platforms" = "linux/amd64,linux/arm64"');
+  });
+
+  it('should publish immutable manual canary image coordinates', () => {
+    const ci = workflow('docker.yml');
+    const promote = ci.jobs['ghcr-promote'].steps.find(
+      ({ name }: { name?: string }) => name === 'Attach consumer-facing tags',
+    );
+    const verify = ci.jobs['registry-verify'].steps.find(
+      ({ name }: { name?: string }) =>
+        name === 'Verify exact registry bytes, provenance, signatures, and runtime',
+    );
+
+    expect(promote.env.KIND).toBe('${{ needs.preflight.outputs.kind }}');
+    expect(promote.env).not.toHaveProperty('BRANCH');
+    expect(promote.run).toContain('manual-canary) tags=("canary-${FULL_SHA:0:8}-$prefix")');
+    expect(promote.run).toContain('main) tags=("$branch_prefix-main" "$branch_prefix-main-$FULL_SHA")');
+    expect(promote.run).toContain('Canary tag collision');
+    expect(promote.run).toContain('expected_native_digests');
+    expect(promote.run).not.toContain('$branch_prefix-$BRANCH');
+    const digestDownload = ci.jobs['registry-verify'].steps.find(
+      ({ name }: { name?: string }) => name === 'Download tested digests',
+    );
+    expect(digestDownload.with.pattern).toBe('digest-*-*-${{ github.run_id }}');
+    expect(verify.env.KIND).toBe('${{ needs.preflight.outputs.kind }}');
+    expect(verify.env).not.toHaveProperty('BRANCH');
+    expect(verify.run).toContain('manual-canary) tag="canary-${FULL_SHA:0:8}-$prefix"');
+    expect(verify.run).toContain('test "$published_native_digests" = "$expected_native_digests"');
+    expect(verify.run).toContain('docker pull "$REGISTRY_IMAGE:canary-${FULL_SHA:0:8}-single-threaded"');
+    expect(verify.run).toContain('docker pull "$REGISTRY_IMAGE:canary-${FULL_SHA:0:8}-multi-threaded"');
+    expect(verify.run).toContain('docker pull "$REGISTRY_IMAGE:canary-${FULL_SHA:0:8}-bindgen-base"');
+    expect(verify.run).not.toContain('$branch_prefix-$BRANCH');
+  });
+
+  it('should not document automatic feature-branch publication', () => {
+    const stale = [
+      ['README.md', '**Every push**—branches and `main`—publishes'],
+      ['README.md', ':branch-<slug>'],
+      ['CONTRIBUTING.md', 'Canary packages are immutable per branch commit'],
+      ['MAINTAINER.md', 'Pull request or manual run | none | validation only'],
+      ['MAINTAINER.md', 'Non-`main` branch push'],
+      ['MAINTAINER.md', 'every branch push is a publisher'],
+      [
+        'docs-site/content/docs/toolchain/reference/docker-image.mdx',
+        ':branch-<slug>',
+      ],
+      [
+        'docs-site/content/docs/toolchain/reference/docker-image.mdx',
+        'Every push ships full manifest lists',
+      ],
+    ];
+    for (const [relative, phrase] of stale) {
+      expect(fs.readFileSync(path.join(ROOT, relative), 'utf8'), relative)
+        .not.toContain(phrase);
+    }
   });
 
   it('should require every native candidate without comparing host-dependent bytes', () => {
