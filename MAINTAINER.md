@@ -121,23 +121,26 @@ site consumes `api-reference.json` generated from the built WASM/declaration
 artifacts. Production deployment rechecks the remote `main` SHA immediately
 before promotion, so a completed older run cannot overwrite a newer main.
 
-The workflow builds every Docker stage natively on amd64 and arm64 for pushes.
-Each final image passes the same runtime contract on its native host.
+The workflow builds every Docker stage natively on amd64 and arm64 for
+`main` pushes and explicitly dispatched canaries. Pull requests validate the
+three stages on amd64 without publishing. Each final image passes the same
+runtime contract on its native host.
 Native toolchains may produce different bytes, so the tested amd64 ST/MT
 outputs are the canonical npm inputs while both tested image digests are
 required for GHCR promotion. The workflow packs those outputs plus the
 deterministic API-reference feed into one immutable tarball. The same tarball
 then drives installed-package, browser, starter-template, docs, publication,
-registry, and Vercel jobs. Pull requests and manual runs validate without
-publishing; push runs queue and are never canceled.
+registry, and Vercel jobs. Pull-request runs cancel superseded attempts;
+publishing runs queue and are never canceled.
 
 ### Publication Channels
 
 | Event | npm | GHCR | Vercel |
 | --- | --- | --- | --- |
-| Pull request or manual run | none | validation only | same-repository PR preview after `CI gate` |
-| Non-`main` branch push | `X.Y.Z-canary.<sha8>` under `canary` | signed branch/full-SHA manifests | none |
-| Ordinary `main` push | none | signed branch/full-SHA manifests | production from the exact candidate |
+| Pull request targeting `main` | none | validation only | same-repository PR preview after `CI gate` |
+| Feature-branch push without a PR | no workflow | no workflow | no workflow |
+| Manual branch dispatch | `X.Y.Z-canary.<sha8>` under `canary` | signed `canary-<sha8>-<stage>` manifests | none |
+| Ordinary `main` push | none | signed `main`/full-SHA manifests | production from the exact candidate |
 | Merged `chore(release): ocjs vX.Y.Z-beta.N` | exact version under `beta` | signed version manifests | production from the exact candidate |
 | Merged `chore(release): ocjs vX.Y.Z` | exact version under `latest` | signed version manifests and moving stable aliases | production from the exact candidate |
 
@@ -154,7 +157,8 @@ Configure the npm package once under **Settings → Trusted publishing**:
 - organization/user: `taucad`
 - repository: `opencascade.js`
 - workflow filename: `docker.yml`
-- environment: leave empty because every branch push is a publisher
+- environment: leave empty because manual canaries and releases share the
+  repository workflow
 
 Do not add `NPM_TOKEN` or `NODE_AUTH_TOKEN`. The publish job uses Node 24,
 npm 11.5.1, `id-token: write`, and no source checkout. The maintainer performs
@@ -178,8 +182,19 @@ existing version fail without moving tags or creating a release.
 ### Cutting a Release
 
 Contributors add `.nx/version-plans/*.md` files to package-affecting pull
-requests. Ordinary branch and `main` builds do not change the checked version;
-CI applies canary versions only in its disposable candidate workspace.
+requests. Pull requests and ordinary `main` builds do not change the checked
+version; an explicit manual dispatch applies a canary version only in its
+disposable candidate workspace.
+
+Publish a canary from a branch only when an external consumer needs it:
+
+```bash
+gh workflow run docker.yml --repo taucad/opencascade.js --ref <branch>
+```
+
+The run summary reports the exact `npm install` command and immutable
+single-threaded, multi-threaded, and bindgen-base GHCR pull commands. It does
+not deploy Vercel.
 
 Use the project skill to inspect or prepare a release:
 
@@ -262,7 +277,7 @@ npm exec nx -- run ocjs:docker-e2e
 To validate existing images directly, pass the stage, matching YAML, platform, and source identity explicitly:
 
 ```bash
-OCJS_E2E_IMAGE=ghcr.io/taucad/opencascade.js:branch-my-branch \
+OCJS_E2E_IMAGE=ghcr.io/taucad/opencascade.js:canary-<sha8>-single-threaded \
 OCJS_E2E_STAGE=final-single \
 OCJS_E2E_BUILD_CONFIG=build-configs/full.yml \
 OCJS_DOCKER_PLATFORM=linux/amd64 \
@@ -270,7 +285,7 @@ OCJS_EXPECTED_SHA=<full-commit-sha> \
 SOURCE_DATE_EPOCH=<commit-epoch> \
 ./scripts/docker-e2e-validate.sh
 
-OCJS_E2E_IMAGE=ghcr.io/taucad/opencascade.js:multi-threaded-branch-my-branch \
+OCJS_E2E_IMAGE=ghcr.io/taucad/opencascade.js:canary-<sha8>-multi-threaded \
 OCJS_E2E_STAGE=final-multi \
 OCJS_E2E_BUILD_CONFIG=build-configs/full_multi.yml \
 OCJS_DOCKER_PLATFORM=linux/arm64 \
@@ -278,7 +293,7 @@ OCJS_EXPECTED_SHA=<full-commit-sha> \
 SOURCE_DATE_EPOCH=<commit-epoch> \
 ./scripts/docker-e2e-validate.sh
 
-OCJS_E2E_IMAGE=ghcr.io/taucad/opencascade.js:bindgen-base-branch-my-branch \
+OCJS_E2E_IMAGE=ghcr.io/taucad/opencascade.js:canary-<sha8>-bindgen-base \
 OCJS_E2E_STAGE=bindgen-base \
 OCJS_DOCKER_PLATFORM=linux/amd64 \
 OCJS_EXPECTED_SHA=<full-commit-sha> \
@@ -292,7 +307,7 @@ The weekly/manual `reproducibility.yml` workflow builds two isolated
 Linux/amd64 `final-single` images in parallel with cold caches, runs the
 runtime smoke against both, and compares their exact artifact ledgers. Stable
 publication calls the same workflow for the release commit and cannot publish
-until it passes. Each cold job enforces the 165-minute runner ceiling.
+until it passes. Each cold job uses GitHub's native four-hour job timeout.
 
 ## Additional Documentation
 

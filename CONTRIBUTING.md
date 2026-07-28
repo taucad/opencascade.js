@@ -56,9 +56,10 @@ stable release PRs with the project `release-ocjs` skill. Do not change
 `package.json` versions, create release tags, publish npm packages, or deploy
 Vercel from a contributor PR.
 
-Canary packages are immutable per branch commit and use
-`X.Y.Z-canary.<sha8>`. Reviewed beta releases use `X.Y.Z-beta.N`; stable
-releases use `X.Y.Z` and the npm `latest` tag.
+Canary packages are published only by an explicit maintainer dispatch. They
+are immutable per source commit and use `X.Y.Z-canary.<sha8>`. Reviewed beta
+releases use `X.Y.Z-beta.N`; stable releases use `X.Y.Z` and the npm `latest`
+tag.
 
 ## Reporting security issues
 

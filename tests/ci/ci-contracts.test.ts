@@ -78,7 +78,6 @@ describe('CI contracts', () => {
     expect(deriveRelease({
       event: 'push',
       ref: 'refs/heads/main',
-      refName: 'main',
       sha: SHA,
       commitEpoch: EPOCH,
       packageVersion: '3.0.0-beta.1',
@@ -95,7 +94,6 @@ describe('CI contracts', () => {
     expect(deriveRelease({
       event: 'push',
       ref: 'refs/heads/main',
-      refName: 'main',
       sha: SHA,
       commitEpoch: EPOCH,
       packageVersion: '3.0.0',
@@ -105,7 +103,6 @@ describe('CI contracts', () => {
     expect(() => deriveRelease({
       event: 'push',
       ref: 'refs/heads/main',
-      refName: 'main',
       sha: SHA,
       commitEpoch: EPOCH,
       packageVersion: '3.0.0-rc.1',
@@ -115,7 +112,6 @@ describe('CI contracts', () => {
     expect(() => deriveRelease({
       event: 'push',
       ref: 'refs/heads/main',
-      refName: 'main',
       sha: SHA,
       commitEpoch: EPOCH,
       packageVersion: '3.0.0',
@@ -617,12 +613,16 @@ describe('CI contracts', () => {
   });
 
   it('should reserve moving GHCR aliases for stable releases', () => {
-    const source = fs.readFileSync(path.join(ROOT, '.github/workflows/docker.yml'), 'utf8');
-    expect(source).toContain('PRERELEASE: ${{ needs.preflight.outputs.prerelease }}');
-    expect(source).toContain(
-      'if [ "$IS_RELEASE" = true ] && [ "$PRERELEASE" = false ]; then',
+    const ci = workflow('docker.yml');
+    const promote = ci.jobs['ghcr-promote'].steps.find(
+      ({ name }: { name?: string }) => name === 'Attach consumer-facing tags',
     );
-    expect(source).toContain('tags=("$VERSION-$prefix" "sha-${FULL_SHA:0:8}-$prefix")');
+    expect(promote.run).toContain(
+      'stable-release) tags=("$prefix" "$VERSION-$prefix" "sha-${FULL_SHA:0:8}-$prefix")',
+    );
+    expect(promote.run).toContain(
+      'beta-release) tags=("$VERSION-$prefix" "sha-${FULL_SHA:0:8}-$prefix")',
+    );
   });
 
   it('should finalize releases and deploy Vercel only from the verified candidate', () => {

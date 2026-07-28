@@ -22,11 +22,10 @@ that needs the pre-PCH/generate state but not the pre-compiled libraries, see
 
 ### Supported platforms
 
-Release tags and branch tags (`:single-threaded`, `:multi-threaded`,
-`:bindgen-base`, versioned and branch variants) ship as
-**multi-architecture manifest lists** —
-`linux/amd64` and `linux/arm64` — so Apple Silicon and ARM Linux hosts pull
-the native arch automatically. No `--platform` flag required.
+Release, `main`, and manually dispatched canary tags ship as
+**multi-architecture manifest lists** — `linux/amd64` and `linux/arm64` — so
+Apple Silicon and ARM Linux hosts pull the native architecture automatically.
+No `--platform` flag is required.
 
 ## 2. Write a build YAML
 

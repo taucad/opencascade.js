@@ -17,9 +17,10 @@ the comparison job requires every path, size, and SHA-256 digest to match.
 Stable publication calls this same workflow for the release commit before npm
 publication. Each cold runner uses GitHub's native four-hour job timeout.
 
-Ordinary push and pull-request builds keep Nx and BuildKit caching enabled.
-Native ARM candidates prove the same public and runtime behavior, but byte
-equality is intentionally limited to the same architecture and toolchain.
+Pull requests, `main`, and manually dispatched canary builds keep Nx and
+BuildKit caching enabled. Native ARM candidates prove the same public and
+runtime behavior, but byte equality is intentionally limited to the same
+architecture and toolchain.
 
 ## Layer 1: Pin the image by SHA
 

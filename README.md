@@ -120,7 +120,7 @@ Browsers require `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Emb
 
 Pre-built images are published to [ghcr.io/taucad/opencascade.js](https://github.com/taucad/opencascade.js/pkgs/container/opencascade.js):
 
-- **Every push**—branches and `main`—publishes multi-arch manifest lists (`linux/amd64` + `linux/arm64`) after each architecture builds, links, and passes its native runtime smoke.
+- Releases, `main`, and explicitly dispatched canaries publish multi-arch manifest lists (`linux/amd64` + `linux/arm64`) after each architecture builds, links, and passes its native runtime smoke.
 
 No local build required.
 
@@ -140,17 +140,16 @@ The entrypoint dispatches subcommands (`link`, `compile-bindings`, `compile-sour
 
 ## Tags
 
-| Tag                             | What it points at                                                                  |
-| ------------------------------- | ---------------------------------------------------------------------------------- |
-| `:single-threaded`              | Latest release, single-threaded warm cache (default for browser CAD UIs)           |
-| `:multi-threaded`               | Latest release, multi-threaded warm cache (requires COOP/COEP)                     |
-| `:bindgen-base`                 | Latest release, post-PCH/generate but pre-compile (custom-bindings starting point) |
-| `:<version>-single-threaded`    | Pinned release, single-threaded (e.g. `:3.0.0-single-threaded`)                    |
-| `:<version>-multi-threaded`     | Pinned release, multi-threaded                                                     |
-| `:<version>-bindgen-base`       | Pinned release, bindgen-base                                                       |
-| `:branch-<slug>`                | Branch tip, single-threaded (amd64+arm64, ephemeral — 7-day GHCR retention)        |
-| `:multi-threaded-branch-<slug>` | Branch tip, multi-threaded (amd64+arm64, ephemeral)                                |
-| `:bindgen-base-branch-<slug>`   | Branch tip, bindgen-base (amd64+arm64, ephemeral)                                  |
+| Tag                                           | What it points at                                                                  |
+| --------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `:single-threaded`                            | Latest release, single-threaded warm cache (default for browser CAD UIs)           |
+| `:multi-threaded`                             | Latest release, multi-threaded warm cache (requires COOP/COEP)                     |
+| `:bindgen-base`                               | Latest release, post-PCH/generate but pre-compile (custom-bindings starting point) |
+| `:<version>-<stage>`                          | Pinned release for `single-threaded`, `multi-threaded`, or `bindgen-base`           |
+| `:canary-<sha8>-<stage>`                      | Immutable maintainer-dispatched canary, retained for seven days                    |
+| `:branch-main[-<full-sha>]`                   | Current or immutable `main`, single-threaded                                       |
+| `:multi-threaded-branch-main[-<full-sha>]`    | Current or immutable `main`, multi-threaded                                        |
+| `:bindgen-base-branch-main[-<full-sha>]`      | Current or immutable `main`, bindgen-base                                          |
 
 Docker resolves the right architecture from every published manifest list automatically — no `--platform` flag is needed on either `linux/amd64` or `linux/arm64` hosts.
 

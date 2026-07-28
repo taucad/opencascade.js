@@ -9,8 +9,9 @@ Three controls close the loop.
 The repository also runs `.github/workflows/reproducibility.yml` weekly and
 on demand. It performs two isolated Linux/amd64 cold builds in parallel,
 runs runtime smoke for each, and compares exact artifact ledgers. Stable npm
-publication invokes that same exact-commit gate; canary and beta builds keep
-the normal single candidate path and rely on scheduled cold coverage.
+publication invokes that same exact-commit gate; manually dispatched canaries
+and beta builds keep the normal single candidate path and rely on scheduled
+cold coverage.
 
 ## 1. Pin the image by manifest-list digest
 

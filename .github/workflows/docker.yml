@@ -2,8 +2,9 @@ name: ci
 
 on:
   push:
-    branches: ['**']
+    branches: [main]
   pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -21,7 +22,6 @@ jobs:
     name: preflight
     runs-on: ubuntu-latest
     outputs:
-      branch_slug: ${{ steps.release.outputs.branch_slug }}
       channel: ${{ steps.release.outputs.channel }}
       full_sha: ${{ steps.release.outputs.full_sha }}
       ghcr_promote: ${{ steps.release.outputs.ghcr_promote }}
@@ -52,7 +52,6 @@ jobs:
         env:
           EVENT: ${{ github.event_name }}
           REF: ${{ github.ref }}
-          REF_NAME: ${{ github.ref_name }}
           SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
@@ -65,7 +64,6 @@ jobs:
           node scripts/ci-release.mjs \
             --event "$EVENT" \
             --ref "$REF" \
-            --ref-name "$REF_NAME" \
             --sha "$SHA" \
             --commit-epoch "$epoch" \
             --package-version "$(node -p "require('./package.json').version")" \
@@ -122,7 +120,6 @@ jobs:
             node scripts/ci-release.mjs \
               --event push \
               --ref refs/heads/main \
-              --ref-name main \
               --sha "$HEAD" \
               --commit-epoch "$(git show -s --format=%ct "$HEAD")" \
               --package-version "$(node -p "require('./package.json').version")" \
@@ -179,7 +176,7 @@ jobs:
 
   candidate-validation:
     name: candidate · ${{ matrix.stage }} · amd64
-    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'pull_request'
     needs: preflight
     runs-on: ubuntu-latest
     timeout-minutes: 240
@@ -325,7 +322,7 @@ jobs:
 
   candidate-build:
     name: candidate · ${{ matrix.stage }} · ${{ matrix.arch }}
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     needs: preflight
     runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
     timeout-minutes: 240
@@ -774,25 +771,24 @@ jobs:
         uses: sigstore/cosign-installer@3454372f43399081ed03b604cb2d021dabca52bb # v3
       - name: Attach consumer-facing tags
         env:
-          BRANCH: ${{ needs.preflight.outputs.branch_slug }}
           FULL_SHA: ${{ needs.preflight.outputs.full_sha }}
-          IS_RELEASE: ${{ needs.preflight.outputs.is_release }}
-          PRERELEASE: ${{ needs.preflight.outputs.prerelease }}
+          KIND: ${{ needs.preflight.outputs.kind }}
           STAGE: ${{ matrix.stage }}
           VERSION: ${{ needs.preflight.outputs.version }}
         run: |
+          set -euo pipefail
           case "$STAGE" in
             final-single) prefix=single-threaded; branch_prefix=branch ;;
             final-multi) prefix=multi-threaded; branch_prefix=multi-threaded-branch ;;
             bindgen-base) prefix=bindgen-base; branch_prefix=bindgen-base-branch ;;
           esac
-          if [ "$IS_RELEASE" = true ] && [ "$PRERELEASE" = false ]; then
-            tags=("$prefix" "$VERSION-$prefix" "sha-${FULL_SHA:0:8}-$prefix")
-          elif [ "$IS_RELEASE" = true ]; then
-            tags=("$VERSION-$prefix" "sha-${FULL_SHA:0:8}-$prefix")
-          else
-            tags=("$branch_prefix-$BRANCH" "$branch_prefix-$BRANCH-$FULL_SHA")
-          fi
+          case "$KIND" in
+            stable-release) tags=("$prefix" "$VERSION-$prefix" "sha-${FULL_SHA:0:8}-$prefix") ;;
+            beta-release) tags=("$VERSION-$prefix" "sha-${FULL_SHA:0:8}-$prefix") ;;
+            main) tags=("$branch_prefix-main" "$branch_prefix-main-$FULL_SHA") ;;
+            manual-canary) tags=("canary-${FULL_SHA:0:8}-$prefix") ;;
+            *) echo "Unsupported GHCR promotion kind: $KIND" >&2; exit 1 ;;
+          esac
           args=()
           for tag in "${tags[@]}"; do args+=(-t "${REGISTRY_IMAGE}:$tag"); done
           sources=()
@@ -803,7 +799,55 @@ jobs:
             test "${#files[@]}" -eq 1
             sources+=("${REGISTRY_IMAGE}@sha256:$(basename "${files[0]}")")
           done
-          docker buildx imagetools create "${args[@]}" "${sources[@]}"
+
+          native_digests() {
+            local reference="$1"
+            local digests
+            digests="$(
+              docker buildx imagetools inspect "$reference" --raw |
+                jq -r '
+                  if (.manifests? | type) == "array" then
+                    .manifests[] |
+                    select(.annotations["vnd.docker.reference.type"] != "attestation-manifest") |
+                    .digest
+                  else empty end
+                '
+            )"
+            if [ -n "$digests" ]; then
+              printf '%s\n' "$digests"
+            else
+              printf '%s\n' "${reference##*@}"
+            fi
+          }
+          expected_native_digests="$(
+            for source in "${sources[@]}"; do native_digests "$source"; done |
+              sort -u |
+              paste -sd, -
+          )"
+
+          reuse=false
+          if [ "$KIND" = manual-canary ] &&
+            docker buildx imagetools inspect "${REGISTRY_IMAGE}:${tags[0]}" >/dev/null 2>&1; then
+            published_native_digests="$(
+              native_digests "${REGISTRY_IMAGE}:${tags[0]}" |
+                sort -u |
+                paste -sd, -
+            )"
+            if [ "$published_native_digests" != "$expected_native_digests" ]; then
+              echo "Canary tag collision for ${REGISTRY_IMAGE}:${tags[0]}" >&2
+              exit 1
+            fi
+            reuse=true
+          fi
+          if [ "$reuse" = false ]; then
+            docker buildx imagetools create "${args[@]}" "${sources[@]}"
+          fi
+          published_native_digests="$(
+            native_digests "${REGISTRY_IMAGE}:${tags[0]}" |
+              sort -u |
+              paste -sd, -
+          )"
+          test "$published_native_digests" = "$expected_native_digests"
           platforms="$(
             docker buildx imagetools inspect "${REGISTRY_IMAGE}:${tags[0]}" --raw |
               jq -r '[
@@ -839,7 +883,7 @@ jobs:
     runs-on: ubuntu-latest
     concurrency:
       group: npm-${{ needs.preflight.outputs.channel }}
-      # Queue every immutable branch publication. actionlint 1.7.12 predates
+      # Queue every immutable publication. actionlint 1.7.12 predates
       # this GitHub workflow-syntax property, so the local lint target ignores
       # only its unknown-property diagnostic.
       queue: max
@@ -948,22 +992,29 @@ jobs:
         with:
           name: ${{ needs.package-assemble.outputs.artifact }}
           path: ${{ runner.temp }}/candidate
+      - name: Download tested digests
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          pattern: digest-*-*-${{ github.run_id }}
+          path: ${{ runner.temp }}/digests
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: '24.10.0'
           registry-url: https://registry.npmjs.org
       - name: Use the publication npm version
         run: npm install --global npm@11.5.1
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
       - name: Install cosign
         uses: sigstore/cosign-installer@3454372f43399081ed03b604cb2d021dabca52bb # v3
       - name: Verify exact registry bytes, provenance, signatures, and runtime
         env:
-          BRANCH: ${{ needs.preflight.outputs.branch_slug }}
           FULL_SHA: ${{ needs.preflight.outputs.full_sha }}
-          IS_RELEASE: ${{ needs.preflight.outputs.is_release }}
+          KIND: ${{ needs.preflight.outputs.kind }}
           VERSION: ${{ needs.preflight.outputs.version }}
         working-directory: ${{ runner.temp }}/candidate
         run: |
+          set -euo pipefail
           for _ in $(seq 1 30); do
             npm view "ocjs@$VERSION" version >/dev/null 2>&1 && break
             sleep 10
@@ -1027,17 +1078,66 @@ jobs:
           NODE
           node verify-runtime.mjs
           cd ..
+
+          native_digests() {
+            local reference="$1"
+            local digests
+            digests="$(
+              docker buildx imagetools inspect "$reference" --raw |
+                jq -r '
+                  if (.manifests? | type) == "array" then
+                    .manifests[] |
+                    select(.annotations["vnd.docker.reference.type"] != "attestation-manifest") |
+                    .digest
+                  else empty end
+                '
+            )"
+            if [ -n "$digests" ]; then
+              printf '%s\n' "$digests"
+            else
+              printf '%s\n' "${reference##*@}"
+            fi
+          }
           for stage in final-single final-multi bindgen-base; do
             case "$stage" in
-              final-single) prefix=single-threaded; branch_prefix=branch ;;
-              final-multi) prefix=multi-threaded; branch_prefix=multi-threaded-branch ;;
-              bindgen-base) prefix=bindgen-base; branch_prefix=bindgen-base-branch ;;
+              final-single) prefix=single-threaded ;;
+              final-multi) prefix=multi-threaded ;;
+              bindgen-base) prefix=bindgen-base ;;
             esac
-            if [ "$IS_RELEASE" = true ]; then
-              tag="$VERSION-$prefix"
-            else
-              tag="$branch_prefix-$BRANCH-$FULL_SHA"
-            fi
+            case "$KIND" in
+              stable-release|beta-release) tag="$VERSION-$prefix" ;;
+              manual-canary) tag="canary-${FULL_SHA:0:8}-$prefix" ;;
+              *) echo "Unsupported registry verification kind: $KIND" >&2; exit 1 ;;
+            esac
+
+            sources=()
+            for arch in amd64 arm64; do
+              dir="${RUNNER_TEMP}/digests/digest-${stage}-${arch}-${GITHUB_RUN_ID}"
+              shopt -s nullglob
+              files=("$dir"/*)
+              test "${#files[@]}" -eq 1
+              sources+=("${REGISTRY_IMAGE}@sha256:$(basename "${files[0]}")")
+            done
+            expected_native_digests="$(
+              for source in "${sources[@]}"; do native_digests "$source"; done |
+                sort -u |
+                paste -sd, -
+            )"
+            published_native_digests="$(
+              native_digests "${REGISTRY_IMAGE}:$tag" |
+                sort -u |
+                paste -sd, -
+            )"
+            test "$published_native_digests" = "$expected_native_digests"
+            IFS=, read -r -a published_digests <<< "$published_native_digests"
+            for digest in "${published_digests[@]}"; do
+              labels="$(
+                docker buildx imagetools inspect "${REGISTRY_IMAGE}@${digest}" \
+                  --format '{{json .Image.Config.Labels}}'
+              )"
+              test "$(jq -r '."org.opencontainers.image.revision"' <<< "$labels")" = "$FULL_SHA"
+              test "$(jq -r '."org.opencontainers.image.version"' <<< "$labels")" = "$VERSION"
+            done
             cosign verify \
               --certificate-identity-regexp '^https://github.com/taucad/opencascade\.js/\.github/workflows/docker\.yml@refs/(heads|tags)/.+' \
               --certificate-oidc-issuer https://token.actions.githubusercontent.com \
@@ -1048,6 +1148,22 @@ jobs:
             echo
             echo '```sh'
             echo "npm install ocjs@$VERSION"
+            echo '```'
+            echo
+            echo '```sh'
+            if [ "$KIND" = manual-canary ]; then
+              cat <<EOF
+          docker pull "$REGISTRY_IMAGE:canary-${FULL_SHA:0:8}-single-threaded"
+          docker pull "$REGISTRY_IMAGE:canary-${FULL_SHA:0:8}-multi-threaded"
+          docker pull "$REGISTRY_IMAGE:canary-${FULL_SHA:0:8}-bindgen-base"
+          EOF
+            else
+              cat <<EOF
+          docker pull "$REGISTRY_IMAGE:$VERSION-single-threaded"
+          docker pull "$REGISTRY_IMAGE:$VERSION-multi-threaded"
+          docker pull "$REGISTRY_IMAGE:$VERSION-bindgen-base"
+          EOF
+            fi
             echo '```'
             echo
             echo "- Source: \`$FULL_SHA\`"

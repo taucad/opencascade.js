@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 
 import fs from 'node:fs';
-import { createHash } from 'node:crypto';
 
 const SHA = /^[0-9a-f]{40}$/;
 const SEMVER =
@@ -11,14 +10,6 @@ const RELEASE_FILES = new Set(['CHANGELOG.md', 'package-lock.json', 'package.jso
 
 const assert = (condition, message) => {
   if (!condition) throw new Error(message);
-};
-
-export const branchSlug = (name) => {
-  const slug = name.replace(/[^0-9A-Za-z_.-]+/g, '-').replace(/^[.-]+|[.-]+$/g, '');
-  if (!slug) return 'detached';
-  if (slug.length <= 64) return slug;
-  const suffix = createHash('sha256').update(slug).digest('hex').slice(0, 8);
-  return `${slug.slice(0, 55)}-${suffix}`;
 };
 
 const validateReleaseFiles = (files) => {
@@ -40,7 +31,6 @@ const validateReleaseFiles = (files) => {
  * @param {{
  *   event: string,
  *   ref: string,
- *   refName: string,
  *   sha: string,
  *   commitEpoch: string | number,
  *   packageVersion: string,
@@ -51,7 +41,6 @@ const validateReleaseFiles = (files) => {
 export const deriveRelease = ({
   event,
   ref,
-  refName,
   sha,
   commitEpoch,
   packageVersion,
@@ -64,12 +53,11 @@ export const deriveRelease = ({
   assert(packageMatch, `package version is not valid SemVer: ${packageVersion}`);
   const core = `${packageMatch[1]}.${packageMatch[2]}.${packageMatch[3]}`;
   const common = {
-    branchSlug: branchSlug(refName),
     fullSha: sha,
     sourceDateEpoch: String(commitEpoch),
   };
 
-  if (event === 'pull_request' || event === 'workflow_dispatch') {
+  if (event === 'pull_request') {
     return {
       ...common,
       version: `${core}-canary.${sha.slice(0, 8)}`,
@@ -77,16 +65,14 @@ export const deriveRelease = ({
       npmPublish: false,
       ghcrPromote: false,
       isRelease: false,
-      kind: event === 'pull_request' ? 'pull-request' : 'manual',
+      kind: 'pull-request',
       releaseTag: '',
       prerelease: false,
     };
   }
 
-  assert(event === 'push', `unsupported event: ${event}`);
-  assert(ref.startsWith('refs/heads/'), `push ref must be a branch: ${ref}`);
-
-  if (ref !== 'refs/heads/main') {
+  if (event === 'workflow_dispatch') {
+    assert(ref.startsWith('refs/heads/'), `manual canary ref must be a branch: ${ref}`);
     return {
       ...common,
       version: `${core}-canary.${sha.slice(0, 8)}`,
@@ -94,11 +80,15 @@ export const deriveRelease = ({
       npmPublish: true,
       ghcrPromote: true,
       isRelease: false,
-      kind: 'branch',
+      kind: 'manual-canary',
       releaseTag: '',
       prerelease: false,
     };
   }
+
+  assert(event === 'push', `unsupported event: ${event}`);
+  assert(ref.startsWith('refs/heads/'), `push ref must be a branch: ${ref}`);
+  assert(ref === 'refs/heads/main', `automatic push must target main: ${ref}`);
 
   const releaseMatch = RELEASE_SUBJECT.exec(commitSubject);
   if (!releaseMatch) {
@@ -155,7 +145,6 @@ if (process.argv[1] === new URL(import.meta.url).pathname) {
     const release = deriveRelease({
       event: args.event,
       ref: args.ref,
-      refName: args['ref-name'],
       sha: args.sha,
       commitEpoch: args['commit-epoch'],
       packageVersion: args['package-version'],
