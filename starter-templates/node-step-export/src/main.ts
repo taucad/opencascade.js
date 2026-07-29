@@ -45,7 +45,7 @@ function printUsage(): void {
   console.log(
     `Usage: ocjs-step --shape box|sphere|cylinder [--size N] [--radius N] [--height N] --out path.step
 
-Builds a primitive shape with @taucad/opencascade.js and writes it to a
+Builds a primitive shape with cascadic and writes it to a
 STEP AP214 file. The output is verified by callers via the
 ISO-10303-21 magic byte check (\`scripts/assert-step-magic.mjs\`).`,
   );

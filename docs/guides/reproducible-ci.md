@@ -1,12 +1,26 @@
 # Reproducible builds in CI
 
-Reproducibility for an OCCT WASM build means: given the same source revision, pinned image digest, and build configuration, the resulting bytes can be identified and verified. Native amd64 and arm64 images use different host toolchains and are validated for the same observable build/runtime contract; they are not expected to emit byte-identical WASM. The fork emits three artifacts that, together, let you assert the identity of a selected build in CI without trusting any single party:
+Reproducibility for an OCCT WASM build means: given the same source revision, pinned image digest, and build configuration, the resulting bytes can be identified and verified. Native amd64 and arm64 images use different host toolchains and are validated for the same observable build/runtime contract; they are not expected to emit byte-identical WASM. The project emits three artifacts that, together, let you assert the identity of a selected build in CI without trusting any single party:
 
 - A multi-arch GHCR image (`ghcr.io/taucad/opencascade.js:<tag>`) built from a pinned `Dockerfile`
 - A `provenance.json` sidecar (per WASM build) that records the exact toolchain and source commits used
 - An SBOM extractable from the image manifest
 
 This guide walks each layer and shows the discipline downstream consumers should adopt.
+
+## Repository reproducibility gate
+
+The repository's weekly/manual `reproducibility.yml` workflow builds
+`final-single` twice in isolated `linux/amd64` jobs with BuildKit caches
+disabled. Both jobs run the runtime smoke and emit a complete artifact ledger;
+the comparison job requires every path, size, and SHA-256 digest to match.
+Stable publication calls this same workflow for the release commit before npm
+publication. Each cold runner uses GitHub's native four-hour job timeout.
+
+Pull requests, `main`, and manually dispatched canary builds keep Nx and
+BuildKit caching enabled. Native ARM candidates prove the same public and
+runtime behavior, but byte equality is intentionally limited to the same
+architecture and toolchain.
 
 ## Layer 1: Pin the image by SHA
 

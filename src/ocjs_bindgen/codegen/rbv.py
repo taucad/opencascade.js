@@ -37,6 +37,7 @@ from ocjs_bindgen.predicates.args import (
   isClassOutputParam,
   isHandleOutputParam,
   isOutputParam,
+  isPrimitiveOutputParam,
   shouldStripParam,
 )
 from ocjs_bindgen.predicates.classes import _isDefaultConstructibleClass
@@ -70,6 +71,43 @@ def can_do_rbv(method):
     if not pointee.is_const_qualified():
       return False
   return True
+
+
+def output_arity_is_unambiguous(theClass, method):
+  if method.is_virtual_method():
+    return False
+  if theClass is None:
+    return True
+  target = sum(
+    1 for arg in method.get_arguments()
+    if not shouldStripParam(arg.type, method)
+  )
+  for sibling in theClass.get_children():
+    if sibling.kind != clang.cindex.CursorKind.CXX_METHOD:
+      continue
+    if sibling.spelling != method.spelling or sibling == method:
+      continue
+    if sibling.access_specifier != clang.cindex.AccessSpecifier.PUBLIC:
+      continue
+    if sibling.is_static_method() != method.is_static_method():
+      continue
+    sibling_arity = sum(
+      1 for arg in sibling.get_arguments()
+      if not shouldStripParam(arg.type, sibling)
+    )
+    if sibling_arity == target:
+      return False
+  return True
+
+
+def trailing_primitive_output_run(kept, method):
+  start = len(kept)
+  for position in range(len(kept) - 1, -1, -1):
+    _index, arg = kept[position]
+    if not isPrimitiveOutputParam(arg.type):
+      break
+    start = position
+  return start
 
 
 def return_type_requires_value_wrapper(method):
@@ -461,6 +499,14 @@ def emit_output_param_binding(b, theClass, method, args, className, classTypeNam
 
   lambda_params = []
   elided_handle_decls = []
+  optional_output_decls = []
+  optional_output_values = {}
+  kept = [(i, arg) for i, arg in enumerate(args)
+          if not shouldStripParam(arg.type, method)]
+  optional_output_indices = set()
+  if output_arity_is_unambiguous(theClass, method):
+    optional_from = trailing_primitive_output_run(kept, method)
+    optional_output_indices = {i for i, _arg in kept[optional_from:]}
   if not method.is_static_method():
     constPrefix = "const " if method.is_const_method() else ""
     lambda_params.append(f"{constPrefix}{classTypeName}& self")
@@ -510,6 +556,20 @@ def emit_output_param_binding(b, theClass, method, args, className, classTypeNam
         argType = pointee.get_canonical().spelling
       elif pointee.kind == clang.cindex.TypeKind.ENUM or pointee.get_canonical().kind == clang.cindex.TypeKind.ENUM:
         argType = pointee.spelling
+    if i in optional_output_indices:
+      value_name = f"_ocjs_{name}"
+      pointee = arg.type.get_pointee()
+      if (
+        pointee.kind == clang.cindex.TypeKind.ENUM
+        or pointee.get_canonical().kind == clang.cindex.TypeKind.ENUM
+      ):
+        argType = b._getOptionalInnerType(arg, templateDecl, templateArgs)
+      lambda_params.append(f"std::optional<{argType}> {name}")
+      optional_output_decls.append(
+        f"        {argType} {value_name} = {name}.value_or({argType}{{}});\n"
+      )
+      optional_output_values[i] = value_name
+      continue
     lambda_params.append(f"{argType} {name}")
 
   call_args = []
@@ -523,7 +583,7 @@ def emit_output_param_binding(b, theClass, method, args, className, classTypeNam
     elif i in class_output_call_types:
       call_args.append(f"*{name}.as<{class_output_call_types[i]}*>(emscripten::allow_raw_pointers())")
     else:
-      call_args.append(name)
+      call_args.append(optional_output_values.get(i, name))
 
   caller = "self." if not method.is_static_method() else f"{classTypeName}::"
   call_str = f"{caller}{method.spelling}({', '.join(call_args)})"
@@ -531,7 +591,7 @@ def emit_output_param_binding(b, theClass, method, args, className, classTypeNam
   envelope_is_empty = not output_params and not has_nonvoid_return
   envelope_native_only = not output_params and has_nonvoid_return
 
-  body = "".join(elided_handle_decls)
+  body = "".join(elided_handle_decls + optional_output_decls)
   params_str = ", ".join(lambda_params)
 
   if envelope_is_empty:
@@ -563,7 +623,7 @@ def emit_output_param_binding(b, theClass, method, args, className, classTypeNam
       body += f'        out.set("{ret_field_name}", ret);\n'
     for i, arg in output_params:
       name = b._getArgName(arg, i)
-      body += f'        out.set("{name}", {name});\n'
+      body += f'        out.set("{name}", {optional_output_values.get(i, name)});\n'
     body += "        out.set(::ocjs::getSymbolDispose(), ::ocjs::getRbvDispose());\n"
     body += "        return out;\n"
     return f"\n      optional_override([]({params_str}) -> ::emscripten::val {{\n{body}      }})"
@@ -573,6 +633,6 @@ def emit_output_param_binding(b, theClass, method, args, className, classTypeNam
     return_fields.append("ret")
   for i, arg in output_params:
     name = b._getArgName(arg, i)
-    return_fields.append(name)
+    return_fields.append(optional_output_values.get(i, name))
   body += f"        return {structName}{{{', '.join(return_fields)}}};\n"
   return f"\n      optional_override([]({params_str}) -> {structName} {{\n{body}      }})"

@@ -1,39 +1,35 @@
 ---
 title: FAQ
-description: Fork status, maintenance model, and how to contribute to OpenCascade.js during the V3 / OCCT V8 release window.
+description: Project lineage, maintenance, and how to contribute to OpenCascade.js.
 ---
 
-## Is this a fork of OpenCascade?
+## What is the project lineage?
 
-Yes — with nuance. `@taucad/opencascade.js` is a **Tau-maintained fork** of
-[`donalffons/opencascade.js`](https://github.com/donalffons/opencascade.js),
-which itself is a port of upstream [OpenCASCADE Technology (OCCT)](https://dev.opencascade.org/)
-to WebAssembly via Emscripten.
-
-The fork exists to ship the **V3 / OCCT V8 release** while upstream is dormant.
-The intent is to **merge back upstream** into `donalffons/opencascade.js` via a
-single PR once V8 lands. During this window, issues and releases live at
+OpenCascade.js was originally created by
+[Sebastian Alff (`donalffons`)](https://github.com/donalffons) as a port of
+[OpenCASCADE Technology (OCCT)](https://dev.opencascade.org/) to WebAssembly
+via Emscripten. The current project is developed and released from
 [`taucad/opencascade.js`](https://github.com/taucad/opencascade.js).
 
-OpenCascade.js does **not** modify the OCCT C++ source beyond a small set of
+OpenCascade.js does **not** modify the OCCT C++ source beyond a set of
 patches applied at build time. The pipeline downloads a tagged OCCT commit,
 compiles with Emscripten, auto-generates embind bindings from libclang, and
 ships the wasm + TypeScript surface as an npm package.
 
 ## Who maintains it?
 
-**`donalffons`** remains the maintainer-of-record for OpenCascade.js.
-**Tau** is the interim driver during the V3 / OCCT V8 release window — shipping
-docs, the GHCR Docker image, and the `@taucad/opencascade.js@beta` npm package
-until the merge-back PR lands.
+The maintainers and contributors at
+[`taucad/opencascade.js`](https://github.com/taucad/opencascade.js) own current
+development, documentation, the GHCR image, and the `cascadic` npm package.
+Sebastian Alff is credited as the original author.
 
 ## How can I contribute?
 
-Contributions are welcome and upstream-merge-back-aware:
+Contributions are welcome:
 
 1. Open issues or PRs at [`taucad/opencascade.js`](https://github.com/taucad/opencascade.js).
 2. Follow the existing code style and test conventions in the repo.
-3. Prefer changes that will survive the upstream merge-back (OCJS-original
-   branding, suffix-free V3 API, no Tau-specific forks of core bindgen logic).
+3. Add focused tests for behavior changes and keep generated bindings generic
+   at the C++ type-system level.
 
 For larger architectural questions, start a discussion before opening a PR.

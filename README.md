@@ -28,27 +28,34 @@
 | **Run a reproducible build** (CI, Docker, custom YAML)     | [Quickstart (Docker)](#quickstart-docker)                                                 |
 | **See what changed in v3** (OCCT V8, ESM-only, exceptions) | [What's New in v3](#whats-new-in-v3) · [BREAKING_CHANGES.md](BREAKING_CHANGES.md)         |
 | **Customize the binding set** (trim YAML, add wrappers)    | [docs/reference/yaml-schema.md](docs/reference/yaml-schema.md)                            |
-| **Build OCCT WASM from source** (fork maintainers)         | [MAINTAINER.md](MAINTAINER.md)                                                            |
+| **Build OCCT WASM from source** (maintainers/contributors) | [MAINTAINER.md](MAINTAINER.md)                                                            |
 | **Contribute or report an issue**                          | [Contributing](#contributing) · [Issues](https://github.com/taucad/opencascade.js/issues) |
 
 ## Quickstart (npm)
 
-> Upgrading from v2? See **[BREAKING_CHANGES.md](BREAKING_CHANGES.md)** for the v3 migration guide (package rename, ESM-only loading, exception decode pattern, OCCT V8 API).
+OpenCascade.js is published on npm as `cascadic`. Its source remains in
+[`taucad/opencascade.js`](https://github.com/taucad/opencascade.js); it is not
+an official Open CASCADE Technology distribution.
 
 ```bash
-pnpm add @taucad/opencascade.js@beta
-# or: npm install @taucad/opencascade.js@beta
+pnpm add cascadic@canary
+# or: npm install cascadic@canary
 ```
 
-The package is ESM-only with a default-export `init` function. Pass `locateFile` so the Emscripten loader can resolve the wasm binary from your bundler's output (browser) or `node_modules` layout (Node). Both runtimes reach the binary through the `@taucad/opencascade.js/wasm` subpath export — no `dist/...` deep imports required.
+The package is ESM-only with a default-export `init` function. Pass `locateFile` so the Emscripten loader can resolve the wasm binary from your bundler's output (browser) or `node_modules` layout (Node). Both runtimes reach the binary through the `cascadic/wasm` subpath export — no `dist/...` deep imports required.
+
+Build-time tools can consume the deterministic API-reference feed through
+`cascadic/api-reference.json`. It includes the parsed class/member hierarchy, the
+full source commit, build provenance, and exact input hashes; site-specific
+routes and search indexes remain consumer-derived.
 
 ```ts
 // Node
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import init from '@taucad/opencascade.js';
+import init from 'cascadic';
 
-const WASM_DIR = dirname(fileURLToPath(import.meta.resolve('@taucad/opencascade.js/wasm')));
+const WASM_DIR = dirname(fileURLToPath(import.meta.resolve('cascadic/wasm')));
 
 const oc = await init({
   locateFile: (filename: string) => join(WASM_DIR, filename),
@@ -60,8 +67,8 @@ const shape = box.Shape();
 
 ```ts
 // Vite / browser
-import init from '@taucad/opencascade.js';
-import wasmUrl from '@taucad/opencascade.js/wasm?url';
+import init from 'cascadic';
+import wasmUrl from 'cascadic/wasm?url';
 
 const oc = await init({ locateFile: () => wasmUrl });
 ```
@@ -76,9 +83,9 @@ For batch meshing, boolean grids, and STEP→glTF pipelines that benefit from OC
 // Node
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import init from '@taucad/opencascade.js/multi';
+import init from 'cascadic/multi';
 
-const WASM_DIR = dirname(fileURLToPath(import.meta.resolve('@taucad/opencascade.js/multi/wasm')));
+const WASM_DIR = dirname(fileURLToPath(import.meta.resolve('cascadic/multi/wasm')));
 
 const oc = await init({
   locateFile: (filename: string) => join(WASM_DIR, filename),
@@ -93,8 +100,8 @@ pool.SetNbDefaultThreadsToLaunch(pool.NbThreads()); // let each call use all wor
 
 ```ts
 // Vite / browser (requires COOP/COEP headers — see docs)
-import init from '@taucad/opencascade.js/multi';
-import wasmUrl from '@taucad/opencascade.js/multi/wasm?url';
+import init from 'cascadic/multi';
+import wasmUrl from 'cascadic/multi/wasm?url';
 
 const oc = await init({ locateFile: () => wasmUrl });
 
@@ -110,7 +117,7 @@ Browsers require `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Emb
 
 Pre-built images are published to [ghcr.io/taucad/opencascade.js](https://github.com/taucad/opencascade.js/pkgs/container/opencascade.js):
 
-- **Every push**—branches, `master`, and release tags—publishes multi-arch manifest lists (`linux/amd64` + `linux/arm64`) after each architecture builds, links, and passes its native runtime smoke.
+- Releases, `main`, and explicitly dispatched canaries publish multi-arch manifest lists (`linux/amd64` + `linux/arm64`) after each architecture builds, links, and passes its native runtime smoke.
 
 No local build required.
 
@@ -126,21 +133,20 @@ docker run --rm \
 
 For cached iterative builds (link-only reruns in ≤ 5 min), see the named-volume recipe in [MAINTAINER.md](MAINTAINER.md#docker-end-to-end-validation). Apple Silicon runs natively from the manifest list — no `--platform` flag required.
 
-The entrypoint dispatches subcommands (`link`, `compile-bindings`, `compile-sources`, `pch`, `generate`, `apply-patches`) through `npx nx run ocjs:<target>`. `link` is the end-to-end command — Nx's `dependsOn` graph pulls every upstream step with cache reuse, so a fresh container performs a full build and cached re-runs replay only the link. Use `docker run … --help` for the complete reference, or `docker run … nx <args>` as an escape hatch into raw Nx.
+The entrypoint dispatches subcommands (`link`, `compile-bindings`, `compile-sources`, `pch`, `generate`, `apply-patches`) through `npx nx run ocjs:<target>`. `link` is the end-to-end command: Nx caches the canonical internal `link-core`, then an uncached step materializes its exact inventory into `OCJS_OUTPUT_DIR` before validation and provenance finalization. A cache hit therefore still populates a fresh bind mount without relinking. Use `docker run … --help` for the complete reference, or `docker run … nx <args>` as an escape hatch into raw Nx.
 
 ## Tags
 
-| Tag                             | What it points at                                                                  |
-| ------------------------------- | ---------------------------------------------------------------------------------- |
-| `:single-threaded`              | Latest release, single-threaded warm cache (default for browser CAD UIs)           |
-| `:multi-threaded`               | Latest release, multi-threaded warm cache (requires COOP/COEP)                     |
-| `:bindgen-base`                 | Latest release, post-PCH/generate but pre-compile (custom-bindings starting point) |
-| `:<version>-single-threaded`    | Pinned release, single-threaded (e.g. `:3.0.0-single-threaded`)                    |
-| `:<version>-multi-threaded`     | Pinned release, multi-threaded                                                     |
-| `:<version>-bindgen-base`       | Pinned release, bindgen-base                                                       |
-| `:branch-<slug>`                | Branch tip, single-threaded (amd64+arm64, ephemeral — 7-day GHCR retention)        |
-| `:multi-threaded-branch-<slug>` | Branch tip, multi-threaded (amd64+arm64, ephemeral)                                |
-| `:bindgen-base-branch-<slug>`   | Branch tip, bindgen-base (amd64+arm64, ephemeral)                                  |
+| Tag                                           | What it points at                                                                  |
+| --------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `:single-threaded`                            | Latest release, single-threaded warm cache (default for browser CAD UIs)           |
+| `:multi-threaded`                             | Latest release, multi-threaded warm cache (requires COOP/COEP)                     |
+| `:bindgen-base`                               | Latest release, post-PCH/generate but pre-compile (custom-bindings starting point) |
+| `:<version>-<stage>`                          | Pinned release for `single-threaded`, `multi-threaded`, or `bindgen-base`           |
+| `:canary-<sha8>-<stage>`                      | Immutable maintainer-dispatched canary, retained for seven days                    |
+| `:branch-main[-<full-sha>]`                   | Current or immutable `main`, single-threaded                                       |
+| `:multi-threaded-branch-main[-<full-sha>]`    | Current or immutable `main`, multi-threaded                                        |
+| `:bindgen-base-branch-main[-<full-sha>]`      | Current or immutable `main`, bindgen-base                                          |
 
 Docker resolves the right architecture from every published manifest list automatically — no `--platform` flag is needed on either `linux/amd64` or `linux/arm64` hosts.
 
@@ -149,20 +155,20 @@ Docker resolves the right architecture from every published manifest list automa
 - **OCCT 8.0.0** — 1,085 commits of improvements; 22-31% faster boolean operations
 - **Emscripten 5.0.1** — LLVM 17, modern WASM features
 - **Native WASM Exceptions** — `-fwasm-exceptions` replaces JS invoke trampolines; decodable end-to-end via `getExceptionMessage`
-- **ESM-only distribution** — `"type": "module"`; default export is single-threaded `opencascade_full.{js,wasm,d.ts}`; multi-threaded `opencascade_full_multi.{js,wasm,d.ts}` ships under `@taucad/opencascade.js/multi` and `/multi/wasm`
+- **ESM-only distribution** — `"type": "module"`; default export is single-threaded `opencascade_full.{js,wasm,d.ts}`; multi-threaded `opencascade_full_multi.{js,wasm,d.ts}` ships under `cascadic/multi` and `/multi/wasm`
 - **Full TypeScript bindings** — Doxygen-derived JSDoc rendered correctly in Monaco IntelliSense
 - **Suffix-free overloads** — single symbol per class with val-based dispatcher, no more `_2`/`_3` subclasses (measured at ~264 ns/call, <0.011% of wall time on typical CAD models — see [BENCHMARKS.md](BENCHMARKS.md))
 - **Reproducible builds** — `DEPS.json` pins every dependency to an exact commit; per-build `provenance.json` sidecar
 - **Cached, incremental builds** — content-addressed compilation cache turns 10-30 minute clean builds into seconds on hit
 
-See [CHANGELOG.md](CHANGELOG.md) for the full v3.0.0 entry. For empirical evidence of every measurable fork change (wall-clock CAD perf vs native C++, multi-threading speedup, embind dispatch cost, RBV overhead), see **[BENCHMARKS.md](BENCHMARKS.md)**.
+See [CHANGELOG.md](CHANGELOG.md) for the full v3.0.0 entry. For empirical evidence of every measurable project change (wall-clock CAD perf vs native C++, multi-threading speedup, embind dispatch cost, RBV overhead), see **[BENCHMARKS.md](BENCHMARKS.md)**.
 
 ## Documentation
 
 - [BREAKING_CHANGES.md](BREAKING_CHANGES.md) — v3 consumer migration guide
 - [CHANGELOG.md](CHANGELOG.md) — release notes
 - **[BENCHMARKS.md](BENCHMARKS.md)** — empirical evidence hub: wall-clock CAD perf vs native C++, multi-threading speedup, embind dispatch cost, RBV overhead
-- [MAINTAINER.md](MAINTAINER.md) — native build, env vars, customization for fork maintainers
+- [MAINTAINER.md](MAINTAINER.md) — native build, env vars, customization for maintainers and contributors
 - [docs/reference/yaml-schema.md](docs/reference/yaml-schema.md) — YAML schema (bindings, emccFlags, additionalCppCode, additionalCppFiles, additionalBindCode)
 - [BUILD_SYSTEM.md](BUILD_SYSTEM.md) — `OCJS_*` env-var matrix and configuration authoring
 - [docs/guides/custom-emcc-flags.md](docs/guides/custom-emcc-flags.md) — tuning size, speed, and build time
@@ -180,7 +186,9 @@ See [CHANGELOG.md](CHANGELOG.md) for the full v3.0.0 entry. For empirical eviden
 
 ## Contributing
 
-Contributions are welcome! See [TODO.md](TODO.md) for the current backlog and [MAINTAINER.md](MAINTAINER.md) for build-from-source instructions.
+Contributions are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md), see
+[TODO.md](TODO.md) for the current backlog, and use
+[MAINTAINER.md](MAINTAINER.md) for build-from-source instructions.
 
 ## License
 

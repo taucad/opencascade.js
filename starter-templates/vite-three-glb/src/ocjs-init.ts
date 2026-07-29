@@ -1,5 +1,5 @@
-import init from '@taucad/opencascade.js';
-import wasmUrl from '@taucad/opencascade.js/wasm?url';
+import init from 'cascadic';
+import wasmUrl from 'cascadic/wasm?url';
 
 let cached: ReturnType<typeof init> | null = null;
 

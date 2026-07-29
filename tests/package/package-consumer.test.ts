@@ -26,21 +26,30 @@ beforeAll(() => {
     cwd: workDir,
     stdio: 'inherit',
   });
-  packageDir = path.join(workDir, 'node_modules/@taucad/opencascade.js');
+  packageDir = path.join(workDir, 'node_modules/cascadic');
 });
 
 afterAll(() => fs.rmSync(workDir, { recursive: true, force: true }));
 
 describe('installed npm candidate', () => {
-  it('contains exactly the public 18-file contract', () => {
+  it('contains exactly the public 19-file contract', () => {
     validateExactFiles(walk(packageDir), PACKAGE_FILES, 'installed package');
   });
 
   it('resolves every public export and boots both runtimes', async () => {
     const manifest = JSON.parse(fs.readFileSync(path.join(packageDir, 'package.json'), 'utf8'));
+    expect(manifest.name).toBe('cascadic');
     expect(Object.keys(manifest.exports).sort()).toEqual([
-      '.', './multi', './multi/wasm', './package.json', './wasm',
+      '.', './api-reference.json', './multi', './multi/wasm', './package.json', './wasm',
     ]);
+    const reference = JSON.parse(
+      fs.readFileSync(path.join(packageDir, 'dist', 'api-reference.json'), 'utf8'),
+    );
+    expect(reference).toMatchObject({
+      schema: 'ocjs-api-reference-v1',
+      package: { name: 'cascadic', version: manifest.version },
+    });
+    expect(reference.source.commit).toMatch(/^[0-9a-f]{40}$/);
 
     for (const variant of [
       { module: 'opencascade_full.js', wasm: 'opencascade_full.wasm', threaded: false },

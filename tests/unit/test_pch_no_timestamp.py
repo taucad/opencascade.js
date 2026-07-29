@@ -59,6 +59,7 @@ def test_build_pch_passes_fno_pch_timestamp(tmp_path: Path, monkeypatch: pytest.
 
   def capture_run(cmd: list[str], **kwargs: Any) -> _FakeCompleted:
     captured["cmd"] = cmd
+    Path(cmd[cmd.index("-o") + 1]).write_bytes(b"compiled")
     return _FakeCompleted()
 
   monkeypatch.setattr(paths_module.subprocess, "run", capture_run)
@@ -85,6 +86,22 @@ def test_build_pch_passes_fno_pch_timestamp(tmp_path: Path, monkeypatch: pytest.
     "otherwise clang treats the flag as a driver-level argument and "
     "silently ignores it."
   )
+
+
+def test_compile_include_paths_ignore_transient_cmake_scratch(
+  tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+  flat = tmp_path / "occt-includes"
+  cmake = tmp_path / "build" / "occt-cmake" / "include" / "opencascade"
+  flat.mkdir()
+  cmake.mkdir(parents=True)
+  monkeypatch.setattr(paths_module, "FLAT_INCLUDE_DIR", str(flat))
+  monkeypatch.setattr(paths_module, "OCJS_ROOT", str(tmp_path))
+
+  include_paths = paths_module.getFlatIncludePaths()
+
+  assert include_paths[0] == str(flat)
+  assert str(cmake) not in include_paths
 
 
 def test_assert_pch_survives_mtime_bump_raises_actionable_error_on_drift(

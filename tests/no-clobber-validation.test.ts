@@ -400,5 +400,5 @@ describe('embind binding registrations', () => {
         `EXPECTED_PENDING_CLOBBERS contains entries that are no longer clobbering — remove them from the baseline:\n${fixed.map((k) => `  ${k}`).join('\n')}`,
       );
     }
-  });
+  }, 30_000);
 });

@@ -1,6 +1,6 @@
 {
   "title": "Package",
-  "description": "Consume @taucad/opencascade.js from npm — render, export, integrate.",
+  "description": "Consume cascadic from npm — render, export, integrate.",
   "icon": "lib:npm",
   "root": true,
   "pages": [

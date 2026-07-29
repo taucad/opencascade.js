@@ -22,9 +22,8 @@ import {
   dockerTestsEnabled,
 } from './docker-helpers.js';
 
-const LINK_TIMEOUT = 900_000; // 15 min — cold-ish custom link on the warm image cache.
-const FAST_TIMEOUT = 180_000; // schema-rejection cases fail fast but allow container startup.
 const STAGE = process.env.OCJS_DOCKER_STAGE ?? 'all';
+const CANDIDATE_OUTPUT_DIR = process.env.OCJS_DOCKER_OUTPUT_DIR;
 
 function expectArtifacts(workDir: string, base: string): void {
   for (const ext of ['js', 'wasm', 'd.ts', 'js.symbols', 'build-manifest.json', 'provenance.json']) {
@@ -54,7 +53,6 @@ describe.skipIf(!dockerTestsEnabled() || !['all', 'final-single'].includes(STAGE
       // Symbol filtering: an unlisted OCCT class is absent from the build.
       expect(typeof oc.TopoDS_Face).toBe('undefined');
     },
-    LINK_TIMEOUT,
   );
 
   it(
@@ -63,7 +61,6 @@ describe.skipIf(!dockerTestsEnabled() || !['all', 'final-single'].includes(STAGE
       const { status } = runLink(SINGLE_IMAGE, 'errorUnknownProp1.yml', 'err1');
       expect(status).not.toBe(0);
     },
-    FAST_TIMEOUT,
   );
 
   it(
@@ -72,7 +69,6 @@ describe.skipIf(!dockerTestsEnabled() || !['all', 'final-single'].includes(STAGE
       const { status } = runLink(SINGLE_IMAGE, 'errorUnknownProp2.yml', 'err2');
       expect(status).not.toBe(0);
     },
-    FAST_TIMEOUT,
   );
 
 });
@@ -81,11 +77,21 @@ describe.skipIf(!dockerTestsEnabled() || !['all', 'final-multi'].includes(STAGE)
   it(
     'multi image: builds a pthread module that reports parallel mode and meshes in parallel',
     async () => {
-      const { status, workDir, stderr } = runLink(MULTI_IMAGE, 'multi-threaded.yml', 'multi');
+      const { status, workDir, stderr, base } = CANDIDATE_OUTPUT_DIR
+        ? {
+            status: 0,
+            workDir: CANDIDATE_OUTPUT_DIR,
+            stderr: '',
+            base: 'opencascade_full_multi',
+          }
+        : {
+            ...runLink(MULTI_IMAGE, 'multi-threaded.yml', 'multi'),
+            base: 'customBuild.multi-threaded',
+          };
       expect(status, stderr).toBe(0);
-      expectArtifacts(workDir, 'customBuild.multi-threaded');
+      expectArtifacts(workDir, base);
 
-      const oc = await loadModule(workDir, 'customBuild.multi-threaded.js');
+      const oc = await loadModule(workDir, `${base}.js`);
 
       // Parallel mode: the pre-spawned thread pool reports more than one worker.
       const pool = oc.OSD_ThreadPool.DefaultPool(-1);
@@ -120,7 +126,6 @@ describe.skipIf(!dockerTestsEnabled() || !['all', 'final-multi'].includes(STAGE)
 
       oc.PThread?.terminateAllThreads?.();
     },
-    LINK_TIMEOUT,
   );
 
 });
@@ -189,6 +194,5 @@ describe.skipIf(!dockerTestsEnabled() || !['all', 'final-single'].includes(STAGE
       const cancelledBody = cancelledFuse.Shape();
       expect(cancelledBody.IsNull()).toBe(true);
     },
-    LINK_TIMEOUT,
   );
 });

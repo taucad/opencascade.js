@@ -27,7 +27,7 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
-          node-version: '24'
+          node-version-file: '.nvmrc'
           cache: npm
       - name: Install locked test tools
         run: npm ci --ignore-scripts --no-audit --no-fund

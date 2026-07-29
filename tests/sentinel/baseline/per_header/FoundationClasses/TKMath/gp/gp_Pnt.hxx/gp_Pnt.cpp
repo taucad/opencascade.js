@@ -5598,9 +5598,12 @@ EMSCRIPTEN_BINDINGS(gp_Pnt) {
     .function("SetXYZ", &gp_Pnt::SetXYZ, allow_raw_pointers())
     .function("Coord", select_overload<double(const int)const, gp_Pnt>(&gp_Pnt::Coord), allow_raw_pointers())
     .function("Coord",
-      optional_override([](const gp_Pnt& self, double theXp, double theYp, double theZp) -> gp_Pnt_Coord_Result {
-        self.Coord(theXp, theYp, theZp);
-        return gp_Pnt_Coord_Result{theXp, theYp, theZp};
+      optional_override([](const gp_Pnt& self, std::optional<double> theXp, std::optional<double> theYp, std::optional<double> theZp) -> gp_Pnt_Coord_Result {
+        double _ocjs_theXp = theXp.value_or(double{});
+        double _ocjs_theYp = theYp.value_or(double{});
+        double _ocjs_theZp = theZp.value_or(double{});
+        self.Coord(_ocjs_theXp, _ocjs_theYp, _ocjs_theZp);
+        return gp_Pnt_Coord_Result{_ocjs_theXp, _ocjs_theYp, _ocjs_theZp};
       }), allow_raw_pointers())
     .function("Coord", select_overload<const gp_XYZ &()const, gp_Pnt>(&gp_Pnt::Coord), allow_raw_pointers())
     .function("X", &gp_Pnt::X, allow_raw_pointers())

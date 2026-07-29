@@ -5,10 +5,9 @@ Produces build/occt-docs.json — a cached JSON lookup table keyed by C++ symbol
 name, consumed by bindings.py to inject JSDoc into generated TypeScript definitions.
 
 Usage:
-    python3 src/extract-docs.py [--force]
+    python3 src/extract-docs.py
 
-The JSON is regenerated only when the OCCT commit changes (tracked via .docs-hash).
-Pass --force to bypass the cache check.
+Nx owns cache invalidation. Each execution publishes a complete fresh JSON file.
 """
 
 import hashlib
@@ -646,6 +645,7 @@ def run_doxygen(ocjs_root: str, occt_root: str):
     env["OCCT_ROOT"] = occt_root
     env["OCJS_ROOT"] = ocjs_root
 
+    shutil.rmtree(os.path.join(ocjs_root, "build", "doxygen-xml"), ignore_errors=True)
     print("  Running Doxygen on OCCT headers...")
     result = subprocess.run(
         [doxygen_bin, doxyfile],
@@ -654,10 +654,11 @@ def run_doxygen(ocjs_root: str, occt_root: str):
         text=True,
     )
     if result.returncode != 0:
-        print(f"  WARNING: Doxygen exited with code {result.returncode}", file=sys.stderr)
-        if result.stderr:
-            for line in result.stderr.strip().splitlines()[-5:]:
-                print(f"    {line}", file=sys.stderr)
+        detail = "\n".join((result.stderr or "").strip().splitlines()[-5:])
+        raise RuntimeError(
+            f"Doxygen exited with code {result.returncode}"
+            + (f":\n{detail}" if detail else "")
+        )
 
 
 def extract_docs(ocjs_root: str) -> dict:
@@ -693,8 +694,6 @@ def extract_docs(ocjs_root: str) -> dict:
 
 
 def main():
-    force = "--force" in sys.argv
-
     ocjs_root = os.environ.get("OCJS_ROOT", os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     occt_root = os.environ.get("OCCT_ROOT", os.path.join(os.path.dirname(ocjs_root), "OCCT"))
 
@@ -703,18 +702,9 @@ def main():
         sys.exit(1)
 
     output_json = os.path.join(ocjs_root, "build", "occt-docs.json")
-    hash_file = os.path.join(ocjs_root, "build", ".docs-hash")
 
     current_commit = _occt_commit(occt_root)
     extractor_sha = _extractor_fingerprint()
-    cache_key = f"{current_commit}:{extractor_sha}"
-
-    if not force and os.path.isfile(hash_file) and os.path.isfile(output_json):
-        with open(hash_file) as f:
-            cached_key = f.read().strip()
-        if cached_key == cache_key:
-            print(f"  Documentation cache hit (OCCT {current_commit[:12]}, extractor {extractor_sha})")
-            return
 
     print(f"  OCCT commit: {current_commit[:12]} | extractor: {extractor_sha}")
 
@@ -735,11 +725,11 @@ def main():
     print(f"  Extracted docs: {classes} classes, {enums} enums, "
           f"{documented_members}/{total_members} documented members")
 
-    with open(output_json, "w") as f:
-        json.dump(docs, f, indent=None, separators=(",", ":"))
-
-    with open(hash_file, "w") as f:
-        f.write(cache_key)
+    temporary = output_json + ".tmp"
+    with open(temporary, "w") as f:
+        json.dump(docs, f, sort_keys=True, separators=(",", ":"))
+        f.write("\n")
+    os.replace(temporary, output_json)
 
     size_mb = os.path.getsize(output_json) / (1024 * 1024)
     print(f"  Written: {output_json} ({size_mb:.1f} MB)")

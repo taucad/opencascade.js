@@ -3,6 +3,7 @@
 set -euo pipefail
 
 TARBALL="${OCJS_PACKAGE_TARBALL:?OCJS_PACKAGE_TARBALL is required}"
+export OCJS_API_REFERENCE_SOURCE="$TARBALL"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
@@ -32,14 +33,18 @@ const fs = require('node:fs');
 const path = require('node:path');
 const [manifestPath, tarball] = process.argv.slice(2);
 const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-manifest.dependencies['@taucad/opencascade.js'] = `file:${path.resolve(tarball)}`;
+manifest.dependencies.cascadic = `file:${path.resolve(tarball)}`;
 fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
 NODE
 
 cd "$WORK/docs-site"
-corepack pnpm@9.15.9 install --ignore-workspace --no-frozen-lockfile --ignore-scripts
-corepack pnpm@9.15.9 typecheck
-corepack pnpm@9.15.9 lint
-corepack pnpm@9.15.9 test:unit
-corepack pnpm@9.15.9 build
-corepack pnpm@9.15.9 test:postbuild
+COREPACK_BIN="$WORK/corepack-bin"
+mkdir -p "$COREPACK_BIN"
+corepack enable --install-directory "$COREPACK_BIN"
+export PATH="$COREPACK_BIN:$PATH"
+pnpm install --ignore-workspace --no-frozen-lockfile --ignore-scripts
+pnpm typecheck
+pnpm lint
+pnpm test:unit
+pnpm build
+pnpm test:postbuild

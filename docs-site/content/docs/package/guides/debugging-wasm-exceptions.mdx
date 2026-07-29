@@ -7,13 +7,13 @@ When OCCT throws a `Standard_Failure` inside the wasm module, the value that
 reaches your JS try/catch is a `WebAssembly.Exception` object. Printing it
 with `console.error(error)` yields `[object WebAssembly.Exception]` — useless.
 
-`@taucad/opencascade.js@beta` exposes `getExceptionMessage(error)` to decode
+`cascadic@canary` exposes `getExceptionMessage(error)` to decode
 the C++ failure into a string.
 
 ## The pattern
 
 ```typescript
-import init, { getExceptionMessage } from '@taucad/opencascade.js';
+import init, { getExceptionMessage } from 'cascadic';
 
 const oc = await init({ locateFile });
 
@@ -33,7 +33,7 @@ try {
 and returns the text OCCT actually attached to the exception (e.g.
 `"BRepFilletAPI_MakeFillet: Empty argument"`).
 
-## Why not just `error.message`?
+## Why not `error.message`?
 
 `WebAssembly.Exception` is a JS host object — its `message` field is empty for
 C++-thrown values. The actual text lives in C++ memory, addressable only by

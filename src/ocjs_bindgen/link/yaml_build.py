@@ -17,6 +17,7 @@ from cerberus import Validator
 from filter.filterPackages import filterPackages
 from ocjs_bindgen.config.flags import (
     EXTRA_COMPILE_FLAGS,
+    PATH_PREFIX_FLAGS,
     SIMD_FLAGS,
     WASM_EXCEPTION_FLAGS,
     BuildFlagMismatch,
@@ -253,7 +254,12 @@ from ocjs_bindgen.link.rewrite import (  # noqa: E402
 )
 
 
-def verifyBindings(bindings, libraryBasePath) -> bool:
+def verifyBindings(
+  bindings,
+  libraryBasePath,
+  *,
+  custom_compiled_root=None,
+) -> bool:
   """Verify every requested binding has a compiled `.o`, an NCollection
   typedef alias resolving to a compiled canonical, or an Embind builtin
   registration in `build/additional-bind-symbols.json`.
@@ -266,7 +272,12 @@ def verifyBindings(bindings, libraryBasePath) -> bool:
   positive (typedef aliases, builtins) out of `truly_missing` by
   construction.
   """
-  compiled = _collect_compiled_symbols(libraryBasePath)
+  additional_roots = (
+    (custom_compiled_root,)
+    if custom_compiled_root
+    else ()
+  )
+  compiled = _collect_compiled_symbols(libraryBasePath, additional_roots)
   requested = {b["symbol"] for b in bindings}
   missing = requested - compiled
   if not missing:
@@ -411,7 +422,11 @@ def _filter_occt_deprecation_pragmas(stderr_text: str) -> tuple[str, int]:
   return ("\n".join(output_lines), filtered_count)
 
 
-def _compute_yaml_class_scope(buildConfig, libraryBasePath) -> set:
+def _compute_yaml_class_scope(
+  buildConfig,
+  libraryBasePath,
+  custom_bindings_root=None,
+) -> set:
   """Return the set of class names reachable from the consumer YAML.
 
   Scope =
@@ -460,7 +475,9 @@ def _compute_yaml_class_scope(buildConfig, libraryBasePath) -> set:
   # the deleted `_NCOLLECTION_TOKEN_RE` regex tried to patch over.
   scope_at_start = frozenset(scope)
   if os.path.isdir(bindings_root):
-    for dirpath, _dirnames, filenames in os.walk(bindings_root):
+    for dirpath, dirnames, filenames in os.walk(bindings_root):
+      dirnames.sort()
+      filenames.sort()
       for fname in filenames:
         if not fname.endswith(".d.ts.json"):
           continue
@@ -481,10 +498,13 @@ def _compute_yaml_class_scope(buildConfig, libraryBasePath) -> set:
 
   # Custom-code classes share `myMain.h` with generated template fragments.
   # The manifest is the authoritative classifier: names are not a schema.
-  custom_root = os.path.join(bindings_root, "myMain.h")
+  custom_root = os.path.join(
+    custom_bindings_root or bindings_root,
+    "myMain.h",
+  )
   generated_templates = _load_full_manifest_symbols(libraryBasePath)
   if os.path.isdir(custom_root):
-    for fname in os.listdir(custom_root):
+    for fname in sorted(os.listdir(custom_root)):
       if not fname.endswith(".d.ts.json"):
         continue
       stem = fname[:-len(".d.ts.json")]
@@ -631,7 +651,13 @@ def _parse_exported_runtime_methods(emcc_flags):
   return ['FS']
 
 
-def runBuild(build, libraryBasePath):
+def runBuild(
+  build,
+  libraryBasePath,
+  *,
+  scratchPath=None,
+  custom_compiled_root=None,
+):
   try:
     validate_build_flags()
   except BuildFlagMismatch as e:
@@ -643,11 +669,15 @@ def runBuild(build, libraryBasePath):
     combined = BUILTIN_ADDITIONAL_BIND_CODE
     if "additionalBindCode" in build:
       combined += "\n" + build["additionalBindCode"]
-    try:
-      os.mkdir(libraryBasePath + "/additionalBindCode")
-    except Exception:
-      pass
-    additionalBindCodeFileName = libraryBasePath + "/additionalBindCode/" + build["name"] + ".cpp"
+    additional_bind_root = os.path.join(
+      scratchPath or libraryBasePath,
+      "additionalBindCode",
+    )
+    os.makedirs(additional_bind_root, exist_ok=True)
+    additionalBindCodeFileName = os.path.join(
+      additional_bind_root,
+      build["name"] + ".cpp",
+    )
     f = open(additionalBindCodeFileName, "w")
     f.write(combined)
     f.close()
@@ -662,6 +692,7 @@ def runBuild(build, libraryBasePath):
       *exception_flags,
       *SIMD_FLAGS,
       *EXTRA_COMPILE_FLAGS,
+      *PATH_PREFIX_FLAGS,
       "-DIGNORE_NO_ATOMICS=1",
       "-DOCCT_NO_PLUGINS",
       "-frtti",
@@ -725,41 +756,64 @@ def runBuild(build, libraryBasePath):
   additionalBindCodeO = getAdditionalBindCodeO()
   print("Running build: " + build["name"], flush=True)
   bindingsO = []
-  _AUTO_BINDING_DIRS = {"myMain.h"}
   compiled_bindings = libraryBasePath + "/compiled-bindings"
   if not os.path.isdir(compiled_bindings):
     compiled_bindings = libraryBasePath + "/bindings"
-  for dirpath, dirnames, filenames in os.walk(compiled_bindings):
-    rel_parts = dirpath.replace(compiled_bindings + "/", "").split("/")
-    skip = any(not filterPackages(p) and p not in _AUTO_BINDING_DIRS for p in rel_parts if p)
-    if skip:
-      dirnames.clear()
-      continue
-    for item in filenames:
-      if item.endswith(".cpp.o") and shouldProcessSymbol(item[:-6], build["bindings"]):
-        bindingsO.append(dirpath + "/" + item)
-  # One object per basename: prevents duplicate embind static init if the same symbol
-  # ever appears under multiple directory paths (stable order — first path wins).
+  binding_roots = [compiled_bindings]
+  if custom_compiled_root and os.path.isdir(custom_compiled_root):
+    binding_roots.append(custom_compiled_root)
+  for binding_root in binding_roots:
+    is_custom = binding_root == custom_compiled_root
+    for dirpath, dirnames, filenames in os.walk(binding_root):
+      dirnames.sort()
+      filenames.sort()
+      rel_parts = dirpath.replace(binding_root + "/", "").split("/")
+      skip = any(not filterPackages(p) for p in rel_parts if p) and not is_custom
+      if skip:
+        dirnames.clear()
+        continue
+      for item in filenames:
+        if not item.endswith(".cpp.o"):
+          continue
+        if shouldProcessSymbol(item[:-6], build["bindings"]):
+          bindingsO.append(dirpath + "/" + item)
+  # A logical binding basename must have exactly one producer.
   _bindings_by_base = {}
   for o_path in bindingsO:
-    _bindings_by_base.setdefault(os.path.basename(o_path), o_path)
-  bindingsO = list(_bindings_by_base.values())
+    _bindings_by_base.setdefault(os.path.basename(o_path), []).append(o_path)
+  collisions = {
+    name: paths
+    for name, paths in _bindings_by_base.items()
+    if len(paths) > 1
+  }
+  if collisions:
+    detail = "; ".join(
+      f"{name}=[{', '.join(sorted(paths))}]"
+      for name, paths in sorted(collisions.items())
+    )
+    raise RuntimeError(f"duplicate logical binding objects: {detail}")
+  bindingsO = [
+    paths[0]
+    for _name, paths in sorted(_bindings_by_base.items())
+  ]
   sourcesO = []
-  cmake_lib_marker = libraryBasePath + "/.cmake-lib-dir"
-  if os.path.exists(cmake_lib_marker):
-    with open(cmake_lib_marker) as f:
-      cmake_lib_dir = f.read().strip()
-    if os.path.isdir(cmake_lib_dir):
-      for item in sorted(os.listdir(cmake_lib_dir)):
-        if item.endswith(".a"):
-          toolkit_name = item.replace("lib", "").replace(".a", "")
-          if filterPackages(toolkit_name):
-            sourcesO.append(os.path.join(cmake_lib_dir, item))
-      print(f"Using {len(sourcesO)} CMake static libraries from {cmake_lib_dir} (filtered by filterPackages)", flush=True)
-    else:
-      raise Exception(f"CMake lib dir from marker does not exist: {cmake_lib_dir}")
+  cmake_lib_dir = libraryBasePath + "/occt-libraries"
+  cmake_lib_manifest = os.path.join(cmake_lib_dir, "manifest.json")
+  if os.path.isfile(cmake_lib_manifest):
+    with open(cmake_lib_manifest) as stream:
+      library_manifest = json.load(stream)
+    for entry in library_manifest.get("files", []):
+      item = entry["path"]
+      if os.path.dirname(item):
+        raise RuntimeError(f"CMake library inventory path must be flat: {item}")
+      toolkit_name = item.removeprefix("lib").removesuffix(".a")
+      if filterPackages(toolkit_name):
+        sourcesO.append(os.path.join(cmake_lib_dir, item))
+    print(f"Using {len(sourcesO)} immutable CMake libraries (filtered by filterPackages)", flush=True)
   else:
     for dirpath, dirnames, filenames in os.walk(libraryBasePath + "/sources"):
+      dirnames.sort()
+      filenames.sort()
       rel_parts = dirpath.replace(libraryBasePath + "/sources/", "").split("/")
       skip = any(not filterPackages(p) for p in rel_parts if p)
       if skip:
@@ -861,21 +915,32 @@ def runBuild(build, libraryBasePath):
   print("Build finished", flush=True)
 
 
-def _collect_dts_fragments(buildConfig, libraryBasePath):
+def _collect_dts_fragments(
+  buildConfig,
+  libraryBasePath,
+  custom_bindings_root=None,
+):
   """Walk bindings dir and collect all .d.ts.json fragments matching the YAML bindings."""
   typescriptDefinitions = []
   allBindings = list(chain(buildConfig["mainBuild"]["bindings"], *list(map(lambda x: x["bindings"], buildConfig["extraBuilds"]))))
-  _AUTO_BINDING_DIRS = {"myMain.h"}
-  for dirpath, dirnames, filenames in os.walk(libraryBasePath + "/bindings"):
-    rel_parts = dirpath.replace(libraryBasePath + "/bindings/", "").split("/")
-    skip = any(not filterPackages(p) and p not in _AUTO_BINDING_DIRS for p in rel_parts if p)
-    if skip:
-      dirnames.clear()
-      continue
-    for item in filenames:
-      if item.endswith(".d.ts.json") and shouldProcessSymbol(item[:-10], allBindings):
-        f = open(dirpath + "/" + item)
-        typescriptDefinitions.append(json.loads(f.read()))
+  roots = [(libraryBasePath + "/bindings", False)]
+  if custom_bindings_root and os.path.isdir(custom_bindings_root):
+    roots.append((custom_bindings_root, True))
+  for binding_root, is_custom in roots:
+    for dirpath, dirnames, filenames in os.walk(binding_root):
+      dirnames.sort()
+      filenames.sort()
+      rel_parts = dirpath.replace(binding_root + "/", "").split("/")
+      skip = any(not filterPackages(p) for p in rel_parts if p) and not is_custom
+      if skip:
+        dirnames.clear()
+        continue
+      for item in filenames:
+        if not item.endswith(".d.ts.json"):
+          continue
+        if shouldProcessSymbol(item[:-10], allBindings):
+          with open(dirpath + "/" + item) as stream:
+            typescriptDefinitions.append(json.loads(stream.read()))
   return typescriptDefinitions
 
 
@@ -893,6 +958,9 @@ def main():
   global _yaml_config_hash
   with open(args.filename, "rb") as yf:
     _yaml_config_hash = hashlib.sha256(yf.read()).hexdigest()[:12]
+  link_work_path = os.path.join(libraryBasePath, "link-work", _yaml_config_hash)
+  custom_bindings_root = os.path.join(link_work_path, "bindings")
+  custom_compiled_root = os.path.join(link_work_path, "compiled-bindings")
   buildConfig = yaml.safe_load(open(args.filename))
   schema = eval(open(OCJS_ROOT + "/src/customBuildSchema.py").read())
   v = Validator(schema)
@@ -900,106 +968,93 @@ def main():
     raise Exception(v.errors)
   buildConfig = v.normalized(buildConfig)
 
+  additionalCppCode = buildConfig["additionalCppCode"]
+  yaml_dir = os.path.dirname(os.path.abspath(args.filename))
+  for cpp_file in buildConfig.get("additionalCppFiles", []):
+    resolved = os.path.join(yaml_dir, cpp_file) if not os.path.isabs(cpp_file) else cpp_file
+    if not os.path.isfile(resolved):
+      raise FileNotFoundError(f"additionalCppFiles: file not found: {resolved} (from '{cpp_file}')")
+    with open(resolved) as f:
+      additionalCppCode += "\n" + f.read()
+
+  global _auto_symbols
+  full_set = _load_full_manifest_symbols(BUILD_DIR)
+  known_exports = {
+    b["symbol"]
+    for b in chain(
+      buildConfig["mainBuild"]["bindings"],
+      *(x["bindings"] for x in buildConfig["extraBuilds"]),
+    )
+  } | full_set
+  shutil.rmtree(link_work_path, ignore_errors=True)
+  os.makedirs(link_work_path, exist_ok=True)
+  print("Generating custom code bindings...", flush=True)
+  generateCustomCodeBindings(
+    additionalCppCode,
+    known_exports=known_exports,
+    output_dir=custom_bindings_root,
+  )
+
   if not args.dts_only:
-    # Stale-fragment cleanup uses the FULL manifest, not the per-YAML
-    # filtered set — auto-discovered NCollection fragments must survive
-    # cross-YAML cache reuse even if a given consumer YAML doesn't link
-    # them. Per-YAML filtering happens later in `runBuild` via the link filter.
-    full_manifest_symbols = _load_full_manifest_symbols(BUILD_DIR)
-    custom_dir = libraryBasePath + "/bindings/myMain.h"
-    if os.path.isdir(custom_dir):
-      for f in os.listdir(custom_dir):
-        stem = f.split(".")[0]
-        if stem not in full_manifest_symbols:
-          os.remove(os.path.join(custom_dir, f))
-
-    additionalCppCode = buildConfig["additionalCppCode"]
-
-    yaml_dir = os.path.dirname(os.path.abspath(args.filename))
-    for cpp_file in buildConfig.get("additionalCppFiles", []):
-      resolved = os.path.join(yaml_dir, cpp_file) if not os.path.isabs(cpp_file) else cpp_file
-      if not os.path.isfile(resolved):
-        raise FileNotFoundError(f"additionalCppFiles: file not found: {resolved} (from '{cpp_file}')")
-      with open(resolved) as f:
-        additionalCppCode += "\n" + f.read()
-
-    # The global `_auto_symbols` default is empty; custom-code generation
-    # needs the FULL manifest set as `known_exports` so the generator can
-    # resolve cross-references to NCollection types that the consumer's custom
-    # code uses (whether or not the link filter ultimately keeps them —
-    # anything actually used at compile/link time will be tagged with its
-    # originating OCCT source class when that class is in YAML scope).
-    global _auto_symbols
-    full_set = _load_full_manifest_symbols(BUILD_DIR)
-
-    print("Generating custom code bindings...", flush=True)
-    known_exports = {
-      b["symbol"]
-      for b in chain(
-        buildConfig["mainBuild"]["bindings"],
-        *(x["bindings"] for x in buildConfig["extraBuilds"]),
-      )
-    } | full_set
-    generateCustomCodeBindings(additionalCppCode, known_exports=known_exports)
     print("Compiling custom code bindings...", flush=True)
     compileCustomCodeBindings({
       "threading": os.environ['THREADING'],
-    })
+    }, source_root=custom_bindings_root, output_root=custom_compiled_root)
     print("Custom code bindings done.", flush=True)
 
-    verifyBindings(buildConfig["mainBuild"]["bindings"], libraryBasePath)
+    verifyBindings(
+      buildConfig["mainBuild"]["bindings"],
+      libraryBasePath,
+      custom_compiled_root=custom_compiled_root,
+    )
     for extraBuild in buildConfig["extraBuilds"]:
-      verifyBindings(extraBuild, libraryBasePath)
+      verifyBindings(
+        extraBuild,
+        libraryBasePath,
+        custom_compiled_root=custom_compiled_root,
+      )
     print("All bindings verified.", flush=True)
 
-    # Compute YAML reachability scope AFTER custom-code generation
-    # (so `build/bindings/myMain.h/*.d.ts.json` fragments exist and the
-    # scope picks up custom-class names), then narrow the auto-discovered
-    # NCollection set to entries whose source_classes intersect it. The
-    # narrowed set is consumed by `shouldProcessSymbol` inside `runBuild`.
-    yaml_scope = _compute_yaml_class_scope(buildConfig, libraryBasePath)
-    manifest_path = os.path.join(BUILD_DIR, "ncollection-manifest.json")
-    _auto_symbols = _filter_auto_symbols_by_scope(manifest_path, yaml_scope)
-    # V5 — surface the NCollection auto-discovery linked/total/dropped
-    # triple to runBuild's prov.add_linking() call via module state.
-    # The link stage owns this set; this is the canonical write path.
-    _ncollection_link_stats["linked"] = len(_auto_symbols)
-    _ncollection_link_stats["total"] = len(full_set)
-    _ncollection_link_stats["dropped"] = len(full_set) - len(_auto_symbols)
-    print(
-      f"NCollection link filter: kept {len(_auto_symbols)} / "
-      f"{len(full_set)} auto-discovered entries "
-      f"(dropped {len(full_set) - len(_auto_symbols)} unreachable from YAML scope "
-      f"|scope|={len(yaml_scope)})",
-      flush=True,
-    )
+  # Keep generated custom fragments in the YAML-owned scratch tree for both
+  # link and dts-only paths, then derive the same NCollection scope.
+  yaml_scope = _compute_yaml_class_scope(
+    buildConfig,
+    libraryBasePath,
+    custom_bindings_root,
+  )
+  manifest_path = os.path.join(BUILD_DIR, "ncollection-manifest.json")
+  _auto_symbols = _filter_auto_symbols_by_scope(manifest_path, yaml_scope)
+  _ncollection_link_stats["linked"] = len(_auto_symbols)
+  _ncollection_link_stats["total"] = len(full_set)
+  _ncollection_link_stats["dropped"] = len(full_set) - len(_auto_symbols)
+  print(
+    f"NCollection link filter: kept {len(_auto_symbols)} / "
+    f"{len(full_set)} auto-discovered entries "
+    f"(dropped {len(full_set) - len(_auto_symbols)} unreachable from YAML scope "
+    f"|scope|={len(yaml_scope)})",
+    flush=True,
+  )
 
-    runBuild(buildConfig["mainBuild"], libraryBasePath)
+  if not args.dts_only:
+    runBuild(
+      buildConfig["mainBuild"],
+      libraryBasePath,
+      scratchPath=link_work_path,
+      custom_compiled_root=custom_compiled_root,
+    )
     for extraBuild in buildConfig["extraBuilds"]:
-      runBuild(extraBuild, libraryBasePath)
-  else:
-    # `--dts-only` re-rolls the `.d.ts` from fragments+manifest that `generate`
-    # already produced, so it skips custom-code regen / compile / link. But it
-    # MUST still reproduce the NCollection link-scope filter the full path
-    # computes above (lines 937-957): `_collect_dts_fragments` →
-    # `shouldProcessSymbol` rejects every auto-discovered `NCollection_*` entry
-    # unless it appears in `_auto_symbols`, whose empty default would otherwise
-    # silently drop the entire auto-discovery surface from the rolled-up types
-    # (e.g. `NCollection_Array1_gp_Pnt`, `NCollection_List_TopoDS_Shape`). The
-    # computation is read-only (manifest + already-written fragments), so it is
-    # safe without the preceding generation steps. (`_auto_symbols` is already
-    # declared `global` for the whole function in the `if` branch above; that
-    # declaration is compile-time and covers this assignment too.)
-    yaml_scope = _compute_yaml_class_scope(buildConfig, libraryBasePath)
-    manifest_path = os.path.join(BUILD_DIR, "ncollection-manifest.json")
-    _auto_symbols = _filter_auto_symbols_by_scope(manifest_path, yaml_scope)
-    print(
-      f"NCollection link filter (dts-only): kept {len(_auto_symbols)} "
-      f"auto-discovered entries (|scope|={len(yaml_scope)})",
-      flush=True,
-    )
+      runBuild(
+        extraBuild,
+        libraryBasePath,
+        scratchPath=link_work_path,
+        custom_compiled_root=custom_compiled_root,
+      )
 
-  typescriptDefinitions = _collect_dts_fragments(buildConfig, libraryBasePath)
+  typescriptDefinitions = _collect_dts_fragments(
+    buildConfig,
+    libraryBasePath,
+    custom_bindings_root,
+  )
 
   if buildConfig["generateTypescriptDefinitions"]:
     typescriptDefinitionOutput = ""

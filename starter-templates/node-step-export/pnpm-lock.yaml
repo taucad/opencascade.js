@@ -8,9 +8,9 @@ importers:
 
   .:
     dependencies:
-      '@taucad/opencascade.js':
-        specifier: beta
-        version: 3.0.0-beta.3
+      cascadic:
+        specifier: file:../..
+        version: file:../..
     devDependencies:
       '@types/node':
         specifier: ^25.9.1
@@ -180,12 +180,12 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@taucad/opencascade.js@3.0.0-beta.3':
-    resolution: {integrity: sha512-6ZOeP2Ke3cfJ9chA6CKSYl9MdKjC/L1lXpuRC/W2aswxfXSFHnl1kSsMJeqilKT1BGxqELYB7bfvrNMNtzC4kw==}
-    engines: {node: '>=22'}
-
   '@types/node@25.9.1':
     resolution: {integrity: sha512-xfrlY7UD5rMJk3ZVJP8BNzS28J36YJg+xp+LPXV1TdWxr8uMH5A860QNxYDGQe/ylDSgjxE52Q9VnO7p75tJxg==}
+
+  cascadic@file:../..:
+    resolution: {directory: ../.., type: directory}
+    engines: {node: '>=22'}
 
   esbuild@0.28.0:
     resolution: {integrity: sha512-sNR9MHpXSUV/XB4zmsFKN+QgVG82Cc7+/aaxJ8Adi8hyOac+EXptIp45QBPaVyX3N70664wRbTcLTOemCAnyqw==}
@@ -290,11 +290,11 @@ snapshots:
   '@esbuild/win32-x64@0.28.0':
     optional: true
 
-  '@taucad/opencascade.js@3.0.0-beta.3': {}
-
   '@types/node@25.9.1':
     dependencies:
       undici-types: 7.24.6
+
+  cascadic@file:../..: {}
 
   esbuild@0.28.0:
     optionalDependencies:

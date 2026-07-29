@@ -38,20 +38,15 @@ experiments/option-d-comprehensive-poc/experiment.d.ts
 /regression.log
 
 # Nx
-.nx/
+.nx/*
+!.nx/version-plans/
+!.nx/version-plans/**
 
-# Docs viewer API data (output of `nx run ocjs:docs`).
-#
-# index.json + the per-package <Module>__<Toolkit>__<Package>.json shards ARE
-# committed: the docs-site deploys to Vercel as a standalone pnpm workspace from
-# a fresh git clone, and the data cannot be regenerated there (generate-docs.mjs
-# needs the full build/bindings type-graph from the WASM `generate` step, which
-# is not in the published npm package). They are deploy inputs, not throwaway
-# artifacts. Only the files below are derived from index.json by the docs-site
-# `prebuild` (generate-api-data.mjs) and stay ignored.
-docs-site/data/api-tree.json
-docs-site/data/api-type-index.json
-docs-site/data/api-search-index.json
+# Docs API data is derived atomically from the installed package's
+# `ocjs/api-reference.json` feed by `nx run ocjs:docs-sync`.
+docs-site/data/
+docs-site/data.staging-*/
+docs-site/data.backup-*/
 /nx-build-*.log
 
 # Project-local Python (scripts/clone-deps.sh)

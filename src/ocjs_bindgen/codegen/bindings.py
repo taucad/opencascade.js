@@ -2773,13 +2773,34 @@ class EmbindBindings(Bindings):
         wrapper_methods = [m for m in group if _method_has_wrapper_args(m)]
 
         if not dispatchable:
+          wrapper_signatures = {
+            tuple(
+              JsType("val", "emscripten::val")
+              if (
+                isClassOutputParam(arg.type)
+                or arg.type.get_canonical().spelling in unbindablePointerTypes
+              )
+              else self._classify_js_type(arg.type, templateDecl, templateArgs)
+              for arg in method.get_arguments()
+              if not shouldStripParam(arg.type, method)
+            )
+            for method in group
+          }
+          keep_public_name = len(wrapper_signatures) == len(group)
           arity_idx = {}
           for m in group:
             nargs = len(list(m.get_arguments()))
             idx = arity_idx.get(nargs, 0)
             arity_idx[nargs] = idx + 1
             try:
-              output += self.processMethodOrProperty(theClass, m, templateDecl, templateArgs, overload_index=idx)
+              output += self.processMethodOrProperty(
+                theClass,
+                m,
+                templateDecl,
+                templateArgs,
+                overload_index=idx,
+                override_postfix="" if keep_public_name else None,
+              )
             except SkipException as e:
               print(str(e))
         else:
@@ -4008,32 +4029,7 @@ class TypescriptBindings(Bindings):
     to a single signature and dispatches correctly with the trailing primitive
     outputs omitted.
     """
-    # (1) Virtual ⟹ overridden across the hierarchy ⟹ multi-registration.
-    # `is_virtual_method()` is True for pure-virtual base declarations AND for
-    # implicit overrides (the derived `final`/`override` redeclaration), so
-    # both ends of the chain stay required.
-    if method.is_virtual_method():
-      return False
-    # (2) Non-virtual same-class kept-arity collision. Synthesized base
-    # overloads (theClass is None) are pulled in precisely because their arity
-    # is unrepresented on the derived class, so they cannot collide here.
-    if theClass is None:
-      return True
-    name = method.spelling
-    target = sum(1 for a in method.get_arguments() if not shouldStripParam(a.type, method))
-    for sibling in theClass.get_children():
-      if sibling.kind != clang.cindex.CursorKind.CXX_METHOD:
-        continue
-      if sibling.spelling != name or sibling == method:
-        continue
-      if sibling.access_specifier != clang.cindex.AccessSpecifier.PUBLIC:
-        continue
-      if sibling.is_static_method() != method.is_static_method():
-        continue
-      sib_arity = sum(1 for a in sibling.get_arguments() if not shouldStripParam(a.type, sibling))
-      if sib_arity == target:
-        return False
-    return True
+    return _rbv.output_arity_is_unambiguous(theClass, method)
 
   def _trailingPrimitiveOutputRun(self, keptList, method):
     """Index into `keptList` (a list of `(orig_index, arg)` for the method's
@@ -4049,14 +4045,7 @@ class TypescriptBindings(Bindings):
     dereferences the supplied instance (`*arg.as<T*>()`) and would fault on an
     omitted slot — so they terminate the run and stay required.
     """
-    start = len(keptList)
-    for pos in range(len(keptList) - 1, -1, -1):
-      _i, arg = keptList[pos]
-      if isPrimitiveOutputParam(arg.type) and not isClassOutputParam(arg.type):
-        start = pos
-        continue
-      break
-    return start
+    return _rbv.trailing_primitive_output_run(keptList, method)
 
   def _buildKeptArgs(self, method, allArgs, templateDecl, templateArgs, effective_names=None, theClass=None):
     """Build the TS arg list under Input-Passthrough RBV with Approach G

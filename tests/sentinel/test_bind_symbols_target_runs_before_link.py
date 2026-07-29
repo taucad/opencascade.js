@@ -7,7 +7,7 @@ the bootstrap-ordering bug.
 
 Two independent assertions:
 
-1. **NX dep graph (project.json)** — `link.dependsOn` MUST include
+1. **NX dep graph (project.json)** — `link` MUST depend transitively on
    `bind-symbols`. Without this, a fresh tree would invoke
    `verifyBindings` before any producer wrote the manifest, the
    consumer would hard-fail (post-V3) with a regenerate-pointer, and
@@ -55,15 +55,22 @@ def test_bind_symbols_target_exists() -> None:
   )
 
 
-def test_link_target_depends_on_bind_symbols() -> None:
+def test_link_target_depends_transitively_on_bind_symbols() -> None:
   """The smoking-gun assertion: V3 regression was the producer running
   after the consumer. NX dep-graph ordering fixes it; this sentinel
   enforces the edge.
   """
   project = _load_project_json()
-  link_deps = project["targets"]["link"]["dependsOn"]
-  assert "bind-symbols" in link_deps, (
-    f"`link.dependsOn` must include `bind-symbols`; got {link_deps!r}. "
+  pending = list(project["targets"]["link"]["dependsOn"])
+  reachable = set()
+  while pending:
+    dependency = pending.pop()
+    if dependency in reachable:
+      continue
+    reachable.add(dependency)
+    pending.extend(project["targets"].get(dependency, {}).get("dependsOn", []))
+  assert "bind-symbols" in reachable, (
+    f"`link` must transitively depend on `bind-symbols`; reached {sorted(reachable)!r}. "
     f"Without this edge, the bind-symbols producer can run after the "
     f"link consumer and `manifest_registry.builtin_binding_symbols` will "
     f"hard-fail with a regenerate-pointer (V3 RE-SHIP contract)."

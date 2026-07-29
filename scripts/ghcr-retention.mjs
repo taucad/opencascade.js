@@ -2,6 +2,7 @@
 
 const DAY = 86_400_000;
 const BRANCH = /^(branch|multi-threaded-branch|bindgen-base-branch)-(.+?)(?:-([0-9a-f]{40}))?$/;
+const CANARY = /^canary-([0-9a-f]{8})-(single-threaded|multi-threaded|bindgen-base)$/;
 const CACHE = /^buildcache-(amd64|arm64)-(final-single|final-multi|bindgen-base)$/;
 const RELEASE = /^(single-threaded|multi-threaded|bindgen-base|\d+\.\d+(?:\.\d+)?(?:-[0-9A-Za-z.-]+)?|sha-[0-9a-f]+-(?:single-threaded|multi-threaded|bindgen-base))$/;
 const REFERRER = /^sha256-[0-9a-f]+\.(?:sig|att)$/;
@@ -15,6 +16,7 @@ export const selectVersions = (versions, {
 } = {}) => {
   const protectedIds = new Set();
   const branchFamilies = new Map();
+  const canaryFamilies = new Map();
   const cacheFamilies = new Map();
   const untagged = [];
 
@@ -25,14 +27,16 @@ export const selectVersions = (versions, {
       continue;
     }
     const branch = tags.map((tag) => BRANCH.exec(tag)).filter(Boolean);
+    const canary = tags.map((tag) => CANARY.exec(tag)).filter(Boolean);
     const cache = tags.map((tag) => CACHE.exec(tag)).filter(Boolean);
     const families = new Set([
       ...branch.map((match) => `branch:${match[1]}:${match[2]}`),
+      ...canary.map((match) => `canary:${match[2]}`),
       ...cache.map((match) => `cache:${match[1]}:${match[2]}`),
     ]);
     if (
       tags.some((tag) => RELEASE.test(tag) || REFERRER.test(tag))
-      || branch.length + cache.length !== tags.length
+      || branch.length + canary.length + cache.length !== tags.length
       || families.size !== 1
     ) {
       protectedIds.add(version.id);
@@ -42,6 +46,10 @@ export const selectVersions = (versions, {
       const key = `${branch[0][1]}:${branch[0][2]}`;
       branchFamilies.set(key, [...(branchFamilies.get(key) ?? []), version]);
     }
+    if (canary.length) {
+      const key = canary[0][2];
+      canaryFamilies.set(key, [...(canaryFamilies.get(key) ?? []), version]);
+    }
     if (cache.length) {
       const key = `${cache[0][1]}:${cache[0][2]}`;
       cacheFamilies.set(key, [...(cacheFamilies.get(key) ?? []), version]);
@@ -49,7 +57,7 @@ export const selectVersions = (versions, {
   }
 
   const selected = new Map();
-  for (const family of branchFamilies.values()) {
+  for (const family of [...branchFamilies.values(), ...canaryFamilies.values()]) {
     family.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
     for (const version of family.slice(5)) {
       if (age(version, now) > 7 * DAY && !protectedIds.has(version.id)) selected.set(version.id, version);

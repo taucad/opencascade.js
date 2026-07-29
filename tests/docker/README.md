@@ -27,6 +27,10 @@ OCJS_DOCKER_TESTS=1 pnpm test:docker
 
 Without `OCJS_DOCKER_TESTS=1` (or without Docker) every case is skipped.
 
+Candidate CI jobs also set `OCJS_DOCKER_OUTPUT_DIR` so the multi-threaded
+runtime assertions reuse the full-multi artifacts built by the preceding E2E
+step. Local runs leave it unset and exercise the custom multi-threaded fixture.
+
 ## How it works
 
 - `docker-helpers.ts` stages each fixture into a fresh per-test workdir under

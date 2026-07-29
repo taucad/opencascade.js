@@ -42,7 +42,9 @@ def _build_file_index(occt_src: str) -> None:
     if _file_index is not None:
         return
     _file_index = {}
-    for dirpath, _, filenames in os.walk(occt_src):
+    for dirpath, dirnames, filenames in os.walk(occt_src):
+        dirnames.sort()
+        filenames.sort()
         for fname in filenames:
             _file_index.setdefault(fname, []).append(os.path.join(dirpath, fname))
 

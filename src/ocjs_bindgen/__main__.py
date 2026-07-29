@@ -91,15 +91,17 @@ def _run_full_pipeline(gen):
     from ocjs_bindgen.discover import discover_ncollection_types, generate_using_declarations, write_manifest
 
     os.makedirs(gen.libraryBasePath, exist_ok=True)
-    gen._check_generator_hash_and_clean()
-
     # Phase 1: Discovery scan — parse TU without using declarations to find
     # NCollection template instantiations in bound class method signatures
     scan_tuInfo = TuInfo("")
     discovered = discover_ncollection_types(scan_tuInfo, gen.filterClasses)
     using_decls = generate_using_declarations(discovered)
     if discovered:
-        write_manifest(discovered, BUILD_DIR, tuInfo=scan_tuInfo)
+        write_manifest(
+            discovered,
+            os.environ.get("OCJS_MANIFEST_DIR", BUILD_DIR),
+            tuInfo=scan_tuInfo,
+        )
 
     # Phase 2: Re-parse TU with auto-generated using declarations so the AST
     # sees the new type aliases
@@ -147,16 +149,23 @@ def _report_any_resolutions():
     for reason, types in sorted(any_reasons.items()):
         subtotal = sum(types.values())
         total_any += subtotal
-        report[reason] = {"count": subtotal, "types": dict(sorted(types.items(), key=lambda x: -x[1]))}
+        ordered_types = sorted(types.items(), key=lambda item: (-item[1], item[0]))
+        report[reason] = {"count": subtotal, "types": dict(ordered_types)}
         print(f"\n  [{reason}] ({subtotal} occurrences):", flush=True)
-        for t, count in sorted(types.items(), key=lambda x: -x[1])[:15]:
+        for t, count in ordered_types[:15]:
             print(f"    {t}: {count}", flush=True)
         remaining = len(types) - 15
         if remaining > 0:
             print(f"    ... and {remaining} more unique types", flush=True)
     print(f"\n  Total any resolutions: {total_any}", flush=True)
 
-    report_path = os.path.join(os.environ.get("OCJS_ROOT", "."), "build", "any-type-report.json")
+    report_path = os.path.join(
+        os.environ.get(
+            "OCJS_MANIFEST_DIR",
+            os.path.join(os.environ.get("OCJS_ROOT", "."), "build"),
+        ),
+        "any-type-report.json",
+    )
     os.makedirs(os.path.dirname(report_path), exist_ok=True)
     with open(report_path, "w") as f:
         json.dump(report, f, indent=2)

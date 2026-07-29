@@ -2,8 +2,7 @@ import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { GITHUB_REPO_URL } from '../lib/site';
 
-const UPSTREAM_REPO_URL = 'https://github.com/donalffons/opencascade.js';
-const LICENSE_URL = `${GITHUB_REPO_URL}/blob/master/LICENSE`;
+const LICENSE_URL = `${GITHUB_REPO_URL}/blob/main/LICENSE`;
 
 const footerLinkClass = 'text-fd-muted-foreground hover:text-fd-primary hover:underline';
 
@@ -71,7 +70,7 @@ export const HomeFooter = (): ReactNode => {
             <FooterExternalLink href={LICENSE_URL}>LGPL-2.1-only WITH OCCT Exception</FooterExternalLink>
           </li>
           <li>
-            <FooterExternalLink href='https://tau.new'>Maintained by Tau</FooterExternalLink>
+            <FooterExternalLink href='https://www.npmjs.com/package/cascadic'>cascadic on npm</FooterExternalLink>
           </li>
           <li>
             <Link href='/docs/package/getting-started/faq' className={footerLinkClass}>
@@ -82,9 +81,9 @@ export const HomeFooter = (): ReactNode => {
       </div>
 
       <p className='mt-10 border-t border-fd-border pt-6 text-xs text-fd-muted-foreground'>
-        OpenCascade.js — fork of{' '}
-        <a href={UPSTREAM_REPO_URL} className='hover:text-fd-primary hover:underline' rel='noopener noreferrer' target='_blank'>
-          donalffons/opencascade.js
+        OpenCascade.js — originally created by{' '}
+        <a href='https://github.com/donalffons' className='hover:text-fd-primary hover:underline' rel='noopener noreferrer' target='_blank'>
+          Sebastian Alff
         </a>
         . Upstream OCCT © OPEN CASCADE SAS.
       </p>

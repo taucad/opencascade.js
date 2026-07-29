@@ -23,9 +23,10 @@ docker pull ghcr.io/taucad/opencascade.js:single-threaded
 | `:bindgen-base`                                                  | Latest release, post-PCH/generate but pre-compile (custom-bindings starting point)   |
 | `:{{version}}-single-threaded`<br/>`:{{version}}-multi-threaded` | Pinned release (e.g. `:3.0.0-single-threaded`); manifest list of `linux/amd64+arm64` |
 | `:{{version}}-bindgen-base`                                      | Pinned release, bindgen-base                                                         |
-| `:branch-<slug>` / `:branch-<slug>-<sha>`                        | Branch tip, single-threaded, `linux/amd64+arm64`, 7-day GHCR retention                |
-| `:multi-threaded-branch-<slug>` / `…-<sha>`                      | Branch tip, multi-threaded, `linux/amd64+arm64`, 7-day retention                      |
-| `:bindgen-base-branch-<slug>` / `…-<sha>`                        | Branch tip, bindgen-base, `linux/amd64+arm64`, 7-day retention                        |
+| `:canary-<sha8>-<stage>`                                        | Immutable manually dispatched canary, retained for seven days                        |
+| `:branch-main[-<full-sha>]`                                     | Current or immutable `main`, single-threaded                                         |
+| `:multi-threaded-branch-main[-<full-sha>]`                      | Current or immutable `main`, multi-threaded                                          |
+| `:bindgen-base-branch-main[-<full-sha>]`                        | Current or immutable `main`, bindgen-base                                            |
 | `@sha256:<digest>`                                               | Immutable pin — use in CI                                                            |
 
 **Pin by digest in production.** The bare-name tags (`:single-threaded`,
@@ -34,7 +35,7 @@ release. See [Reproducible CI](../guides/reproducible-ci) for the pinning
 workflow.
 
 The legacy `:beta`, `:rolling`, and `:latest` tags are **not published** by
-this fork. Use a version-pinned tag (e.g. `:3.0.0-single-threaded`) or the
+this project. Use a version-pinned tag (e.g. `:3.0.0-single-threaded`) or the
 manifest-list digest for explicit version control.
 
 ## Entrypoint
@@ -52,7 +53,7 @@ runs benefit from Nx's content-addressed cache:
 
 | Subcommand                                      | What it does                                                                                                                                                                        |
 | ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `link <yaml>`                                   | End-to-end build. Nx walks `apply-patches → pch → generate → compile-bindings → compile-sources → link` with cache reuse — fresh container = full build, cached re-run = link only. |
+| `link <yaml>`                                   | End-to-end build. Nx caches the canonical `link-core`, then always materializes its exact inventory into the requested output directory before validation and provenance. |
 | `compile-bindings`, `compile-sources`, `pch`, … | Run an individual Nx target                                                                                                                                                         |
 | `validate <yaml>`                               | Validate YAML without building                                                                                                                                                      |
 | `nx <args…>`                                    | Pass-through to `npx nx` (escape hatch)                                                                                                                                             |
@@ -70,15 +71,17 @@ docker run --rm -it -v "$(pwd):/src" --entrypoint bash \
 
 ## Multi-arch matrix
 
-| Tag family                  | Manifest list                 | Built on                                                                            |
-| --------------------------- | ----------------------------- | ----------------------------------------------------------------------------------- |
-| Branch, master, and release | `linux/amd64` + `linux/arm64` | `ubuntu-latest` (amd64) + `ubuntu-24.04-arm` (arm64), GitHub Actions native runners |
+| Event                         | Result                          | Built on                                                                            |
+| ----------------------------- | ------------------------------- | ----------------------------------------------------------------------------------- |
+| Pull request targeting `main` | Three-stage validation, no tags | `ubuntu-latest` (amd64)                                                             |
+| `main`, release, or dispatch  | `linux/amd64` + `linux/arm64`   | `ubuntu-latest` (amd64) + `ubuntu-24.04-arm` (arm64), GitHub Actions native runners |
 
-Every push ships full manifest lists so Apple Silicon and ARM Linux hosts pull
-the native architecture transparently. CI links and smokes each image natively,
-and requires every native stage to pass before promotion. The amd64 outputs are
-the canonical npm package inputs; host-specific compiler output is not compared
-byte-for-byte across architectures.
+`main`, release, and manually dispatched canary runs ship full manifest lists
+so Apple Silicon and ARM Linux hosts pull the native architecture
+transparently. CI links and smokes each image natively and requires every
+native stage to pass before promotion. The amd64 outputs are the canonical npm
+package inputs; host-specific compiler output is not compared byte-for-byte
+across architectures.
 
 ## OCI labels
 
@@ -138,7 +141,7 @@ Diff the SBOM across image digests in CI to flag unexpected dep bumps.
 
 ## Image stages
 
-The [Dockerfile](https://github.com/taucad/opencascade.js/blob/master/Dockerfile)
+The [Dockerfile](https://github.com/taucad/opencascade.js/blob/main/Dockerfile)
 is multi-stage with five logical stages, three of which are published:
 
 | Stage                      | Published as       | Contents                                                                        |

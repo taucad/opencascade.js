@@ -1,11 +1,11 @@
 /**
- * Fork-internal shape guards for README.md and MAINTAINER.md.
+ * Repository-internal shape guards for README.md and MAINTAINER.md.
  *
  * The README is the persona-routed top page for consumers. Its three load-
  * bearing properties — a bounded length, the Choose-Your-Path matrix, and a
  * working pointer at MAINTAINER.md — must not drift accidentally.
  *
- * These assertions are fork-internal: they say nothing about external repos.
+ * These assertions are repository-internal: they say nothing about external repos.
  */
 import { describe, it, expect } from 'vitest';
 import * as fs from 'node:fs';
@@ -66,6 +66,13 @@ describe('README.md shape', () => {
   it('links to MAINTAINER.md', () => {
     const body = fs.readFileSync(README_PATH, 'utf-8');
     expect(body).toMatch(/\(MAINTAINER\.md(#[\w-]+)?\)/);
+  });
+
+  it('should identify cascadic only as the npm coordinate for OpenCascade.js', () => {
+    const body = fs.readFileSync(README_PATH, 'utf-8');
+    expect(body).toContain('pnpm add cascadic@canary');
+    expect(body).toContain('OpenCascade.js is published on npm as `cascadic`');
+    expect(body).not.toContain('Tau-maintained fork');
   });
 });
 

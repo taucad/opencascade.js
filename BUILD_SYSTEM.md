@@ -98,7 +98,10 @@ These are *not* source — they're intermediate files the pipeline produces and 
 | **`build/occt-includes/`** (the **flat include directory**) | A symlink farm aliasing every OCCT header by its bare basename, so `#include "Poly_Triangulation.hxx"` resolves without enumerating every OCCT subdirectory on `-I`. Built by `buildFlatIncludes()` in `paths.py`. |
 | **`build/pch.h`** + **`build/pch.h.pch`** (the **precompiled header**) | A single header that `#include`s every OCCT and embind header, then precompiled by emcc into a binary form. Every embind translation unit at compile time loads the PCH instead of re-parsing thousands of headers — gives a ~25× compilation speedup. Pure compile-side optimisation; does not affect the libclang discover pass. |
 | **`build/ncollection-manifest.json`** | Deduped list of `NCollection_*<T...>` instantiations the discover pass enumerated from the consumer's bound classes. Consumed by the link-time filter to retain only the symbols actually needed. |
-| **`build/occt-cmake/`** | OCCT object files produced by `emcmake cmake` build of OCCT itself. These get linked into the final wasm by `wasm-ld`. Cached per compile-config. |
+| **`build/occt-cmake/`** | The one incremental CMake scratch tree. A complete semantic-identity marker permits reuse; mismatched or interrupted state is discarded before compilation. It is not an Nx output. |
+| **`build/occt-libraries/`** | The immutable, manifest-backed static-library inventory published from successful CMake scratch. This is the cache-owned OCCT input consumed by linking. |
+| **`build/bindings-manifest.json`** | Sorted content ledger for the complete generated binding tree. Generation happens in a fresh staging tree and replaces the live tree atomically. |
+| **`build/link-core/`** | Cache-owned link artifacts for one YAML/configuration identity. They are copied exactly into `OCJS_OUTPUT_DIR` by the uncached materialization target. |
 
 ### H. Support tooling
 
@@ -139,7 +142,7 @@ SOURCE_DATE_EPOCH=<commit-epoch> \
 ./scripts/docker-e2e-validate.sh
 ```
 
-Use `final-multi` with `build-configs/full_multi.yml`, or `bindgen-base` without a full-build config. `LINK_BUDGET_S` controls the one consumer-link ceiling. Build timing and cache observations stay in logs; the published provenance and build-manifest sidecars deliberately exclude execution-local state so their bytes can prove host independence.
+Use `final-multi` with `build-configs/full_multi.yml`, or `bindgen-base` without a full-build config. Hosted candidate and reproducibility jobs use GitHub's native four-hour job timeout. Build timing and cache observations stay in logs; the published provenance and build-manifest sidecars deliberately exclude execution-local state so their bytes can prove host independence.
 
 ### How the components flow together
 
@@ -161,13 +164,19 @@ The [Task Graph](#task-graph) below is the Nx-orchestrated version of steps 4–
 
 ## Task Graph
 
-```
-setup (uncached) → pch → generate → compile-bindings ─┐
-                     │                                   ├─→ link → build
-                     └─→ compile-sources ───────────────┘
+```text
+setup → apply-patches ─┬→ pch ───────────────┬→ compile-bindings ─┐
+                       ├→ docs → generate ────┘                    ├→ link-core
+                       └→ compile-sources ─────────────────────────┤
+                            pch → bind-symbols ─────────────────────┘
+
+link-core (cached) → materialize (uncached) → validate → provenance → link → build
 ```
 
-`compile-bindings` and `compile-sources` run in parallel after `pch` completes.
+`apply-patches` is deliberately uncached because it owns mutations in dependency
+clones. The expensive generated, compiled, and linked results remain Nx-cached.
+Only `materialize` observes `OCJS_OUTPUT_DIR`, so an Nx cache hit still populates
+an empty consumer directory instead of returning stale or missing artifacts.
 
 ## configurations.json
 

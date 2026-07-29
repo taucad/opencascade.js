@@ -6,6 +6,13 @@ description: Pin GHCR images by digest, capture provenance and SBOM, lock downst
 A reproducible OCJS build means: same inputs, same wasm bytes, every time.
 Three controls close the loop.
 
+The repository also runs `.github/workflows/reproducibility.yml` weekly and
+on demand. It performs two isolated Linux/amd64 cold builds in parallel,
+runs runtime smoke for each, and compares exact artifact ledgers. Stable npm
+publication invokes that same exact-commit gate; manually dispatched canaries
+and beta builds keep the normal single candidate path and rely on scheduled
+cold coverage.
+
 ## 1. Pin the image by manifest-list digest
 
 `:single-threaded`, `:multi-threaded`, and `:bindgen-base` are moving tags
@@ -81,7 +88,7 @@ In your `package.json`, pin the npm tarball alongside the docker digest:
 ```json
 {
   "dependencies": {
-    "@taucad/opencascade.js": "3.0.0-beta.5"
+    "cascadic": "3.0.0-beta.5"
   },
   "pnpm": {
     "supportedArchitectures": {

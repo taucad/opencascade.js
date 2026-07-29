@@ -2,7 +2,7 @@
 
 These templates target `opencascade.js@beta.x` (the pre-rename, pre-ESM-only line). They are kept here for archaeological reference and to support consumers who have not yet migrated to v3.
 
-New work should start from [`..`](../), which demonstrates the canonical loading and disposal patterns for `@taucad/opencascade.js@beta` (the v3 line).
+New work should start from [`..`](../), which demonstrates the canonical loading and disposal patterns for `ocjs@canary` (the v3 line).
 
 ## Inventory
 

@@ -57,7 +57,7 @@ def _refresh_per_header() -> None:
 
 
 def _refresh_full_tree() -> None:
-    lines: list[str] = []
+    digests: dict[str, str] = {}
     for path in sorted(BUILD_BINDINGS.rglob("*")):
         if not path.is_file():
             continue
@@ -68,10 +68,28 @@ def _refresh_full_tree() -> None:
         with path.open("rb") as fh:
             for chunk in iter(lambda: fh.read(1 << 20), b""):
                 h.update(chunk)
-        lines.append(f"{h.hexdigest()}  {rel}")
-    BASELINE_TREE.parent.mkdir(parents=True, exist_ok=True)
-    BASELINE_TREE.write_text("\n".join(lines) + "\n")
-    print(f"  full_tree: {len(lines)} fragments")
+        digests[rel] = h.hexdigest()
+
+    shared_cpp = {path: digest for path, digest in digests.items() if path.endswith(".cpp")}
+    manifests = (
+        BASELINE_DIR / "full_tree.sha256",
+        LINUX_BASELINE_DIR / "full_tree.sha256",
+    )
+    for manifest in manifests:
+        if manifest == BASELINE_TREE:
+            merged = digests
+        else:
+            merged: dict[str, str] = {}
+            for line in manifest.read_text().splitlines():
+                digest, _, rel = line.partition("  ")
+                if rel and not rel.endswith(".cpp"):
+                    merged[rel] = digest
+            merged.update(shared_cpp)
+        manifest.parent.mkdir(parents=True, exist_ok=True)
+        manifest.write_text(
+            "".join(f"{merged[rel]}  {rel}\n" for rel in sorted(merged))
+        )
+    print(f"  full_tree: {len(digests)} fragments")
 
 
 def main() -> int:

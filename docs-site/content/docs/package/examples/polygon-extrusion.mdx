@@ -6,7 +6,7 @@ description: Build a polygonal wire, face it, and extrude into a prism — three
 The minimum useful OCCT example: a four-point polygon extruded along Z.
 
 ```typescript title="examples/polygon-extrusion.ts"
-import type { TopoDS_Shape } from '@taucad/opencascade.js';
+import type { TopoDS_Shape } from 'cascadic';
 import { getOc } from './ocjs-init';
 
 export const buildExtrudedPolygon = async (): Promise<TopoDS_Shape> => {
@@ -33,8 +33,8 @@ export const buildExtrudedPolygon = async (): Promise<TopoDS_Shape> => {
 - `Close()` adds the implicit closing edge.
 - `BRepBuilderAPI_MakeFace(wire, false)` faces the wire; `false` means "this
   is the only wire of the face" (set `true` if you're adding holes later).
-- `BRepPrimAPI_MakePrism` extrudes along an arbitrary direction vector, not
-  just Z.
+- `BRepPrimAPI_MakePrism` extrudes along an arbitrary direction vector rather
+  than only Z.
 
 Swap `gp_Vec(0, 0, 40)` for `gp_Vec(0.5, 0.5, 1)` and you get a slanted
 prism. Swap the polygon for a `BRepBuilderAPI_MakeWire` with curved edges

@@ -8,13 +8,20 @@ const FAQ_PATH = resolve(
 );
 
 describe('faq content', () => {
-  it('should answer fork, maintenance, and contribution questions', () => {
+  it('should describe current maintenance, lineage, and contribution without subordinate-fork claims', () => {
     const body = readFileSync(FAQ_PATH, 'utf8');
     const headings = [...body.matchAll(/^## (.+)$/gm)].map((m) => m[1]!.toLowerCase());
-    expect(headings.some((h) => h.includes('fork'))).toBe(true);
     expect(headings.some((h) => h.includes('maintain'))).toBe(true);
     expect(headings.some((h) => h.includes('contribute'))).toBe(true);
-    expect(body).toContain('merge back upstream');
-    expect(body).toContain('donalffons');
+    expect(body).toContain('taucad/opencascade.js');
+    expect(body).toContain('Sebastian Alff');
+    for (const rejected of [
+      'Tau-maintained fork',
+      'upstream is dormant',
+      'merge back upstream',
+      'maintainer-of-record',
+    ]) {
+      expect(body).not.toContain(rejected);
+    }
   });
 });

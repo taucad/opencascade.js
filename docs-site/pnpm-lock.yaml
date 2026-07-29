@@ -11,12 +11,12 @@ importers:
       '@orama/orama':
         specifier: ^3.1.7
         version: 3.1.18
-      '@taucad/opencascade.js':
-        specifier: beta
-        version: 3.0.0-beta.3
       '@vercel/og':
         specifier: ^0.6.5
         version: 0.6.8
+      cascadic:
+        specifier: file:..
+        version: file:..
       eslint:
         specifier: 9.32.0
         version: 9.32.0(jiti@2.7.0)
@@ -1548,10 +1548,6 @@ packages:
   '@tailwindcss/postcss@4.3.0':
     resolution: {integrity: sha512-Jm05Tjx+9yCLGv5qw1c+84Psds8MnyrEQYCB+FFk2lgGiUjlRqdxke4mVTuYrj2xnVZqKim2Apr5ySuQRYAw/w==}
 
-  '@taucad/opencascade.js@3.0.0-beta.3':
-    resolution: {integrity: sha512-6ZOeP2Ke3cfJ9chA6CKSYl9MdKjC/L1lXpuRC/W2aswxfXSFHnl1kSsMJeqilKT1BGxqELYB7bfvrNMNtzC4kw==}
-    engines: {node: '>=22'}
-
   '@testing-library/dom@10.4.1':
     resolution: {integrity: sha512-o4PXJQidqJl82ckFaXUeoAW+XysPLauYI43Abki5hABd853iMhitooc6znOnczgbTYmEP6U6/y1ZyKAIsvMKGg==}
     engines: {node: '>=18'}
@@ -2138,6 +2134,10 @@ packages:
 
   caniuse-lite@1.0.30001793:
     resolution: {integrity: sha512-iwSsYWaCOoh26cV8NwNRViHlrfUvYsHDfRVcbtmw0Kg6PJIZZXwMkj1442FYLBGkeUf1juAsU3DTfxW579mrPA==}
+
+  cascadic@file:..:
+    resolution: {directory: .., type: directory}
+    engines: {node: '>=22'}
 
   ccount@2.0.1:
     resolution: {integrity: sha512-eyrF0jiFpY+3drT6383f1qhkbGsLSifNAjA61IUjZjmLCWjItY6LB9ft9YhoDgwfmclB2zhu51Lc7+95b8NRAg==}
@@ -5856,8 +5856,6 @@ snapshots:
       postcss: 8.5.15
       tailwindcss: 4.3.0
 
-  '@taucad/opencascade.js@3.0.0-beta.3': {}
-
   '@testing-library/dom@10.4.1':
     dependencies:
       '@babel/code-frame': 7.29.0
@@ -6507,6 +6505,8 @@ snapshots:
   camelize@1.0.1: {}
 
   caniuse-lite@1.0.30001793: {}
+
+  cascadic@file:..: {}
 
   ccount@2.0.1: {}
 

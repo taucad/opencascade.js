@@ -1,16 +1,16 @@
 ---
 title: Multi-threaded build
-description: Opt into pthread-enabled OCCT for parallel meshing and boolean workloads via @taucad/opencascade.js/multi.
+description: Opt into pthread-enabled OCCT for parallel meshing and boolean workloads via cascadic/multi.
 ---
 
 The npm package ships **two** pre-built variants:
 
 | Import | Binary | When to use |
 | --- | --- | --- |
-| `@taucad/opencascade.js` (default) | `opencascade_full.wasm` | Embeddable widgets, one-op-per-click UX, no COOP/COEP |
-| `@taucad/opencascade.js/multi` | `opencascade_full_multi.wasm` | Batch mesh/boolean, STEP→glTF pipelines, COOP/COEP-isolated surfaces |
+| `cascadic` (default) | `opencascade_full.wasm` | Embeddable widgets, one-op-per-click UX, no COOP/COEP |
+| `cascadic/multi` | `opencascade_full_multi.wasm` | Batch mesh/boolean, STEP→glTF pipelines, COOP/COEP-isolated surfaces |
 
-Load the threaded variant the same way as the default — import `@taucad/opencascade.js/multi` and resolve wasm through `@taucad/opencascade.js/multi/wasm`. See [Bundler & locateFile](./bundler-locatefile#multi-threaded-variant) for Vite, Next.js, and Node recipes.
+Load the threaded variant the same way as the default — import `cascadic/multi` and resolve wasm through `cascadic/multi/wasm`. See [Bundler & locateFile](./bundler-locatefile#multi-threaded-variant) for Vite, Next.js, and Node recipes.
 
 OCCT can drive multiple worker threads for mesh and boolean kernels once the pthread-enabled wasm is loaded. That requires hard browser prerequisites (`SharedArrayBuffer` + cross-origin isolation) in the browser; Node 22+ exposes `SharedArrayBuffer` without extra headers.
 
@@ -26,7 +26,7 @@ OCCT can drive multiple worker threads for mesh and boolean kernels once the pth
 If your app does one boolean and one mesh per user interaction, single-threaded
 is fine. If you batch hundreds of operations, threading pays off.
 
-See [BENCHMARKS.md](https://github.com/taucad/opencascade.js/blob/master/BENCHMARKS.md) for ST vs MT numbers on a representative workload mix.
+See [BENCHMARKS.md](https://github.com/taucad/opencascade.js/blob/main/BENCHMARKS.md) for ST vs MT numbers on a representative workload mix.
 
 ## Browser prerequisites
 
@@ -169,7 +169,7 @@ for (let i = 0; i < n; i++) {
 The newer [`WebAssembly.Memory.prototype.toResizableBuffer()`](https://developer.mozilla.org/en-US/docs/WebAssembly/Reference/JavaScript_interface/Memory)
 API lets a pthread-enabled binary avoid the HEAP-view re-fetch dance
 entirely by returning a `SharedArrayBuffer` that automatically tracks
-`memory.grow`. The shipped `@taucad/opencascade.js/multi` binary keeps
+`memory.grow`. The shipped `cascadic/multi` binary keeps
 `-sGROWABLE_ARRAYBUFFERS=0` (the default) because the runtime matrix is
 not yet universal:
 
@@ -203,7 +203,7 @@ JS↔WASM boundary is on the hot path.
   `SharedArrayBuffer` in cross-origin-isolated contexts.
 
 For most consumers the single-threaded default wins on simplicity. Reach for
-`@taucad/opencascade.js/multi` only when you have measured the bottleneck.
+`cascadic/multi` only when you have measured the bottleneck.
 
 ## Custom builds
 

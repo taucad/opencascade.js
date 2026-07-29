@@ -1,6 +1,6 @@
 # Maintainer Guide
 
-Build-from-source, configuration, and release workflow for `@taucad/opencascade.js`. Consumers reaching for the published tarball should start from [README.md](README.md) — this document is for fork maintainers and contributors building OCCT WASM locally.
+Build-from-source, configuration, and release workflow for OpenCascade.js. Consumers reaching for the `cascadic` npm package should start from [README.md](README.md) — this document is for maintainers and contributors building OCCT WASM locally.
 
 ## Table of Contents
 
@@ -78,14 +78,14 @@ The published npm tarball ships **both** build outputs:
 
 | Artifact prefix            | Config                              | Subpath export                                                       |
 | -------------------------- | ----------------------------------- | -------------------------------------------------------------------- |
-| `opencascade_full.*`       | `single-threaded` + `full.yml`      | `@taucad/opencascade.js` / `@taucad/opencascade.js/wasm`             |
-| `opencascade_full_multi.*` | `multi-threaded` + `full_multi.yml` | `@taucad/opencascade.js/multi` / `@taucad/opencascade.js/multi/wasm` |
+| `opencascade_full.*`       | `single-threaded` + `full.yml`      | `cascadic` / `cascadic/wasm`             |
+| `opencascade_full_multi.*` | `multi-threaded` + `full_multi.yml` | `cascadic/multi` / `cascadic/multi/wasm` |
 
 Each six-file set includes a matching `*.provenance.json` sidecar (`dist/opencascade_full.provenance.json` and `dist/opencascade_full_multi.provenance.json`).
 
 ### Environment Variables
 
-Two layers of "default" matter here. The **bare default** is what `build-wasm.sh` falls back to if you set neither an env var nor a `--config`. The **shipped `full.yml` build** is what the published `@taucad/opencascade.js` tarball was actually linked with — the YAML config carries its own `emccFlags` (`-sWASM_BIGINT`, `-sEVAL_CTORS=2`, `-msimd128`) that win regardless of env var, and every named entry in [`build-configs/configurations.json`](build-configs/configurations.json) sets the corresponding `OCJS_*` envs to match.
+Two layers of "default" matter here. The **bare default** is what `build-wasm.sh` falls back to if you set neither an env var nor a `--config`. The **shipped `full.yml` build** is what the published `cascadic` tarball was actually linked with — the YAML config carries its own `emccFlags` (`-sWASM_BIGINT`, `-sEVAL_CTORS=2`, `-msimd128`) that win regardless of env var, and every named entry in [`build-configs/configurations.json`](build-configs/configurations.json) sets the corresponding `OCJS_*` envs to match.
 
 | Variable            | Bare default      | Shipped `full.yml` build | Description                                                                                                          |
 | ------------------- | ----------------- | ------------------------ | -------------------------------------------------------------------------------------------------------------------- |
@@ -107,66 +107,139 @@ The bare-default column is only relevant if you invoke `build-wasm.sh` without `
 
 | Responsibility | Owner |
 | --- | --- |
-| Source, workflow, shell, Python, ST/MT, bindgen, browser, package, template, and docs-candidate tests | `.github/workflows/docker.yml` → `CI gate` |
-| Dedicated docs typecheck, lint, prose, unit, build, and post-build budgets | `.github/workflows/docs-site.yml` → `docs-required` |
-| Branch and release GHCR images, SBOM/provenance, signing, npm publication, and registry verification | `.github/workflows/docker.yml` |
-| Vercel preview/production docs deployment | Vercel Git integration rooted at `docs-site/` |
+| Source, workflow, shell, Python, ST/MT, bindgen, browser, package, template, docs, and prose checks | `.github/workflows/docker.yml` → `CI gate` |
+| Branch and release GHCR images, SBOM/provenance, signing, npm publication, registry verification, annotated tags, and GitHub Releases | `.github/workflows/docker.yml` |
+| Vercel preview and production deployment from the exact tested package candidate | `.github/workflows/docker.yml` after `CI gate` |
 | GHCR branch/cache expiry without deleting releases or referrers | `.github/workflows/ghcr-retention.yml` |
+| Fast-forward-only `main` mirror for the historical upstream PR | `.github/workflows/mirror-upstream-pr-head.yml` |
 | Dependency and pinned-action updates | `.github/dependabot.yml` |
 
-Only `CI gate` is suitable as an always-present required check. The dedicated docs workflow is path-filtered; its `docs-required` aggregate is evidence for docs changes, not a repository-wide required check.
+`CI gate` is the required aggregate. Vercel's Git integration is disabled in
+`docs-site/vercel.json`; it must not create an independent build from a source
+push. The long candidate workflow is the sole deployment owner because the
+site consumes `api-reference.json` generated from the built WASM/declaration
+artifacts. Production deployment rechecks the remote `main` SHA immediately
+before promotion, so a completed older run cannot overwrite a newer main.
 
-The candidate workflow builds every Docker stage natively on amd64 and arm64 for pushes. Each final image links all six ST/MT outputs and passes the same runtime contract on its native host; bindgen-base regenerates, compiles, links, and runs its custom fixture on both hosts. Native toolchains are allowed to produce different bytes, so the tested amd64 outputs are the canonical npm inputs while both tested image digests are required for GHCR promotion. The workflow packs the amd64 outputs into one immutable tarball and gives the no-checkout npm job only that tarball plus its hashes and identity record. The exact tarball then runs as ST and MT in Chromium, Firefox, and WebKit; the broader starter-template integration suite remains Chromium-only. Pull requests and manual runs use the amd64 candidate matrix without publication. Push runs queue and are never canceled; superseded pull-request runs may be canceled.
+The workflow builds every Docker stage natively on amd64 and arm64 for
+`main` pushes and explicitly dispatched canaries. Pull requests validate the
+three stages on amd64 without publishing. Each final image passes the same
+runtime contract on its native host.
+Native toolchains may produce different bytes, so the tested amd64 ST/MT
+outputs are the canonical npm inputs while both tested image digests are
+required for GHCR promotion. The workflow packs those outputs plus the
+deterministic API-reference feed into one immutable tarball. The same tarball
+then drives installed-package, browser, starter-template, docs, publication,
+registry, and Vercel jobs. Pull-request runs cancel superseded attempts;
+publishing runs queue and are never canceled.
 
 ### Publication Channels
 
-| Event | npm version and dist-tag | GHCR |
-| --- | --- | --- |
-| Feature-branch push | `3.0.0-beta-<sha8>-<UTC commit date>` under `canary` | signed amd64+arm64 branch and full-SHA manifests |
-| `master` push | Same immutable beta-shaped version under `beta` | signed amd64+arm64 branch and full-SHA manifests |
-| Annotated `vX.Y.Z-prerelease` tag | Exact `X.Y.Z-prerelease` under its first prerelease identifier, such as `rc` | signed amd64+arm64 version manifests |
-| Annotated stable `vX.Y.Z` tag | Exact `X.Y.Z` under `latest` | signed amd64+arm64 version manifests |
+| Event | npm | GHCR | Vercel |
+| --- | --- | --- | --- |
+| Pull request targeting `main` | none | validation only | same-repository PR preview after `CI gate` |
+| Feature-branch push without a PR | no workflow | no workflow | no workflow |
+| Manual branch dispatch | `X.Y.Z-canary.<sha8>` under `canary` | signed `canary-<sha8>-<stage>` manifests | none |
+| Ordinary `main` push | none | signed `main`/full-SHA manifests | production from the exact candidate |
+| Merged `chore(release): ocjs vX.Y.Z-beta.N` | exact version under `beta` | signed version manifests | production from the exact candidate |
+| Merged `chore(release): ocjs vX.Y.Z` | exact version under `latest` | signed version manifests and moving stable aliases | production from the exact candidate |
 
-The branch date comes from the commit timestamp, not the workflow clock, so retries address the same immutable version. Use the exact install coordinate printed in the workflow summary; `canary` is intentionally a mutable “last completed feature build” pointer.
+Canary identities use only the planned stable core and the source SHA. They
+contain no date, are immutable across retries, and are not Git tags or GitHub
+Releases. `canary`, `beta`, and `latest` are mutable discovery tags; lock or
+deploy exact versions.
 
 ### npm Trusted Publishing
 
-Configure the npm package once under **Settings → Trusted publishing**:
+Configure the `cascadic` npm package once under **Settings → Trusted publishing**:
 
 - provider: GitHub Actions
 - organization/user: `taucad`
 - repository: `opencascade.js`
 - workflow filename: `docker.yml`
-- environment: leave empty because every branch push is a publisher
+- environment: leave empty because manual canaries and releases share the
+  repository workflow
 
-Do not add `NPM_TOKEN` or `NODE_AUTH_TOKEN`. The publish job uses Node 24, npm 11.5.1, `id-token: write`, and no source checkout. After the first successful canary, verify the package’s provenance on npm, enable the package setting that requires two-factor authentication and disallows tokens, and revoke obsolete automation tokens.
+Do not add `NPM_TOKEN` or `NODE_AUTH_TOKEN`. The publish job uses Node 24,
+npm 11.5.1, `id-token: write`, and no source checkout. The maintainer performs
+the one-time namespace bootstrap manually; after Trusted Publishing succeeds,
+routine local publication is forbidden. Verify npm provenance, enable the
+package setting that requires two-factor authentication and disallows tokens,
+and revoke obsolete automation tokens.
 
 There are two complementary provenance layers:
 
 - `dist/*.provenance.json` records the OCJS/OCCT/toolchain recipe embedded beside each WASM file.
 - npm/Sigstore provenance cryptographically ties the published tarball to `taucad/opencascade.js`, `.github/workflows/docker.yml`, and the full source commit.
 
-The registry gate requires both layers to agree, verifies tarball integrity and signatures, installs the exact published version, boots ST and MT, and verifies all three promoted GHCR signatures.
+The registry gate requires both layers to agree, verifies tarball integrity
+and signatures, installs the exact published version, boots ST and MT, and
+verifies all three promoted GHCR signatures. If the exact npm version already
+exists, the publish job compares the registry tarball with the candidate. It
+succeeds only for identical bytes and provenance; changed bytes under an
+existing version fail without moving tags or creating a release.
 
 ### Cutting a Release
 
-Ordinary branch work does not change the checked-in `3.0.0-beta.3`; CI applies branch versions only in its disposable package workspace and never commits them.
+Contributors add `.nx/version-plans/*.md` files to package-affecting pull
+requests. Pull requests and ordinary `main` builds do not change the checked
+version; an explicit manual dispatch applies a canary version only in its
+disposable candidate workspace.
 
-When the reviewed `master` commit is ready for an explicit prerelease or stable release:
+Publish a canary from a branch only when an external consumer needs it:
 
 ```bash
-# Use 3.0.0-rc.1 for an RC, or 3.0.0 for the stable release.
-npm version 3.0.0 --no-git-tag-version --ignore-scripts
-git add package.json package-lock.json CHANGELOG.md
-git commit -m "release: 3.0.0"
-git push origin master
-
-# After CI gate succeeds for that exact commit:
-git tag -a v3.0.0 -m "v3.0.0"
-git push origin v3.0.0
+gh workflow run docker.yml --repo taucad/opencascade.js --ref <branch>
 ```
 
-The annotated tag must exactly match `package.json`. The tag run rebuilds and tests the candidates, publishes that exact version, moves the appropriate npm dist-tag, creates signed multi-arch GHCR manifests, and verifies both registries. Never run `npm publish` locally, create a lightweight release tag, or retag an older branch package.
+The run summary reports the exact `npm install` command and immutable
+single-threaded, multi-threaded, and bindgen-base GHCR pull commands. It does
+not deploy Vercel.
+
+Use the project skill to inspect or prepare a release:
+
+```bash
+/release-ocjs status
+/release-ocjs prepare 3.0.0-beta.1
+/release-ocjs submit 3.0.0
+```
+
+The underlying non-publishing helper is also available directly:
+
+```bash
+npm run release:prepare -- 3.0.0-beta.1 --dry-run
+npm run release:prepare -- 3.0.0 --dry-run
+```
+
+A beta release validates the requested numeric `beta.N` against the stable
+version implied by the pending Version Plans. A stable release must exactly
+match the planned SemVer. Both generate their changelog entry and consume the
+included plans. The resulting PR may contain only `package.json`,
+`package-lock.json`, `CHANGELOG.md`, and deleted Version Plan files. Its single
+commit subject is exactly `chore(release): ocjs v<version>`.
+
+After that PR is merged, CI publishes and verifies the exact candidate, then
+creates/verifies the annotated `v<version>` tag and GitHub Release. No release
+PR comments are required: the CI summary, npm provenance, annotated tag, and
+GitHub Release are the durable record. Never create the tag before registry
+verification.
+
+### Local documentation from CI artifacts
+
+`docs-site/data/` is ignored and always derived from the package-owned
+`cascadic/api-reference.json`. A local source build can generate the feed with
+`npx nx run ocjs:api-reference` after producing the required ST artifacts.
+Alternatively, download a tested `candidate.tgz` from a workflow run and build
+entirely offline from it:
+
+```bash
+gh run download <run-id> --name npm-candidate-<run-id> --dir ./tmp-candidate
+OCJS_API_REFERENCE_SOURCE=../tmp-candidate/candidate.tgz \
+  pnpm --dir docs-site build
+```
+
+The sync is byte-idempotent for an unchanged feed and atomically replaces all
+derived shards, so removed symbols cannot survive as stale checked data.
 
 ## Customizing Your Build
 
@@ -188,8 +261,6 @@ nohup env ./build-wasm.sh full <yaml> > build.log 2>&1 &
 
 ./build-wasm.sh link <yaml>        # Link only (fastest, reuses .o files)
 ./build-wasm.sh validate <yaml>    # Validate config without building
-./build-wasm.sh cache-list         # List cached compilations
-./build-wasm.sh cache-gc [n]       # Clean old cache entries
 ./build-wasm.sh --help             # Full usage information
 ```
 
@@ -206,7 +277,7 @@ npm exec nx -- run ocjs:docker-e2e
 To validate existing images directly, pass the stage, matching YAML, platform, and source identity explicitly:
 
 ```bash
-OCJS_E2E_IMAGE=ghcr.io/taucad/opencascade.js:branch-my-branch \
+OCJS_E2E_IMAGE=ghcr.io/taucad/opencascade.js:canary-<sha8>-single-threaded \
 OCJS_E2E_STAGE=final-single \
 OCJS_E2E_BUILD_CONFIG=build-configs/full.yml \
 OCJS_DOCKER_PLATFORM=linux/amd64 \
@@ -214,7 +285,7 @@ OCJS_EXPECTED_SHA=<full-commit-sha> \
 SOURCE_DATE_EPOCH=<commit-epoch> \
 ./scripts/docker-e2e-validate.sh
 
-OCJS_E2E_IMAGE=ghcr.io/taucad/opencascade.js:multi-threaded-branch-my-branch \
+OCJS_E2E_IMAGE=ghcr.io/taucad/opencascade.js:canary-<sha8>-multi-threaded \
 OCJS_E2E_STAGE=final-multi \
 OCJS_E2E_BUILD_CONFIG=build-configs/full_multi.yml \
 OCJS_DOCKER_PLATFORM=linux/arm64 \
@@ -222,7 +293,7 @@ OCJS_EXPECTED_SHA=<full-commit-sha> \
 SOURCE_DATE_EPOCH=<commit-epoch> \
 ./scripts/docker-e2e-validate.sh
 
-OCJS_E2E_IMAGE=ghcr.io/taucad/opencascade.js:bindgen-base-branch-my-branch \
+OCJS_E2E_IMAGE=ghcr.io/taucad/opencascade.js:canary-<sha8>-bindgen-base \
 OCJS_E2E_STAGE=bindgen-base \
 OCJS_DOCKER_PLATFORM=linux/amd64 \
 OCJS_EXPECTED_SHA=<full-commit-sha> \
@@ -231,6 +302,12 @@ SOURCE_DATE_EPOCH=<commit-epoch> \
 ```
 
 The single `LINK_BUDGET_S` environment variable controls the full consumer-link ceiling. Timing remains in logs; distributable provenance and build-manifest sidecars contain reproducible build facts only.
+
+The weekly/manual `reproducibility.yml` workflow builds two isolated
+Linux/amd64 `final-single` images in parallel with cold caches, runs the
+runtime smoke against both, and compares their exact artifact ledgers. Stable
+publication calls the same workflow for the release commit and cannot publish
+until it passes. Each cold job uses GitHub's native four-hour job timeout.
 
 ## Additional Documentation
 

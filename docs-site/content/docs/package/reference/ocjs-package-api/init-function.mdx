@@ -1,22 +1,22 @@
 ---
 title: init() function
-description: Default export of @taucad/opencascade.js — signature, options, and singleton pattern.
+description: Default export of cascadic — signature, options, and singleton pattern.
 ---
 
-`init` is the default export of `@taucad/opencascade.js`. It instantiates the
+`init` is the default export of `cascadic`. It instantiates the
 WASM module and returns a Promise resolving to the bound OCCT runtime.
 
 ```typescript
-import init from '@taucad/opencascade.js';
-import wasmUrl from '@taucad/opencascade.js/wasm?url';
+import init from 'cascadic';
+import wasmUrl from 'cascadic/wasm?url';
 
 const oc = await init({ locateFile: () => wasmUrl });
 ```
 
-The `@taucad/opencascade.js/wasm` subpath export resolves to the shipped
+The `cascadic/wasm` subpath export resolves to the shipped
 `opencascade_full.wasm`. The multi-threaded variant uses the same `init`
-signature from `@taucad/opencascade.js/multi` with wasm at
-`@taucad/opencascade.js/multi/wasm`. See [Bundler & locateFile](../../guides/bundler-locatefile)
+signature from `cascadic/multi` with wasm at
+`cascadic/multi/wasm`. See [Bundler & locateFile](../../guides/bundler-locatefile)
 for Vite, Next.js, Bun, Node, and Deno-specific recipes (including the MT variant).
 
 ## Options
@@ -47,7 +47,7 @@ The full surface is documented under the [API Reference](/docs/package/api).
 
 ## Multi-threaded subpath
 
-Import `@taucad/opencascade.js/multi` with wasm at `@taucad/opencascade.js/multi/wasm`. The `init` signature is identical; Emscripten pre-spawns pthread workers during instantiation (`PTHREAD_POOL_SIZE=navigator.hardwareConcurrency` is baked into the binary). No extra JS worker wiring is required beyond `locateFile`.
+Import `cascadic/multi` with wasm at `cascadic/multi/wasm`. The `init` signature is identical; Emscripten pre-spawns pthread workers during instantiation (`PTHREAD_POOL_SIZE=navigator.hardwareConcurrency` is baked into the binary). No extra JS worker wiring is required beyond `locateFile`.
 
 After `await init(...)`, run this **once** before any parallel-aware OCCT call:
 
@@ -58,4 +58,4 @@ const pool = oc.OSD_ThreadPool.DefaultPool(-1);
 pool.SetNbDefaultThreadsToLaunch(pool.NbThreads());
 ```
 
-Skipping the pool sizing leaves OCCT's lazy default pool smaller than the pre-spawned worker count and caps speedup on mesh/boolean workloads. See [Multi-threaded build](../../guides/multi-threading#global-activation--call-once-at-startup) for the full activation walkthrough and [BENCHMARKS.md](https://github.com/taucad/opencascade.js/blob/master/BENCHMARKS.md) for ST vs MT numbers.
+Skipping the pool sizing leaves OCCT's lazy default pool smaller than the pre-spawned worker count and caps speedup on mesh/boolean workloads. See [Multi-threaded build](../../guides/multi-threading#global-activation--call-once-at-startup) for the full activation walkthrough and [BENCHMARKS.md](https://github.com/taucad/opencascade.js/blob/main/BENCHMARKS.md) for ST vs MT numbers.

@@ -252,6 +252,39 @@ def test_validate_symbols_passes_iff_truly_missing_empty(symmetry_build) -> None
   assert failing["builtin"] == passing["builtin"]
 
 
+def test_validate_symbols_accepts_yaml_custom_compiled_object(
+  symmetry_build,
+  tmp_path,
+) -> None:
+  """Post-link validation must include the same YAML-owned custom object
+  tree as link-time verification.
+  """
+  build_dir, _requested = symmetry_build
+  custom_compiled_root = os.path.join(
+    str(tmp_path),
+    "link-work",
+    "fixture-hash",
+    "compiled-bindings",
+  )
+  os.makedirs(custom_compiled_root, exist_ok=True)
+  with open(os.path.join(custom_compiled_root, "Test.cpp.o"), "wb"):
+    pass
+  vb = _load_validate_build_module()
+  result = vb.validate_symbols(
+    {
+      "mainBuild": {
+        "name": "custom.js",
+        "bindings": [{"symbol": "Test"}],
+      },
+    },
+    build_dir,
+    custom_compiled_root=custom_compiled_root,
+  )
+
+  assert result["missing"] == []
+  assert result["pass"] is True
+
+
 def test_validate_symbols_emits_v3_manifest_shape(symmetry_build) -> None:
   """``validate_symbols`` returns the manifest sub-dict ``main()`` then
   stamps with ``schema=build-manifest-v3``. The bucket fields are part

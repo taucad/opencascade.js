@@ -1,12 +1,12 @@
 # node-step-export
 
-Headless Node 22+ ESM CLI that builds a primitive shape with `@taucad/opencascade.js@beta` and writes it to a STEP AP214 file. Demonstrates the canonical Node-side loader pattern (`import.meta.resolve` for `locateFile`), AP214 schema selection, and a fail-loud `IFSelect_ReturnStatus` check.
+Headless Node 22+ ESM CLI that builds a primitive shape with `cascadic@canary` and writes it to a STEP AP214 file. Demonstrates the canonical Node-side loader pattern (`import.meta.resolve` for `locateFile`), AP214 schema selection, and a fail-loud `IFSelect_ReturnStatus` check.
 
 ## Stack
 
 - Node 22+ (ESM, `import.meta.resolve`)
 - `tsx` for dev/CI execution; no bundler
-- `@taucad/opencascade.js@beta` initialised once via a memoized `Promise` in `src/ocjs-init.ts`
+- `cascadic@canary` initialised once via a memoized `Promise` in `src/ocjs-init.ts`
 
 ## Files
 

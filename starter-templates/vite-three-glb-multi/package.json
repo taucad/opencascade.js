@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "version": "0.0.0",
-  "description": "v3 starter: @taucad/opencascade.js/multi with COOP/COEP, parallel mesh/boolean, GLB export, three.js viewer.",
+  "description": "v3 starter: cascadic/multi with COOP/COEP, parallel mesh/boolean, GLB export, three.js viewer.",
   "scripts": {
     "dev": "vite --port 3003",
     "build": "tsc --noEmit && vite build",
@@ -12,7 +12,7 @@
     "smoke": "node ../_shared/smoke-render.mjs --url http://localhost:4173 --canvas '#ocjs-canvas' --screenshot smoke.png"
   },
   "dependencies": {
-    "@taucad/opencascade.js": "beta",
+    "cascadic": "file:../..",
     "three": "^0.184.0"
   },
   "devDependencies": {
