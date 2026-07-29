@@ -26,7 +26,7 @@ beforeAll(() => {
     cwd: workDir,
     stdio: 'inherit',
   });
-  packageDir = path.join(workDir, 'node_modules/ocjs');
+  packageDir = path.join(workDir, 'node_modules/cascadic');
 });
 
 afterAll(() => fs.rmSync(workDir, { recursive: true, force: true }));
@@ -38,6 +38,7 @@ describe('installed npm candidate', () => {
 
   it('resolves every public export and boots both runtimes', async () => {
     const manifest = JSON.parse(fs.readFileSync(path.join(packageDir, 'package.json'), 'utf8'));
+    expect(manifest.name).toBe('cascadic');
     expect(Object.keys(manifest.exports).sort()).toEqual([
       '.', './api-reference.json', './multi', './multi/wasm', './package.json', './wasm',
     ]);
@@ -46,7 +47,7 @@ describe('installed npm candidate', () => {
     );
     expect(reference).toMatchObject({
       schema: 'ocjs-api-reference-v1',
-      package: { name: 'ocjs', version: manifest.version },
+      package: { name: 'cascadic', version: manifest.version },
     });
     expect(reference.source.commit).toMatch(/^[0-9a-f]{40}$/);
 

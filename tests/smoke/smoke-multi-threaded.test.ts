@@ -2,16 +2,16 @@ import { describe, it, expect } from 'vitest';
 import { fileURLToPath } from 'node:url';
 import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import initMulti from 'ocjs/multi';
+import initMulti from 'cascadic/multi';
 import { initOCMulti, multiWasmExists } from './helpers.js';
 
 const sabAvailable = typeof SharedArrayBuffer !== 'undefined';
 
 describe('multi-threaded package subpath', () => {
   it.skipIf(!multiWasmExists)(
-    'should boot via ocjs/multi and expose a thread pool with more than one worker',
+    'should boot via cascadic/multi and expose a thread pool with more than one worker',
     async () => {
-      const wasmUrl = import.meta.resolve('ocjs/multi/wasm');
+      const wasmUrl = import.meta.resolve('cascadic/multi/wasm');
       const wasmPath = fileURLToPath(wasmUrl);
       if (!existsSync(wasmPath)) return;
 

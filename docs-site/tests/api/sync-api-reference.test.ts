@@ -38,7 +38,7 @@ const createFeed = async () => {
   }));
   return {
     schema: 'ocjs-api-reference-v1',
-    package: { name: 'ocjs', version: '3.0.0-canary.d5736f09' },
+    package: { name: 'cascadic', version: '3.0.0-canary.d5736f09' },
     source: {
       repository: 'https://github.com/taucad/opencascade.js',
       commit: SHA,
@@ -92,6 +92,8 @@ describe('sync-api-reference script', () => {
     const index = JSON.parse(await readFile(join(dataDir, 'index.json'), 'utf8'));
     const search = JSON.parse(await readFile(join(dataDir, 'api-search-index.json'), 'utf8'));
     expect(index.source.commit).toBe(SHA);
+    expect(index.project).toBe('ocjs');
+    expect(index.package).toEqual({ name: 'cascadic', version: '3.0.0-canary.d5736f09' });
     expect(index.inputs.bindings.sha256).toBe(HASH);
     expect(search.find(({ title }: { title: string }) => title === 'Fix_Point.scale')?.url)
       .toContain('#Fix_Point-scale0');
