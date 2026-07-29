@@ -1,12 +1,12 @@
-import init from 'cascadic/multi';
-import wasmUrl from 'cascadic/multi/wasm?url';
+import init from 'libcascade/multi';
+import wasmUrl from 'libcascade/multi/wasm?url';
 
 let cached: ReturnType<typeof init> | null = null;
 
 /**
  * Canonical exactly-once OCJS multi-threaded init for browser bundles.
  *
- * Loads `cascadic/multi` (pthread-enabled wasm) and activates
+ * Loads `libcascade/multi` (pthread-enabled wasm) and activates
  * OCCT-wide parallel defaults once — see the Package multi-threading guide.
  */
 export function getOcjs(): ReturnType<typeof init> {

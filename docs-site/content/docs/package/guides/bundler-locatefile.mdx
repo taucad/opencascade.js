@@ -6,7 +6,7 @@ description: How to wire the OCCT wasm asset in Vite, Next.js, Bun, Deno, and pl
 `init()` accepts a `locateFile` callback that returns the URL where the runtime
 should fetch the wasm binary. The right answer depends on your bundler.
 
-The package exposes the binary through the `cascadic/wasm`
+The package exposes the binary through the `libcascade/wasm`
 subpath export. Every snippet on this page resolves the wasm through that
 specifier; resolving it any other way (deep `node_modules` paths, direct
 `dist/*` imports) bypasses the package's `exports` map and breaks under
@@ -18,19 +18,19 @@ Vite's `?url` suffix turns any asset import into a content-hashed URL string.
 Use it for both dev and production:
 
 ```typescript
-import init from 'cascadic';
-import wasmUrl from 'cascadic/wasm?url';
+import init from 'libcascade';
+import wasmUrl from 'libcascade/wasm?url';
 
 const oc = await init({ locateFile: () => wasmUrl });
 ```
 
-Add `cascadic` to `optimizeDeps.exclude` in `vite.config.ts` so
+Add `libcascade` to `optimizeDeps.exclude` in `vite.config.ts` so
 Vite skips its dep-optimizer for the binary module:
 
 ```typescript title="vite.config.ts"
 import { defineConfig } from 'vite';
 export default defineConfig({
-  optimizeDeps: { exclude: ['cascadic'] },
+  optimizeDeps: { exclude: ['libcascade'] },
 });
 ```
 
@@ -44,7 +44,7 @@ that resolves the subpath:
 import { copyFile, mkdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 
-const src = fileURLToPath(import.meta.resolve('cascadic/wasm'));
+const src = fileURLToPath(import.meta.resolve('libcascade/wasm'));
 await mkdir('public', { recursive: true });
 await copyFile(src, 'public/opencascade_full.wasm');
 ```
@@ -61,19 +61,19 @@ Then reference the public path:
 
 ```typescript title="lib/ocjs-init.ts"
 'use client';
-import init from 'cascadic';
+import init from 'libcascade';
 
 let ocPromise: ReturnType<typeof init> | undefined;
 export const getOc = () => (ocPromise ??= init({ locateFile: () => '/opencascade_full.wasm' }));
 ```
 
-Mark `cascadic` as a server external package if you only call it
+Mark `libcascade` as a server external package if you only call it
 client-side:
 
 ```typescript title="next.config.ts"
 import type { NextConfig } from 'next';
 const config: NextConfig = {
-  serverExternalPackages: ['cascadic'],
+  serverExternalPackages: ['libcascade'],
 };
 export default config;
 ```
@@ -90,10 +90,10 @@ Use `import.meta.resolve` to find the wasm sibling to the loader:
 ```typescript
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import init from 'cascadic';
+import init from 'libcascade';
 
 const WASM_DIR = dirname(
-  fileURLToPath(import.meta.resolve('cascadic/wasm')),
+  fileURLToPath(import.meta.resolve('libcascade/wasm')),
 );
 
 const oc = await init({ locateFile: (file: string) => join(WASM_DIR, file) });
@@ -110,8 +110,8 @@ Webpack 5 handles wasm via `asset/resource` (preferred) or the legacy
 `file-loader`. Wire `locateFile` to the emitted URL:
 
 ```typescript title="src/ocjs-init.ts"
-import init from 'cascadic';
-import wasmUrl from 'cascadic/wasm';
+import init from 'libcascade';
+import wasmUrl from 'libcascade/wasm';
 
 const oc = await init({
   locateFile: (file) => (file.endsWith('.wasm') ? wasmUrl : file),
@@ -142,7 +142,7 @@ module.exports = {
 };
 ```
 
-Mark `cascadic` as an external or exclude it from aggressive
+Mark `libcascade` as an external or exclude it from aggressive
 bundle inlining — the 12+ MB wasm must stay a separate fetch.
 
 ## Legacy bundlers
@@ -161,7 +161,7 @@ V3 docs. Use Vite, current Next.js, Bun, Node, Deno, or Webpack 5 instead.
 
 ## Multi-threaded variant
 
-The pthread-enabled build ships under `cascadic/multi` with wasm at `cascadic/multi/wasm`. The `init` contract is identical — only the import path and wasm target change.
+The pthread-enabled build ships under `libcascade/multi` with wasm at `libcascade/multi/wasm`. The `init` contract is identical — only the import path and wasm target change.
 
 **Browser prerequisite:** every page that loads the threaded wasm must send cross-origin isolation headers:
 
@@ -184,8 +184,8 @@ pool.SetNbDefaultThreadsToLaunch(pool.NbThreads());
 ### Vite 6+
 
 ```typescript
-import init from 'cascadic/multi';
-import wasmUrl from 'cascadic/multi/wasm?url';
+import init from 'libcascade/multi';
+import wasmUrl from 'libcascade/multi/wasm?url';
 
 const oc = await init({ locateFile: () => wasmUrl });
 
@@ -203,14 +203,14 @@ Copy the MT wasm into `public/` at install time:
 import { copyFile, mkdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 
-const src = fileURLToPath(import.meta.resolve('cascadic/multi/wasm'));
+const src = fileURLToPath(import.meta.resolve('libcascade/multi/wasm'));
 await mkdir('public', { recursive: true });
 await copyFile(src, 'public/opencascade_full_multi.wasm');
 ```
 
 ```typescript title="lib/ocjs-init-multi.ts"
 'use client';
-import init from 'cascadic/multi';
+import init from 'libcascade/multi';
 
 let ocPromise: ReturnType<typeof init> | undefined;
 export const getOcMulti = () =>
@@ -228,10 +228,10 @@ export const getOcMulti = () =>
 ```typescript
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import init from 'cascadic/multi';
+import init from 'libcascade/multi';
 
 const WASM_DIR = dirname(
-  fileURLToPath(import.meta.resolve('cascadic/multi/wasm')),
+  fileURLToPath(import.meta.resolve('libcascade/multi/wasm')),
 );
 
 const oc = await init({ locateFile: (file: string) => join(WASM_DIR, file) });

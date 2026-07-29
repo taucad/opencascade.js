@@ -1,5 +1,5 @@
 import * as path from 'node:path';
-import init from 'cascadic';
+import init from 'libcascade';
 
 let cached: ReturnType<typeof init> | null = null;
 
@@ -12,7 +12,7 @@ let cached: ReturnType<typeof init> | null = null;
  */
 export function getOcjs(): ReturnType<typeof init> {
   if (cached === null) {
-    const wasmUrl = new URL(import.meta.resolve('cascadic/wasm'));
+    const wasmUrl = new URL(import.meta.resolve('libcascade/wasm'));
     const buildDir = path.dirname(wasmUrl.pathname);
     cached = init({
       locateFile: (filename: string) => path.join(buildDir, filename),

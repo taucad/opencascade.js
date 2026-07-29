@@ -46,7 +46,7 @@ describe('npm package identity', () => {
     const pyproject = fs.readFileSync(path.join(ROOT, 'pyproject.toml'), 'utf8');
     expect(pyproject).toContain('name = "ocjs-bindgen"');
     expect(fs.existsSync(path.join(ROOT, 'src', 'ocjs_bindgen'))).toBe(true);
-    expect(fs.existsSync(path.join(ROOT, 'src', 'libcascade_bindgen'))).toBe(false);
+    expect(fs.existsSync(path.join(ROOT, 'src', `${String(manifest.name)}_bindgen`))).toBe(false);
   });
 
   it('should keep the previous scoped package only in historical changelog evidence', () => {

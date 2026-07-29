@@ -1,4 +1,4 @@
-import type { OpenCascadeInstance, TopoDS_Shape } from 'cascadic';
+import type { OpenCascadeInstance, TopoDS_Shape } from 'libcascade';
 
 export type ShapeKind = 'box' | 'sphere' | 'cylinder';
 

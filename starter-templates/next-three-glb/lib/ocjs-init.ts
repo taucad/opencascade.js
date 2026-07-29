@@ -1,6 +1,6 @@
 'use client';
 
-import init from 'cascadic';
+import init from 'libcascade';
 
 let cached: ReturnType<typeof init> | null = null;
 

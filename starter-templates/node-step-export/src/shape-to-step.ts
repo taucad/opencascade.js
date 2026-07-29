@@ -1,5 +1,5 @@
 import * as fs from 'node:fs/promises';
-import type { OpenCascadeInstance, TopoDS_Shape } from 'cascadic';
+import type { OpenCascadeInstance, TopoDS_Shape } from 'libcascade';
 
 /**
  * Export `shape` as ISO 10303-21 (STEP) bytes using AP214 (Configuration

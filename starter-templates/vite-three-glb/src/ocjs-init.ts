@@ -1,5 +1,5 @@
-import init from 'cascadic';
-import wasmUrl from 'cascadic/wasm?url';
+import init from 'libcascade';
+import wasmUrl from 'libcascade/wasm?url';
 
 let cached: ReturnType<typeof init> | null = null;
 

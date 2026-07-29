@@ -36,7 +36,7 @@ routine release and is deliberately outside this skill.
    gh pr list --base main --state open --search 'chore(release): ocjs v'
    gh release list --limit 20
    gh run list --workflow docker.yml --limit 10
-   npm view ocjs dist-tags versions --json
+   npm view libcascade dist-tags versions --json
    npx --yes vercel@56.5.0 project inspect opencascade.js --scope taucad
    npx --yes vercel@56.5.0 list --scope taucad --cwd .
    ```

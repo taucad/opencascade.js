@@ -1,6 +1,6 @@
 {
   "title": "Package",
-  "description": "Consume cascadic from npm — render, export, integrate.",
+  "description": "Consume libcascade from npm — render, export, integrate.",
   "icon": "lib:npm",
   "root": true,
   "pages": [

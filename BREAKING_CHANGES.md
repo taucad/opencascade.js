@@ -1,4 +1,4 @@
-# Breaking Changes — OpenCascade.js v3 (`cascadic@3.0.0`)
+# Breaking Changes — OpenCascade.js v3 (`libcascade@3.0.0`)
 
 This guide describes the consumer-visible breaking changes in OpenCascade.js
 v3.
@@ -49,7 +49,7 @@ const oc = await initOpenCascade({ mainJS: opencascade });
 **After**
 
 ```ts
-import initOpenCascade from 'cascadic';
+import initOpenCascade from 'libcascade';
 const oc = await initOpenCascade({ locateFile });
 ```
 
@@ -59,19 +59,19 @@ const oc = await initOpenCascade({ locateFile });
 
 The package is `"type": "module"`. CommonJS entry points are gone. The Emscripten loader still needs a `locateFile` callback so it can resolve `opencascade_full.wasm` from your bundler's output directory or your Node `node_modules` layout.
 
-The wasm binary is exposed via subpath exports — `cascadic/wasm` for the single-threaded default and `cascadic/multi/wasm` for the pthread-enabled variant — which are the only supported ways to reach the binaries from consumer code. The same identifiers work under Vite's `?url` suffix, Node's `import.meta.resolve`, Bun, and Deno.
+The wasm binary is exposed via subpath exports — `libcascade/wasm` for the single-threaded default and `libcascade/multi/wasm` for the pthread-enabled variant — which are the only supported ways to reach the binaries from consumer code. The same identifiers work under Vite's `?url` suffix, Node's `import.meta.resolve`, Bun, and Deno.
 
-For the multi-threaded variant, import `cascadic/multi` instead of the package root and resolve wasm through `cascadic/multi/wasm`. Browser deployments require cross-origin isolation headers; see the [multi-threaded build guide](https://ocjs.org/docs/package/guides/multi-threading) on ocjs.org.
+For the multi-threaded variant, import `libcascade/multi` instead of the package root and resolve wasm through `libcascade/multi/wasm`. Browser deployments require cross-origin isolation headers; see the [multi-threaded build guide](https://ocjs.org/docs/package/guides/multi-threading) on ocjs.org.
 
 For Node ESM consumers:
 
 ```ts
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import type { OpenCascadeInstance } from 'cascadic';
-import init from 'cascadic';
+import type { OpenCascadeInstance } from 'libcascade';
+import init from 'libcascade';
 
-const WASM_DIR = dirname(fileURLToPath(import.meta.resolve('cascadic/wasm')));
+const WASM_DIR = dirname(fileURLToPath(import.meta.resolve('libcascade/wasm')));
 
 let _oc: OpenCascadeInstance | undefined;
 export async function initOC(): Promise<OpenCascadeInstance> {
@@ -87,8 +87,8 @@ export async function initOC(): Promise<OpenCascadeInstance> {
 For a Vite / browser app, resolve the WASM URL through your bundler:
 
 ```ts
-import init from 'cascadic';
-import wasmUrl from 'cascadic/wasm?url';
+import init from 'libcascade';
+import wasmUrl from 'libcascade/wasm?url';
 
 const oc = await init({ locateFile: () => wasmUrl });
 ```
@@ -96,13 +96,13 @@ const oc = await init({ locateFile: () => wasmUrl });
 For the multi-threaded build (COOP/COEP-isolated deployments only):
 
 ```ts
-import init from 'cascadic/multi';
-import wasmUrl from 'cascadic/multi/wasm?url';
+import init from 'libcascade/multi';
+import wasmUrl from 'libcascade/multi/wasm?url';
 
 const oc = await init({ locateFile: () => wasmUrl });
 ```
 
-**Action**: pass `locateFile` to every `init()` call and remove any CommonJS `require()` of the package. Reach for wasm through `cascadic/wasm` (default) or `cascadic/multi/wasm` (threaded) — `dist/*` deep paths are not part of the package's public surface.
+**Action**: pass `locateFile` to every `init()` call and remove any CommonJS `require()` of the package. Reach for wasm through `libcascade/wasm` (default) or `libcascade/multi/wasm` (threaded) — `dist/*` deep paths are not part of the package's public surface.
 
 ---
 
@@ -284,7 +284,7 @@ The shipped `full.yml` build is linked with the helpers needed to decode excepti
 A caught exception is now a `WebAssembly.Exception`, decodable via the runtime helpers. The pattern below is the same one used by [`tests/smoke/smoke-exceptions.test.ts`](tests/smoke/smoke-exceptions.test.ts):
 
 ```ts
-import init from 'cascadic';
+import init from 'libcascade';
 const oc = await init({ locateFile });
 
 try {

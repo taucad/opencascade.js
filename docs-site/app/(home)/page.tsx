@@ -9,7 +9,7 @@ import { GITHUB_REPO_URL } from '../../lib/site';
 const personaCards = [
   {
     title: 'npm consumer',
-    description: 'Install `cascadic@canary`, render a box, export STEP. 4 minutes.',
+    description: 'Install `libcascade@canary`, render a box, export STEP. 4 minutes.',
     href: '/docs/package/getting-started/quick-start-npm',
     cta: 'Start with npm',
     icon: 'lib:npm',
@@ -146,7 +146,7 @@ const HomePage = (): ReactNode => {
 
         <p className='mt-3 text-sm text-fd-muted-foreground'>
           <Link href='/docs/package/getting-started/faq' className='hover:text-fd-primary hover:underline'>
-            FAQ — fork status, maintenance, contributing →
+            FAQ — project lineage, maintenance, contributing →
           </Link>
         </p>
       </section>

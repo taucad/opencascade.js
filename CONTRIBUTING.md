@@ -45,7 +45,7 @@ See [MAINTAINER.md](MAINTAINER.md) for native and Docker build prerequisites.
    internal preview from that candidate.
 
 Do not edit `docs-site/data/`. It is ignored, atomically regenerated from
-`cascadic/api-reference.json`, and removed when symbols disappear. When changing a
+`libcascade/api-reference.json`, and removed when symbols disappear. When changing a
 starter dependency, regenerate and commit that template's lockfile so copied
 templates remain reproducible.
 

@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { buildClassAnchorMap } from './lib/api-anchors.mjs';
 
 const DOCS_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const NPM_PACKAGE_NAME = 'cascadic';
+const NPM_PACKAGE_NAME = 'libcascade';
 const PROJECT_NAME = 'ocjs';
 const FEED_SCHEMA = 'ocjs-api-reference-v1';
 const SHA = /^[0-9a-f]{40}$/;

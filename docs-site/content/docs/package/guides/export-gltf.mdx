@@ -10,7 +10,7 @@ Filament, and most realtime renderers consume natively. OCCT writes it via the
 ## Minimal single-shape GLB
 
 ```typescript
-import type { TopoDS_Shape } from 'cascadic';
+import type { TopoDS_Shape } from 'libcascade';
 import { getOc } from './ocjs-init';
 
 export const shapeToGlb = async (shape: TopoDS_Shape): Promise<Uint8Array> => {

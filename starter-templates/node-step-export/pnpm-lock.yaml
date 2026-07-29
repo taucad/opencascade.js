@@ -8,7 +8,7 @@ importers:
 
   .:
     dependencies:
-      cascadic:
+      libcascade:
         specifier: file:../..
         version: file:../..
     devDependencies:
@@ -183,10 +183,6 @@ packages:
   '@types/node@25.9.1':
     resolution: {integrity: sha512-xfrlY7UD5rMJk3ZVJP8BNzS28J36YJg+xp+LPXV1TdWxr8uMH5A860QNxYDGQe/ylDSgjxE52Q9VnO7p75tJxg==}
 
-  cascadic@file:../..:
-    resolution: {directory: ../.., type: directory}
-    engines: {node: '>=22'}
-
   esbuild@0.28.0:
     resolution: {integrity: sha512-sNR9MHpXSUV/XB4zmsFKN+QgVG82Cc7+/aaxJ8Adi8hyOac+EXptIp45QBPaVyX3N70664wRbTcLTOemCAnyqw==}
     engines: {node: '>=18'}
@@ -196,6 +192,10 @@ packages:
     resolution: {integrity: sha512-5xoDfX+fL7faATnagmWPpbFtwh/R77WmMMqqHGS65C3vvB0YHrgF+B1YmZ3441tMj5n63k0212XNoJwzlhffQw==}
     engines: {node: ^8.16.0 || ^10.6.0 || >=11.0.0}
     os: [darwin]
+
+  libcascade@file:../..:
+    resolution: {directory: ../.., type: directory}
+    engines: {node: '>=22'}
 
   tsx@4.22.3:
     resolution: {integrity: sha512-mdoNxBC/cSQObGGVQ5Bpn5i+yv7j68gk3Nfm3wFjcJg3Z0Mix9jzAFfP12prmm5eVGmDKtp0yyArrs0Q+8gZHg==}
@@ -294,8 +294,6 @@ snapshots:
     dependencies:
       undici-types: 7.24.6
 
-  cascadic@file:../..: {}
-
   esbuild@0.28.0:
     optionalDependencies:
       '@esbuild/aix-ppc64': 0.28.0
@@ -327,6 +325,8 @@ snapshots:
 
   fsevents@2.3.3:
     optional: true
+
+  libcascade@file:../..: {}
 
   tsx@4.22.3:
     dependencies:
