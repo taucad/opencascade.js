@@ -10,7 +10,8 @@ import { fileURLToPath } from 'node:url';
 import { buildClassAnchorMap } from './lib/api-anchors.mjs';
 
 const DOCS_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const PACKAGE_NAME = 'ocjs';
+const NPM_PACKAGE_NAME = 'cascadic';
+const PROJECT_NAME = 'ocjs';
 const FEED_SCHEMA = 'ocjs-api-reference-v1';
 const SHA = /^[0-9a-f]{40}$/;
 const HASH = /^[0-9a-f]{64}$/;
@@ -106,7 +107,10 @@ const quickLinks = (modules) => [
 
 const validateFeed = (feed, packageJson) => {
   assert(feed.schema === FEED_SCHEMA, `unsupported API-reference schema: ${feed.schema}`);
-  assert(feed.package?.name === PACKAGE_NAME, `API-reference package must be ${PACKAGE_NAME}`);
+  assert(
+    feed.package?.name === NPM_PACKAGE_NAME,
+    `API-reference package must be ${NPM_PACKAGE_NAME}`,
+  );
   assert(SEMVER.test(feed.package?.version ?? ''), `invalid API-reference version: ${feed.package?.version}`);
   assert(SHA.test(feed.source?.commit ?? ''), `invalid API-reference source SHA: ${feed.source?.commit}`);
   assert(Array.isArray(feed.modules) && feed.modules.length > 0, 'API-reference has no modules');
@@ -127,7 +131,7 @@ const validateFeed = (feed, packageJson) => {
 const resolveSource = async (from) => {
   if (!from) {
     const requireFromDocs = createRequire(path.join(DOCS_ROOT, 'package.json'));
-    return { feedPath: requireFromDocs.resolve('ocjs/api-reference.json') };
+    return { feedPath: requireFromDocs.resolve(`${NPM_PACKAGE_NAME}/api-reference.json`) };
   }
 
   const source = path.resolve(process.cwd(), from);
@@ -211,7 +215,8 @@ const writeSiteData = async (feed, output) => {
 
   const index = {
     schema: 2,
-    project: PACKAGE_NAME,
+    project: PROJECT_NAME,
+    package: feed.package,
     generatedAt: feed.source.generatedAt,
     source: feed.source,
     inputs: feed.inputs,

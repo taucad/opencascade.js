@@ -28,27 +28,24 @@
 | **Run a reproducible build** (CI, Docker, custom YAML)     | [Quickstart (Docker)](#quickstart-docker)                                                 |
 | **See what changed in v3** (OCCT V8, ESM-only, exceptions) | [What's New in v3](#whats-new-in-v3) · [BREAKING_CHANGES.md](BREAKING_CHANGES.md)         |
 | **Customize the binding set** (trim YAML, add wrappers)    | [docs/reference/yaml-schema.md](docs/reference/yaml-schema.md)                            |
-| **Build OCCT WASM from source** (fork maintainers)         | [MAINTAINER.md](MAINTAINER.md)                                                            |
+| **Build OCCT WASM from source** (maintainers/contributors) | [MAINTAINER.md](MAINTAINER.md)                                                            |
 | **Contribute or report an issue**                          | [Contributing](#contributing) · [Issues](https://github.com/taucad/opencascade.js/issues) |
 
 ## Quickstart (npm)
 
-`ocjs` is the Tau-maintained fork and npm distribution of OpenCascade.js. Its source remains in [`taucad/opencascade.js`](https://github.com/taucad/opencascade.js);
-it is not an official Open CASCADE Technology distribution.
-
-> Migrating from v2 or `@taucad/opencascade.js`? See
-> **[BREAKING_CHANGES.md](BREAKING_CHANGES.md)** for the package rename,
-> ESM-only loading, exception decode pattern, and OCCT V8 API changes.
+OpenCascade.js is published on npm as `cascadic`. Its source remains in
+[`taucad/opencascade.js`](https://github.com/taucad/opencascade.js); it is not
+an official Open CASCADE Technology distribution.
 
 ```bash
-pnpm add ocjs@canary
-# or: npm install ocjs@canary
+pnpm add cascadic@canary
+# or: npm install cascadic@canary
 ```
 
-The package is ESM-only with a default-export `init` function. Pass `locateFile` so the Emscripten loader can resolve the wasm binary from your bundler's output (browser) or `node_modules` layout (Node). Both runtimes reach the binary through the `ocjs/wasm` subpath export — no `dist/...` deep imports required.
+The package is ESM-only with a default-export `init` function. Pass `locateFile` so the Emscripten loader can resolve the wasm binary from your bundler's output (browser) or `node_modules` layout (Node). Both runtimes reach the binary through the `cascadic/wasm` subpath export — no `dist/...` deep imports required.
 
 Build-time tools can consume the deterministic API-reference feed through
-`ocjs/api-reference.json`. It includes the parsed class/member hierarchy, the
+`cascadic/api-reference.json`. It includes the parsed class/member hierarchy, the
 full source commit, build provenance, and exact input hashes; site-specific
 routes and search indexes remain consumer-derived.
 
@@ -56,9 +53,9 @@ routes and search indexes remain consumer-derived.
 // Node
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import init from 'ocjs';
+import init from 'cascadic';
 
-const WASM_DIR = dirname(fileURLToPath(import.meta.resolve('ocjs/wasm')));
+const WASM_DIR = dirname(fileURLToPath(import.meta.resolve('cascadic/wasm')));
 
 const oc = await init({
   locateFile: (filename: string) => join(WASM_DIR, filename),
@@ -70,8 +67,8 @@ const shape = box.Shape();
 
 ```ts
 // Vite / browser
-import init from 'ocjs';
-import wasmUrl from 'ocjs/wasm?url';
+import init from 'cascadic';
+import wasmUrl from 'cascadic/wasm?url';
 
 const oc = await init({ locateFile: () => wasmUrl });
 ```
@@ -86,9 +83,9 @@ For batch meshing, boolean grids, and STEP→glTF pipelines that benefit from OC
 // Node
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import init from 'ocjs/multi';
+import init from 'cascadic/multi';
 
-const WASM_DIR = dirname(fileURLToPath(import.meta.resolve('ocjs/multi/wasm')));
+const WASM_DIR = dirname(fileURLToPath(import.meta.resolve('cascadic/multi/wasm')));
 
 const oc = await init({
   locateFile: (filename: string) => join(WASM_DIR, filename),
@@ -103,8 +100,8 @@ pool.SetNbDefaultThreadsToLaunch(pool.NbThreads()); // let each call use all wor
 
 ```ts
 // Vite / browser (requires COOP/COEP headers — see docs)
-import init from 'ocjs/multi';
-import wasmUrl from 'ocjs/multi/wasm?url';
+import init from 'cascadic/multi';
+import wasmUrl from 'cascadic/multi/wasm?url';
 
 const oc = await init({ locateFile: () => wasmUrl });
 
@@ -158,20 +155,20 @@ Docker resolves the right architecture from every published manifest list automa
 - **OCCT 8.0.0** — 1,085 commits of improvements; 22-31% faster boolean operations
 - **Emscripten 5.0.1** — LLVM 17, modern WASM features
 - **Native WASM Exceptions** — `-fwasm-exceptions` replaces JS invoke trampolines; decodable end-to-end via `getExceptionMessage`
-- **ESM-only distribution** — `"type": "module"`; default export is single-threaded `opencascade_full.{js,wasm,d.ts}`; multi-threaded `opencascade_full_multi.{js,wasm,d.ts}` ships under `ocjs/multi` and `/multi/wasm`
+- **ESM-only distribution** — `"type": "module"`; default export is single-threaded `opencascade_full.{js,wasm,d.ts}`; multi-threaded `opencascade_full_multi.{js,wasm,d.ts}` ships under `cascadic/multi` and `/multi/wasm`
 - **Full TypeScript bindings** — Doxygen-derived JSDoc rendered correctly in Monaco IntelliSense
 - **Suffix-free overloads** — single symbol per class with val-based dispatcher, no more `_2`/`_3` subclasses (measured at ~264 ns/call, <0.011% of wall time on typical CAD models — see [BENCHMARKS.md](BENCHMARKS.md))
 - **Reproducible builds** — `DEPS.json` pins every dependency to an exact commit; per-build `provenance.json` sidecar
 - **Cached, incremental builds** — content-addressed compilation cache turns 10-30 minute clean builds into seconds on hit
 
-See [CHANGELOG.md](CHANGELOG.md) for the full v3.0.0 entry. For empirical evidence of every measurable fork change (wall-clock CAD perf vs native C++, multi-threading speedup, embind dispatch cost, RBV overhead), see **[BENCHMARKS.md](BENCHMARKS.md)**.
+See [CHANGELOG.md](CHANGELOG.md) for the full v3.0.0 entry. For empirical evidence of every measurable project change (wall-clock CAD perf vs native C++, multi-threading speedup, embind dispatch cost, RBV overhead), see **[BENCHMARKS.md](BENCHMARKS.md)**.
 
 ## Documentation
 
 - [BREAKING_CHANGES.md](BREAKING_CHANGES.md) — v3 consumer migration guide
 - [CHANGELOG.md](CHANGELOG.md) — release notes
 - **[BENCHMARKS.md](BENCHMARKS.md)** — empirical evidence hub: wall-clock CAD perf vs native C++, multi-threading speedup, embind dispatch cost, RBV overhead
-- [MAINTAINER.md](MAINTAINER.md) — native build, env vars, customization for fork maintainers
+- [MAINTAINER.md](MAINTAINER.md) — native build, env vars, customization for maintainers and contributors
 - [docs/reference/yaml-schema.md](docs/reference/yaml-schema.md) — YAML schema (bindings, emccFlags, additionalCppCode, additionalCppFiles, additionalBindCode)
 - [BUILD_SYSTEM.md](BUILD_SYSTEM.md) — `OCJS_*` env-var matrix and configuration authoring
 - [docs/guides/custom-emcc-flags.md](docs/guides/custom-emcc-flags.md) — tuning size, speed, and build time

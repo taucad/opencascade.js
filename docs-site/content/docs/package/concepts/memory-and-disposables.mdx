@@ -24,7 +24,7 @@ Declare every disposable OCCT object with `using` so the runtime invokes
 The OCJS repo includes an oxlint rule, `ocjs-lint/require-using-on-disposable`,
 that flags any plain `const`/`let` declaration of a disposable as an error.
 It's wired into the in-repo `eslint.config.mjs` for the smoke-test suite but
-is **not** auto-installed by `pnpm add ocjs` — the published npm tarball ships
+is **not** auto-installed by `pnpm add cascadic` — the published npm tarball ships
 the wasm, JS loader, `.d.ts`, API-reference feed, manifests, provenance, and
 changelogs. If you want the rule in your own project, copy it from the OCJS
 repo into your local lint setup.

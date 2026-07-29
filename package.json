@@ -1,7 +1,7 @@
 {
-  "name": "ocjs",
+  "name": "cascadic",
   "version": "3.0.0-beta.0",
-  "description": "Tau-maintained OpenCascade CAD bindings for JavaScript and WebAssembly via Emscripten.",
+  "description": "OpenCascade CAD bindings for JavaScript and WebAssembly via Emscripten.",
   "keywords": [
     "opencascade",
     "occt",

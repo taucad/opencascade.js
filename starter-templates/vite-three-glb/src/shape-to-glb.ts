@@ -1,4 +1,4 @@
-import type { OpenCascadeInstance, TopoDS_Shape } from 'ocjs';
+import type { OpenCascadeInstance, TopoDS_Shape } from 'cascadic';
 
 /**
  * Mesh `shape` with BRepMesh_IncrementalMesh and write a single-doc GLB

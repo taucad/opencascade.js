@@ -14,12 +14,12 @@ importers:
       '@react-three/fiber':
         specifier: ^9.6.1
         version: 9.6.1(@types/react@19.2.15)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(three@0.184.0)
+      cascadic:
+        specifier: file:../..
+        version: file:../..
       next:
         specifier: ^16.2.6
         version: 16.2.6(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
-      ocjs:
-        specifier: file:../..
-        version: file:../..
       react:
         specifier: ^19.2.6
         version: 19.2.6
@@ -358,6 +358,10 @@ packages:
   caniuse-lite@1.0.30001793:
     resolution: {integrity: sha512-iwSsYWaCOoh26cV8NwNRViHlrfUvYsHDfRVcbtmw0Kg6PJIZZXwMkj1442FYLBGkeUf1juAsU3DTfxW579mrPA==}
 
+  cascadic@file:../..:
+    resolution: {directory: ../.., type: directory}
+    engines: {node: '>=22'}
+
   client-only@0.0.1:
     resolution: {integrity: sha512-IV3Ou0jSMzZrd3pZ48nLkT9DA7Ag1pnPzaiQhpW7c3RbcqqzvzzVu+L8gfqMp/8IM2MQtSiqaCxrrcfu8I8rMA==}
 
@@ -454,10 +458,6 @@ packages:
         optional: true
       sass:
         optional: true
-
-  ocjs@file:../..:
-    resolution: {directory: ../.., type: directory}
-    engines: {node: '>=22'}
 
   path-key@3.1.1:
     resolution: {integrity: sha512-ojmeN0qd+y0jszEtoY48r0Peq5dwMEkIlCOu6Q5f41lfkswXuKtYrhgoTpLnyIcHm24Uhqx+5Tqm2InSwLhE6Q==}
@@ -901,6 +901,8 @@ snapshots:
 
   caniuse-lite@1.0.30001793: {}
 
+  cascadic@file:../..: {}
+
   client-only@0.0.1: {}
 
   cross-env@7.0.3:
@@ -987,8 +989,6 @@ snapshots:
     transitivePeerDependencies:
       - '@babel/core'
       - babel-plugin-macros
-
-  ocjs@file:../..: {}
 
   path-key@3.1.1: {}
 

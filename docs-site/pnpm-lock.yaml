@@ -14,6 +14,9 @@ importers:
       '@vercel/og':
         specifier: ^0.6.5
         version: 0.6.8
+      cascadic:
+        specifier: file:..
+        version: file:..
       eslint:
         specifier: 9.32.0
         version: 9.32.0(jiti@2.7.0)
@@ -41,9 +44,6 @@ importers:
       next:
         specifier: ^16.2.6
         version: 16.2.6(@babel/core@7.29.0)(@playwright/test@1.60.0)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
-      ocjs:
-        specifier: file:..
-        version: file:..
       react:
         specifier: ^19.1.0
         version: 19.2.6
@@ -2135,6 +2135,10 @@ packages:
   caniuse-lite@1.0.30001793:
     resolution: {integrity: sha512-iwSsYWaCOoh26cV8NwNRViHlrfUvYsHDfRVcbtmw0Kg6PJIZZXwMkj1442FYLBGkeUf1juAsU3DTfxW579mrPA==}
 
+  cascadic@file:..:
+    resolution: {directory: .., type: directory}
+    engines: {node: '>=22'}
+
   ccount@2.0.1:
     resolution: {integrity: sha512-eyrF0jiFpY+3drT6383f1qhkbGsLSifNAjA61IUjZjmLCWjItY6LB9ft9YhoDgwfmclB2zhu51Lc7+95b8NRAg==}
 
@@ -3780,10 +3784,6 @@ packages:
   object.values@1.2.1:
     resolution: {integrity: sha512-gXah6aZrcUxjWg2zR2MwouP2eHlCBzdV4pygudehaKXSGW4v2AsRQUK+lwwXhii6KFZcunEnmSUoYp5CXibxtA==}
     engines: {node: '>= 0.4'}
-
-  ocjs@file:..:
-    resolution: {directory: .., type: directory}
-    engines: {node: '>=22'}
 
   oniguruma-parser@0.12.2:
     resolution: {integrity: sha512-6HVa5oIrgMC6aA6WF6XyyqbhRPJrKR02L20+2+zpDtO5QAzGHAUGw5TKQvwi5vctNnRHkJYmjAhRVQF2EKdTQw==}
@@ -6506,6 +6506,8 @@ snapshots:
 
   caniuse-lite@1.0.30001793: {}
 
+  cascadic@file:..: {}
+
   ccount@2.0.1: {}
 
   chai@5.3.3:
@@ -8695,8 +8697,6 @@ snapshots:
       call-bound: 1.0.4
       define-properties: 1.2.1
       es-object-atoms: 1.1.1
-
-  ocjs@file:..: {}
 
   oniguruma-parser@0.12.2: {}
 

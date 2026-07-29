@@ -1,13 +1,13 @@
 # next-three-glb
 
-Next 15 App Router + React 19 + `@react-three/fiber` + `@react-three/drei` + `ocjs@canary`. Demonstrates the canonical SSR-safe pattern for OCJS: a `'use client'` viewer component dynamically imported with `{ ssr: false }`, with `opencascade_full.wasm` copied into `public/` at install time.
+Next 15 App Router + React 19 + `@react-three/fiber` + `@react-three/drei` + `cascadic@canary`. Demonstrates the canonical SSR-safe pattern for OCJS: a `'use client'` viewer component dynamically imported with `{ ssr: false }`, with `opencascade_full.wasm` copied into `public/` at install time.
 
 ## Stack
 
 - Next 15 App Router (`pnpm dev` → http://localhost:3000)
 - React 19 client components
 - `@react-three/fiber` + `@react-three/drei` for the Canvas + OrbitControls
-- `ocjs@canary` initialised once per session via `lib/ocjs-init.ts`
+- `cascadic@canary` initialised once per session via `lib/ocjs-init.ts`
 
 ## Files
 
@@ -19,7 +19,7 @@ Next 15 App Router + React 19 + `@react-three/fiber` + `@react-three/drei` + `oc
 | `lib/ocjs-init.ts`                | Memoized-`Promise` singleton; `locateFile` returns `/opencascade_full.wasm` |
 | `lib/build-shape.ts`              | Box-with-hole compound shape                                               |
 | `lib/shape-to-glb.ts`             | Mesh + `RWGltf_CafWriter`                                                  |
-| `scripts/copy-wasm.mjs`           | `postinstall`: resolves `ocjs/wasm` and copies it into `public/` |
+| `scripts/copy-wasm.mjs`           | `postinstall`: resolves `cascadic/wasm` and copies it into `public/` |
 | `next.config.ts`                  | COOP/COEP headers; WASM resource rule                                      |
 
 ## Run
@@ -35,7 +35,7 @@ pnpm start
 
 ## Test plan
 
-1. `pnpm install --frozen-lockfile` → ok; `public/opencascade_full.wasm` exists and matches the byte size of the file resolved through the `ocjs/wasm` subpath export
+1. `pnpm install --frozen-lockfile` → ok; `public/opencascade_full.wasm` exists and matches the byte size of the file resolved through the `cascadic/wasm` subpath export
 2. `pnpm typecheck` → ok (strict tsconfig, React 19 types)
 3. `pnpm build` → ok; `.next/` includes a client chunk that fetches `/opencascade_full.wasm`
 4. `pnpm start &` then `pnpm smoke` → exits 0:

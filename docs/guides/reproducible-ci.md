@@ -1,6 +1,6 @@
 # Reproducible builds in CI
 
-Reproducibility for an OCCT WASM build means: given the same source revision, pinned image digest, and build configuration, the resulting bytes can be identified and verified. Native amd64 and arm64 images use different host toolchains and are validated for the same observable build/runtime contract; they are not expected to emit byte-identical WASM. The fork emits three artifacts that, together, let you assert the identity of a selected build in CI without trusting any single party:
+Reproducibility for an OCCT WASM build means: given the same source revision, pinned image digest, and build configuration, the resulting bytes can be identified and verified. Native amd64 and arm64 images use different host toolchains and are validated for the same observable build/runtime contract; they are not expected to emit byte-identical WASM. The project emits three artifacts that, together, let you assert the identity of a selected build in CI without trusting any single party:
 
 - A multi-arch GHCR image (`ghcr.io/taucad/opencascade.js:<tag>`) built from a pinned `Dockerfile`
 - A `provenance.json` sidecar (per WASM build) that records the exact toolchain and source commits used

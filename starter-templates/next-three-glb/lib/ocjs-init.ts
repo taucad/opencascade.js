@@ -1,6 +1,6 @@
 'use client';
 
-import init from 'ocjs';
+import init from 'cascadic';
 
 let cached: ReturnType<typeof init> | null = null;
 

@@ -1,5 +1,5 @@
 /**
- * Options accepted by `init()` from `ocjs`.
+ * Options accepted by `init()` from `cascadic`.
  *
  * Passed straight through to emscripten's `Module` factory.
  */
@@ -9,10 +9,10 @@ export type InitOpenCascadeOptions = {
    * importantly `opencascade_full.wasm`). Mandatory for the V3 single-file
    * build — the runtime no longer auto-discovers its wasm sibling.
    *
-   * The canonical pattern is to point at the `ocjs/wasm`
+   * The canonical pattern is to point at the `cascadic/wasm`
    * subpath export and return its URL verbatim.
    *
-   * @example `() => wasmUrl // import wasmUrl from 'ocjs/wasm?url'`
+   * @example `() => wasmUrl // import wasmUrl from 'cascadic/wasm?url'`
    */
   locateFile: (file: string) => string;
 

@@ -8,7 +8,7 @@ importers:
 
   .:
     dependencies:
-      ocjs:
+      cascadic:
         specifier: file:../..
         version: file:../..
       three:
@@ -155,6 +155,10 @@ packages:
   '@types/webxr@0.5.24':
     resolution: {integrity: sha512-h8fgEd/DpoS9CBrjEQXR+dIDraopAEfu4wYVNY2tEPwk60stPWhvZMf4Foo5FakuQ7HFZoa8WceaWFervK2Ovg==}
 
+  cascadic@file:../..:
+    resolution: {directory: ../.., type: directory}
+    engines: {node: '>=22'}
+
   detect-libc@2.1.2:
     resolution: {integrity: sha512-Btj2BOOO83o3WyH59e8MgXsxEQVcarkUOpEYrubB0urwnN10yQ364rsiByU11nZlqWYZm05i/of7io4mzihBtQ==}
     engines: {node: '>=8'}
@@ -253,10 +257,6 @@ packages:
     resolution: {integrity: sha512-ZB9RH/39qpq5Vu6Y+NmUaFhQR6pp+M2Xt76XBnEwDaGcVAqhlvxrl3B2bKS5D3NH3QR76v3aSrKaF/Kiy7lEtQ==}
     engines: {node: ^10 || ^12 || ^13.7 || ^14 || >=15.0.1}
     hasBin: true
-
-  ocjs@file:../..:
-    resolution: {directory: ../.., type: directory}
-    engines: {node: '>=22'}
 
   picocolors@1.1.1:
     resolution: {integrity: sha512-xceH2snhtb5M9liqDsmEw56le376mTZkEX/jEb/RxNFyegNul7eNslCXP9FDj/Lcu0X8KEyMceP2ntpaHrDEVA==}
@@ -436,6 +436,8 @@ snapshots:
 
   '@types/webxr@0.5.24': {}
 
+  cascadic@file:../..: {}
+
   detect-libc@2.1.2: {}
 
   fdir@6.5.0(picomatch@4.0.4):
@@ -499,8 +501,6 @@ snapshots:
   meshoptimizer@1.1.1: {}
 
   nanoid@3.3.12: {}
-
-  ocjs@file:../..: {}
 
   picocolors@1.1.1: {}
 

@@ -25,5 +25,5 @@ npm install \
 (
   cd "$WORK"
   npx --no-install playwright install --with-deps chromium firefox webkit
-  node browser-runtime-matrix.mjs node_modules/ocjs
+  node browser-runtime-matrix.mjs node_modules/cascadic
 )

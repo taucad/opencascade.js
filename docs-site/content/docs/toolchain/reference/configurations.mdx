@@ -11,9 +11,9 @@ All shipped presets ship with the same _feature_ set — native WASM exceptions 
 
 | Preset                     | Use case                                                                                  | Differentiating flags                                                          |
 | -------------------------- | ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| `single-threaded`          | Default `ocjs` build (`opencascade_full.*`). Browser default.         | `OCJS_OPT=-O3`, `OCJS_WASM_OPT_LEVEL=-O4`, `THREADING=single-threaded`         |
+| `single-threaded`          | Default OpenCascade.js build (`opencascade_full.*`). Browser default. | `OCJS_OPT=-O3`, `OCJS_WASM_OPT_LEVEL=-O4`, `THREADING=single-threaded`         |
 | `single-threaded-smallest` | Size-tuned variant — smaller binary at a ~5–10% runtime cost.                             | `OCJS_OPT=-Os`, `OCJS_WASM_OPT_LEVEL=-O3`, `THREADING=single-threaded`         |
-| `multi-threaded`           | Published `ocjs/multi` build. SAB/COOP+COEP-isolated deployments.     | `OCJS_OPT=-O3`, `OCJS_WASM_OPT_LEVEL=-O4`, `THREADING=multi-threaded`          |
+| `multi-threaded`           | Published `cascadic/multi` build. SAB/COOP+COEP-isolated deployments.     | `OCJS_OPT=-O3`, `OCJS_WASM_OPT_LEVEL=-O4`, `THREADING=multi-threaded`          |
 | `debug`                    | Fastest build for local iteration. Not for production — no SIMD, no converge, no BigInt.  | `OCJS_OPT=-O0`, `OCJS_WASM_OPT_LEVEL=-O0`, `OCJS_SIMD=0`, `OCJS_CONVERGE=false` |
 
 For the full `OCJS_*` matrix that each preset sets — including the flags they share — see [BUILD_SYSTEM.md](https://github.com/taucad/opencascade.js/blob/main/BUILD_SYSTEM.md#configurationsjson).

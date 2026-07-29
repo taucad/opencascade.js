@@ -31,7 +31,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const [manifestPath, tarball] = process.argv.slice(2);
 const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-manifest.dependencies['ocjs'] = `file:${path.resolve(tarball)}`;
+manifest.dependencies.cascadic = `file:${path.resolve(tarball)}`;
 fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
 NODE
   (

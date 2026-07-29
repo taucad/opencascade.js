@@ -73,7 +73,6 @@ describe('README.md shape', () => {
     expect(body).toContain('pnpm add cascadic@canary');
     expect(body).toContain('OpenCascade.js is published on npm as `cascadic`');
     expect(body).not.toContain('Tau-maintained fork');
-    expect(body).not.toContain('Migrating from v2 or `@taucad/opencascade.js`');
   });
 });
 

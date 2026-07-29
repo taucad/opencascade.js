@@ -4,7 +4,7 @@
 
 Security fixes are made on `main` and released on the current 3.x line. Older
 2.x packages and the historical upstream package line are not maintained by
-this fork.
+this project.
 
 ## Reporting a vulnerability
 

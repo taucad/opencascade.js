@@ -155,21 +155,20 @@ describe('content self-containment', () => {
     expect(hits, hits.join('\n')).toEqual([]);
   });
 
-  // The wasm binary is exposed through the `ocjs/wasm`
-  // subpath export. Deep imports under `ocjs/dist/...`
+  // The wasm binary is exposed through the `cascadic/wasm`
+  // subpath export. Deep imports under `cascadic/dist/...`
   // bypass the package's `exports` map (so they break the moment the
   // map declares anything) and force consumers to know internal layout.
   // Catch any doc snippet that regresses to the old deep-import shape.
-  it('should never deep-import `ocjs/dist/...` in narrative docs — use the `/wasm` subpath export', async () => {
+  it('should never deep-import `cascadic/dist/...` in narrative docs — use the `/wasm` subpath export', async () => {
     const files = await collectMdxFiles(DOCS_DIR);
-    const bannedPattern = /@taucad\/opencascade\.js\/dist\//;
+    const bannedPath = 'cascadic/dist/';
     const hits: string[] = [];
     for (const file of files) {
       const body = await fs.readFile(file, 'utf8');
-      const match = body.match(bannedPattern);
-      if (match) {
+      if (body.includes(bannedPath)) {
         hits.push(
-          `${file}: deep import of ocjs/dist/* — replace with the \`/wasm\` subpath export\n    matched: ${JSON.stringify(match[0])}`,
+          `${file}: deep import of cascadic/dist/* — replace with the \`/wasm\` subpath export`,
         );
       }
     }

@@ -931,9 +931,9 @@ jobs:
             }
           }
           NODE
-          if npm view "ocjs@$VERSION" version >/dev/null 2>&1; then
+          if npm view "cascadic@$VERSION" version >/dev/null 2>&1; then
             mkdir -p existing
-            npm pack "ocjs@$VERSION" --ignore-scripts --pack-destination existing >/dev/null
+            npm pack "cascadic@$VERSION" --ignore-scripts --pack-destination existing >/dev/null
             existing="$(find existing -name '*.tgz' -type f -print -quit)"
             test "$(sha256sum "$existing" | cut -d' ' -f1)" = "$(cat candidate.sha256)"
             for provenance in \
@@ -942,7 +942,7 @@ jobs:
               test "$(tar -xOf "$existing" "$provenance" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>process.stdout.write(JSON.parse(s).source.opencascadejsCommit))")" = "$FULL_SHA"
             done
             export ATTESTATION_URL
-            ATTESTATION_URL="$(npm view "ocjs@$VERSION" dist.attestations.url)"
+            ATTESTATION_URL="$(npm view "cascadic@$VERSION" dist.attestations.url)"
             node --input-type=module <<'NODE'
           const response = await fetch(process.env.ATTESTATION_URL);
           if (!response.ok) throw new Error(`npm attestation endpoint returned ${response.status}`);
@@ -1016,12 +1016,12 @@ jobs:
         run: |
           set -euo pipefail
           for _ in $(seq 1 30); do
-            npm view "ocjs@$VERSION" version >/dev/null 2>&1 && break
+            npm view "cascadic@$VERSION" version >/dev/null 2>&1 && break
             sleep 10
           done
-          test "$(npm view "ocjs@$VERSION" dist.integrity)" = "$(cat candidate.sha512)"
+          test "$(npm view "cascadic@$VERSION" dist.integrity)" = "$(cat candidate.sha512)"
           export ATTESTATION_URL
-          ATTESTATION_URL="$(npm view "ocjs@$VERSION" dist.attestations.url)"
+          ATTESTATION_URL="$(npm view "cascadic@$VERSION" dist.attestations.url)"
           node --input-type=module <<'NODE'
           const response = await fetch(process.env.ATTESTATION_URL);
           if (!response.ok) throw new Error(`npm attestation endpoint returned ${response.status}`);
@@ -1050,15 +1050,15 @@ jobs:
           mkdir install
           cd install
           npm init --yes >/dev/null
-          npm install --ignore-scripts --no-audit --no-fund "ocjs@$VERSION"
+          npm install --ignore-scripts --no-audit --no-fund "cascadic@$VERSION"
           npm audit signatures
           cat > verify-runtime.mjs <<'NODE'
           import fs from 'node:fs';
           import path from 'node:path';
           import { fileURLToPath } from 'node:url';
-          import init from 'ocjs';
-          import initMulti from 'ocjs/multi';
-          const root = path.dirname(fileURLToPath(import.meta.resolve('ocjs/wasm')));
+          import init from 'cascadic';
+          import initMulti from 'cascadic/multi';
+          const root = path.dirname(fileURLToPath(import.meta.resolve('cascadic/wasm')));
           for (const load of [init, initMulti]) {
             const oc = await load({ locateFile: file => path.join(root, file) });
             const box = new oc.BRepPrimAPI_MakeBox(1, 2, 3);
@@ -1147,7 +1147,7 @@ jobs:
             echo "## Published candidate"
             echo
             echo '```sh'
-            echo "npm install ocjs@$VERSION"
+            echo "npm install cascadic@$VERSION"
             echo '```'
             echo
             echo '```sh'
@@ -1232,8 +1232,8 @@ jobs:
             echo "## Verified release"
             echo
             echo "- Version: \`$VERSION\`"
-            echo "- Install: \`npm install ocjs@$VERSION\`"
-            echo "- npm: https://www.npmjs.com/package/ocjs/v/$VERSION"
+            echo "- Install: \`npm install cascadic@$VERSION\`"
+            echo "- npm: https://www.npmjs.com/package/cascadic/v/$VERSION"
             echo "- GitHub: https://github.com/$GITHUB_REPOSITORY/releases/tag/$TAG"
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -1311,7 +1311,7 @@ jobs:
           const path = require('node:path');
           const [manifestPath, tarball] = process.argv.slice(2);
           const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-          manifest.dependencies.ocjs = `file:${path.resolve(tarball)}`;
+          manifest.dependencies.cascadic = `file:${path.resolve(tarball)}`;
           fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
           NODE
           cd docs-site
@@ -1374,7 +1374,7 @@ jobs:
           const path = require('node:path');
           const [manifestPath, tarball] = process.argv.slice(2);
           const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-          manifest.dependencies.ocjs = `file:${path.resolve(tarball)}`;
+          manifest.dependencies.cascadic = `file:${path.resolve(tarball)}`;
           fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
           NODE
           cd docs-site

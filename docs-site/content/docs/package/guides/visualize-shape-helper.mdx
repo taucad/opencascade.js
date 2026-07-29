@@ -12,7 +12,7 @@ instead of copying the boilerplate into every script.
 Build a GLB blob URL from an XCAF document that already contains tessellated shapes:
 
 ```typescript title="lib/visualize.ts"
-import type { OpenCascadeInstance } from 'ocjs';
+import type { OpenCascadeInstance } from 'cascadic';
 
 export const visualizeDoc = async (
   oc: OpenCascadeInstance,
@@ -36,7 +36,7 @@ Convenience wrapper — accepts one or more `TopoDS_Shape` values, builds the XC
 document, meshes, and returns a GLB blob URL:
 
 ```typescript title="lib/visualize.ts"
-import type { OpenCascadeInstance, TopoDS_Shape } from 'ocjs';
+import type { OpenCascadeInstance, TopoDS_Shape } from 'cascadic';
 
 export const visualizeShapes = async (
   oc: OpenCascadeInstance,

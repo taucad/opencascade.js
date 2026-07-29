@@ -16,7 +16,7 @@ const SYMBOLS_PATH = path.join(ROOT, 'dist', 'opencascade_full.js.symbols');
 const PROVENANCE_PATH = path.join(ROOT, 'dist', 'opencascade_full.provenance.json');
 const OUTPUT_PATH = path.join(ROOT, 'dist', 'api-reference.json');
 const PACKAGE_PATH = path.join(ROOT, 'package.json');
-const PACKAGE_NAME = 'ocjs';
+const PACKAGE_NAME = 'cascadic';
 const SOURCE_REPOSITORY = 'https://github.com/taucad/opencascade.js';
 const SOURCE_SHA = /^[0-9a-f]{40}$/;
 

@@ -1,6 +1,6 @@
 {
   "title": "Package",
-  "description": "Consume ocjs from npm — render, export, integrate.",
+  "description": "Consume cascadic from npm — render, export, integrate.",
   "icon": "lib:npm",
   "root": true,
   "pages": [
