@@ -612,14 +612,15 @@ describe('CI contracts', () => {
     expect(source).not.toContain('OCJS_CONFIG=debug');
   });
 
-  it('should publish cascadic while retaining the ocjs build and release namespace', () => {
+  it('should publish libcascade while retaining the ocjs build and release namespace', () => {
     const source = fs.readFileSync(path.join(ROOT, '.github/workflows/docker.yml'), 'utf8');
-    expect(source).toContain('npm view "cascadic@$VERSION"');
-    expect(source).toContain('npm install --ignore-scripts --no-audit --no-fund "cascadic@$VERSION"');
-    expect(source).toContain("import init from 'cascadic'");
+    expect(source).toContain('npm view "libcascade@$VERSION"');
+    expect(source).toContain('npm install --ignore-scripts --no-audit --no-fund "libcascade@$VERSION"');
+    expect(source).toContain("import init from 'libcascade'");
     expect(source).toContain('REGISTRY_IMAGE: ghcr.io/taucad/opencascade.js');
     expect(source).toContain('OCJS_PACKAGE_TARBALL');
     expect(source).toContain('npx nx run ocjs:api-reference');
+    expect(source).not.toContain('cascadic');
     expect(source).not.toContain('npm view "ocjs@$VERSION"');
     expect(source).not.toContain('manifest.dependencies.ocjs');
   });

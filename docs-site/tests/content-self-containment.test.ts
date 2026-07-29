@@ -155,20 +155,20 @@ describe('content self-containment', () => {
     expect(hits, hits.join('\n')).toEqual([]);
   });
 
-  // The wasm binary is exposed through the `cascadic/wasm`
-  // subpath export. Deep imports under `cascadic/dist/...`
+  // The wasm binary is exposed through the `libcascade/wasm`
+  // subpath export. Deep imports under `libcascade/dist/...`
   // bypass the package's `exports` map (so they break the moment the
   // map declares anything) and force consumers to know internal layout.
   // Catch any doc snippet that regresses to the old deep-import shape.
-  it('should never deep-import `cascadic/dist/...` in narrative docs — use the `/wasm` subpath export', async () => {
+  it('should never deep-import `libcascade/dist/...` in narrative docs — use the `/wasm` subpath export', async () => {
     const files = await collectMdxFiles(DOCS_DIR);
-    const bannedPath = 'cascadic/dist/';
+    const bannedPath = 'libcascade/dist/';
     const hits: string[] = [];
     for (const file of files) {
       const body = await fs.readFile(file, 'utf8');
       if (body.includes(bannedPath)) {
         hits.push(
-          `${file}: deep import of cascadic/dist/* — replace with the \`/wasm\` subpath export`,
+          `${file}: deep import of libcascade/dist/* — replace with the \`/wasm\` subpath export`,
         );
       }
     }
