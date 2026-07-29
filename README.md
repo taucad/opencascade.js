@@ -33,19 +33,19 @@
 
 ## Quickstart (npm)
 
-OpenCascade.js is published on npm as `cascadic`. Its source remains in
+OpenCascade.js is published on npm as `libcascade`. Its source remains in
 [`taucad/opencascade.js`](https://github.com/taucad/opencascade.js); it is not
 an official Open CASCADE Technology distribution.
 
 ```bash
-pnpm add cascadic@canary
-# or: npm install cascadic@canary
+pnpm add libcascade@canary
+# or: npm install libcascade@canary
 ```
 
-The package is ESM-only with a default-export `init` function. Pass `locateFile` so the Emscripten loader can resolve the wasm binary from your bundler's output (browser) or `node_modules` layout (Node). Both runtimes reach the binary through the `cascadic/wasm` subpath export — no `dist/...` deep imports required.
+The package is ESM-only with a default-export `init` function. Pass `locateFile` so the Emscripten loader can resolve the wasm binary from your bundler's output (browser) or `node_modules` layout (Node). Both runtimes reach the binary through the `libcascade/wasm` subpath export — no `dist/...` deep imports required.
 
 Build-time tools can consume the deterministic API-reference feed through
-`cascadic/api-reference.json`. It includes the parsed class/member hierarchy, the
+`libcascade/api-reference.json`. It includes the parsed class/member hierarchy, the
 full source commit, build provenance, and exact input hashes; site-specific
 routes and search indexes remain consumer-derived.
 
@@ -53,9 +53,9 @@ routes and search indexes remain consumer-derived.
 // Node
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import init from 'cascadic';
+import init from 'libcascade';
 
-const WASM_DIR = dirname(fileURLToPath(import.meta.resolve('cascadic/wasm')));
+const WASM_DIR = dirname(fileURLToPath(import.meta.resolve('libcascade/wasm')));
 
 const oc = await init({
   locateFile: (filename: string) => join(WASM_DIR, filename),
@@ -67,8 +67,8 @@ const shape = box.Shape();
 
 ```ts
 // Vite / browser
-import init from 'cascadic';
-import wasmUrl from 'cascadic/wasm?url';
+import init from 'libcascade';
+import wasmUrl from 'libcascade/wasm?url';
 
 const oc = await init({ locateFile: () => wasmUrl });
 ```
@@ -83,9 +83,9 @@ For batch meshing, boolean grids, and STEP→glTF pipelines that benefit from OC
 // Node
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import init from 'cascadic/multi';
+import init from 'libcascade/multi';
 
-const WASM_DIR = dirname(fileURLToPath(import.meta.resolve('cascadic/multi/wasm')));
+const WASM_DIR = dirname(fileURLToPath(import.meta.resolve('libcascade/multi/wasm')));
 
 const oc = await init({
   locateFile: (filename: string) => join(WASM_DIR, filename),
@@ -100,8 +100,8 @@ pool.SetNbDefaultThreadsToLaunch(pool.NbThreads()); // let each call use all wor
 
 ```ts
 // Vite / browser (requires COOP/COEP headers — see docs)
-import init from 'cascadic/multi';
-import wasmUrl from 'cascadic/multi/wasm?url';
+import init from 'libcascade/multi';
+import wasmUrl from 'libcascade/multi/wasm?url';
 
 const oc = await init({ locateFile: () => wasmUrl });
 
@@ -155,7 +155,7 @@ Docker resolves the right architecture from every published manifest list automa
 - **OCCT 8.0.0** — 1,085 commits of improvements; 22-31% faster boolean operations
 - **Emscripten 5.0.1** — LLVM 17, modern WASM features
 - **Native WASM Exceptions** — `-fwasm-exceptions` replaces JS invoke trampolines; decodable end-to-end via `getExceptionMessage`
-- **ESM-only distribution** — `"type": "module"`; default export is single-threaded `opencascade_full.{js,wasm,d.ts}`; multi-threaded `opencascade_full_multi.{js,wasm,d.ts}` ships under `cascadic/multi` and `/multi/wasm`
+- **ESM-only distribution** — `"type": "module"`; default export is single-threaded `opencascade_full.{js,wasm,d.ts}`; multi-threaded `opencascade_full_multi.{js,wasm,d.ts}` ships under `libcascade/multi` and `/multi/wasm`
 - **Full TypeScript bindings** — Doxygen-derived JSDoc rendered correctly in Monaco IntelliSense
 - **Suffix-free overloads** — single symbol per class with val-based dispatcher, no more `_2`/`_3` subclasses (measured at ~264 ns/call, <0.011% of wall time on typical CAD models — see [BENCHMARKS.md](BENCHMARKS.md))
 - **Reproducible builds** — `DEPS.json` pins every dependency to an exact commit; per-build `provenance.json` sidecar

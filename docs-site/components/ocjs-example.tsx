@@ -19,7 +19,7 @@ const lazyInitOcct = async (): Promise<unknown> => {
   if (!initState.promise) {
     initState.promise = (async () => {
       const initModule: { default: (options?: { locateFile?: (file: string) => string }) => Promise<unknown> } =
-        await import('cascadic');
+        await import('libcascade');
       return initModule.default({
         locateFile: (file: string) => `/${file}`,
       });
@@ -30,7 +30,7 @@ const lazyInitOcct = async (): Promise<unknown> => {
 
 /**
  * Embeds a runnable OCCT example inside an MDX page. The `run` callback is
- * executed in the browser against a lazily-initialised `cascadic`
+ * executed in the browser against a lazily-initialised `libcascade`
  * instance and the resulting GLB bytes are handed to `<ThreeViewer>`.
  */
 export const OcjsExample = ({

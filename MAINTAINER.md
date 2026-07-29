@@ -1,6 +1,6 @@
 # Maintainer Guide
 
-Build-from-source, configuration, and release workflow for OpenCascade.js. Consumers reaching for the `cascadic` npm package should start from [README.md](README.md) — this document is for maintainers and contributors building OCCT WASM locally.
+Build-from-source, configuration, and release workflow for OpenCascade.js. Consumers reaching for the `libcascade` npm package should start from [README.md](README.md) — this document is for maintainers and contributors building OCCT WASM locally.
 
 ## Table of Contents
 
@@ -78,14 +78,14 @@ The published npm tarball ships **both** build outputs:
 
 | Artifact prefix            | Config                              | Subpath export                                                       |
 | -------------------------- | ----------------------------------- | -------------------------------------------------------------------- |
-| `opencascade_full.*`       | `single-threaded` + `full.yml`      | `cascadic` / `cascadic/wasm`             |
-| `opencascade_full_multi.*` | `multi-threaded` + `full_multi.yml` | `cascadic/multi` / `cascadic/multi/wasm` |
+| `opencascade_full.*`       | `single-threaded` + `full.yml`      | `libcascade` / `libcascade/wasm`             |
+| `opencascade_full_multi.*` | `multi-threaded` + `full_multi.yml` | `libcascade/multi` / `libcascade/multi/wasm` |
 
 Each six-file set includes a matching `*.provenance.json` sidecar (`dist/opencascade_full.provenance.json` and `dist/opencascade_full_multi.provenance.json`).
 
 ### Environment Variables
 
-Two layers of "default" matter here. The **bare default** is what `build-wasm.sh` falls back to if you set neither an env var nor a `--config`. The **shipped `full.yml` build** is what the published `cascadic` tarball was actually linked with — the YAML config carries its own `emccFlags` (`-sWASM_BIGINT`, `-sEVAL_CTORS=2`, `-msimd128`) that win regardless of env var, and every named entry in [`build-configs/configurations.json`](build-configs/configurations.json) sets the corresponding `OCJS_*` envs to match.
+Two layers of "default" matter here. The **bare default** is what `build-wasm.sh` falls back to if you set neither an env var nor a `--config`. The **shipped `full.yml` build** is what the published `libcascade` tarball was actually linked with — the YAML config carries its own `emccFlags` (`-sWASM_BIGINT`, `-sEVAL_CTORS=2`, `-msimd128`) that win regardless of env var, and every named entry in [`build-configs/configurations.json`](build-configs/configurations.json) sets the corresponding `OCJS_*` envs to match.
 
 | Variable            | Bare default      | Shipped `full.yml` build | Description                                                                                                          |
 | ------------------- | ----------------- | ------------------------ | -------------------------------------------------------------------------------------------------------------------- |
@@ -151,7 +151,7 @@ deploy exact versions.
 
 ### npm Trusted Publishing
 
-Configure the `cascadic` npm package once under **Settings → Trusted publishing**:
+Configure the `libcascade` npm package once under **Settings → Trusted publishing**:
 
 - provider: GitHub Actions
 - organization/user: `taucad`
@@ -227,7 +227,7 @@ verification.
 ### Local documentation from CI artifacts
 
 `docs-site/data/` is ignored and always derived from the package-owned
-`cascadic/api-reference.json`. A local source build can generate the feed with
+`libcascade/api-reference.json`. A local source build can generate the feed with
 `npx nx run ocjs:api-reference` after producing the required ST artifacts.
 Alternatively, download a tested `candidate.tgz` from a workflow run and build
 entirely offline from it:

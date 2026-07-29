@@ -9,7 +9,7 @@ export default defineConfig({
     format: 'es',
   },
   optimizeDeps: {
-    exclude: ['cascadic', 'cascadic/multi'],
+    exclude: ['libcascade', 'libcascade/multi'],
   },
   server: {
     port: 3003,

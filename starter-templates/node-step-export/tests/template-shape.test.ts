@@ -5,7 +5,7 @@
  * `starter-templates/<name>/tests/**` so the whole fork runs a single
  * vitest invocation — no per-template runner is wired). Assertions cover the
  * load-bearing surface a consumer first encounters: README presence, the
- * canonical `cascadic` npm dependency, the `ocjs-<name>` local package name,
+ * canonical `libcascade` npm dependency, the `ocjs-<name>` local package name,
  * the optional CI-gated lockfile, and the canonical memoized-Promise
  * singleton in `src/ocjs-init.ts`.
  */
@@ -39,12 +39,12 @@ describe(`starter-templates/${TEMPLATE_NAME} shape`, () => {
     expect(pkg.name).toBe(EXPECTED_PACKAGE_NAME);
   });
 
-  it('should depend on cascadic while retaining the ocjs local project name', () => {
+  it('should depend on libcascade while retaining the ocjs local project name', () => {
     const pkg = readPackageJson();
     const deps = { ...(pkg.dependencies ?? {}), ...(pkg.devDependencies ?? {}) };
     expect(
-      Object.prototype.hasOwnProperty.call(deps, 'cascadic'),
-      `package.json must list "cascadic" as a dependency. Got keys: ${Object.keys(deps).join(', ')}`,
+      Object.prototype.hasOwnProperty.call(deps, 'libcascade'),
+      `package.json must list "libcascade" as a dependency. Got keys: ${Object.keys(deps).join(', ')}`,
     ).toBe(true);
     expect(Object.prototype.hasOwnProperty.call(deps, 'ocjs')).toBe(false);
     expect(

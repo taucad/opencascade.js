@@ -32,12 +32,12 @@ describe(`starter-templates/${TEMPLATE_NAME} shape`, () => {
     expect(pkg.name).toBe(EXPECTED_PACKAGE_NAME);
   });
 
-  it('should depend on cascadic while retaining the ocjs local project name', () => {
+  it('should depend on libcascade while retaining the ocjs local project name', () => {
     const pkg = readPackageJson();
     const deps = { ...(pkg.dependencies ?? {}), ...(pkg.devDependencies ?? {}) };
     expect(
-      Object.prototype.hasOwnProperty.call(deps, 'cascadic'),
-      `package.json must list "cascadic" as a dependency. Got keys: ${Object.keys(deps).join(', ')}`,
+      Object.prototype.hasOwnProperty.call(deps, 'libcascade'),
+      `package.json must list "libcascade" as a dependency. Got keys: ${Object.keys(deps).join(', ')}`,
     ).toBe(true);
     expect(Object.prototype.hasOwnProperty.call(deps, 'ocjs')).toBe(false);
     expect(
@@ -69,8 +69,8 @@ describe(`starter-templates/${TEMPLATE_NAME} shape`, () => {
 
     it('imports the multi subpath and wasm asset', () => {
       const src = readInit();
-      expect(src).toContain("cascadic/multi'");
-      expect(src).toContain('cascadic/multi/wasm?url');
+      expect(src).toContain("libcascade/multi'");
+      expect(src).toContain('libcascade/multi/wasm?url');
     });
 
     it('activates OCCT parallel defaults after init', () => {

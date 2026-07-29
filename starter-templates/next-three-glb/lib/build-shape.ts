@@ -1,4 +1,4 @@
-import type { OpenCascadeInstance, TopoDS_Shape } from 'cascadic';
+import type { OpenCascadeInstance, TopoDS_Shape } from 'libcascade';
 
 /**
  * Build a representative compound: a box with a cylindrical hole cut through it.

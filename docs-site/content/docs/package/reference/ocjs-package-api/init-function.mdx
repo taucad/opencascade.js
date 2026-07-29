@@ -1,22 +1,22 @@
 ---
 title: init() function
-description: Default export of cascadic — signature, options, and singleton pattern.
+description: Default export of libcascade — signature, options, and singleton pattern.
 ---
 
-`init` is the default export of `cascadic`. It instantiates the
+`init` is the default export of `libcascade`. It instantiates the
 WASM module and returns a Promise resolving to the bound OCCT runtime.
 
 ```typescript
-import init from 'cascadic';
-import wasmUrl from 'cascadic/wasm?url';
+import init from 'libcascade';
+import wasmUrl from 'libcascade/wasm?url';
 
 const oc = await init({ locateFile: () => wasmUrl });
 ```
 
-The `cascadic/wasm` subpath export resolves to the shipped
+The `libcascade/wasm` subpath export resolves to the shipped
 `opencascade_full.wasm`. The multi-threaded variant uses the same `init`
-signature from `cascadic/multi` with wasm at
-`cascadic/multi/wasm`. See [Bundler & locateFile](../../guides/bundler-locatefile)
+signature from `libcascade/multi` with wasm at
+`libcascade/multi/wasm`. See [Bundler & locateFile](../../guides/bundler-locatefile)
 for Vite, Next.js, Bun, Node, and Deno-specific recipes (including the MT variant).
 
 ## Options
@@ -47,7 +47,7 @@ The full surface is documented under the [API Reference](/docs/package/api).
 
 ## Multi-threaded subpath
 
-Import `cascadic/multi` with wasm at `cascadic/multi/wasm`. The `init` signature is identical; Emscripten pre-spawns pthread workers during instantiation (`PTHREAD_POOL_SIZE=navigator.hardwareConcurrency` is baked into the binary). No extra JS worker wiring is required beyond `locateFile`.
+Import `libcascade/multi` with wasm at `libcascade/multi/wasm`. The `init` signature is identical; Emscripten pre-spawns pthread workers during instantiation (`PTHREAD_POOL_SIZE=navigator.hardwareConcurrency` is baked into the binary). No extra JS worker wiring is required beyond `locateFile`.
 
 After `await init(...)`, run this **once** before any parallel-aware OCCT call:
 

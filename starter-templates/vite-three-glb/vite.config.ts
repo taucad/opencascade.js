@@ -6,7 +6,7 @@ export default defineConfig({
     sourcemap: true,
   },
   optimizeDeps: {
-    exclude: ['cascadic'],
+    exclude: ['libcascade'],
   },
   server: {
     headers: {

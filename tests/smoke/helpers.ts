@@ -37,7 +37,7 @@ export function getOC(): OpenCascadeInstance {
 
 /**
  * Initializes the multi-threaded OpenCASCADE WASM module from `dist/`.
- * Uses the same locateFile pattern as the `cascadic/multi/wasm`
+ * Uses the same locateFile pattern as the `libcascade/multi/wasm`
  * subpath export. Safe to call multiple times.
  */
 export async function initOCMulti(): Promise<OpenCascadeInstanceMulti> {

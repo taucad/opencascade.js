@@ -14,9 +14,6 @@ importers:
       '@vercel/og':
         specifier: ^0.6.5
         version: 0.6.8
-      cascadic:
-        specifier: file:..
-        version: file:..
       eslint:
         specifier: 9.32.0
         version: 9.32.0(jiti@2.7.0)
@@ -35,6 +32,9 @@ importers:
       fumadocs-ui:
         specifier: ^16.8.7
         version: 16.8.12(@tailwindcss/oxide@4.3.0)(@types/mdx@2.0.13)(@types/react-dom@19.2.3(@types/react@19.2.15))(@types/react@19.2.15)(fumadocs-core@16.8.12(@mdx-js/mdx@3.1.1)(@types/estree-jsx@1.0.5)(@types/hast@3.0.4)(@types/mdast@4.0.4)(@types/react@19.2.15)(lucide-react@0.552.0(react@19.2.6))(next@16.2.6(@babel/core@7.29.0)(@playwright/test@1.60.0)(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(zod@4.4.3))(next@16.2.6(@babel/core@7.29.0)(@playwright/test@1.60.0)(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(tailwindcss@4.3.0)
+      libcascade:
+        specifier: file:..
+        version: file:..
       lucide-react:
         specifier: ^0.552.0
         version: 0.552.0(react@19.2.6)
@@ -2135,10 +2135,6 @@ packages:
   caniuse-lite@1.0.30001793:
     resolution: {integrity: sha512-iwSsYWaCOoh26cV8NwNRViHlrfUvYsHDfRVcbtmw0Kg6PJIZZXwMkj1442FYLBGkeUf1juAsU3DTfxW579mrPA==}
 
-  cascadic@file:..:
-    resolution: {directory: .., type: directory}
-    engines: {node: '>=22'}
-
   ccount@2.0.1:
     resolution: {integrity: sha512-eyrF0jiFpY+3drT6383f1qhkbGsLSifNAjA61IUjZjmLCWjItY6LB9ft9YhoDgwfmclB2zhu51Lc7+95b8NRAg==}
 
@@ -3354,6 +3350,10 @@ packages:
   levn@0.4.1:
     resolution: {integrity: sha512-+bT2uH4E5LGE7h/n3evcS/sQlJXCpIp6ym8OWJ5eV6+67Dsql/LaaT7qJBAt2rzfoa/5QBGBhxDix1dMt2kQKQ==}
     engines: {node: '>= 0.8.0'}
+
+  libcascade@file:..:
+    resolution: {directory: .., type: directory}
+    engines: {node: '>=22'}
 
   lightningcss-android-arm64@1.32.0:
     resolution: {integrity: sha512-YK7/ClTt4kAK0vo6w3X+Pnm0D2cf2vPHbhOXdoNti1Ga0al1P4TBZhwjATvjNwLEBCnKvjJc2jQgHXH0NEwlAg==}
@@ -6506,8 +6506,6 @@ snapshots:
 
   caniuse-lite@1.0.30001793: {}
 
-  cascadic@file:..: {}
-
   ccount@2.0.1: {}
 
   chai@5.3.3:
@@ -8011,6 +8009,8 @@ snapshots:
     dependencies:
       prelude-ls: 1.2.1
       type-check: 0.4.0
+
+  libcascade@file:..: {}
 
   lightningcss-android-arm64@1.32.0:
     optional: true

@@ -3,7 +3,7 @@ title: Custom multi-threaded build
 description: Build a pthread-enabled OCJS WASM with a trimmed symbol list or custom Emscripten flags.
 ---
 
-The npm package already ships a pre-built multi-threaded variant at `cascadic/multi` — see [Package — Multi-threaded build](/docs/package/guides/multi-threading) for the import recipe, COOP/COEP headers, and OCCT activation calls. Rebuild from source only when you need:
+The npm package already ships a pre-built multi-threaded variant at `libcascade/multi` — see [Package — Multi-threaded build](/docs/package/guides/multi-threading) for the import recipe, COOP/COEP headers, and OCCT activation calls. Rebuild from source only when you need:
 
 - A trimmed symbol list (the shipped MT binary builds from `build-configs/full_multi.yml` with the same ~4,400 symbols as the ST binary).
 - Custom `emccFlags` (alternative `STACK_SIZE`, `INITIAL_MEMORY`, capped `PTHREAD_POOL_SIZE`).

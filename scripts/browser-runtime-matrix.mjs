@@ -126,7 +126,7 @@ const runCell = async ({ browserName, browser, variant, origin }) => {
 };
 
 const main = async () => {
-  const packageRoot = path.resolve(process.argv[2] ?? 'node_modules/cascadic');
+  const packageRoot = path.resolve(process.argv[2] ?? 'node_modules/libcascade');
   const server = createPackageServer(packageRoot);
   await new Promise((resolve, reject) => {
     server.once('error', reject);

@@ -70,7 +70,7 @@ export const HomeFooter = (): ReactNode => {
             <FooterExternalLink href={LICENSE_URL}>LGPL-2.1-only WITH OCCT Exception</FooterExternalLink>
           </li>
           <li>
-            <FooterExternalLink href='https://www.npmjs.com/package/cascadic'>cascadic on npm</FooterExternalLink>
+            <FooterExternalLink href='https://www.npmjs.com/package/libcascade'>libcascade on npm</FooterExternalLink>
           </li>
           <li>
             <Link href='/docs/package/getting-started/faq' className={footerLinkClass}>

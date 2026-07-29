@@ -6,7 +6,7 @@ description: Build a polygonal wire, face it, and extrude into a prism — three
 The minimum useful OCCT example: a four-point polygon extruded along Z.
 
 ```typescript title="examples/polygon-extrusion.ts"
-import type { TopoDS_Shape } from 'cascadic';
+import type { TopoDS_Shape } from 'libcascade';
 import { getOc } from './ocjs-init';
 
 export const buildExtrudedPolygon = async (): Promise<TopoDS_Shape> => {
