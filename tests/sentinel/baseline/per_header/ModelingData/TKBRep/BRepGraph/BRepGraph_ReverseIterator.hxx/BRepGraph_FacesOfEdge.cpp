@@ -5555,6 +5555,15 @@ using NCollection_Vec3_double = NCollection_Vec3<double>;
 using math_VectorBase_double = math_VectorBase<double>;
 using math_VectorBase_int = math_VectorBase<int>;EMSCRIPTEN_BINDINGS(BRepGraph_FacesOfEdge) {
   class_<BRepGraph_FacesOfEdge>("BRepGraph_FacesOfEdge")
+    .constructor<const BRepGraph &, const BRepGraph_EdgeId>()
+    .constructor<const BRepGraph &, const BRepGraph_EdgeId, const uint32_t>()
+    .function("More", select_overload<bool()const, BRepGraph_FacesOfEdge>(&BRepGraph_FacesOfEdge::More), allow_raw_pointers())
+    .function("Next", select_overload<void(), BRepGraph_FacesOfEdge>(&BRepGraph_FacesOfEdge::Next), allow_raw_pointers())
+    .function("CurrentId", select_overload<typename BRepGraph_ReverseIterator::FaceFromEdgeCoEdgeTraits::ParentId()const, BRepGraph_FacesOfEdge>(&BRepGraph_FacesOfEdge::CurrentId), allow_raw_pointers())
+    .function("Current", select_overload<typename BRepGraph_ReverseIterator::FaceFromEdgeCoEdgeTraits::ParentId()const, BRepGraph_FacesOfEdge>(&BRepGraph_FacesOfEdge::Current), allow_raw_pointers())
+    .function("Definition", select_overload<const typename BRepGraph_ReverseIterator::DefTraits<typename BRepGraph_ReverseIterator::FaceFromEdgeCoEdgeTraits::ParentId>::DefType &()const, BRepGraph_FacesOfEdge>(&BRepGraph_FacesOfEdge::Definition), allow_raw_pointers())
+    .function("Index", select_overload<uint32_t()const, BRepGraph_FacesOfEdge>(&BRepGraph_FacesOfEdge::Index), allow_raw_pointers())
+    .function("end", select_overload<NCollection_ForwardRangeSentinel()const, BRepGraph_FacesOfEdge>(&BRepGraph_FacesOfEdge::end), allow_raw_pointers())
   ;
 }
 

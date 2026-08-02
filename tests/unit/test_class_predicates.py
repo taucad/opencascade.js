@@ -2,8 +2,51 @@ from __future__ import annotations
 
 import clang.cindex
 
-from ocjs_bindgen.predicates.classes import _hasImplicitDestructorWithIncompleteValueField
+from ocjs_bindgen.predicates import classes
+from ocjs_bindgen.predicates.classes import (
+  _hasImplicitDestructorWithIncompleteValueField,
+  inherited_template_base,
+)
 from tests.conftest import _MockType, cursor_mock
+
+
+def test_inherited_template_base_resolves_concrete_argument(monkeypatch) -> None:
+  parameter = cursor_mock(
+    kind=clang.cindex.CursorKind.TEMPLATE_TYPE_PARAMETER,
+    spelling="TraitsT",
+  )
+  template = cursor_mock(
+    kind=clang.cindex.CursorKind.CLASS_TEMPLATE,
+    spelling="EdgeParentsOf",
+    children=[parameter],
+  )
+  base_decl = cursor_mock(kind=clang.cindex.CursorKind.CLASS_DECL, spelling="EdgeParentsOf")
+  traits = _MockType(spelling="FaceFromEdgeCoEdgeTraits")
+  base = cursor_mock(
+    kind=clang.cindex.CursorKind.CXX_BASE_SPECIFIER,
+    access_specifier=clang.cindex.AccessSpecifier.PUBLIC,
+    type=_MockType(
+      spelling="EdgeParentsOf<FaceFromEdgeCoEdgeTraits>",
+      declaration=base_decl,
+      template_args=[traits],
+    ),
+  )
+  inherited = cursor_mock(
+    kind=clang.cindex.CursorKind.USING_DECLARATION,
+    spelling="FacesOfEdge",
+  )
+  derived = cursor_mock(
+    kind=clang.cindex.CursorKind.CLASS_DECL,
+    spelling="FacesOfEdge",
+    children=[base, inherited],
+  )
+  monkeypatch.setattr(classes, "_findClassTemplateByName", lambda _decl: template)
+
+  resolved_template, args = inherited_template_base(derived)
+
+  assert resolved_template is template
+  assert args["TraitsT"] is traits
+  assert args["type-parameter-0-0"] is traits
 
 
 def test_implicit_destructor_rejects_incomplete_template_field_value() -> None:

@@ -14,6 +14,7 @@ from filter.filterMethodOrProperties import filterMethodOrProperty
 from ocjs_bindgen.codegen.wasm_common import SkipException
 from ocjs_bindgen.naming import getClassJsPublicName
 from ocjs_bindgen.naming.cpp import getClassTypeName
+from ocjs_bindgen.predicates.classes import inherited_template_base
 
 
 def dedupe_js_equivalent_constructors(
@@ -80,9 +81,21 @@ def process_simple_constructor(tsb, theClass, templateDecl=None, templateArgs=No
   tplName = theClass.spelling if templateDecl is not None else None
 
   if len(constructors) == 0:
-    output += tsb._jsdoc(className, className, "  ", param_count=0, template_name=tplName, param_names=[])
-    output += "  constructor();\n"
-    return output
+    inherited = inherited_template_base(theClass)
+    if inherited is not None:
+      inherited_template, templateArgs = inherited
+      children = list(inherited_template.get_children())
+      constructors = list(filter(lambda x: x.kind == clang.cindex.CursorKind.CONSTRUCTOR, children))
+    elif any(
+      child.kind == clang.cindex.CursorKind.USING_DECLARATION
+      and child.spelling == theClass.spelling
+      for child in children
+    ):
+      return output
+    else:
+      output += tsb._jsdoc(className, className, "  ", param_count=0, template_name=tplName, param_names=[])
+      output += "  constructor();\n"
+      return output
   publicConstructors = list(filter(lambda x: x.kind == clang.cindex.CursorKind.CONSTRUCTOR and x.access_specifier == clang.cindex.AccessSpecifier.PUBLIC, children))
   if len(publicConstructors) == 0:
     return output

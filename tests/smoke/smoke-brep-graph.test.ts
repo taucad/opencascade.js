@@ -379,6 +379,21 @@ describe.skipIf(!wasmExists)('Smoke: BRepGraph', () => {
       expect(/^export declare class BRepGraph_FacesOfEdge\b/m.test(dts)).toBe(true);
     });
 
+    it('BRepGraph_FacesOfEdge exposes its inherited constructor and iterator methods', () => {
+      const oc = getOC();
+      using graph = buildBoxGraph();
+      using topo = graph.Topo();
+      using edges = topo.Edges();
+      using edge = edges.StartId();
+      using faces = new oc.BRepGraph_FacesOfEdge(graph, edge);
+
+      expect(faces.More()).toBe(true);
+      expect(typeof faces.Index()).toBe('number');
+      using face = faces.CurrentId();
+      expect(face).toBeDefined();
+      expect(() => faces.Next()).not.toThrow();
+    });
+
     it('Traits-typedef smoking gun: BRepGraph_RefsShellsOfFace iterator surface is declared in d.ts', () => {
       // Pre traits-typedef: `CurrentParentId(): unknown;` /
       // `CurrentRefId(): unknown;` — the `Traits::ParentId` /

@@ -216,6 +216,49 @@ def _findClassTemplateByName(synthetic_decl):
     return _CLASS_TEMPLATE_INDEX.get(synthetic_decl.spelling)
 
 
+def inherited_template_base(the_class):
+    """Return an inherited-constructor template base and its concrete args."""
+    children = list(the_class.get_children())
+    if not any(
+        child.kind == clang.cindex.CursorKind.USING_DECLARATION
+        and child.spelling == the_class.spelling
+        for child in children
+    ):
+        return None
+
+    bases = [
+        child
+        for child in children
+        if child.kind == clang.cindex.CursorKind.CXX_BASE_SPECIFIER
+        and child.access_specifier == clang.cindex.AccessSpecifier.PUBLIC
+    ]
+    if len(bases) != 1 or bases[0].type.get_num_template_arguments() <= 0:
+        return None
+
+    template = _findClassTemplateByName(bases[0].type.get_declaration())
+    if template is None:
+        return None
+    parameters = [
+        child
+        for child in template.get_children()
+        if child.kind == clang.cindex.CursorKind.TEMPLATE_TYPE_PARAMETER
+    ]
+    arguments = [
+        bases[0].type.get_template_argument_type(index)
+        for index in range(bases[0].type.get_num_template_arguments())
+    ]
+    if len(parameters) != len(arguments) or any(not argument.spelling for argument in arguments):
+        return None
+
+    from ocjs_bindgen.ast.template_args import augment_template_args_with_canonical
+
+    template_args = {
+        parameter.spelling: argument
+        for parameter, argument in zip(parameters, arguments, strict=True)
+    }
+    return template, augment_template_args_with_canonical(template_args, template)
+
+
 def _ctor_is_copy(ctor, decl) -> bool:
     """True iff `ctor` is a copy constructor for `decl` — a single argument
     whose pointee declaration is `decl` itself. Works for both concrete

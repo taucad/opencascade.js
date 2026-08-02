@@ -81,13 +81,17 @@ export function buildBoxGraph(
 ): InstanceType<OpenCascadeInstance['BRepGraph']> {
   const oc = getOC();
   const graph = new oc.BRepGraph();
-  using box = new oc.BRepPrimAPI_MakeBox(size.dx, size.dy, size.dz);
-  using shape = box.Shape();
-  using shapes = graph.Shapes();
-  using addResult = shapes.Add(shape);
-  if (!addResult.IsOk()) {
+  try {
+    using box = new oc.BRepPrimAPI_MakeBox(size.dx, size.dy, size.dz);
+    using shape = box.Shape();
+    using shapes = graph.Shapes();
+    using addResult = shapes.Add(shape);
+    if (!addResult.IsOk()) {
+      throw new Error('BRepGraph shape ingestion failed');
+    }
+    return graph;
+  } catch (error) {
     graph.delete();
-    throw new Error('BRepGraph shape ingestion failed');
+    throw error;
   }
-  return graph;
 }

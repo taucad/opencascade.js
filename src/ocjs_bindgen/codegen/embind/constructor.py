@@ -25,6 +25,7 @@ from ocjs_bindgen.codegen import val_default as _val_default
 from ocjs_bindgen.codegen.wasm_common import SkipException, isTransientDerived
 from ocjs_bindgen.naming.cpp import getClassQualifiedName, getClassTypeName
 from ocjs_bindgen.naming.ts import getClassJsPublicName
+from ocjs_bindgen.predicates.classes import inherited_template_base
 from ocjs_bindgen.predicates.optional_emission_guards import (
   assert_no_multi_all_optional_same_arity,
   assert_no_nonconst_ref_in_optional,
@@ -1388,19 +1389,25 @@ def process_simple_constructor(b, theClass, templateDecl=None, templateArgs=None
   underlying_spelling = theClass.spelling if templateDecl is not None else None
 
   if len(constructors) == 0:
-    if any(
+    inherited = inherited_template_base(theClass)
+    if inherited is not None:
+      inherited_template, templateArgs = inherited
+      children = list(inherited_template.get_children())
+      constructors = list(filter(lambda x: x.kind == clang.cindex.CursorKind.CONSTRUCTOR, children))
+    elif any(
       child.kind == clang.cindex.CursorKind.USING_DECLARATION
       and child.spelling == theClass.spelling
       for child in children
     ):
       return output
-    if useHandleOverride:
-      output += "    .constructor(optional_override([]() {\n"
-      output += "      return opencascade::handle<" + classCpp + ">(new " + classCpp + "());\n"
-      output += "    }))\n"
     else:
-      output += "    .constructor<>()\n"
-    return output
+      if useHandleOverride:
+        output += "    .constructor(optional_override([]() {\n"
+        output += "      return opencascade::handle<" + classCpp + ">(new " + classCpp + "());\n"
+        output += "    }))\n"
+      else:
+        output += "    .constructor<>()\n"
+      return output
   publicConstructors = list(filter(lambda x: x.kind == clang.cindex.CursorKind.CONSTRUCTOR and x.access_specifier == clang.cindex.AccessSpecifier.PUBLIC, children))
   if len(publicConstructors) == 0:
     return output
