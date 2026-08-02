@@ -19,9 +19,11 @@ from tests.conftest import _MockType, cursor_mock
 
 
 class _StubTuInfo:
-  def __init__(self, classDict=None, allChildren=None):
+  def __init__(self, classDict=None, allChildren=None, typedefs=None):
     self.classDict = classDict or {}
     self.allChildren = allChildren or []
+    self.typedefs = typedefs or []
+    self.templateTypedefs = []
 
 
 class _StubResolverContext:
@@ -254,3 +256,32 @@ def test_explicit_specialization_member_uses_concrete_template_argument() -> Non
 
   assert out == "BRepGraphInc_FaceDef"
   assert ctx.referenced_classes == set()
+
+
+def test_explicit_specialization_compares_canonical_cpp_arguments() -> None:
+  int_alias = _typedef(
+    "Int",
+    _MockType(spelling="C::Int", canonical=_MockType(spelling="int")),
+  )
+  alias_owner = _traits_class("C", int_alias)
+  double_specialization = cursor_mock(
+    kind=clang.cindex.CursorKind.STRUCT_DECL,
+    spelling="DefTraits",
+    displayname="DefTraits<double>",
+    children=[_typedef("DefType", _MockType(spelling="WrongDef"))],
+  )
+  int_specialization = cursor_mock(
+    kind=clang.cindex.CursorKind.STRUCT_DECL,
+    spelling="DefTraits",
+    displayname="DefTraits<int>",
+    children=[_typedef("DefType", _MockType(spelling="IntDef"))],
+  )
+  ctx = _StubResolverContext(
+    classDict={"C": alias_owner},
+    allChildren=[double_specialization, int_specialization],
+    resolve_table={"WrongDef": "WrongDef", "IntDef": "IntDef"},
+  )
+
+  out = resolve_qualified_member_type(ctx, "DefTraits<C::Int>::DefType")
+
+  assert out == "IntDef"
