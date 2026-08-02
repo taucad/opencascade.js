@@ -1816,7 +1816,7 @@ class Bindings:
           self._substitute_canonical_template_names(canonical, templateArgs),
           clangType,
         )
-    if not any(td in resolved for td in self._MEMBER_TYPEDEFS):
+    if "typename " not in resolved and not any(td in resolved for td in self._MEMBER_TYPEDEFS):
       return self._qualify_nested_type(resolved, clangType)
 
     canonical = clangType.get_canonical().spelling

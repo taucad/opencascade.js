@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import clang.cindex
+import pytest
 
 from ocjs_bindgen.predicates import classes
 from ocjs_bindgen.predicates.classes import (
@@ -10,7 +11,11 @@ from ocjs_bindgen.predicates.classes import (
 from tests.conftest import _MockType, cursor_mock
 
 
-def test_inherited_template_base_resolves_concrete_argument(monkeypatch) -> None:
+@pytest.mark.parametrize("using_spelling", ["FacesOfEdge", "EdgeParentsOf"])
+def test_inherited_template_base_resolves_concrete_argument(
+  monkeypatch,
+  using_spelling: str,
+) -> None:
   parameter = cursor_mock(
     kind=clang.cindex.CursorKind.TEMPLATE_TYPE_PARAMETER,
     spelling="TraitsT",
@@ -33,7 +38,7 @@ def test_inherited_template_base_resolves_concrete_argument(monkeypatch) -> None
   )
   inherited = cursor_mock(
     kind=clang.cindex.CursorKind.USING_DECLARATION,
-    spelling="FacesOfEdge",
+    spelling=using_spelling,
   )
   derived = cursor_mock(
     kind=clang.cindex.CursorKind.CLASS_DECL,

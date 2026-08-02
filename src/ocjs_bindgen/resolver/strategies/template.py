@@ -252,6 +252,7 @@ def resolve_template_type(self, clang_type, templateDecl=None, templateArgs=None
 
     typedef_name = self._find_typedef_for_container(container, t)
     if typedef_name:
+        self.referenced_classes.discard(container)
         return typedef_name
 
     if mangled and (mangled in self.exports or mangled in TypescriptBindings._known_export_names):

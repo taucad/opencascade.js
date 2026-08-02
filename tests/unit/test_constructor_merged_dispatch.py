@@ -146,3 +146,88 @@ def test_inherited_constructor_does_not_emit_a_fake_default(monkeypatch) -> None
   monkeypatch.setattr(constructor, "isTransientDerived", lambda *_args: False)
 
   assert constructor.process_simple_constructor(bindings, derived) == ""
+
+
+def test_inherited_constructor_uses_base_template_context(monkeypatch) -> None:
+  base_constructor = type(
+    "Constructor",
+    (),
+    {
+      "kind": clang.cindex.CursorKind.CONSTRUCTOR,
+      "access_specifier": clang.cindex.AccessSpecifier.PUBLIC,
+      "get_arguments": lambda self: iter(()),
+    },
+  )()
+  base_template = cursor_mock(
+    kind=clang.cindex.CursorKind.CLASS_TEMPLATE,
+    spelling="EdgeParentsOf",
+    children=[base_constructor],
+  )
+  derived = cursor_mock(
+    kind=clang.cindex.CursorKind.CLASS_DECL,
+    spelling="FacesOfEdge",
+  )
+  template_args = {"TraitsT": object()}
+  captured = {}
+
+  class Bindings:
+    tuInfo = type("TuInfo", (), {"classDict": {}})()
+
+    @staticmethod
+    def _filter_overloads(overloads, template_decl=None):
+      captured["filter_template_decl"] = template_decl
+      return overloads
+
+    @staticmethod
+    def _checkUnbindableArgs(*_args):
+      return None
+
+    @staticmethod
+    def _countTrailingDefaults(_candidate):
+      return 0
+
+  def capture_emit(
+    _bindings,
+    class_cpp,
+    _args,
+    template_decl,
+    actual_template_args,
+    _use_handle_override,
+    underlying_spelling=None,
+    optional_param_count=0,
+    owning_class=None,
+  ):
+    captured.update(
+      class_cpp=class_cpp,
+      template_decl=template_decl,
+      template_args=actual_template_args,
+      underlying_spelling=underlying_spelling,
+      optional_param_count=optional_param_count,
+      owning_class=owning_class,
+    )
+    return "bound\n"
+
+  monkeypatch.setattr(
+    constructor,
+    "inherited_template_base",
+    lambda _derived: (base_template, template_args),
+  )
+  monkeypatch.setattr(constructor, "getClassTypeName", lambda *_args: "FacesOfEdge")
+  monkeypatch.setattr(constructor, "getClassQualifiedName", lambda *_args: "FacesOfEdge")
+  monkeypatch.setattr(constructor, "isTransientDerived", lambda *_args: False)
+  monkeypatch.setattr(constructor, "filterMethodOrProperty", lambda *_args: True)
+  monkeypatch.setattr(constructor, "_detect_and_emit_sub2a", lambda *_args, **_kwargs: ("", set(), []))
+  monkeypatch.setattr(constructor, "_detect_and_emit_sub2b", lambda *_args, **_kwargs: ("", set(), []))
+  monkeypatch.setattr(constructor, "_emit_initializer_list_ctors", lambda *_args, **_kwargs: ("", set()))
+  monkeypatch.setattr(constructor, "emit_constructor", capture_emit)
+
+  assert constructor.process_simple_constructor(Bindings(), derived) == "bound\n"
+  assert captured == {
+    "filter_template_decl": derived,
+    "class_cpp": "FacesOfEdge",
+    "template_decl": derived,
+    "template_args": template_args,
+    "underlying_spelling": "EdgeParentsOf",
+    "optional_param_count": 0,
+    "owning_class": base_template,
+  }

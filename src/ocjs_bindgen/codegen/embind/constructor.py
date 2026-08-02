@@ -1392,6 +1392,9 @@ def process_simple_constructor(b, theClass, templateDecl=None, templateArgs=None
     inherited = inherited_template_base(theClass)
     if inherited is not None:
       inherited_template, templateArgs = inherited
+      templateDecl = templateDecl if templateDecl is not None else theClass
+      theClass = inherited_template
+      underlying_spelling = inherited_template.spelling
       children = list(inherited_template.get_children())
       constructors = list(filter(lambda x: x.kind == clang.cindex.CursorKind.CONSTRUCTOR, children))
     elif any(

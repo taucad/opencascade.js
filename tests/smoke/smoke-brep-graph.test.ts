@@ -367,7 +367,7 @@ describe.skipIf(!wasmExists)('Smoke: BRepGraph', () => {
       },
     );
 
-    it('Canonical-key smoking gun: BRepGraph_FacesOfEdge.Current() returns BRepGraph_FaceId in d.ts', () => {
+    it('Canonical-key smoking gun: BRepGraph_FacesOfEdge resolves inherited template return types in d.ts', () => {
       // Pre canonical-key: `Current(): unknown;` (the template parameter `T` of
       // `ParentsOf<T>` could not be substituted with the canonical
       // `BRepGraph_FaceId` instantiation). Canonical-key augmentation's
@@ -377,6 +377,7 @@ describe.skipIf(!wasmExists)('Smoke: BRepGraph', () => {
       // the concrete typed id.
       const dts = readDts();
       expect(/^export declare class BRepGraph_FacesOfEdge\b/m.test(dts)).toBe(true);
+      expect(/Definition\(\): BRepGraphInc_FaceDef;/m.test(dts)).toBe(true);
     });
 
     it('BRepGraph_FacesOfEdge exposes its inherited constructor and iterator methods', () => {

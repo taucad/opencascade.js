@@ -219,13 +219,6 @@ def _findClassTemplateByName(synthetic_decl):
 def inherited_template_base(the_class):
     """Return an inherited-constructor template base and its concrete args."""
     children = list(the_class.get_children())
-    if not any(
-        child.kind == clang.cindex.CursorKind.USING_DECLARATION
-        and child.spelling == the_class.spelling
-        for child in children
-    ):
-        return None
-
     bases = [
         child
         for child in children
@@ -237,6 +230,13 @@ def inherited_template_base(the_class):
 
     template = _findClassTemplateByName(bases[0].type.get_declaration())
     if template is None:
+        return None
+    using_names = {the_class.spelling, template.spelling}
+    if not any(
+        child.kind == clang.cindex.CursorKind.USING_DECLARATION
+        and child.spelling in using_names
+        for child in children
+    ):
         return None
     parameters = [
         child
