@@ -68,27 +68,24 @@ describe.skipIf(!wasmExists)('Smoke: genuine std::optional<T> parameter (row 22)
 
   it('(b) explicit undefined for theAvoidKind → nullopt; explorer constructs and is iterable', () => {
     const oc = getOC();
-    const fixture = buildBoxGraph();
-    using graph = fixture.graph;
-    const rootNode = fixture.addResult.TopologyRoot;
+    using graph = buildBoxGraph();
+    using rootNode = oc.BRepGraph_NodeId.Start(oc.BRepGraph_NodeId_Kind.Solid);
     using explorer = new oc.BRepGraph_ParentExplorer(graph, rootNode, undefined, false);
     expect(explorer).toBeDefined();
   });
 
   it('(c) explicit Kind enum value → some(Kind); explorer prunes that ancestor kind', () => {
     const oc = getOC();
-    const fixture = buildBoxGraph();
-    using graph = fixture.graph;
-    const rootNode = fixture.addResult.TopologyRoot;
+    using graph = buildBoxGraph();
+    using rootNode = oc.BRepGraph_NodeId.Start(oc.BRepGraph_NodeId_Kind.Solid);
     using explorer = new oc.BRepGraph_ParentExplorer(graph, rootNode, oc.BRepGraph_NodeId_Kind.Solid, false);
     expect(explorer).toBeDefined();
   });
 
   it('(d) explicit null for theAvoidKind → nullopt (row 22 is permissive null, NOT rule-5 strict)', () => {
     const oc = getOC();
-    const fixture = buildBoxGraph();
-    using graph = fixture.graph;
-    const rootNode = fixture.addResult.TopologyRoot;
+    using graph = buildBoxGraph();
+    using rootNode = oc.BRepGraph_NodeId.Start(oc.BRepGraph_NodeId_Kind.Solid);
     // Row 22 deliberately differs from rule 5 — `null` collapses to
     // `std::nullopt` via embind's `register_optional<T>` rather than
     // throwing a structured BindingError. This is the policy carve-out.
@@ -105,9 +102,8 @@ describe.skipIf(!wasmExists)('Smoke: genuine std::optional<T> parameter (row 22)
 
   it('(a) 3-arg (graph, node, false) is unreachable — middle optional cannot be elided, so it throws', () => {
     const oc = getOC();
-    const fixture = buildBoxGraph();
-    using graphFixture = fixture.graph;
-    const rootNode = fixture.addResult.TopologyRoot;
+    using graphFixture = buildBoxGraph();
+    using rootNode = oc.BRepGraph_NodeId.Start(oc.BRepGraph_NodeId_Kind.Solid);
     // `theAvoidKind` is a MIDDLE parameter; trailing arity-pad can only fill
     // the last defaulted slot (`theMode`), never skip a middle parameter.
     // `false` matches none of the 3-arg Config / TraversalMode / NodeId_Kind

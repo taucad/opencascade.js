@@ -312,7 +312,8 @@ def codegen_method_dispatch_tree(b, tree, classCpp, isStatic, templateDecl, temp
     has_return = method.result_type.spelling != "void"
     if mixed_returns:
       if has_return:
-        return f'{sp}return emscripten::val({caller}{method.spelling}({args_str}));\n'
+        policy = ", emscripten::allow_raw_pointers()" if isRawPointerParam(method.result_type) else ""
+        return f'{sp}return emscripten::val({caller}{method.spelling}({args_str}){policy});\n'
       return f'{sp}{caller}{method.spelling}({args_str});\n{sp}return emscripten::val::undefined();\n'
     if has_return:
       return f'{sp}return {caller}{method.spelling}({args_str});\n'

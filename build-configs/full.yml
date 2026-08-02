@@ -34,7 +34,6 @@ mainBuild:
   - symbol: AppStd_Application
   - symbol: ApproxInt_KnotTools
   - symbol: ApproxInt_SvSurfaces
-  - symbol: Approx_BSplineApproxInterp
   - symbol: Approx_Curve2d
   - symbol: Approx_Curve3d
   - symbol: Approx_CurveOnSurface
@@ -352,70 +351,84 @@ mainBuild:
   - symbol: BRepGraph
   - symbol: BRepGraphInc_BaseDef
   - symbol: BRepGraphInc_BaseRef
-  - symbol: BRepGraphInc_BaseRep
+  - symbol: BRepGraphInc_BitFlags
   - symbol: BRepGraphInc_ChildRef
+  - symbol: BRepGraphInc_CoEdgeCurve2DRep
   - symbol: BRepGraphInc_CoEdgeDef
-  - symbol: BRepGraphInc_CoEdgeRef
+  - symbol: BRepGraphInc_CoEdgePolygon2DRep
+  - symbol: BRepGraphInc_CoEdgePolygonOnTriRep
   - symbol: BRepGraphInc_CompSolidDef
+  - symbol: BRepGraphInc_CompSolidRelations
   - symbol: BRepGraphInc_CompoundDef
-  - symbol: BRepGraphInc_Curve2DRep
-  - symbol: BRepGraphInc_Curve3DRep
+  - symbol: BRepGraphInc_CompoundRelations
+  - symbol: BRepGraphInc_EdgeCurve3DRep
   - symbol: BRepGraphInc_EdgeDef
+  - symbol: BRepGraphInc_EdgePolygon3DRep
+  - symbol: BRepGraphInc_EdgeRelations
   - symbol: BRepGraphInc_FaceDef
   - symbol: BRepGraphInc_FaceRef
+  - symbol: BRepGraphInc_FaceRelations
+  - symbol: BRepGraphInc_FaceSurfaceRep
+  - symbol: BRepGraphInc_FaceTriangulationRep
+  - symbol: BRepGraphInc_Load_Counts
   - symbol: BRepGraphInc_OccurrenceDef
   - symbol: BRepGraphInc_OccurrenceRef
-  - symbol: BRepGraphInc_Polygon2DRep
-  - symbol: BRepGraphInc_Polygon3DRep
-  - symbol: BRepGraphInc_PolygonOnTriRep
+  - symbol: BRepGraphInc_OccurrenceRelations
+  - symbol: BRepGraphInc_ParityOrientation
   - symbol: BRepGraphInc_Populate
+  - symbol: BRepGraphInc_Populate_Options
   - symbol: BRepGraphInc_ProductDef
+  - symbol: BRepGraphInc_ProductRelations
   - symbol: BRepGraphInc_Reconstruct
   - symbol: BRepGraphInc_Reconstruct_Cache
   - symbol: BRepGraphInc_Reconstruct_Cache_TempScope
-  - symbol: BRepGraphInc_ReverseIndex
   - symbol: BRepGraphInc_ShellDef
   - symbol: BRepGraphInc_ShellRef
+  - symbol: BRepGraphInc_ShellRelations
   - symbol: BRepGraphInc_SolidDef
   - symbol: BRepGraphInc_SolidRef
+  - symbol: BRepGraphInc_SolidRelations
   - symbol: BRepGraphInc_Storage
-  - symbol: BRepGraphInc_SurfaceRep
-  - symbol: BRepGraphInc_TriangulationRep
   - symbol: BRepGraphInc_VertexDef
   - symbol: BRepGraphInc_VertexRef
+  - symbol: BRepGraphInc_VertexRelations
   - symbol: BRepGraphInc_WireDef
-  - symbol: BRepGraphInc_WireInstance
   - symbol: BRepGraphInc_WireRef
-  - symbol: BRepGraph_Builder
-  - symbol: BRepGraph_CacheKind
-  - symbol: BRepGraph_CacheKindRegistry
-  - symbol: BRepGraph_CacheValue
-  - symbol: BRepGraph_CacheView
+  - symbol: BRepGraphInc_WireRelations
+  - symbol: BRepGraph_Cache
+  - symbol: BRepGraph_CacheDerivedState
+  - symbol: BRepGraph_CacheIterator
+  - symbol: BRepGraph_CacheMesh_CoEdgeMeshEntry
+  - symbol: BRepGraph_CacheMesh_DirtySet
+  - symbol: BRepGraph_CacheMesh_Driver
+  - symbol: BRepGraph_CacheMesh_EdgeMeshEntry
+  - symbol: BRepGraph_CacheMesh_EntryStamp
+  - symbol: BRepGraph_CacheMesh_FaceMeshEntry
+  - symbol: BRepGraph_CacheRegistry
   - symbol: BRepGraph_ChildExplorer
   - symbol: BRepGraph_ChildRefId
+  - symbol: BRepGraph_CoEdgeCurve2DRepId
   - symbol: BRepGraph_CoEdgeId
-  - symbol: BRepGraph_CoEdgeRefId
+  - symbol: BRepGraph_CoEdgePolygon2DRepId
+  - symbol: BRepGraph_CoEdgePolygonOnTriRepId
   - symbol: BRepGraph_CoEdgesOfEdge
+  - symbol: BRepGraph_CoEdgesOfWire
   - symbol: BRepGraph_CompSolidId
   - symbol: BRepGraph_CompSolidsOfSolid
   - symbol: BRepGraph_Compact
+  - symbol: BRepGraph_Compact_Options
   - symbol: BRepGraph_CompoundId
-  - symbol: BRepGraph_CompoundsOfCompSolid
+  - symbol: BRepGraph_CompoundsOfChild
   - symbol: BRepGraph_Copy
-  - symbol: BRepGraph_Curve2DRepId
-  - symbol: BRepGraph_Curve3DRepId
+  - symbol: BRepGraph_CopyRemap
   - symbol: BRepGraph_Data
   - symbol: BRepGraph_Deduplicate
   - symbol: BRepGraph_DeferredScope
   - symbol: BRepGraph_DefsChildOfCompound
-  - symbol: BRepGraph_DefsChildOfShell
-  - symbol: BRepGraph_DefsChildOfSolid
   - symbol: BRepGraph_DefsCoEdgeOfWire
   - symbol: BRepGraph_DefsEdgeOfWire
   - symbol: BRepGraph_DefsFaceOfShell
   - symbol: BRepGraph_DefsIterator_ChildOfCompoundTraits
-  - symbol: BRepGraph_DefsIterator_ChildOfShellTraits
-  - symbol: BRepGraph_DefsIterator_ChildOfSolidTraits
   - symbol: BRepGraph_DefsIterator_CoEdgeOfWireTraits
   - symbol: BRepGraph_DefsIterator_DefsVertexOfEdge
   - symbol: BRepGraph_DefsIterator_EdgeOfWireTraits
@@ -423,89 +436,91 @@ mainBuild:
   - symbol: BRepGraph_DefsIterator_OccurrenceOfProductTraits
   - symbol: BRepGraph_DefsIterator_ShellOfSolidTraits
   - symbol: BRepGraph_DefsIterator_SolidOfCompSolidTraits
-  - symbol: BRepGraph_DefsIterator_VertexOfFaceTraits
   - symbol: BRepGraph_DefsIterator_WireOfFaceTraits
   - symbol: BRepGraph_DefsOccurrenceOfProduct
   - symbol: BRepGraph_DefsShellOfSolid
   - symbol: BRepGraph_DefsSolidOfCompSolid
-  - symbol: BRepGraph_DefsVertexOfFace
   - symbol: BRepGraph_DefsWireOfFace
+  - symbol: BRepGraph_EdgeCurve3DRepId
   - symbol: BRepGraph_EdgeId
+  - symbol: BRepGraph_EdgePolygon3DRepId
   - symbol: BRepGraph_EdgesOfVertex
   - symbol: BRepGraph_EditorView
   - symbol: BRepGraph_FaceId
   - symbol: BRepGraph_FaceRefId
+  - symbol: BRepGraph_FaceSurfaceRepId
+  - symbol: BRepGraph_FaceTriangulationRepId
   - symbol: BRepGraph_FacesOfEdge
+  - symbol: BRepGraph_FacesOfWire
   - symbol: BRepGraph_FullChildRefIterator
-  - symbol: BRepGraph_FullCoEdgeRefIterator
   - symbol: BRepGraph_FullFaceRefIterator
   - symbol: BRepGraph_FullOccurrenceRefIterator
   - symbol: BRepGraph_FullShellRefIterator
   - symbol: BRepGraph_FullSolidRefIterator
   - symbol: BRepGraph_FullVertexRefIterator
   - symbol: BRepGraph_FullWireRefIterator
-  - symbol: BRepGraph_History
-  - symbol: BRepGraph_HistoryRecord
+  - symbol: BRepGraph_ItemId
+  - symbol: BRepGraph_ItemUID
   - symbol: BRepGraph_Layer
+  - symbol: BRepGraph_LayerDeferred
+  - symbol: BRepGraph_LayerDeferred_Entry
+  - symbol: BRepGraph_LayerDeferred_Entry_RepresentationStorage
+  - symbol: BRepGraph_LayerDeferred_Representation
+  - symbol: BRepGraph_LayerHistory
   - symbol: BRepGraph_LayerIterator
-  - symbol: BRepGraph_LayerParam
-  - symbol: BRepGraph_LayerParam_VertexParams
+  - symbol: BRepGraph_LayerLock
+  - symbol: BRepGraph_LayerLock_ScopedOwnerEdit
+  - symbol: BRepGraph_LayerParametric
   - symbol: BRepGraph_LayerRegistry
-  - symbol: BRepGraph_LayerRegularity
-  - symbol: BRepGraph_LayerRegularity_EdgeRegularities
-  - symbol: BRepGraph_MeshCacheStorage
-  - symbol: BRepGraph_MeshCache_CoEdgeMeshEntry
-  - symbol: BRepGraph_MeshCache_EdgeMeshEntry
-  - symbol: BRepGraph_MeshCache_FaceMeshEntry
+  - symbol: BRepGraph_LayerTopoSupplement
   - symbol: BRepGraph_MeshView
-  - symbol: BRepGraph_MeshView_CoEdgeOps
-  - symbol: BRepGraph_MeshView_EdgeOps
-  - symbol: BRepGraph_MeshView_FaceOps
+  - symbol: BRepGraph_MeshView_CacheView
+  - symbol: BRepGraph_MeshView_CacheView_CoEdgeOps
+  - symbol: BRepGraph_MeshView_CacheView_EdgeOps
+  - symbol: BRepGraph_MeshView_CacheView_FaceOps
+  - symbol: BRepGraph_MeshView_EditorView
+  - symbol: BRepGraph_MeshView_EditorView_CoEdgeOps
+  - symbol: BRepGraph_MeshView_EditorView_EdgeOps
+  - symbol: BRepGraph_MeshView_EditorView_FaceOps
+  - symbol: BRepGraph_MeshView_EffectiveView
+  - symbol: BRepGraph_MeshView_EffectiveView_CoEdgeOps
+  - symbol: BRepGraph_MeshView_EffectiveView_EdgeOps
+  - symbol: BRepGraph_MeshView_EffectiveView_FaceOps
+  - symbol: BRepGraph_MeshView_PersistentView
+  - symbol: BRepGraph_MeshView_PersistentView_CoEdgeOps
+  - symbol: BRepGraph_MeshView_PersistentView_EdgeOps
+  - symbol: BRepGraph_MeshView_PersistentView_FaceOps
   - symbol: BRepGraph_MeshView_PolyOps
   - symbol: BRepGraph_NodeId
   - symbol: BRepGraph_OccurrenceId
   - symbol: BRepGraph_OccurrenceRefId
-  - symbol: BRepGraph_OccurrencesOfProduct
+  - symbol: BRepGraph_OccurrencesOfChild
   - symbol: BRepGraph_ParallelPolicy
   - symbol: BRepGraph_ParentExplorer
-  - symbol: BRepGraph_Polygon2DRepId
-  - symbol: BRepGraph_Polygon3DRepId
-  - symbol: BRepGraph_PolygonOnTriRepId
   - symbol: BRepGraph_ProductId
+  - symbol: BRepGraph_ProductsOfOccurrence
   - symbol: BRepGraph_RefId
-  - symbol: BRepGraph_RefTransientCache
   - symbol: BRepGraph_RefUID
   - symbol: BRepGraph_RefsChildOfCompound
-  - symbol: BRepGraph_RefsChildOfShell
-  - symbol: BRepGraph_RefsChildOfSolid
-  - symbol: BRepGraph_RefsCoEdgeOfWire
-  - symbol: BRepGraph_RefsCompSolidsOfSolid
-  - symbol: BRepGraph_RefsCompoundsOfChild
   - symbol: BRepGraph_RefsEdgesOfVertex
   - symbol: BRepGraph_RefsFaceOfShell
-  - symbol: BRepGraph_RefsFacesOfWire
   - symbol: BRepGraph_RefsIterator_ChildOfCompoundTraits
-  - symbol: BRepGraph_RefsIterator_ChildOfShellTraits
-  - symbol: BRepGraph_RefsIterator_ChildOfSolidTraits
   - symbol: BRepGraph_RefsIterator_CoEdgeOfWireTraits
   - symbol: BRepGraph_RefsIterator_FaceOfShellTraits
   - symbol: BRepGraph_RefsIterator_OccurrenceOfProductTraits
   - symbol: BRepGraph_RefsIterator_RefsVertexOfEdge
   - symbol: BRepGraph_RefsIterator_ShellOfSolidTraits
   - symbol: BRepGraph_RefsIterator_SolidOfCompSolidTraits
-  - symbol: BRepGraph_RefsIterator_VertexOfFaceTraits
   - symbol: BRepGraph_RefsIterator_WireOfFaceTraits
   - symbol: BRepGraph_RefsOccurrenceOfProduct
-  - symbol: BRepGraph_RefsProductsOfOccurrence
   - symbol: BRepGraph_RefsShellOfSolid
   - symbol: BRepGraph_RefsShellsOfFace
   - symbol: BRepGraph_RefsSolidOfCompSolid
   - symbol: BRepGraph_RefsSolidsOfShell
-  - symbol: BRepGraph_RefsVertexOfFace
   - symbol: BRepGraph_RefsView
   - symbol: BRepGraph_RefsView_ChildOps
-  - symbol: BRepGraph_RefsView_CoEdgeOps
   - symbol: BRepGraph_RefsView_FaceOps
+  - symbol: BRepGraph_RefsView_GenOps
   - symbol: BRepGraph_RefsView_OccurrenceOps
   - symbol: BRepGraph_RefsView_ShellOps
   - symbol: BRepGraph_RefsView_SolidOps
@@ -515,28 +530,30 @@ mainBuild:
   - symbol: BRepGraph_RefsWiresOfCoEdge
   - symbol: BRepGraph_RelatedIterator
   - symbol: BRepGraph_RepId
-  - symbol: BRepGraph_ReverseIterator_CompSolidOfSolidRefTraits
-  - symbol: BRepGraph_ReverseIterator_CompoundOfChildRefTraits
+  - symbol: BRepGraph_ReverseIterator_CompSolidFromSolidRefTraits
+  - symbol: BRepGraph_ReverseIterator_CompoundFromChildRefTraits
   - symbol: BRepGraph_ReverseIterator_EdgeOfVertexRefTraits
-  - symbol: BRepGraph_ReverseIterator_FaceOfWireRefTraits
-  - symbol: BRepGraph_ReverseIterator_ProductOfOccurrenceRefTraits
-  - symbol: BRepGraph_ReverseIterator_ShellOfFaceRefTraits
-  - symbol: BRepGraph_ReverseIterator_SolidOfShellRefTraits
-  - symbol: BRepGraph_ReverseIterator_WireOfCoEdgeRefTraits
+  - symbol: BRepGraph_ReverseIterator_FaceFromEdgeCoEdgeTraits
+  - symbol: BRepGraph_ReverseIterator_FaceFromWireRefTraits
+  - symbol: BRepGraph_ReverseIterator_OccurrenceFromOccurrenceRefTraits
+  - symbol: BRepGraph_ReverseIterator_ProductFromOccurrenceRefTraits
+  - symbol: BRepGraph_ReverseIterator_ShellFromFaceRefTraits
+  - symbol: BRepGraph_ReverseIterator_SolidFromShellRefTraits
+  - symbol: BRepGraph_ReverseIterator_WireFromEdgeCoEdgeTraits
+  - symbol: BRepGraph_ReverseIterator_WireOfCoEdgeUsageTraits
   - symbol: BRepGraph_RootProductIterator
   - symbol: BRepGraph_ShapesView
+  - symbol: BRepGraph_ShapesView_Result
   - symbol: BRepGraph_ShellId
   - symbol: BRepGraph_ShellRefId
-  - symbol: BRepGraph_ShellsOfFace
   - symbol: BRepGraph_SolidId
   - symbol: BRepGraph_SolidRefId
-  - symbol: BRepGraph_SolidsOfShell
-  - symbol: BRepGraph_SurfaceRepId
+  - symbol: BRepGraph_SupplementEditor
+  - symbol: BRepGraph_SupplementIterator
   - symbol: BRepGraph_Tool
   - symbol: BRepGraph_Tool_CoEdge
   - symbol: BRepGraph_Tool_Edge
   - symbol: BRepGraph_Tool_Face
-  - symbol: BRepGraph_Tool_Mesh
   - symbol: BRepGraph_Tool_Shell
   - symbol: BRepGraph_Tool_Vertex
   - symbol: BRepGraph_Tool_Wire
@@ -555,20 +572,19 @@ mainBuild:
   - symbol: BRepGraph_TopoView_VertexOps
   - symbol: BRepGraph_TopoView_WireOps
   - symbol: BRepGraph_Transform
-  - symbol: BRepGraph_TransientCache
-  - symbol: BRepGraph_TriangulationRepId
   - symbol: BRepGraph_UID
   - symbol: BRepGraph_UIDsView
+  - symbol: BRepGraph_UsagePath
+  - symbol: BRepGraph_UsagePath_Step
   - symbol: BRepGraph_Validate
   - symbol: BRepGraph_Validate_Options
   - symbol: BRepGraph_Validate_Result
   - symbol: BRepGraph_VersionStamp
   - symbol: BRepGraph_VertexId
   - symbol: BRepGraph_VertexRefId
-  - symbol: BRepGraph_WireExplorer
   - symbol: BRepGraph_WireId
   - symbol: BRepGraph_WireRefId
-  - symbol: BRepGraph_WiresOfCoEdge
+  - symbol: BRepGraph_WiresOfEdge
   - symbol: BRepIntCurveSurface_Inter
   - symbol: BRepLProp
   - symbol: BRepLProp_CLProps
@@ -1423,7 +1439,6 @@ mainBuild:
   - symbol: GeomFill_FunctionGuide
   - symbol: GeomFill_Generator
   - symbol: GeomFill_Gordon
-  - symbol: GeomFill_GordonBuilder
   - symbol: GeomFill_GuideTrihedronAC
   - symbol: GeomFill_GuideTrihedronPlan
   - symbol: GeomFill_Line
@@ -1431,6 +1446,7 @@ mainBuild:
   - symbol: GeomFill_LocationDraft
   - symbol: GeomFill_LocationGuide
   - symbol: GeomFill_LocationLaw
+  - symbol: GeomFill_NetworkSurface
   - symbol: GeomFill_Pipe
   - symbol: GeomFill_PipeError
   - symbol: GeomFill_PlanFunc
@@ -1453,7 +1469,11 @@ mainBuild:
   - symbol: GeomFill_TrihedronWithGuide
   - symbol: GeomFill_UniformSection
   - symbol: GeomHash_CurveHasher
+  - symbol: GeomHash_Polygon2DHasher
+  - symbol: GeomHash_Polygon3DHasher
+  - symbol: GeomHash_PolygonOnTriHasher
   - symbol: GeomHash_SurfaceHasher
+  - symbol: GeomHash_TriangulationHasher
   - symbol: GeomInt
   - symbol: GeomInt_BSpGradient_BFGSOfMyBSplGradientOfTheComputeLineOfWLApprox
   - symbol: GeomInt_BSpParFunctionOfMyBSplGradientOfTheComputeLineOfWLApprox
@@ -2731,6 +2751,7 @@ mainBuild:
   - symbol: Poly_Triangle
   - symbol: Poly_Triangulation
   - symbol: Poly_TriangulationParameters
+  - symbol: PolygonOnTriHashKey
   - symbol: Precision
   - symbol: ProjLib
   - symbol: ProjLib_CompProjectedCurve

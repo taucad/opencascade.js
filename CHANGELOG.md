@@ -16,7 +16,7 @@ v3 is a ground-up modernisation: OCCT V8 (GA), native WebAssembly exceptions, ES
 
 ### Highlights
 
-- **OCCT V8.0.0** (GA, up from V7.6.2) and **Emscripten 5.0.1** (up from 3.1.14).
+- **OCCT V8.0.1** (GA, up from V7.6.2) and **Emscripten 5.0.1** (up from 3.1.14).
 - **libclang 18.1.1** for the bindgen parser (up from `15.0.6.1`), paired with vendored **LLVM 17.0.6** libc++ + clang resource headers to satisfy the LLVM project's libc++/clang N-1 compat-window policy. This is what makes the v3 bindings _accurate_ for OCCT V8 — libclang 18 exposes `templateTypedefs`, sees through `DEFINE_STANDARD_HANDLE` expansions, and resolves `NCollection_*` template instantiations that v2's libclang 15 either skipped, mislabelled as `UNEXPOSED`, or surfaced as duplicate registrations. The parse environment is hermetic: `src/ocjs_bindgen/config/paths.py` routes libclang at the vendored libc++ headers and clang resource directory, not at the host system's clang.
 - **Native WebAssembly exceptions** (`-fwasm-exceptions`) replace JS `invoke_*` trampolines: ~12% gzipped size overhead vs. the prior ~80%, with zero happy-path performance cost. `WebAssembly.Exception` is decodable end-to-end via `getExceptionMessage`, `incrementExceptionRefcount`, `decrementExceptionRefcount`, and `OCJS.getStandard_FailureData` — see [§C](BREAKING_CHANGES.md#section-c--webassembly-exception-handling).
 - **Performance vs. V7.6.2**: 22-31% faster boolean operations, 16-19% faster fillets, 23-29% faster complex models. Full numbers in [Appendix G](BREAKING_CHANGES.md#appendix-g--performance--size).
@@ -76,7 +76,7 @@ Each entry deep-links into [BREAKING_CHANGES.md](BREAKING_CHANGES.md) for Before
 
 Full commit hashes live in [DEPS.json](DEPS.json).
 
-- OCCT `V8_0_0` (GA, commit `d3056ef8`)
+- OCCT `V8_0_1` (GA, commit `b8f597c6`)
 - rapidjson post-1.1.0 (commit `24b5e7a8`)
 - freetype `VER-2-13-0` (commit `de8b92dd`)
 - Emscripten `5.0.1` (digest `sha256:c89732ef…`)

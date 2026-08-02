@@ -14,6 +14,7 @@ Owns:
 
 from __future__ import annotations
 
+import re
 from collections import defaultdict
 
 import clang.cindex
@@ -99,10 +100,13 @@ def rewrite_typedef_nested_types(type_str, class_cpp, underlying_spelling, templ
   """
   if template_decl is None or not underlying_spelling or not class_cpp:
     return type_str
-  prefix = underlying_spelling + "::"
-  if prefix not in type_str:
-    return type_str
-  return type_str.replace(prefix, class_cpp + "::")
+  result = type_str.replace(underlying_spelling + "::", class_cpp + "::")
+  alias_prefix = class_cpp + "::"
+  return re.sub(
+    rf"(?<![\w:])(?:[A-Za-z_]\w*::)+(?={re.escape(alias_prefix)})",
+    "",
+    result,
+  )
 
 
 def emit_constructor(b, class_cpp, args, template_decl, template_args, use_handle_override, underlying_spelling=None, optional_param_count=0, owning_class=None):
@@ -1384,6 +1388,12 @@ def process_simple_constructor(b, theClass, templateDecl=None, templateArgs=None
   underlying_spelling = theClass.spelling if templateDecl is not None else None
 
   if len(constructors) == 0:
+    if any(
+      child.kind == clang.cindex.CursorKind.USING_DECLARATION
+      and child.spelling == theClass.spelling
+      for child in children
+    ):
+      return output
     if useHandleOverride:
       output += "    .constructor(optional_override([]() {\n"
       output += "      return opencascade::handle<" + classCpp + ">(new " + classCpp + "());\n"

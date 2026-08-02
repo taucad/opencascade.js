@@ -3201,7 +3201,6 @@
 #include "GeomFill_FunctionGuide.hxx"
 #include "GeomFill_Generator.hxx"
 #include "GeomFill_Gordon.hxx"
-#include "GeomFill_GordonBuilder.hxx"
 #include "GeomFill_GuideTrihedronAC.hxx"
 #include "GeomFill_GuideTrihedronPlan.hxx"
 #include "GeomFill_Line.hxx"
@@ -3210,6 +3209,7 @@
 #include "GeomFill_LocationGuide.hxx"
 #include "GeomFill_LocationLaw.hxx"
 #include "GeomFill_NSections.hxx"
+#include "GeomFill_NetworkSurface.hxx"
 #include "GeomFill_Pipe.hxx"
 #include "GeomFill_PipeError.hxx"
 #include "GeomFill_PlanFunc.hxx"
@@ -4023,56 +4023,64 @@
 #include "BRepAdaptor_Curve2d.hxx"
 #include "BRepAdaptor_Surface.hxx"
 #include "BRepGraph.hxx"
-#include "BRepGraph_Builder.hxx"
-#include "BRepGraph_CacheKindIterator.hxx"
-#include "BRepGraph_CacheView.hxx"
+#include "BRepGraph_Cache.hxx"
+#include "BRepGraph_CacheDerivedState.hxx"
+#include "BRepGraph_CacheIterator.hxx"
+#include "BRepGraph_CacheMesh.hxx"
+#include "BRepGraph_CacheRegistry.hxx"
 #include "BRepGraph_ChildExplorer.hxx"
 #include "BRepGraph_Compact.hxx"
 #include "BRepGraph_Copy.hxx"
+#include "BRepGraph_CopyRemap.hxx"
 #include "BRepGraph_Data.hxx"
 #include "BRepGraph_Deduplicate.hxx"
 #include "BRepGraph_DeferredScope.hxx"
 #include "BRepGraph_DefsIterator.hxx"
 #include "BRepGraph_EditorView.hxx"
-#include "BRepGraph_History.hxx"
-#include "BRepGraph_HistoryRecord.hxx"
+#include "BRepGraph_ItemId.hxx"
+#include "BRepGraph_ItemUID.hxx"
 #include "BRepGraph_Iterator.hxx"
 #include "BRepGraph_Layer.hxx"
+#include "BRepGraph_LayerDeferred.hxx"
+#include "BRepGraph_LayerHistory.hxx"
 #include "BRepGraph_LayerIterator.hxx"
-#include "BRepGraph_LayerParam.hxx"
+#include "BRepGraph_LayerLock.hxx"
+#include "BRepGraph_LayerParametric.hxx"
 #include "BRepGraph_LayerRegistry.hxx"
-#include "BRepGraph_LayerRegularity.hxx"
-#include "BRepGraph_MeshCache.hxx"
+#include "BRepGraph_LayerTopoSupplement.hxx"
 #include "BRepGraph_MeshView.hxx"
 #include "BRepGraph_MutGuard.hxx"
 #include "BRepGraph_NodeId.hxx"
 #include "BRepGraph_ParallelPolicy.hxx"
 #include "BRepGraph_ParentExplorer.hxx"
 #include "BRepGraph_RefId.hxx"
-#include "BRepGraph_RefTransientCache.hxx"
 #include "BRepGraph_RefUID.hxx"
 #include "BRepGraph_RefsIterator.hxx"
 #include "BRepGraph_RefsView.hxx"
 #include "BRepGraph_RelatedIterator.hxx"
-#include "BRepGraph_RepId.hxx"
 #include "BRepGraph_ReverseIterator.hxx"
 #include "BRepGraph_ShapesView.hxx"
+#include "BRepGraph_SupplementEditor.hxx"
+#include "BRepGraph_SupplementIterator.hxx"
 #include "BRepGraph_Tool.hxx"
 #include "BRepGraph_TopoView.hxx"
 #include "BRepGraph_Transform.hxx"
-#include "BRepGraph_TransientCache.hxx"
 #include "BRepGraph_UID.hxx"
 #include "BRepGraph_UIDsView.hxx"
+#include "BRepGraph_UsagePath.hxx"
 #include "BRepGraph_Validate.hxx"
 #include "BRepGraph_VersionStamp.hxx"
-#include "BRepGraph_WireExplorer.hxx"
+#include "BRepGraphInc_BitFlags.hxx"
 #include "BRepGraphInc_Definition.hxx"
 #include "BRepGraphInc_Instance.hxx"
+#include "BRepGraphInc_Load.hxx"
+#include "BRepGraphInc_ParityOrientation.hxx"
 #include "BRepGraphInc_Populate.hxx"
 #include "BRepGraphInc_Reconstruct.hxx"
 #include "BRepGraphInc_Reference.hxx"
+#include "BRepGraphInc_Relations.hxx"
+#include "BRepGraphInc_RepId.hxx"
 #include "BRepGraphInc_Representation.hxx"
-#include "BRepGraphInc_ReverseIndex.hxx"
 #include "BRepGraphInc_Storage.hxx"
 #include "BRepLProp.hxx"
 #include "BRepLProp_CLProps.hxx"
@@ -4286,7 +4294,11 @@
 #include "GeomGridEval_SurfaceOfRevolution.hxx"
 #include "GeomGridEval_Torus.hxx"
 #include "GeomHash_CurveHasher.hxx"
+#include "GeomHash_Polygon2DHasher.hxx"
+#include "GeomHash_Polygon3DHasher.hxx"
+#include "GeomHash_PolygonOnTriHasher.hxx"
 #include "GeomHash_SurfaceHasher.hxx"
+#include "GeomHash_TriangulationHasher.hxx"
 #include "TopAbs.hxx"
 #include "TopAbs_Orientation.hxx"
 #include "TopAbs_ShapeEnum.hxx"
@@ -4299,7 +4311,6 @@
 #include "AppParCurves_MultiBSpCurve.hxx"
 #include "AppParCurves_MultiCurve.hxx"
 #include "AppParCurves_MultiPoint.hxx"
-#include "Approx_BSplineApproxInterp.hxx"
 #include "Approx_Curve2d.hxx"
 #include "Approx_Curve3d.hxx"
 #include "Approx_CurveOnSurface.hxx"
@@ -4673,6 +4684,17 @@ using NCollection_Array1_AppParCurves_MultiCurve = NCollection_Array1<AppParCurv
 using NCollection_Array1_AppParCurves_MultiPoint = NCollection_Array1<AppParCurves_MultiPoint>;
 using NCollection_Array1_BOPDS_Pave = NCollection_Array1<BOPDS_Pave>;
 using NCollection_Array1_BRepAdaptor_Curve = NCollection_Array1<BRepAdaptor_Curve>;
+using NCollection_Array1_BRepGraph_ChildRefId = NCollection_Array1<BRepGraph_ChildRefId>;
+using NCollection_Array1_BRepGraph_CoEdgeId = NCollection_Array1<BRepGraph_CoEdgeId>;
+using NCollection_Array1_BRepGraph_FaceRefId = NCollection_Array1<BRepGraph_FaceRefId>;
+using NCollection_Array1_BRepGraph_ItemUID = NCollection_Array1<BRepGraph_ItemUID>;
+using NCollection_Array1_BRepGraph_NodeId = NCollection_Array1<BRepGraph_NodeId>;
+using NCollection_Array1_BRepGraph_OccurrenceRefId = NCollection_Array1<BRepGraph_OccurrenceRefId>;
+using NCollection_Array1_BRepGraph_RefId = NCollection_Array1<BRepGraph_RefId>;
+using NCollection_Array1_BRepGraph_ShellRefId = NCollection_Array1<BRepGraph_ShellRefId>;
+using NCollection_Array1_BRepGraph_SolidRefId = NCollection_Array1<BRepGraph_SolidRefId>;
+using NCollection_Array1_BRepGraph_UID = NCollection_Array1<BRepGraph_UID>;
+using NCollection_Array1_BRepGraph_WireRefId = NCollection_Array1<BRepGraph_WireRefId>;
 using NCollection_Array1_Bnd_Box = NCollection_Array1<Bnd_Box>;
 using NCollection_Array1_Bnd_Box2d = NCollection_Array1<Bnd_Box2d>;
 using NCollection_Array1_Bnd_Sphere = NCollection_Array1<Bnd_Sphere>;
@@ -4900,10 +4922,6 @@ using NCollection_Array2_handle_StepElement_SurfaceElementPurposeMember = NColle
 using NCollection_Array2_handle_StepGeom_CartesianPoint = NCollection_Array2<opencascade::handle<StepGeom_CartesianPoint>>;
 using NCollection_Array2_handle_StepGeom_SurfacePatch = NCollection_Array2<opencascade::handle<StepGeom_SurfacePatch>>;
 using NCollection_Array2_int = NCollection_Array2<int>;
-using NCollection_DataMap_BRepGraph_NodeId_BRepGraph_NodeId = NCollection_DataMap<BRepGraph_NodeId, BRepGraph_NodeId>;
-using NCollection_DataMap_BRepGraph_NodeId_NCollection_DynamicArray_BRepGraph_NodeId = NCollection_DataMap<BRepGraph_NodeId, NCollection_DynamicArray<BRepGraph_NodeId>>;
-using NCollection_DataMap_BRepGraph_RefUID_BRepGraph_RefId = NCollection_DataMap<BRepGraph_RefUID, BRepGraph_RefId>;
-using NCollection_DataMap_BRepGraph_UID_BRepGraph_NodeId = NCollection_DataMap<BRepGraph_UID, BRepGraph_NodeId>;
 using NCollection_DataMap_TCollection_AsciiString_RWObj_Material = NCollection_DataMap<TCollection_AsciiString, RWObj_Material>;
 using NCollection_DataMap_TCollection_AsciiString_TCollection_AsciiString = NCollection_DataMap<TCollection_AsciiString, TCollection_AsciiString>;
 using NCollection_DataMap_TCollection_AsciiString_TCollection_AsciiString_NCollection_DefaultHasher_TCollection_AsciiString = NCollection_DataMap<TCollection_AsciiString, TCollection_AsciiString, NCollection_DefaultHasher<TCollection_AsciiString>>;
@@ -4922,6 +4940,7 @@ using NCollection_DataMap_TCollection_ExtendedString_uint8_t = NCollection_DataM
 using NCollection_DataMap_TDF_Label_TDF_Label = NCollection_DataMap<TDF_Label, TDF_Label>;
 using NCollection_DataMap_TDF_Label_int = NCollection_DataMap<TDF_Label, int>;
 using NCollection_DataMap_TopoDS_Shape_BOPDS_CoupleOfPaveBlocks_TopTools_ShapeMapHasher = NCollection_DataMap<TopoDS_Shape, BOPDS_CoupleOfPaveBlocks, TopTools_ShapeMapHasher>;
+using NCollection_DataMap_TopoDS_Shape_BRepGraph_NodeId_TopTools_ShapeMapHasher = NCollection_DataMap<TopoDS_Shape, BRepGraph_NodeId, TopTools_ShapeMapHasher>;
 using NCollection_DataMap_TopoDS_Shape_BRepOffset_Offset_TopTools_ShapeMapHasher = NCollection_DataMap<TopoDS_Shape, BRepOffset_Offset, TopTools_ShapeMapHasher>;
 using NCollection_DataMap_TopoDS_Shape_BRepTopAdaptor_Tool_TopTools_ShapeMapHasher = NCollection_DataMap<TopoDS_Shape, BRepTopAdaptor_Tool, TopTools_ShapeMapHasher>;
 using NCollection_DataMap_TopoDS_Shape_Bnd_Box2d_TopTools_ShapeMapHasher = NCollection_DataMap<TopoDS_Shape, Bnd_Box2d, TopTools_ShapeMapHasher>;
@@ -4988,47 +5007,6 @@ using NCollection_DynamicArray_BOPDS_InterfZZ = NCollection_DynamicArray<BOPDS_I
 using NCollection_DynamicArray_BOPDS_Pair = NCollection_DynamicArray<BOPDS_Pair>;
 using NCollection_DynamicArray_BOPDS_Point = NCollection_DynamicArray<BOPDS_Point>;
 using NCollection_DynamicArray_BOPDS_ShapeInfo = NCollection_DynamicArray<BOPDS_ShapeInfo>;
-using NCollection_DynamicArray_BRepGraphInc_ChildRef = NCollection_DynamicArray<BRepGraphInc::ChildRef>;
-using NCollection_DynamicArray_BRepGraphInc_CoEdgeDef = NCollection_DynamicArray<BRepGraphInc::CoEdgeDef>;
-using NCollection_DynamicArray_BRepGraphInc_CoEdgeRef = NCollection_DynamicArray<BRepGraphInc::CoEdgeRef>;
-using NCollection_DynamicArray_BRepGraphInc_CompSolidDef = NCollection_DynamicArray<BRepGraphInc::CompSolidDef>;
-using NCollection_DynamicArray_BRepGraphInc_CompoundDef = NCollection_DynamicArray<BRepGraphInc::CompoundDef>;
-using NCollection_DynamicArray_BRepGraphInc_EdgeDef = NCollection_DynamicArray<BRepGraphInc::EdgeDef>;
-using NCollection_DynamicArray_BRepGraphInc_FaceDef = NCollection_DynamicArray<BRepGraphInc::FaceDef>;
-using NCollection_DynamicArray_BRepGraphInc_FaceRef = NCollection_DynamicArray<BRepGraphInc::FaceRef>;
-using NCollection_DynamicArray_BRepGraphInc_OccurrenceDef = NCollection_DynamicArray<BRepGraphInc::OccurrenceDef>;
-using NCollection_DynamicArray_BRepGraphInc_ShellDef = NCollection_DynamicArray<BRepGraphInc::ShellDef>;
-using NCollection_DynamicArray_BRepGraphInc_ShellRef = NCollection_DynamicArray<BRepGraphInc::ShellRef>;
-using NCollection_DynamicArray_BRepGraphInc_SolidDef = NCollection_DynamicArray<BRepGraphInc::SolidDef>;
-using NCollection_DynamicArray_BRepGraphInc_SolidRef = NCollection_DynamicArray<BRepGraphInc::SolidRef>;
-using NCollection_DynamicArray_BRepGraphInc_VertexDef = NCollection_DynamicArray<BRepGraphInc::VertexDef>;
-using NCollection_DynamicArray_BRepGraphInc_VertexRef = NCollection_DynamicArray<BRepGraphInc::VertexRef>;
-using NCollection_DynamicArray_BRepGraphInc_WireDef = NCollection_DynamicArray<BRepGraphInc::WireDef>;
-using NCollection_DynamicArray_BRepGraphInc_WireRef = NCollection_DynamicArray<BRepGraphInc::WireRef>;
-using NCollection_DynamicArray_BRepGraph_ChildRefId = NCollection_DynamicArray<BRepGraph_ChildRefId>;
-using NCollection_DynamicArray_BRepGraph_CoEdgeId = NCollection_DynamicArray<BRepGraph_CoEdgeId>;
-using NCollection_DynamicArray_BRepGraph_CoEdgeRefId = NCollection_DynamicArray<BRepGraph_CoEdgeRefId>;
-using NCollection_DynamicArray_BRepGraph_CompSolidId = NCollection_DynamicArray<BRepGraph_CompSolidId>;
-using NCollection_DynamicArray_BRepGraph_CompoundId = NCollection_DynamicArray<BRepGraph_CompoundId>;
-using NCollection_DynamicArray_BRepGraph_EdgeId = NCollection_DynamicArray<BRepGraph_EdgeId>;
-using NCollection_DynamicArray_BRepGraph_FaceId = NCollection_DynamicArray<BRepGraph_FaceId>;
-using NCollection_DynamicArray_BRepGraph_FaceRefId = NCollection_DynamicArray<BRepGraph_FaceRefId>;
-using NCollection_DynamicArray_BRepGraph_NodeId = NCollection_DynamicArray<BRepGraph_NodeId>;
-using NCollection_DynamicArray_BRepGraph_OccurrenceId = NCollection_DynamicArray<BRepGraph_OccurrenceId>;
-using NCollection_DynamicArray_BRepGraph_OccurrenceRefId = NCollection_DynamicArray<BRepGraph_OccurrenceRefId>;
-using NCollection_DynamicArray_BRepGraph_PolygonOnTriRepId = NCollection_DynamicArray<BRepGraph_PolygonOnTriRepId>;
-using NCollection_DynamicArray_BRepGraph_ProductId = NCollection_DynamicArray<BRepGraph_ProductId>;
-using NCollection_DynamicArray_BRepGraph_RefId = NCollection_DynamicArray<BRepGraph_RefId>;
-using NCollection_DynamicArray_BRepGraph_RefUID = NCollection_DynamicArray<BRepGraph_RefUID>;
-using NCollection_DynamicArray_BRepGraph_ShellId = NCollection_DynamicArray<BRepGraph_ShellId>;
-using NCollection_DynamicArray_BRepGraph_ShellRefId = NCollection_DynamicArray<BRepGraph_ShellRefId>;
-using NCollection_DynamicArray_BRepGraph_SolidId = NCollection_DynamicArray<BRepGraph_SolidId>;
-using NCollection_DynamicArray_BRepGraph_SolidRefId = NCollection_DynamicArray<BRepGraph_SolidRefId>;
-using NCollection_DynamicArray_BRepGraph_TriangulationRepId = NCollection_DynamicArray<BRepGraph_TriangulationRepId>;
-using NCollection_DynamicArray_BRepGraph_UID = NCollection_DynamicArray<BRepGraph_UID>;
-using NCollection_DynamicArray_BRepGraph_VertexRefId = NCollection_DynamicArray<BRepGraph_VertexRefId>;
-using NCollection_DynamicArray_BRepGraph_WireId = NCollection_DynamicArray<BRepGraph_WireId>;
-using NCollection_DynamicArray_BRepGraph_WireRefId = NCollection_DynamicArray<BRepGraph_WireRefId>;
 using NCollection_DynamicArray_ExtremaPC_ExtremumResult = NCollection_DynamicArray<ExtremaPC::ExtremumResult>;
 using NCollection_DynamicArray_MathRoot_NullInterval = NCollection_DynamicArray<MathRoot::NullInterval>;
 using NCollection_DynamicArray_NCollection_DynamicArray_BOPDS_Pair = NCollection_DynamicArray<NCollection_DynamicArray<BOPDS_Pair>>;
@@ -5042,6 +5020,7 @@ using NCollection_DynamicArray_handle_Adaptor3d_Surface = NCollection_DynamicArr
 using NCollection_DynamicArray_handle_NCollection_HSequence_int = NCollection_DynamicArray<opencascade::handle<NCollection_HSequence<int>>>;
 using NCollection_DynamicArray_handle_Standard_Transient = NCollection_DynamicArray<opencascade::handle<Standard_Transient>>;
 using NCollection_DynamicArray_int = NCollection_DynamicArray<int>;
+using NCollection_FlatDataMap_BRepGraph_ItemId_BRepGraph_ItemId_NCollection_DefaultHasher_BRepGraph_ItemId = NCollection_FlatDataMap<BRepGraph_ItemId, BRepGraph_ItemId, NCollection_DefaultHasher<BRepGraph_ItemId>>;
 using NCollection_HArray1_AppParCurves_ConstraintCouple = NCollection_HArray1<AppParCurves_ConstraintCouple>;
 using NCollection_HArray1_AppParCurves_MultiBSpCurve = NCollection_HArray1<AppParCurves_MultiBSpCurve>;
 using NCollection_HArray1_AppParCurves_MultiCurve = NCollection_HArray1<AppParCurves_MultiCurve>;

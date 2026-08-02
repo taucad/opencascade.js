@@ -242,9 +242,9 @@ def qualify_nested_type(type_spelling: str, clang_type) -> str:
         base = base.get_pointee()
     decl = base.get_declaration()
     if decl and decl.spelling:
-        unqualified = decl.spelling
+        parts = [decl.spelling]
         parent = decl.semantic_parent
-        if (
+        while (
             parent
             and parent.spelling
             and parent.kind
@@ -255,14 +255,17 @@ def qualify_nested_type(type_spelling: str, clang_type) -> str:
                 clang.cindex.CursorKind.NAMESPACE,
             )
         ):
-            qualified = f"{parent.spelling}::{unqualified}"
-            if qualified not in result:
-                # Do not rewrite `handle` in `occ::handle<…>` /
-                # `opencascade::handle<…>` into `opencascade::handle`
-                # (libclang parents the template under namespace opencascade).
-                pattern = re.compile(r"(?<!::)\b" + re.escape(unqualified) + r"\b")
+            parts.insert(0, parent.spelling)
+            parent = parent.semantic_parent
+
+        qualified = "::".join(parts)
+        if qualified not in result and qualified not in ("occ::handle", "opencascade::handle"):
+            for start in range(1, len(parts)):
+                relative = "::".join(parts[start:])
+                pattern = re.compile(r"(?<!:)\b" + re.escape(relative) + r"\b")
                 if pattern.search(result):
                     result = pattern.sub(qualified, result, count=1)
+                    break
     num_targs = base.get_num_template_arguments()
     for idx in range(num_targs):
         targ = base.get_template_argument_type(idx)

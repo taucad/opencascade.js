@@ -12,7 +12,7 @@
 import { expectTypeOf, it, describe } from 'vitest';
 import type {
   BRepGProp,
-  BRepGraph_Builder,
+  BRepGraph_ParentExplorer,
   BRepTools,
   GProp_GProps,
   Geom2dAPI_InterCurveCurve,
@@ -28,21 +28,21 @@ import type {
   XCAFDoc_ColorTool,
 } from '../dist/opencascade_full';
 
-describe('Shape S0 — direct value_object return (BRepGraph_Builder.Add)', () => {
+describe('Shape S0 — direct value_object return (BRepGraph_ParentExplorer.GetConfig)', () => {
   it('returns the OCCT struct directly with named fields', () => {
-    type AddReturn = ReturnType<(typeof BRepGraph_Builder)['Add']>;
+    type ConfigReturn = ReturnType<BRepGraph_ParentExplorer['GetConfig']>;
 
-    expectTypeOf<AddReturn>().toHaveProperty('TopologyRoot');
-    expectTypeOf<AddReturn>().toHaveProperty('Ok');
-    expectTypeOf<AddReturn['Ok']>().toEqualTypeOf<boolean>();
+    expectTypeOf<ConfigReturn>().toHaveProperty('Mode');
+    expectTypeOf<ConfigReturn>().toHaveProperty('EmitAvoidKind');
+    expectTypeOf<ConfigReturn['EmitAvoidKind']>().toEqualTypeOf<boolean>();
   });
 
   it('does not wrap in an RBV envelope (no result / returnValue field, no Symbol.dispose)', () => {
-    type AddReturn = ReturnType<(typeof BRepGraph_Builder)['Add']>;
+    type ConfigReturn = ReturnType<BRepGraph_ParentExplorer['GetConfig']>;
 
-    expectTypeOf<AddReturn>().not.toHaveProperty('result');
-    expectTypeOf<AddReturn>().not.toHaveProperty('returnValue');
-    expectTypeOf<AddReturn>().not.toHaveProperty(Symbol.dispose);
+    expectTypeOf<ConfigReturn>().not.toHaveProperty('result');
+    expectTypeOf<ConfigReturn>().not.toHaveProperty('returnValue');
+    expectTypeOf<ConfigReturn>().not.toHaveProperty(Symbol.dispose);
   });
 });
 

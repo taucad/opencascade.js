@@ -1220,12 +1220,8 @@ class Bindings:
     if 'std::atomic' in canonical:
       return False
     decl = clang_type.get_canonical().get_declaration()
-    if decl:
-      for child in decl.get_children():
-        if (child.kind == clang.cindex.CursorKind.CONSTRUCTOR
-            and child.is_copy_constructor()
-            and child.is_deleted_method()):
-          return False
+    if decl and not _isCopyConstructibleClass(decl):
+      return False
     return True
 
   def _returnTypeRequiresValueWrapper(self, method):

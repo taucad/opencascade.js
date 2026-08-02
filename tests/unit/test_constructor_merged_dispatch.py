@@ -2,8 +2,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import clang.cindex
+
 from ocjs_bindgen.codegen import dispatch
 from ocjs_bindgen.codegen.embind import constructor
+from tests.conftest import cursor_mock
 
 
 @dataclass(frozen=True)
@@ -40,6 +43,17 @@ class _Bindings:
 NUMBER = _JsType("number_int", "number")
 MULTI_LINE = _JsType("object", "BRepApprox_TheMultiLineOfApprox")
 VECTOR = _JsType("object", "math_VectorBase_double")
+
+
+def test_typedef_nested_type_drops_redundant_underlying_namespace() -> None:
+  rendered = constructor.rewrite_typedef_nested_types(
+    "const BRepGraph_RefsIterator::BRepGraph_FullSolidRefIterator::RefId &",
+    "BRepGraph_FullSolidRefIterator",
+    "BRepGraph_RefsIterator::RefIterator<BRepGraphInc::SolidRef, true>",
+    object(),
+  )
+
+  assert rendered == "const BRepGraph_FullSolidRefIterator::RefId &"
 
 
 def test_merged_primary_family_guard_precedes_internal_dispatch(monkeypatch) -> None:
@@ -116,3 +130,19 @@ def test_merged_fallback_routes_undefined_to_defaultable_branch(monkeypatch) -> 
   undefined_check = "if (arg0.isUndefined())"
   assert undefined_check in rendered
   assert rendered.index(undefined_check) < rendered.index("return numeric;")
+
+
+def test_inherited_constructor_does_not_emit_a_fake_default(monkeypatch) -> None:
+  inherited = cursor_mock(
+    kind=clang.cindex.CursorKind.USING_DECLARATION,
+    spelling="Derived",
+  )
+  derived = cursor_mock(
+    kind=clang.cindex.CursorKind.CLASS_DECL,
+    spelling="Derived",
+    children=[inherited],
+  )
+  bindings = type("Bindings", (), {"tuInfo": type("TuInfo", (), {"classDict": {}})()})()
+  monkeypatch.setattr(constructor, "isTransientDerived", lambda *_args: False)
+
+  assert constructor.process_simple_constructor(bindings, derived) == ""

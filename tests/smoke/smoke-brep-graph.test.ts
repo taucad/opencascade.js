@@ -1,12 +1,12 @@
 /**
- * Smoke: BRepGraph ingest via BRepGraph_Builder + view-API surface (nested classes, template substitution, NCollection discovery, alias dedup, function-pointer typedefs, dropped-method filter).
+ * Smoke: BRepGraph ingest via ShapesView + view-API surface (nested classes, template substitution, NCollection discovery, alias dedup, function-pointer typedefs, dropped-method filter).
  *
  * Covers:
- * - Default-constructed graph surface (Allocator, Clear) and `BRepGraph_Builder.Add`
+ * - Default-constructed graph surface (Allocator, Clear) and `ShapesView.Add`
  *   ingest from a `TopoDS_Shape`.
  * - **Group A (nested classes)** — `BRepGraph.Topo()` + every `BRepGraph_TopoView_*Ops` inner
  *   class + every top-level grouped view (`Refs`, `Shapes`, `Editor`, `Mesh`,
- *   `UIDs`, `Cache`). Each test asserts the inner class is reachable AND that
+ *   `UIDs`, `CacheRegistry`). Each test asserts the inner class is reachable AND that
  *   one of its accessor methods returns a concrete (non-`undefined`) value
  *   typed at `number` / object — i.e. nested-class registration
  *   land in the dist `.d.ts` and runtime instance.
@@ -42,10 +42,10 @@ describe.skipIf(!wasmExists)('Smoke: BRepGraph', () => {
     await initOC();
   });
 
-  it('default graph is not done and exposes a non-null allocator handle', () => {
+  it('default graph is empty and exposes a non-null allocator handle', () => {
     const oc = getOC();
     using graph = new oc.BRepGraph();
-    expect(graph.IsDone()).toBe(false);
+    expect(graph.IsEmpty()).toBe(true);
 
     using alloc = graph.Allocator();
     expect(alloc).toBeDefined();
@@ -54,18 +54,18 @@ describe.skipIf(!wasmExists)('Smoke: BRepGraph', () => {
     expect(() => {
       graph.Clear();
     }).not.toThrow();
-    expect(graph.IsDone()).toBe(false);
+    expect(graph.IsEmpty()).toBe(true);
   });
 
-  it('BRepGraph_Builder.Add ingests a TopoDS_Shape and reports Ok', () => {
+  it('ShapesView.Add ingests a TopoDS_Shape and reports success', () => {
     const oc = getOC();
     using graph = new oc.BRepGraph();
     using box = new oc.BRepPrimAPI_MakeBox(10, 10, 10);
     using shape = box.Shape();
 
-    // S0: Add returns a flat value_object (not an RBV envelope) — no Symbol.dispose, use const not using.
-    const result = oc.BRepGraph_Builder.Add(graph, shape);
-    expect(result.Ok).toBe(true);
+    using shapes = graph.Shapes();
+    using result = shapes.Add(shape);
+    expect(result.IsOk()).toBe(true);
     expect(result.TopologyRoot).toBeDefined();
     expect(result.Product).toBeDefined();
     expect(result.Occurrence).toBeDefined();
@@ -73,7 +73,7 @@ describe.skipIf(!wasmExists)('Smoke: BRepGraph', () => {
 
   describe('Group A (nested classes) — TopoView accessor surface', () => {
     it('BRepGraph.Topo() returns a TopoView with all 13 *Ops accessors', () => {
-      using graph = buildBoxGraph().graph;
+      using graph = buildBoxGraph();
       using topo = graph.Topo();
       expect(topo).toBeDefined();
       const accessors = [
@@ -117,7 +117,7 @@ describe.skipIf(!wasmExists)('Smoke: BRepGraph', () => {
     describe.each(NB_OPS)('TopoView.%s() (%s)', (accessor, opsClassName) => {
       it(`is callable, returns a ${opsClassName} instance with a typed numeric Nb()`, () => {
         const oc = getOC();
-        using graph = buildBoxGraph().graph;
+        using graph = buildBoxGraph();
         using topo = graph.Topo();
         using view = topo[accessor]();
         expect(view).toBeDefined();
@@ -139,7 +139,7 @@ describe.skipIf(!wasmExists)('Smoke: BRepGraph', () => {
     });
 
     it('TopoView counts on a box: faces=6, edges=12, vertices=8, solids=1, shells=1', () => {
-      using graph = buildBoxGraph().graph;
+      using graph = buildBoxGraph();
       using topo = graph.Topo();
       using faceOps = topo.Faces();
       using edgeOps = topo.Edges();
@@ -156,8 +156,8 @@ describe.skipIf(!wasmExists)('Smoke: BRepGraph', () => {
       expect(shellOps.NbActive()).toBe(1);
     });
 
-    it('TopoView.Faces().Nb() returns the face count after Builder.Add (audit smoking gun)', () => {
-      using graph = buildBoxGraph().graph;
+    it('TopoView.Faces().Nb() returns the face count after ShapesView.Add (audit smoking gun)', () => {
+      using graph = buildBoxGraph();
       using topo = graph.Topo();
       using faceOps = topo.Faces();
       const nbFaces = faceOps.Nb();
@@ -165,7 +165,7 @@ describe.skipIf(!wasmExists)('Smoke: BRepGraph', () => {
     });
 
     it('TopoView.Gen() exposes IsRemoved and NbNodes (no Nb())', () => {
-      using graph = buildBoxGraph().graph;
+      using graph = buildBoxGraph();
       using topo = graph.Topo();
       using gen = topo.Gen();
       expect(typeof gen.IsRemoved).toBe('function');
@@ -176,16 +176,16 @@ describe.skipIf(!wasmExists)('Smoke: BRepGraph', () => {
     });
 
     it('TopoView.Geometry() exposes Nb*Surfaces / Nb*Curves accessors', () => {
-      using graph = buildBoxGraph().graph;
+      using graph = buildBoxGraph();
       using topo = graph.Topo();
       using geom = topo.Geometry();
       const accessors = [
-        'NbSurfaces',
-        'NbCurves3D',
-        'NbCurves2D',
-        'NbActiveSurfaces',
-        'NbActiveCurves3D',
-        'NbActiveCurves2D',
+        'NbFaceSurfaces',
+        'NbEdgeCurves3D',
+        'NbCoEdgeCurves2D',
+        'NbActiveFaceSurfaces',
+        'NbActiveEdgeCurves3D',
+        'NbActiveCoEdgeCurves2D',
       ] as const;
       for (const name of accessors) {
         const fn = geom[name];
@@ -210,14 +210,13 @@ describe.skipIf(!wasmExists)('Smoke: BRepGraph', () => {
     // d.ts assertion at the end covers the type-system guarantee that
     // Nested-class registration made these classes nameable.
     it('Refs() returns a RefsView exposing the 8 sub-Ops accessors', () => {
-      using graph = buildBoxGraph().graph;
+      using graph = buildBoxGraph();
       using refs = graph.Refs();
       expect(refs).toBeDefined();
       const accessors = [
         'Shells',
         'Faces',
         'Wires',
-        'CoEdges',
         'Vertices',
         'Solids',
         'Children',
@@ -229,7 +228,7 @@ describe.skipIf(!wasmExists)('Smoke: BRepGraph', () => {
     });
 
     it('Shapes() exposes Reconstruct / FindNode / HasNode (NCollection-backed return)', () => {
-      using graph = buildBoxGraph().graph;
+      using graph = buildBoxGraph();
       using shapes = graph.Shapes();
       expect(shapes).toBeDefined();
       expect(typeof shapes.Reconstruct).toBe('function');
@@ -243,7 +242,7 @@ describe.skipIf(!wasmExists)('Smoke: BRepGraph', () => {
       // `BRepGraph_MutGuard&` that has a deleted copy ctor, which Embind
       // cannot bind. The `Begin/EndDeferredInvalidation` mutation-mode
       // accessors stay bound and are the canonical Editor-level smoke.
-      using graph = buildBoxGraph().graph;
+      using graph = buildBoxGraph();
       using editor = graph.Editor();
       expect(editor).toBeDefined();
       expect(typeof editor.BeginDeferredInvalidation).toBe('function');
@@ -252,23 +251,23 @@ describe.skipIf(!wasmExists)('Smoke: BRepGraph', () => {
       expect(editor.IsDeferredMode()).toBe(false);
     });
 
-    it('Mesh() exposes Faces/Edges/CoEdges/Poly Ops accessors', () => {
-      using graph = buildBoxGraph().graph;
+    it('Mesh() exposes Cache/Persistent/Effective/Editor/Poly views', () => {
+      using graph = buildBoxGraph();
       using mesh = graph.Mesh();
       expect(mesh).toBeDefined();
-      for (const name of ['Faces', 'Edges', 'CoEdges', 'Poly'] as const) {
+      for (const name of ['Cache', 'Persistent', 'Effective', 'Editor', 'Poly'] as const) {
         expect(typeof mesh[name]).toBe('function');
       }
     });
 
     it('UIDs() exposes Generation / GraphGUID with numeric / object return types', () => {
-      using graph = buildBoxGraph().graph;
+      using graph = buildBoxGraph();
       using uids = graph.UIDs();
       expect(uids).toBeDefined();
       expect(typeof uids.Generation).toBe('function');
       expect(typeof uids.GraphGUID).toBe('function');
       expect(typeof uids.Generation()).toBe('number');
-      // Generation may be 0 immediately after a single Builder.Add — the
+      // Generation may be 0 immediately after a single ShapesView.Add — the
       // generation counter is bumped by mutation operations on the graph,
       // not by initial population. Asserting a numeric type is the
       // structural smoke; the post-mutation invariant is exercised in
@@ -276,13 +275,12 @@ describe.skipIf(!wasmExists)('Smoke: BRepGraph', () => {
       expect(uids.Generation()).toBeGreaterThanOrEqual(0);
     });
 
-    it('Cache() exposes Set/Get/Has/Remove/Invalidate accessor surface', () => {
-      using graph = buildBoxGraph().graph;
-      using cache = graph.Cache();
-      expect(cache).toBeDefined();
-      for (const name of ['Set', 'Get', 'Has', 'Remove', 'Invalidate'] as const) {
-        expect(typeof cache[name]).toBe('function');
-      }
+    it('CacheRegistry() exposes typed cache registration and invalidation', () => {
+      using graph = buildBoxGraph();
+      using registry = graph.CacheRegistry();
+      expect(registry).toBeDefined();
+      expect(typeof registry.NbCaches).toBe('function');
+      expect(typeof registry.Clear).toBe('function');
     });
 
     it('Nested-class d.ts surface: every view class is declared with its inner accessor return types resolved', () => {
@@ -299,7 +297,7 @@ describe.skipIf(!wasmExists)('Smoke: BRepGraph', () => {
         'BRepGraph_EditorView',
         'BRepGraph_MeshView',
         'BRepGraph_UIDsView',
-        'BRepGraph_CacheView',
+        'BRepGraph_CacheRegistry',
       ] as const) {
         expect(countDeclarations(dts, view)).toBeGreaterThanOrEqual(1);
       }
@@ -332,27 +330,17 @@ describe.skipIf(!wasmExists)('Smoke: BRepGraph', () => {
     const PARENTS_OF_ALIASES = [
       'BRepGraph_CoEdgesOfEdge',
       'BRepGraph_CompSolidsOfSolid',
-      'BRepGraph_CompoundsOfCompSolid',
       'BRepGraph_EdgesOfVertex',
       'BRepGraph_FacesOfEdge',
-      'BRepGraph_OccurrencesOfProduct',
-      'BRepGraph_ShellsOfFace',
-      'BRepGraph_SolidsOfShell',
-      'BRepGraph_WiresOfCoEdge',
+      'BRepGraph_FacesOfWire',
+      'BRepGraph_OccurrencesOfChild',
+      'BRepGraph_ProductsOfOccurrence',
+      'BRepGraph_WiresOfEdge',
     ] as const;
 
     const REFS_PARENTS_OF_ALIASES = [
-      'BRepGraph_RefsChildOfCompound',
-      'BRepGraph_RefsChildOfShell',
-      'BRepGraph_RefsChildOfSolid',
-      'BRepGraph_RefsCompSolidsOfSolid',
-      'BRepGraph_RefsCompoundsOfChild',
       'BRepGraph_RefsEdgesOfVertex',
-      'BRepGraph_RefsFacesOfWire',
-      'BRepGraph_RefsProductsOfOccurrence',
-      'BRepGraph_RefsShellOfSolid',
       'BRepGraph_RefsShellsOfFace',
-      'BRepGraph_RefsSolidOfCompSolid',
       'BRepGraph_RefsSolidsOfShell',
       'BRepGraph_RefsWiresOfCoEdge',
     ] as const;
@@ -391,7 +379,7 @@ describe.skipIf(!wasmExists)('Smoke: BRepGraph', () => {
       expect(/^export declare class BRepGraph_FacesOfEdge\b/m.test(dts)).toBe(true);
     });
 
-    it('Traits-typedef smoking gun: BRepGraph_RefsFacesOfWire iterator surface declares CurrentParentId/CurrentRefId in d.ts', () => {
+    it('Traits-typedef smoking gun: BRepGraph_RefsShellsOfFace iterator surface is declared in d.ts', () => {
       // Pre traits-typedef: `CurrentParentId(): unknown;` /
       // `CurrentRefId(): unknown;` — the `Traits::ParentId` /
       // `Traits::RefId` member typedefs failed to resolve because the
@@ -399,7 +387,7 @@ describe.skipIf(!wasmExists)('Smoke: BRepGraph', () => {
       // chain. Traits-member-typedef strategy's `resolve_qualified_member_type` walks the chain and
       // lands the concrete BRepGraph id types.
       const dts = readDts();
-      expect(/^export declare class BRepGraph_RefsFacesOfWire\b/m.test(dts)).toBe(true);
+      expect(/^export declare class BRepGraph_RefsShellsOfFace\b/m.test(dts)).toBe(true);
     });
   });
 
@@ -413,33 +401,30 @@ describe.skipIf(!wasmExists)('Smoke: BRepGraph', () => {
     const BREP_GRAPH_INC_NAMES = [
       'BRepGraphInc_BaseDef',
       'BRepGraphInc_BaseRef',
-      'BRepGraphInc_BaseRep',
       'BRepGraphInc_ChildRef',
       'BRepGraphInc_CoEdgeDef',
-      'BRepGraphInc_CoEdgeRef',
       'BRepGraphInc_CompSolidDef',
       'BRepGraphInc_CompoundDef',
-      'BRepGraphInc_Curve2DRep',
-      'BRepGraphInc_Curve3DRep',
+      'BRepGraphInc_CoEdgeCurve2DRep',
+      'BRepGraphInc_CoEdgePolygon2DRep',
+      'BRepGraphInc_CoEdgePolygonOnTriRep',
       'BRepGraphInc_EdgeDef',
+      'BRepGraphInc_EdgeCurve3DRep',
+      'BRepGraphInc_EdgePolygon3DRep',
       'BRepGraphInc_FaceDef',
       'BRepGraphInc_FaceRef',
+      'BRepGraphInc_FaceSurfaceRep',
+      'BRepGraphInc_FaceTriangulationRep',
       'BRepGraphInc_OccurrenceDef',
       'BRepGraphInc_OccurrenceRef',
-      'BRepGraphInc_Polygon2DRep',
-      'BRepGraphInc_Polygon3DRep',
-      'BRepGraphInc_PolygonOnTriRep',
       'BRepGraphInc_Populate',
       'BRepGraphInc_ProductDef',
       'BRepGraphInc_Reconstruct',
-      'BRepGraphInc_ReverseIndex',
       'BRepGraphInc_ShellDef',
       'BRepGraphInc_ShellRef',
       'BRepGraphInc_SolidDef',
       'BRepGraphInc_SolidRef',
       'BRepGraphInc_Storage',
-      'BRepGraphInc_SurfaceRep',
-      'BRepGraphInc_TriangulationRep',
       'BRepGraphInc_VertexDef',
       'BRepGraphInc_VertexRef',
       'BRepGraphInc_WireDef',
@@ -478,10 +463,10 @@ describe.skipIf(!wasmExists)('Smoke: BRepGraph', () => {
     // here: typedef discovery enumerates the instantiation, canonical-key substitution the
     // template arg).
     it.each([
-      ['NCollection_DynamicArray_BRepGraph_FaceId', 'BRepGraph_FaceId'],
-      ['NCollection_DynamicArray_BRepGraph_EdgeId', 'BRepGraph_EdgeId'],
-      ['NCollection_DynamicArray_BRepGraph_CoEdgeId', 'BRepGraph_CoEdgeId'],
-      ['NCollection_DynamicArray_BRepGraph_CompoundId', 'BRepGraph_CompoundId'],
+      ['NCollection_Array1_BRepGraph_OccurrenceRefId', 'BRepGraph_OccurrenceRefId'],
+      ['NCollection_Array1_BRepGraph_SolidRefId', 'BRepGraph_SolidRefId'],
+      ['NCollection_Array1_BRepGraph_WireRefId', 'BRepGraph_WireRefId'],
+      ['NCollection_Array1_BRepGraph_CoEdgeId', 'BRepGraph_CoEdgeId'],
     ])('%s is declared with Value() returning %s', (container, elementType) => {
       const dts = readDts();
       expect(countDeclarations(dts, container)).toBe(1);
