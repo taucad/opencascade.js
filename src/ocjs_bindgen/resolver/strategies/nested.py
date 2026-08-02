@@ -42,6 +42,17 @@ def resolve_qualified_member_type(self, resolved, templateDecl=None, templateArg
     if combined in self.exports or combined in TypescriptBindings._known_export_names:
         return combined
 
+    specialized = _resolve_specialized_member(
+        self,
+        parent_name,
+        member_name,
+        templateDecl,
+        templateArgs,
+    )
+    if specialized is not None:
+        self.referenced_classes.discard(member_name)
+        return specialized
+
     # Traits member typedef substitution. When `parent_name`
     # is a template parameter (e.g. `TraitsT` or `Traits`) rather than a
     # concrete class name, the legacy `classDict.get(parent_name)`
@@ -68,9 +79,12 @@ def resolve_qualified_member_type(self, resolved, templateDecl=None, templateArg
             templateArgs,
         )
         if traits_resolved is not None:
+            self.referenced_classes.discard(member_name)
             return traits_resolved
 
     class_cursor = self.tuInfo.classDict.get(parent_name)
+    if class_cursor is None:
+        class_cursor = self.tuInfo.classDict.get(parent_name.rsplit("::", 1)[-1])
     if not class_cursor:
         return None
 
@@ -90,7 +104,13 @@ def resolve_qualified_member_type(self, resolved, templateDecl=None, templateArg
             ):
                 if child.spelling == member_name:
                     underlying = child.underlying_typedef_type
-                    return self.resolve_type(underlying, templateDecl, templateArgs)
+                    resolved_member = self.resolve_type(
+                        underlying,
+                        templateDecl,
+                        templateArgs,
+                    )
+                    self.referenced_classes.discard(member_name)
+                    return resolved_member
             if child.kind == clang.cindex.CursorKind.CXX_BASE_SPECIFIER:
                 base_decl = child.get_definition()
                 if base_decl and base_decl.spelling:
@@ -100,6 +120,90 @@ def resolve_qualified_member_type(self, resolved, templateDecl=None, templateArg
                         queue.append(base_from_dict)
 
     return None
+
+
+def _resolve_specialized_member(
+    self,
+    parent_name,
+    member_name,
+    templateDecl,
+    templateArgs,
+):
+    """Resolve ``Template<Concrete>::Member`` through an explicit specialization."""
+    from ocjs_bindgen.discover import (
+        _build_typedef_alias_map,
+        _normalize_arg,
+        _parse_template_spelling,
+    )
+
+    parsed = _parse_template_spelling(parent_name)
+    if parsed is None:
+        return None
+    container, args = parsed
+    alias_map = _build_typedef_alias_map(self.tuInfo, include_plain_typedefs=True)
+
+    def canonical_arg(arg):
+        underlying = _qualified_member_underlying_type(self, arg, templateArgs)
+        if underlying is not None:
+            canonical = underlying.get_canonical()
+            return canonical.spelling or underlying.spelling
+        return _normalize_arg(arg, alias_map)
+
+    concrete_args = [canonical_arg(arg) for arg in args]
+
+    short_container = container.rsplit("::", 1)[-1]
+    for candidate in getattr(self.tuInfo, "allChildren", ()):
+        if candidate.spelling != short_container:
+            continue
+        candidate_parsed = _parse_template_spelling(candidate.displayname)
+        if (
+            candidate_parsed is None
+            or [canonical_arg(arg) for arg in candidate_parsed[1]] != concrete_args
+        ):
+            continue
+        for child in candidate.get_children():
+            if child.kind in (
+                clang.cindex.CursorKind.TYPEDEF_DECL,
+                clang.cindex.CursorKind.TYPE_ALIAS_DECL,
+            ) and child.spelling == member_name:
+                return self.resolve_type(
+                    child.underlying_typedef_type,
+                    templateDecl,
+                    templateArgs,
+                )
+    return None
+
+
+def _qualified_member_underlying_type(self, resolved, templateArgs):
+    """Return the underlying clang type for a qualified member typedef."""
+    clean = resolved.replace("typename ", "").strip()
+    clean = _CONST_RE.sub("", clean).replace("&", "").replace("*", "").strip()
+    if "::" not in clean:
+        return None
+    parent_name, member_name = (part.strip() for part in clean.rsplit("::", 1))
+    if not parent_name or not member_name:
+        return None
+
+    if templateArgs and parent_name in templateArgs:
+        substituted_arg = templateArgs[parent_name]
+        substituted_type = getattr(substituted_arg, "type", substituted_arg)
+        substituted_decl = (
+            substituted_type.get_declaration()
+            if hasattr(substituted_type, "get_declaration")
+            else None
+        )
+        underlying = _find_member_typedef_in_class(self, substituted_decl, member_name)
+        if underlying is not None:
+            self.referenced_classes.discard(member_name)
+            return underlying
+
+    class_cursor = self.tuInfo.classDict.get(parent_name)
+    if class_cursor is None:
+        class_cursor = self.tuInfo.classDict.get(parent_name.rsplit("::", 1)[-1])
+    underlying = _find_member_typedef_in_class(self, class_cursor, member_name)
+    if underlying is not None:
+        self.referenced_classes.discard(member_name)
+    return underlying
 
 
 def _resolve_member_typedef_in_class(
@@ -116,6 +220,15 @@ def _resolve_member_typedef_in_class(
     Returns the recursively-resolved TypeScript type string for the
     typedef's underlying type, or ``None`` if the member isn't found.
     """
+    underlying = _find_member_typedef_in_class(self, class_decl, member_name)
+    if underlying is None:
+        return None
+    resolved = self.resolve_type(underlying, templateDecl, templateArgs)
+    return resolved if resolved and resolved != "unknown" else None
+
+
+def _find_member_typedef_in_class(self, class_decl, member_name):
+    """Find a member typedef's underlying clang type through public bases."""
     if class_decl is None or not class_decl.spelling:
         return None
     if class_decl.kind not in (
@@ -140,10 +253,7 @@ def _resolve_member_typedef_in_class(
                 clang.cindex.CursorKind.TYPE_ALIAS_DECL,
             ):
                 if child.spelling == member_name:
-                    underlying = child.underlying_typedef_type
-                    resolved = self.resolve_type(underlying, templateDecl, templateArgs)
-                    if resolved and resolved != "unknown":
-                        return resolved
+                    return child.underlying_typedef_type
             if child.kind == clang.cindex.CursorKind.CXX_BASE_SPECIFIER:
                 base_decl = child.get_definition()
                 if base_decl and base_decl.spelling:

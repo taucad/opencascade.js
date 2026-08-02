@@ -234,8 +234,8 @@ class TestBrowserBuildIdentity:
 
         assert symbol_sets["single"] == symbol_sets["multi"] == symbol_sets["browser"]
         for name, symbols in symbol_sets.items():
-            assert len(symbols) == 4_475, (
-                f"{name} full-build config has {len(symbols)} symbols; expected 4,475"
+            assert len(symbols) == 4_496, (
+                f"{name} full-build config has {len(symbols)} symbols; expected 4,496"
             )
             assert CONTRIBUTOR_SYMBOLS <= symbols, (
                 f"{name} full-build config is missing contributor symbols: "

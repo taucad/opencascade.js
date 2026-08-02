@@ -565,8 +565,9 @@ def emit_output_param_binding(b, theClass, method, args, className, classTypeNam
       ):
         argType = b._getOptionalInnerType(arg, templateDecl, templateArgs)
       lambda_params.append(f"std::optional<{argType}> {name}")
+      default_value = f"static_cast<{argType}>(0)" if " " in argType else f"{argType}{{}}"
       optional_output_decls.append(
-        f"        {argType} {value_name} = {name}.value_or({argType}{{}});\n"
+        f"        {argType} {value_name} = {name}.value_or({default_value});\n"
       )
       optional_output_values[i] = value_name
       continue

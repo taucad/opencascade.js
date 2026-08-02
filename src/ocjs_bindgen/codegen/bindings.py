@@ -82,6 +82,7 @@ from ocjs_bindgen.filters.method_signature import pop_dropped_method_reasons
 from ocjs_bindgen.naming.ts import (
   getClassJsPublicName,
 )
+from ocjs_bindgen.predicates.classes import inherited_template_base
 from ocjs_bindgen.predicates.optional_emission_guards import (
   assert_no_nonconst_ref_in_optional,
 )
@@ -110,6 +111,47 @@ def pickWrap(condition: bool, wrapStart: tuple[str, str], center: str, wrapEnd: 
 
 def indent(level: int):
   return " " * level * 2
+
+
+def _qualifyInheritedTemplateScope(typeStr, theClass, method):
+  """Qualify sibling templates referenced by an inherited template method."""
+  owner = method.semantic_parent
+  if owner is None or owner == theClass:
+    return typeStr
+  scope = owner.semantic_parent
+  if scope is None or scope.kind not in (
+    clang.cindex.CursorKind.NAMESPACE,
+    clang.cindex.CursorKind.CLASS_DECL,
+    clang.cindex.CursorKind.STRUCT_DECL,
+    clang.cindex.CursorKind.CLASS_TEMPLATE,
+  ):
+    return typeStr
+
+  parts = []
+  current = scope
+  while current is not None and current.kind in (
+    clang.cindex.CursorKind.NAMESPACE,
+    clang.cindex.CursorKind.CLASS_DECL,
+    clang.cindex.CursorKind.STRUCT_DECL,
+    clang.cindex.CursorKind.CLASS_TEMPLATE,
+  ):
+    if current.spelling:
+      parts.insert(0, current.spelling)
+    current = current.semantic_parent
+  prefix = "::".join(parts)
+  if not prefix:
+    return typeStr
+
+  result = typeStr
+  for sibling in scope.get_children():
+    if sibling.kind != clang.cindex.CursorKind.CLASS_TEMPLATE or not sibling.spelling:
+      continue
+    result = re.sub(
+      rf"(?<![\w:]){re.escape(sibling.spelling)}(?=\s*<)",
+      f"{prefix}::{sibling.spelling}",
+      result,
+    )
+  return result
 
 def shouldProcessClass(child: clang.cindex.Cursor, occtBasePath: str):
   if child.get_definition() is None or not child == child.get_definition():
@@ -1220,12 +1262,8 @@ class Bindings:
     if 'std::atomic' in canonical:
       return False
     decl = clang_type.get_canonical().get_declaration()
-    if decl:
-      for child in decl.get_children():
-        if (child.kind == clang.cindex.CursorKind.CONSTRUCTOR
-            and child.is_copy_constructor()
-            and child.is_deleted_method()):
-          return False
+    if decl and not _isCopyConstructibleClass(decl):
+      return False
     return True
 
   def _returnTypeRequiresValueWrapper(self, method):
@@ -1778,7 +1816,7 @@ class Bindings:
           self._substitute_canonical_template_names(canonical, templateArgs),
           clangType,
         )
-    if not any(td in resolved for td in self._MEMBER_TYPEDEFS):
+    if "typename " not in resolved and not any(td in resolved for td in self._MEMBER_TYPEDEFS):
       return self._qualify_nested_type(resolved, clangType)
 
     canonical = clangType.get_canonical().spelling
@@ -1824,42 +1862,42 @@ class Bindings:
       except SkipException as e:
         print(str(e))
 
-    # Group methods by name to detect same-arity overloads
-    method_groups = defaultdict(list)
-    all_children = list(theClass.get_children())
-    for method in all_children:
-      if not filterMethodOrProperty(theClass, method):
-        # Dropped-method transparency: when the method was dropped because a
-        # parameter/return resolves to an excluded class, the wrapped
-        # filter recorded the reason in the side-table. The TS subclass
-        # renders a `// dropped: ...` comment here so .d.ts consumers
-        # see why the method is missing; the Embind subclass returns ""
-        # (no comment in the .cpp output).
+    method_contexts = [(list(theClass.get_children()), templateArgs)]
+    inherited = inherited_template_base(theClass)
+    if inherited is not None:
+      inherited_template, inherited_args = inherited
+      method_contexts.append((list(inherited_template.get_children()), inherited_args))
+
+    for children, context_args in method_contexts:
+      method_groups = defaultdict(list)
+      for method in children:
+        if not filterMethodOrProperty(theClass, method):
+          # Dropped-method transparency: when the method was dropped because a
+          # parameter/return resolves to an excluded class, the wrapped
+          # filter recorded the reason in the side-table. The TS subclass
+          # renders a `// dropped: ...` comment here so .d.ts consumers
+          # see why the method is missing; the Embind subclass returns ""
+          # (no comment in the .cpp output).
+          try:
+            reasons = pop_dropped_method_reasons(theClass.spelling, method.displayname)
+          except Exception:
+            reasons = []
+          if reasons:
+            output += self.render_dropped_method_jsdoc(theClass, method, reasons)
+          continue
+        if method.access_specifier == clang.cindex.AccessSpecifier.PUBLIC and method.kind == clang.cindex.CursorKind.CXX_METHOD and not method.spelling.startswith("operator"):
+          method_groups[method.spelling].append(method)
+        elif method.access_specifier == clang.cindex.AccessSpecifier.PUBLIC and method.kind == clang.cindex.CursorKind.FIELD_DECL:
+          try:
+            output += self.processMethodOrProperty(theClass, method, templateDecl, context_args)
+          except SkipException as e:
+            print(str(e))
+
+      for methods in method_groups.values():
         try:
-          reasons = pop_dropped_method_reasons(theClass.spelling, method.displayname)
-        except Exception:
-          reasons = []
-        if reasons:
-          output += self.render_dropped_method_jsdoc(theClass, method, reasons)
-        continue
-      if method.access_specifier == clang.cindex.AccessSpecifier.PUBLIC and method.kind == clang.cindex.CursorKind.CXX_METHOD and not method.spelling.startswith("operator"):
-        method_groups[method.spelling].append(method)
-      elif method.access_specifier == clang.cindex.AccessSpecifier.PUBLIC and method.kind == clang.cindex.CursorKind.FIELD_DECL:
-        try:
-          output += self.processMethodOrProperty(theClass, method, templateDecl, templateArgs)
+          output += self.processMethodGroup(theClass, methods, templateDecl, context_args)
         except SkipException as e:
           print(str(e))
-
-    # Process each method group
-    processed_groups = set()
-    for method_name, methods in method_groups.items():
-      if method_name in processed_groups:
-        continue
-      processed_groups.add(method_name)
-      try:
-        output += self.processMethodGroup(theClass, methods, templateDecl, templateArgs)
-      except SkipException as e:
-        print(str(e))
 
     output += self.processFinalizeClass()
     if not isAbstract:
@@ -2327,9 +2365,19 @@ class EmbindBindings(Bindings):
         elif numOverloads == 1:
           functionBinding = " &" + classCpp + "::" + method.spelling
         else:
+          returnType = self.resolveWithCanonicalFallback(
+            method.result_type.spelling,
+            method.result_type,
+            templateDecl,
+            templateArgs,
+          )
+          canonicalReturn = method.result_type.get_canonical().spelling
+          if method.semantic_parent != theClass and "type-parameter-" in canonicalReturn:
+            returnType = self._substitute_canonical_template_names(canonicalReturn, templateArgs)
+          returnType = _qualifyInheritedTemplateScope(returnType, theClass, method)
           functionBinding = merge("",
             " select_overload<",
-            self.resolveWithCanonicalFallback(method.result_type.spelling, method.result_type, templateDecl, templateArgs),
+            returnType,
             f'({merge(", ", *map(lambda x: self.getOriginalArgumentType(x, templateDecl, templateArgs), list(method.get_arguments())))})',
             pick(method.is_const_method(), "const", ""),
             pick(not method.is_static_method(), f", {classCpp}", ""),

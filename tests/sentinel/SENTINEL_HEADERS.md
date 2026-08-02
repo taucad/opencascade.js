@@ -38,7 +38,7 @@ Each entry below was chosen so that, taken together, the ten headers exercise
 | 7 | `ModelingData/TKBRep/BRepGraph/BRepGraph_ReverseIterator.hxx`                        | Traits-aliased templated class| `BRepGraph_FacesOfEdge.{cpp,d.ts.json}` *(plus siblings)* |
 | 8 | `FoundationClasses/TKernel/Standard/Standard_Failure.hxx`                            | std-using class               | `Standard_Failure.{cpp,d.ts.json}`                        |
 | 9 | `DataExchange/TKXSBase/IFSelect/IFSelect_Act.hxx`                                    | Function-pointer typedef      | `IFSelect_Act.{cpp,d.ts.json}`                            |
-| 10| `ModelingData/TKBRep/BRepGraph/BRepGraph_Builder.hxx`                                | RBV-eligible class            | `BRepGraph_Builder.{cpp,d.ts.json}`                       |
+| 10| `ModelingData/TKBRep/BRepGraph/BRepGraph_CacheRegistry.hxx`                          | RBV-eligible class            | `BRepGraph_CacheRegistry.{cpp,d.ts.json}`                 |
 
 > Header #2 is **not** a real OCCT source; it is a synthetic fragment produced by
 > `ocjs_bindgen/discover.py` and emitted into `build/bindings/myMain.h/`. It is

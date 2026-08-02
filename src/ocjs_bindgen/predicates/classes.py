@@ -75,6 +75,58 @@ def _isInlineValueObjectStruct(cursor: clang.cindex.Cursor) -> bool:
     return has_default_ctor
 
 
+def _hasImplicitDestructorWithIncompleteValueField(cursor: clang.cindex.Cursor) -> bool:
+    """Reject records whose implicit destructor owns an incomplete type by value."""
+    if any(
+        child.kind == clang.cindex.CursorKind.DESTRUCTOR
+        for child in cursor.get_children()
+    ):
+        return False
+
+    def _contains_incomplete_nested_record(clang_type, visiting=None) -> bool:
+        if visiting is None:
+            visiting = set()
+        canonical = clang_type.get_canonical()
+        if canonical.kind in (
+            clang.cindex.TypeKind.POINTER,
+            clang.cindex.TypeKind.LVALUEREFERENCE,
+            clang.cindex.TypeKind.RVALUEREFERENCE,
+        ):
+            return False
+        key = canonical.spelling
+        if key in visiting:
+            return False
+        visiting.add(key)
+        try:
+            declaration = canonical.get_declaration()
+            if (
+                declaration
+                and declaration.kind in (
+                    clang.cindex.CursorKind.CLASS_DECL,
+                    clang.cindex.CursorKind.STRUCT_DECL,
+                )
+                and declaration.get_definition() is None
+                and declaration.semantic_parent == cursor
+            ):
+                return True
+            for index in range(canonical.get_num_template_arguments()):
+                argument = canonical.get_template_argument_type(index)
+                if (
+                    argument.kind != clang.cindex.TypeKind.INVALID
+                    and _contains_incomplete_nested_record(argument, visiting)
+                ):
+                    return True
+            return False
+        finally:
+            visiting.discard(key)
+
+    return any(
+        child.kind == clang.cindex.CursorKind.FIELD_DECL
+        and _contains_incomplete_nested_record(child.type)
+        for child in cursor.get_children()
+    )
+
+
 def shouldProcessClass(child: clang.cindex.Cursor, occtBasePath: str) -> bool:
     """True iff `child` is a class/struct definition the bindgen should bind.
 
@@ -95,6 +147,9 @@ def shouldProcessClass(child: clang.cindex.Cursor, occtBasePath: str) -> bool:
         return False
 
     if _isInlineValueObjectStruct(child):
+        return False
+
+    if _hasImplicitDestructorWithIncompleteValueField(child):
         return False
 
     if (
@@ -159,6 +214,49 @@ def _findClassTemplateByName(synthetic_decl):
 
         _walk(tu.cursor)
     return _CLASS_TEMPLATE_INDEX.get(synthetic_decl.spelling)
+
+
+def inherited_template_base(the_class):
+    """Return an inherited-constructor template base and its concrete args."""
+    children = list(the_class.get_children())
+    bases = [
+        child
+        for child in children
+        if child.kind == clang.cindex.CursorKind.CXX_BASE_SPECIFIER
+        and child.access_specifier == clang.cindex.AccessSpecifier.PUBLIC
+    ]
+    if len(bases) != 1 or bases[0].type.get_num_template_arguments() <= 0:
+        return None
+
+    template = _findClassTemplateByName(bases[0].type.get_declaration())
+    if template is None:
+        return None
+    using_names = {the_class.spelling, template.spelling}
+    if not any(
+        child.kind == clang.cindex.CursorKind.USING_DECLARATION
+        and child.spelling in using_names
+        for child in children
+    ):
+        return None
+    parameters = [
+        child
+        for child in template.get_children()
+        if child.kind == clang.cindex.CursorKind.TEMPLATE_TYPE_PARAMETER
+    ]
+    arguments = [
+        bases[0].type.get_template_argument_type(index)
+        for index in range(bases[0].type.get_num_template_arguments())
+    ]
+    if len(parameters) != len(arguments) or any(not argument.spelling for argument in arguments):
+        return None
+
+    from ocjs_bindgen.ast.template_args import augment_template_args_with_canonical
+
+    template_args = {
+        parameter.spelling: argument
+        for parameter, argument in zip(parameters, arguments, strict=True)
+    }
+    return template, augment_template_args_with_canonical(template_args, template)
 
 
 def _ctor_is_copy(ctor, decl) -> bool:

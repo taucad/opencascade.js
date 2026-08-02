@@ -105,8 +105,8 @@ SENTINELS: tuple[Sentinel, ...] = (
     ),
     Sentinel(
         pattern="RBV-eligible class",
-        header_dir="ModelingData/TKBRep/BRepGraph/BRepGraph_Builder.hxx",
-        fragment_stem="BRepGraph_Builder",
+        header_dir="ModelingData/TKBRep/BRepGraph/BRepGraph_CacheRegistry.hxx",
+        fragment_stem="BRepGraph_CacheRegistry",
     ),
 )
 

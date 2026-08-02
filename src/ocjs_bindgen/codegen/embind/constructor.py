@@ -14,6 +14,7 @@ Owns:
 
 from __future__ import annotations
 
+import re
 from collections import defaultdict
 
 import clang.cindex
@@ -24,6 +25,7 @@ from ocjs_bindgen.codegen import val_default as _val_default
 from ocjs_bindgen.codegen.wasm_common import SkipException, isTransientDerived
 from ocjs_bindgen.naming.cpp import getClassQualifiedName, getClassTypeName
 from ocjs_bindgen.naming.ts import getClassJsPublicName
+from ocjs_bindgen.predicates.classes import inherited_template_base
 from ocjs_bindgen.predicates.optional_emission_guards import (
   assert_no_multi_all_optional_same_arity,
   assert_no_nonconst_ref_in_optional,
@@ -99,10 +101,13 @@ def rewrite_typedef_nested_types(type_str, class_cpp, underlying_spelling, templ
   """
   if template_decl is None or not underlying_spelling or not class_cpp:
     return type_str
-  prefix = underlying_spelling + "::"
-  if prefix not in type_str:
-    return type_str
-  return type_str.replace(prefix, class_cpp + "::")
+  result = type_str.replace(underlying_spelling + "::", class_cpp + "::")
+  alias_prefix = class_cpp + "::"
+  return re.sub(
+    rf"(?<![\w:])(?:[A-Za-z_]\w*::)+(?={re.escape(alias_prefix)})",
+    "",
+    result,
+  )
 
 
 def emit_constructor(b, class_cpp, args, template_decl, template_args, use_handle_override, underlying_spelling=None, optional_param_count=0, owning_class=None):
@@ -1384,13 +1389,28 @@ def process_simple_constructor(b, theClass, templateDecl=None, templateArgs=None
   underlying_spelling = theClass.spelling if templateDecl is not None else None
 
   if len(constructors) == 0:
-    if useHandleOverride:
-      output += "    .constructor(optional_override([]() {\n"
-      output += "      return opencascade::handle<" + classCpp + ">(new " + classCpp + "());\n"
-      output += "    }))\n"
+    inherited = inherited_template_base(theClass)
+    if inherited is not None:
+      inherited_template, templateArgs = inherited
+      templateDecl = templateDecl if templateDecl is not None else theClass
+      theClass = inherited_template
+      underlying_spelling = inherited_template.spelling
+      children = list(inherited_template.get_children())
+      constructors = list(filter(lambda x: x.kind == clang.cindex.CursorKind.CONSTRUCTOR, children))
+    elif any(
+      child.kind == clang.cindex.CursorKind.USING_DECLARATION
+      and child.spelling == theClass.spelling
+      for child in children
+    ):
+      return output
     else:
-      output += "    .constructor<>()\n"
-    return output
+      if useHandleOverride:
+        output += "    .constructor(optional_override([]() {\n"
+        output += "      return opencascade::handle<" + classCpp + ">(new " + classCpp + "());\n"
+        output += "    }))\n"
+      else:
+        output += "    .constructor<>()\n"
+      return output
   publicConstructors = list(filter(lambda x: x.kind == clang.cindex.CursorKind.CONSTRUCTOR and x.access_specifier == clang.cindex.AccessSpecifier.PUBLIC, children))
   if len(publicConstructors) == 0:
     return output

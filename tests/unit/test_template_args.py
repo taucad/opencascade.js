@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import clang.cindex
 
-from ocjs_bindgen.ast import augment_template_args_with_canonical
+from ocjs_bindgen.ast import augment_template_args_with_canonical, qualify_nested_type
 from ocjs_bindgen.ast.template_args import TemplateArgMap
 from tests.conftest import _MockType, cursor_mock
 
@@ -213,3 +213,31 @@ def test_augment_maps_forward_and_definition_parameter_names_by_ordinal() -> Non
   assert augmented["TheItemType"] is concrete
   assert augmented["type-parameter-0-0"] is concrete
   assert augmented["T"] is concrete
+
+
+def test_qualify_nested_type_walks_the_full_parent_chain() -> None:
+  namespace = cursor_mock(kind=clang.cindex.CursorKind.NAMESPACE, spelling="BRepGraph")
+  outer = cursor_mock(
+    kind=clang.cindex.CursorKind.CLASS_DECL,
+    spelling="LayerDeferred",
+    parent=namespace,
+  )
+  entry = cursor_mock(
+    kind=clang.cindex.CursorKind.STRUCT_DECL,
+    spelling="Entry",
+    parent=outer,
+  )
+  storage = cursor_mock(
+    kind=clang.cindex.CursorKind.CLASS_DECL,
+    spelling="RepresentationStorage",
+    parent=entry,
+  )
+  storage_type = _MockType(
+    spelling="Entry::RepresentationStorage",
+    kind=clang.cindex.TypeKind.RECORD,
+    declaration=storage,
+  )
+
+  assert qualify_nested_type("const Entry::RepresentationStorage &", storage_type) == (
+    "const BRepGraph::LayerDeferred::Entry::RepresentationStorage &"
+  )

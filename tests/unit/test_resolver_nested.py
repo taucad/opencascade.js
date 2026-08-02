@@ -19,8 +19,11 @@ from tests.conftest import _MockType, cursor_mock
 
 
 class _StubTuInfo:
-  def __init__(self, classDict=None):
+  def __init__(self, classDict=None, allChildren=None, typedefs=None):
     self.classDict = classDict or {}
+    self.allChildren = allChildren or []
+    self.typedefs = typedefs or []
+    self.templateTypedefs = []
 
 
 class _StubResolverContext:
@@ -29,9 +32,10 @@ class _StubResolverContext:
   exports: set = set()
   _known_export_names: set = set()
 
-  def __init__(self, *, classDict=None, resolve_table=None) -> None:
-    self.tuInfo = _StubTuInfo(classDict)
+  def __init__(self, *, classDict=None, allChildren=None, resolve_table=None) -> None:
+    self.tuInfo = _StubTuInfo(classDict, allChildren)
     self.exports = set()
+    self.referenced_classes = set()
     self._resolve_table = resolve_table or {}
     self.resolve_calls: list[str] = []
 
@@ -219,3 +223,65 @@ def test_traits_substitution_falls_through_to_classdict() -> None:
     templateArgs=None,
   )
   assert out == "number"
+
+
+def test_explicit_specialization_member_uses_concrete_template_argument() -> None:
+  traits = _traits_class(
+    "FaceTraits",
+    _typedef("ParentId", _MockType(spelling="BRepGraph_FaceId")),
+  )
+  specialization = cursor_mock(
+    kind=clang.cindex.CursorKind.STRUCT_DECL,
+    spelling="DefTraits",
+    displayname="DefTraits<BRepGraph_FaceId>",
+    children=[
+      cursor_mock(kind=clang.cindex.CursorKind.TYPE_REF, spelling="BRepGraph_FaceId"),
+      _typedef("DefType", _MockType(spelling="BRepGraphInc::FaceDef")),
+    ],
+  )
+  ctx = _StubResolverContext(
+    classDict={"FaceTraits": traits},
+    allChildren=[specialization],
+    resolve_table={
+      "BRepGraph_FaceId": "BRepGraph_FaceId",
+      "BRepGraphInc::FaceDef": "BRepGraphInc_FaceDef",
+    },
+  )
+  ctx.referenced_classes.update({"ParentId", "DefType"})
+
+  out = resolve_qualified_member_type(
+    ctx,
+    "typename DefTraits<BRepGraph_ReverseIterator::FaceTraits::ParentId>::DefType",
+  )
+
+  assert out == "BRepGraphInc_FaceDef"
+  assert ctx.referenced_classes == set()
+
+
+def test_explicit_specialization_compares_canonical_cpp_arguments() -> None:
+  int_alias = _typedef(
+    "Int",
+    _MockType(spelling="C::Int", canonical=_MockType(spelling="int")),
+  )
+  alias_owner = _traits_class("C", int_alias)
+  double_specialization = cursor_mock(
+    kind=clang.cindex.CursorKind.STRUCT_DECL,
+    spelling="DefTraits",
+    displayname="DefTraits<double>",
+    children=[_typedef("DefType", _MockType(spelling="WrongDef"))],
+  )
+  int_specialization = cursor_mock(
+    kind=clang.cindex.CursorKind.STRUCT_DECL,
+    spelling="DefTraits",
+    displayname="DefTraits<int>",
+    children=[_typedef("DefType", _MockType(spelling="IntDef"))],
+  )
+  ctx = _StubResolverContext(
+    classDict={"C": alias_owner},
+    allChildren=[double_specialization, int_specialization],
+    resolve_table={"WrongDef": "WrongDef", "IntDef": "IntDef"},
+  )
+
+  out = resolve_qualified_member_type(ctx, "DefTraits<C::Int>::DefType")
+
+  assert out == "IntDef"

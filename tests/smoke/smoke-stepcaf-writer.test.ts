@@ -99,4 +99,89 @@ describe.skipIf(!wasmExists)('Smoke: STEPCAFControl_Writer', () => {
       /* best-effort cleanup */
     }
   });
+
+  it('should preserve a conical cylinder chamfer through STEPCAF round-trip', () => {
+    const oc = getOC();
+    using cylinder = new oc.BRepPrimAPI_MakeCylinder(25, 50);
+    using cylinderShape = cylinder.Shape();
+    using chamfer = new oc.BRepFilletAPI_MakeChamfer(cylinderShape);
+    using edgeExplorer = new oc.TopExp_Explorer(
+      cylinderShape,
+      oc.TopAbs_ShapeEnum.TopAbs_EDGE,
+      oc.TopAbs_ShapeEnum.TopAbs_SHAPE,
+    );
+
+    let foundTopEdge = false;
+    while (edgeExplorer.More()) {
+      using current = edgeExplorer.Current();
+      using edge = oc.TopoDS.Edge(current);
+      using curve = new oc.BRepAdaptor_Curve(edge);
+      if (curve.GetType() === oc.GeomAbs_CurveType.GeomAbs_Circle) {
+        using circle = curve.Circle();
+        using location = circle.Location();
+        if (Math.abs(location.Z() - 50) < 1e-9) {
+          chamfer.Add(5, edge);
+          foundTopEdge = true;
+          break;
+        }
+      }
+      edgeExplorer.Next();
+    }
+    expect(foundTopEdge).toBe(true);
+
+    using buildProgress = new oc.Message_ProgressRange();
+    chamfer.Build(buildProgress);
+    expect(chamfer.IsDone()).toBe(true);
+    using chamferedShape = chamfer.Shape();
+
+    using documentName = new oc.TCollection_ExtendedString('XmlOcaf', true);
+    using document = new oc.TDocStd_Document(documentName);
+    using mainLabel = document.Main();
+    using shapeTool = oc.XCAFDoc_DocumentTool.ShapeTool(mainLabel);
+    using shapeLabel = shapeTool.NewShape();
+    shapeTool.SetShape(shapeLabel, chamferedShape);
+
+    const stepPath = '/tmp/_smoke_stepcaf_chamfer.step';
+    using writer = new oc.STEPCAFControl_Writer();
+    using writeProgress = new oc.Message_ProgressRange();
+    expect(writer.Perform(document, stepPath, writeProgress)).toBe(true);
+
+    using readDocumentName = new oc.TCollection_ExtendedString('XmlOcaf', true);
+    using readDocument = new oc.TDocStd_Document(readDocumentName);
+    using reader = new oc.STEPCAFControl_Reader();
+    using readProgress = new oc.Message_ProgressRange();
+    expect(reader.Perform(stepPath, readDocument, readProgress)).toBe(true);
+    using readMainLabel = readDocument.Main();
+    using readShapeTool = oc.XCAFDoc_DocumentTool.ShapeTool(readMainLabel);
+    using readShape = readShapeTool.GetOneShape();
+    using faceExplorer = new oc.TopExp_Explorer(
+      readShape,
+      oc.TopAbs_ShapeEnum.TopAbs_FACE,
+      oc.TopAbs_ShapeEnum.TopAbs_SHAPE,
+    );
+
+    let cones = 0;
+    let cylinders = 0;
+    while (faceExplorer.More()) {
+      using current = faceExplorer.Current();
+      using face = oc.TopoDS.Face(current);
+      using surface = new oc.BRepAdaptor_Surface(face, true);
+      if (surface.GetType() === oc.GeomAbs_SurfaceType.GeomAbs_Cone) {
+        cones += 1;
+      }
+      if (surface.GetType() === oc.GeomAbs_SurfaceType.GeomAbs_Cylinder) {
+        cylinders += 1;
+      }
+      faceExplorer.Next();
+    }
+
+    expect(cones).toBe(1);
+    expect(cylinders).toBeGreaterThanOrEqual(1);
+
+    try {
+      oc.FS.unlink(stepPath);
+    } catch {
+      /* best-effort cleanup */
+    }
+  });
 });
