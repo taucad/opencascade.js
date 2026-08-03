@@ -70,7 +70,7 @@ describe('README.md shape', () => {
 
   it('should identify libcascade only as the npm coordinate for OpenCascade.js', () => {
     const body = fs.readFileSync(README_PATH, 'utf-8');
-    expect(body).toContain('pnpm add libcascade@canary');
+    expect(body).toContain('pnpm add libcascade');
     expect(body).toContain('OpenCascade.js is published on npm as `libcascade`');
     expect(body).not.toContain('Tau-maintained fork');
   });

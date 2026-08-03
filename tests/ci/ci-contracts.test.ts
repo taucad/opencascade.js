@@ -69,6 +69,7 @@ describe('CI contracts', () => {
   });
 
   it('should classify only exact release-PR merges as beta or stable publications', () => {
+    const betaReleaseFiles = ['CHANGELOG.md', 'package-lock.json', 'package.json'];
     const stableReleaseFiles = [
       '.nx/version-plans/feature.md',
       'CHANGELOG.md',
@@ -82,7 +83,7 @@ describe('CI contracts', () => {
       commitEpoch: EPOCH,
       packageVersion: '3.0.0-beta.1',
       commitSubject: 'chore(release): ocjs v3.0.0-beta.1',
-      changedFiles: stableReleaseFiles,
+      changedFiles: betaReleaseFiles,
     })).toMatchObject({
       version: '3.0.0-beta.1',
       channel: 'beta',
@@ -105,6 +106,24 @@ describe('CI contracts', () => {
       ref: 'refs/heads/main',
       sha: SHA,
       commitEpoch: EPOCH,
+      packageVersion: '3.0.0-beta.1',
+      commitSubject: 'chore(release): ocjs v3.0.0-beta.1',
+      changedFiles: stableReleaseFiles,
+    })).toThrow('beta release must retain Version Plans');
+    expect(() => deriveRelease({
+      event: 'push',
+      ref: 'refs/heads/main',
+      sha: SHA,
+      commitEpoch: EPOCH,
+      packageVersion: '3.0.0',
+      commitSubject: 'chore(release): ocjs v3.0.0',
+      changedFiles: betaReleaseFiles,
+    })).toThrow('stable release must consume at least one Version Plan');
+    expect(() => deriveRelease({
+      event: 'push',
+      ref: 'refs/heads/main',
+      sha: SHA,
+      commitEpoch: EPOCH,
       packageVersion: '3.0.0-rc.1',
       commitSubject: 'chore(release): ocjs v3.0.0-rc.1',
       changedFiles: stableReleaseFiles,
@@ -120,22 +139,22 @@ describe('CI contracts', () => {
     })).toThrow('unexpected files');
   });
 
-  it('should validate explicit beta and stable versions against Version Plans', () => {
+  it('should carry the same Version Plan from beta preparation into stable preparation', () => {
     expect(validateRequestedVersion({
       currentVersion: '3.0.0-beta.0',
       plannedStableVersion: '3.0.0',
       requestedVersion: '3.0.0-beta.1',
-    })).toEqual({ channel: 'beta', version: '3.0.0-beta.1' });
+    })).toEqual({ channel: 'beta', deleteVersionPlans: false, version: '3.0.0-beta.1' });
     expect(validateRequestedVersion({
       currentVersion: '3.0.0-beta.1',
       plannedStableVersion: '3.0.0',
       requestedVersion: '3.0.0',
-    })).toEqual({ channel: 'stable', version: '3.0.0' });
+    })).toEqual({ channel: 'stable', deleteVersionPlans: true, version: '3.0.0' });
     expect(validateRequestedVersion({
       currentVersion: '3.0.0',
       plannedStableVersion: '3.1.0',
       requestedVersion: '3.1.0-beta.1',
-    })).toEqual({ channel: 'beta', version: '3.1.0-beta.1' });
+    })).toEqual({ channel: 'beta', deleteVersionPlans: false, version: '3.1.0-beta.1' });
     expect(() => validateRequestedVersion({
       currentVersion: '3.0.0-beta.1',
       plannedStableVersion: '3.1.0',
