@@ -67,8 +67,9 @@ routine release and is deliberately outside this skill.
    ```
 
 6. Review `git diff --name-status`. Both beta and stable releases must change
-   only `package.json`, `package-lock.json`, `CHANGELOG.md`, and delete one or
-   more `.nx/version-plans/*.md` files. Stop for any other path.
+   only `package.json`, `package-lock.json`, and `CHANGELOG.md`. Beta releases
+   retain every `.nx/version-plans/*.md` file; stable releases also delete one
+   or more consumed plans. Stop for any other path.
 7. Verify:
 
    ```bash
@@ -87,9 +88,9 @@ routine release and is deliberately outside this skill.
    ```
 
 10. Push the release branch and open a draft PR against `main` with the same
-    title. State the channel (`beta` or `latest`), install command, consumed
-    Version Plans, and validation results. If an open release PR appeared
-    before the push, stop rather than creating a second one.
+    title. State the channel (`beta` or `latest`), install command, retained or
+    consumed Version Plans, and validation results. If an open release PR
+    appeared before the push, stop rather than creating a second one.
 
 ## Boundaries
 

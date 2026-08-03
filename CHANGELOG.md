@@ -1,4 +1,6 @@
-## v3.0.0-beta.2
+## Historical `@taucad/opencascade.js` v3 beta
+
+### v3.0.0-beta.2
 
 Final beta before release candidate. Adds the pre-built multi-threaded WASM to the published npm tarball.
 
@@ -8,7 +10,7 @@ Final beta before release candidate. Adds the pre-built multi-threaded WASM to t
 - **Smoke coverage** — `tests/smoke/smoke-package-exports.test.ts` guards the static exports contract; `tests/smoke/smoke-multi-threaded.test.ts` live-boots the MT binary when `SharedArrayBuffer` is available.
 - **Documentation sweep** — README, BREAKING_CHANGES, BENCHMARKS, MAINTAINER, and ocjs.org docs updated for the `/multi` import surface, COOP/COEP prerequisites, and OCCT parallel activation.
 
-## v3.0.0
+## `libcascade` 3.0.0 release notes
 
 v3 is a ground-up modernisation: OCCT V8 (GA), native WebAssembly exceptions, ES modules, full TypeScript bindings with idiomatic JSDoc, content-addressed build caching, and reproducible builds via pinned dependency commits.
 

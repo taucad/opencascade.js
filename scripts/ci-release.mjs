@@ -12,17 +12,23 @@ const assert = (condition, message) => {
   if (!condition) throw new Error(message);
 };
 
-const validateReleaseFiles = (files) => {
+const isVersionPlan = (file) =>
+  file.startsWith('.nx/version-plans/') && file.endsWith('.md');
+
+const validateReleaseFiles = (files, prerelease) => {
   assert(files.length > 0, 'release commit changed-file list is empty');
   for (const required of RELEASE_FILES) {
     assert(files.includes(required), `release commit must change ${required}`);
   }
+  const versionPlans = files.filter(isVersionPlan);
   assert(
-    files.some((file) => file.startsWith('.nx/version-plans/') && file.endsWith('.md')),
-    'release commit must consume at least one Version Plan',
+    prerelease ? versionPlans.length === 0 : versionPlans.length > 0,
+    prerelease
+      ? 'beta release must retain Version Plans'
+      : 'stable release must consume at least one Version Plan',
   );
   const unexpected = files.filter(
-    (file) => !RELEASE_FILES.has(file) && !file.startsWith('.nx/version-plans/'),
+    (file) => !RELEASE_FILES.has(file) && !isVersionPlan(file),
   );
   assert(unexpected.length === 0, `release commit has unexpected files: ${unexpected.join(', ')}`);
 };
@@ -115,7 +121,7 @@ export const deriveRelease = ({
   if (prerelease) {
     assert(/^beta\.[1-9]\d*$/.test(packageMatch[4]), `unsupported release prerelease: ${packageMatch[4]}`);
   }
-  validateReleaseFiles(changedFiles);
+  validateReleaseFiles(changedFiles, prerelease);
   return {
     ...common,
     version: packageVersion,

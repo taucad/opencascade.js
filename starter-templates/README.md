@@ -1,6 +1,6 @@
 # opencascade.js v3 starter templates
 
-Production-ready, copy-and-go starters for `libcascade@canary`. Each template demonstrates a canonical loading pattern, a representative geometry pipeline, and a smoke test that ships green in CI.
+Production-ready, copy-and-go starters for `libcascade`. Each template demonstrates a canonical loading pattern, a representative geometry pipeline, and a smoke test that ships green in CI.
 
 ## Templates
 
@@ -11,7 +11,7 @@ Production-ready, copy-and-go starters for `libcascade@canary`. Each template de
 | [`next-three-glb`](./next-three-glb) | Next 15 App Router + React 19 + `@react-three/fiber` + `@react-three/drei` | Client-only OCJS init via `dynamic(..., { ssr: false })` inside `'use client'` |
 | [`node-step-export`](./node-step-export) | Node 22+ ESM + `tsx`                                                  | Headless `cli build sphere --out sphere.step` with `import.meta.resolve` |
 
-Each subdirectory is self-contained: a `package.json` with a single canonical dependency (`libcascade@canary`), a pinned `pnpm-lock.yaml`, and a `README.md` with the exact reproduction steps used by CI.
+Each subdirectory is self-contained: a `package.json` with a single canonical dependency (`libcascade`), a pinned `pnpm-lock.yaml`, and a `README.md` with the exact reproduction steps used by CI.
 
 ## Shared canonical patterns
 

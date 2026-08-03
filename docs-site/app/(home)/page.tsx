@@ -9,7 +9,7 @@ import { GITHUB_REPO_URL } from '../../lib/site';
 const personaCards = [
   {
     title: 'npm consumer',
-    description: 'Install `libcascade@canary`, render a box, export STEP. 4 minutes.',
+    description: 'Install `libcascade`, render a box, export STEP. 4 minutes.',
     href: '/docs/package/getting-started/quick-start-npm',
     cta: 'Start with npm',
     icon: 'lib:npm',

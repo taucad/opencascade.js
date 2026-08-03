@@ -213,10 +213,12 @@ npm run release:prepare -- 3.0.0 --dry-run
 
 A beta release validates the requested numeric `beta.N` against the stable
 version implied by the pending Version Plans. A stable release must exactly
-match the planned SemVer. Both generate their changelog entry and consume the
-included plans. The resulting PR may contain only `package.json`,
-`package-lock.json`, `CHANGELOG.md`, and deleted Version Plan files. Its single
-commit subject is exactly `chore(release): ocjs v<version>`.
+match the planned SemVer. Both generate their changelog entry. Beta releases
+retain the pending plans so later betas and the stable release resolve the same
+version; only the stable release consumes them. A beta PR contains exactly
+`package.json`, `package-lock.json`, and `CHANGELOG.md`. A stable PR also
+deletes the consumed Version Plan files. Its single commit subject is exactly
+`chore(release): ocjs v<version>`.
 
 After that PR is merged, CI publishes and verifies the exact candidate, then
 creates/verifies the annotated `v<version>` tag and GitHub Release. No release

@@ -7,7 +7,7 @@ When OCCT throws a `Standard_Failure` inside the wasm module, the value that
 reaches your JS try/catch is a `WebAssembly.Exception` object. Printing it
 with `console.error(error)` yields `[object WebAssembly.Exception]` — useless.
 
-`libcascade@canary` exposes `getExceptionMessage(error)` to decode
+`libcascade` exposes `getExceptionMessage(error)` to decode
 the C++ failure into a string.
 
 ## The pattern

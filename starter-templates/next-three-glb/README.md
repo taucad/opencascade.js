@@ -1,13 +1,13 @@
 # next-three-glb
 
-Next 15 App Router + React 19 + `@react-three/fiber` + `@react-three/drei` + `libcascade@canary`. Demonstrates the canonical SSR-safe pattern for OCJS: a `'use client'` viewer component dynamically imported with `{ ssr: false }`, with `opencascade_full.wasm` copied into `public/` at install time.
+Next 15 App Router + React 19 + `@react-three/fiber` + `@react-three/drei` + `libcascade`. Demonstrates the canonical SSR-safe pattern for OCJS: a `'use client'` viewer component dynamically imported with `{ ssr: false }`, with `opencascade_full.wasm` copied into `public/` at install time.
 
 ## Stack
 
 - Next 15 App Router (`pnpm dev` → http://localhost:3000)
 - React 19 client components
 - `@react-three/fiber` + `@react-three/drei` for the Canvas + OrbitControls
-- `libcascade@canary` initialised once per session via `lib/ocjs-init.ts`
+- `libcascade` initialised once per session via `lib/ocjs-init.ts`
 
 ## Files
 

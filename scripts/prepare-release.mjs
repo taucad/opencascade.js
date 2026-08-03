@@ -43,7 +43,7 @@ export const validateRequestedVersion = ({
       requestedVersion === plannedStableVersion,
       `requested stable ${requestedVersion} does not match Version Plans (${plannedStableVersion})`,
     );
-    return { channel: 'stable', version: requestedVersion };
+    return { channel: 'stable', deleteVersionPlans: true, version: requestedVersion };
   }
 
   assert(
@@ -70,7 +70,7 @@ export const validateRequestedVersion = ({
       `next beta after ${currentVersion} must be ${requestedCore}-beta.${Number(currentPrerelease[1]) + 1}`,
     );
   }
-  return { channel: 'beta', version: requestedVersion };
+  return { channel: 'beta', deleteVersionPlans: false, version: requestedVersion };
 };
 
 const previewVersionPlans = () =>
@@ -94,7 +94,7 @@ const prepare = async ({ dryRun, requestedVersion }) => {
   await releaseChangelog({
     ...GIT_OPTIONS,
     createRelease: false,
-    deleteVersionPlans: true,
+    deleteVersionPlans: releaseRequest.deleteVersionPlans,
     dryRun: true,
     releaseGraph: preview.releaseGraph,
     version: releaseRequest.version,
@@ -110,7 +110,7 @@ const prepare = async ({ dryRun, requestedVersion }) => {
   await releaseChangelog({
     ...GIT_OPTIONS,
     createRelease: false,
-    deleteVersionPlans: true,
+    deleteVersionPlans: releaseRequest.deleteVersionPlans,
     releaseGraph: preview.releaseGraph,
     version: releaseRequest.version,
   });
