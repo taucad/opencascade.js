@@ -1,3 +1,14 @@
+## 3.0.0-beta.1 (2026-08-03)
+
+### ⚠️  Breaking Changes
+
+- Publish the OpenCascade.js npm package as `libcascade`, add the packaged ([#4](https://github.com/taucad/opencascade.js/pull/4), [#3](https://github.com/taucad/opencascade.js/issues/3), [#5](https://github.com/taucad/opencascade.js/issues/5), [#6](https://github.com/taucad/opencascade.js/issues/6))
+  API-reference feed, and adopt reviewed release PRs with deterministic canaries.
+
+### ❤️ Thank You
+
+- Richard Fontein @rifont
+
 ## Historical `@taucad/opencascade.js` v3 beta
 
 ### v3.0.0-beta.2
