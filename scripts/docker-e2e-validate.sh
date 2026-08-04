@@ -119,14 +119,16 @@ _resolve_artifact_basename() {
 
 _run_link() {
   local yaml_host_path="$1"
+  local yaml_host_dir
   local yaml_basename
+  yaml_host_dir="$(dirname "$yaml_host_path")"
   yaml_basename="$(basename "$yaml_host_path")"
   if [ "${#PLATFORM_FLAGS[@]}" -gt 0 ]; then
     docker run --rm \
       "${PLATFORM_FLAGS[@]}" \
       --memory 8g --cpus "$DOCKER_CPUS" \
       -u "$(id -u):$(id -g)" \
-      -v "$yaml_host_path:/src/${yaml_basename}:ro" \
+      -v "$yaml_host_dir:/src:ro" \
       -v "$OUTPUT_DIR:/output" \
       -e OCJS_OUTPUT_DIR=/output \
       "$IMAGE_TAG" link "$yaml_basename"
@@ -134,7 +136,7 @@ _run_link() {
     docker run --rm \
       --memory 8g --cpus "$DOCKER_CPUS" \
       -u "$(id -u):$(id -g)" \
-      -v "$yaml_host_path:/src/${yaml_basename}:ro" \
+      -v "$yaml_host_dir:/src:ro" \
       -v "$OUTPUT_DIR:/output" \
       -e OCJS_OUTPUT_DIR=/output \
       "$IMAGE_TAG" link "$yaml_basename"
