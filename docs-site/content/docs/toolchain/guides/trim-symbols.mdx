@@ -3,7 +3,9 @@ title: Trim symbols
 description: Drive the published Docker image to cut full.yml down to a consumer-sized symbol set — workflow, budget, and worked example.
 ---
 
-`opencascade_full.wasm` binds ~4,400 OCCT classes and weighs roughly 27 MB.
+import { ApiClassCount } from '../../../../components/api-class-count';
+
+`opencascade_full.wasm` binds <ApiClassCount /> OCCT classes and weighs roughly 40 MB.
 Most consumers need a fraction of that surface — a STEP round-tripper might
 touch ~120 classes, a glTF mesher even fewer. Trimming the YAML symbol list
 shrinks the wasm payload and reduces startup time.
@@ -37,7 +39,7 @@ reasonable target by use case:
 | Single-format viewer (read STEP → mesh)        |              80–150 |                2–4 MB |
 | Round-trip pipeline (STEP/IGES edit + write)   |             200–400 |               5–10 MB |
 | Full code-CAD tool (booleans + fillets + sweep) |           600–1,200 |              12–20 MB |
-| Reference / kitchen sink                        | 4,400 (`full.yml`) |                ~27 MB |
+| Reference / kitchen sink                        | <ApiClassCount /> (`full.yml`) |                ~40 MB |
 
 Numbers are after `-O3 -msimd128 -sWASM_BIGINT -sEVAL_CTORS=2`.
 

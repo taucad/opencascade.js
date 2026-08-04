@@ -5,7 +5,7 @@ import { usedByProjects } from '../lib/home-used-by';
 
 const GALLERY_PATH = resolve(
   import.meta.dirname,
-  '../content/docs/package/getting-started/projects-using-opencascade-js.mdx',
+  '../content/docs/package/getting-started/projects-using-libcascade.mdx',
 );
 
 describe('home used-by strip', () => {

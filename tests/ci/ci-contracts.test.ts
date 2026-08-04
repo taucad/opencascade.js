@@ -750,7 +750,7 @@ describe('CI contracts', () => {
     }
   });
 
-  it('should keep obsolete automation deleted and active compatibility fixtures', () => {
+  it('should keep obsolete automation and compatibility fixtures deleted', () => {
     for (const relative of [
       '.github/workflows/buildFull.yml',
       '.github/workflows/firebase-hosting-pull-request.yml',
@@ -770,6 +770,6 @@ describe('CI contracts', () => {
     }
     const project = JSON.parse(fs.readFileSync(path.join(ROOT, 'project.json'), 'utf8'));
     expect(project.targets).not.toHaveProperty('docker-ci-preflight');
-    expect(fs.existsSync(path.join(ROOT, 'starter-templates/legacy'))).toBe(true);
+    expect(fs.existsSync(path.join(ROOT, 'starter-templates/legacy'))).toBe(false);
   });
 });

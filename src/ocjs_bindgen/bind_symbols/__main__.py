@@ -18,8 +18,8 @@ def cli() -> int:
     parser = ArgumentParser(
         prog="python -m ocjs_bindgen.bind_symbols",
         description=(
-            "Extract Embind registration names from BUILTIN_ADDITIONAL_BIND_CODE "
-            "+ the consumer YAML's additionalBindCode blocks via libclang AST, "
+            "Extract Embind registration names from BUILTIN_BINDINGS_SOURCE "
+            "+ the consumer YAML's additionalBindFiles via libclang AST, "
             "writing the union to build/additional-bind-symbols.json."
         ),
     )

@@ -31,7 +31,7 @@ load_ncollection_alias_index(build_dir) -> dict[str, str]
 builtin_binding_symbols(build_dir) -> frozenset[str]
     Embind registration names from the dedicated `bind-symbols` NX stage
     (`ocjs_bindgen.bind_symbols.main`) which parses
-    BUILTIN_ADDITIONAL_BIND_CODE + consumer additionalBindCode via
+    BUILTIN_BINDINGS_SOURCE + consumer additionalBindFiles via
     libclang and writes `build/additional-bind-symbols.json`. NX dep
     graph guarantees the manifest exists before any consumer that
     depends on `bind-symbols`; missing manifest = consumer was invoked
@@ -78,7 +78,7 @@ class ManifestSchemaError(RuntimeError):
 
 # Kept in sync with `discover.CUSTOM_CODE_SOURCE_TAG` (also duplicated in
 # `yaml_build._CUSTOM_CODE_SOURCE_TAG`). Marks manifest declarations
-# whose `source_classes[]` entry is the additionalCppCode sentinel
+# whose `source_classes[]` entry is the custom-code sentinel
 # rather than a real OCCT class; the v2 `template_typedefs` field no
 # longer consults `source_classes[]` for alias resolution but the
 # sentinel still surfaces in declarations for `_filter_auto_symbols_by_scope`.
@@ -182,7 +182,7 @@ def builtin_binding_symbols(build_dir: str) -> frozenset[str]:
   stage's `additional-bind-symbols.json` manifest.
 
   Produced by `ocjs_bindgen.bind_symbols.main`, which parses
-  `BUILTIN_ADDITIONAL_BIND_CODE` + consumer `additionalBindCode` via
+  `BUILTIN_BINDINGS_SOURCE` + consumer `additionalBindFiles` via
   libclang and serialises the union. NX dep graph guarantees the
   manifest exists before any target that depends on `bind-symbols`;
   the shell wrapper `./build-wasm.sh link <yaml>` mirrors the contract

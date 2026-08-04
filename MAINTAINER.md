@@ -1,6 +1,6 @@
 # Maintainer Guide
 
-Build-from-source, configuration, and release workflow for OpenCascade.js. Consumers reaching for the `libcascade` npm package should start from [README.md](README.md) — this document is for maintainers and contributors building OCCT WASM locally.
+Build-from-source, configuration, and release workflow for libcascade. Consumers reaching for the `libcascade` npm package should start from [README.md](README.md) — this document is for maintainers and contributors building OCCT WASM locally.
 
 ## Table of Contents
 
@@ -23,7 +23,7 @@ Build-from-source, configuration, and release workflow for OpenCascade.js. Consu
 Prerequisites: Git, [uv](https://docs.astral.sh/uv/), and a C++ toolchain. `uv` installs the pinned Python 3.14 environment.
 
 ```bash
-# 1. Clone opencascade.js
+# 1. Clone the libcascade source repository
 git clone https://github.com/taucad/opencascade.js.git
 cd opencascade.js
 
@@ -51,7 +51,7 @@ YAML configs define which OCCT classes are bound to JavaScript:
 
 - `build-configs/full.yml` — all symbols, single-threaded, native WASM exceptions on by default with `getExceptionMessage` runtime helpers
 
-See [docs/reference/yaml-schema.md](docs/reference/yaml-schema.md) for the full YAML schema, including `additionalCppCode`, `additionalCppFiles`, and `mainBuild.additionalBindCode`.
+See the [YAML schema](https://opencascade-js.vercel.app/docs/toolchain/reference/yaml-schema) for the full contract, including `additionalCppFiles` and per-build `additionalBindFiles`.
 
 ### Configurations
 
@@ -85,17 +85,15 @@ Each six-file set includes a matching `*.provenance.json` sidecar (`dist/opencas
 
 ### Environment Variables
 
-Two layers of "default" matter here. The **bare default** is what `build-wasm.sh` falls back to if you set neither an env var nor a `--config`. The **shipped `full.yml` build** is what the published `libcascade` tarball was actually linked with — the YAML config carries its own `emccFlags` (`-sWASM_BIGINT`, `-sEVAL_CTORS=2`, `-msimd128`) that win regardless of env var, and every named entry in [`build-configs/configurations.json`](build-configs/configurations.json) sets the corresponding `OCJS_*` envs to match.
+Two layers of "default" matter here. The **bare default** is what `build-wasm.sh` falls back to if you set neither an env var nor a `--config`. The **shipped `full.yml` build** is what the published `libcascade` tarball was actually linked with. Its YAML owns link-only `emccFlags` such as `-sWASM_BIGINT` and `-sEVAL_CTORS=2`; named entries in [`build-configs/configurations.json`](build-configs/configurations.json) own compile and optimizer settings.
 
 | Variable            | Bare default      | Shipped `full.yml` build | Description                                                                                                          |
 | ------------------- | ----------------- | ------------------------ | -------------------------------------------------------------------------------------------------------------------- |
 | `OCJS_OPT`          | `-O2`             | `-O3`                    | Compile optimization level                                                                                           |
-| `OCJS_LTO`          | `1`               | `0`                      | LTO at compile time. Empirically harmful for OCCT — see [custom emcc flags guide](docs/guides/custom-emcc-flags.md). |
+| `OCJS_LTO`          | `1`               | `0`                      | LTO at compile time. Empirically harmful for OCCT — see the [custom emcc flags guide](https://opencascade-js.vercel.app/docs/toolchain/guides/custom-emcc-flags). |
 | `OCJS_EXCEPTIONS`   | `0`               | `1`                      | Native WASM exceptions. Shipped build forces this on for decodable C++ exceptions.                                   |
 | `OCJS_SIMD`         | `0`               | `1`                      | Baseline WASM SIMD (`-msimd128`). Universally supported.                                                             |
 | `OCJS_RELAXED_SIMD` | `0`               | `0`                      | Relaxed SIMD ops on top of `OCJS_SIMD`. Safari 26.x cannot parse these — leave off for cross-browser builds.         |
-| `OCJS_BIGINT`       | `0`               | `1`                      | `-sWASM_BIGINT` for native i64↔BigInt; eliminates the i64 legalization pass.                                         |
-| `OCJS_EVAL_CTORS`   | `false`           | `true`                   | `-sEVAL_CTORS=N` static-init evaluation at compile time.                                                             |
 | `OCJS_EXTRA_CFLAGS` | _(empty)_         | _(empty)_                | Extra compile flags appended to C/CXX (e.g. `"-mllvm -inline-threshold=128"`).                                       |
 | `OCJS_DEFINES`      | _(empty)_         | `OCCT_NO_DUMP`           | Comma-separated list of `-D` macros.                                                                                 |
 | `OCJS_UNDEFINES`    | _(empty)_         | `OCC_CONVERT_SIGNALS`    | Comma-separated list of `-U` undefines.                                                                              |
@@ -249,7 +247,7 @@ Create a custom YAML config with only the symbols your application needs:
 
 1. Copy `build-configs/full.yml` as a starting point
 2. Remove symbols you don't use from `bindings`
-3. (Most cases) handle typedefs for NCollection and `Handle<T>` types are auto-discovered, so manual `additionalCppCode` edits are usually unnecessary. Edit only when you hit a missing-handle linker error.
+3. Add file-backed wrappers through `additionalCppFiles` only when bindgen cannot discover the needed surface automatically.
 4. Validate: `./build-wasm.sh validate build-configs/my-config.yml`
 5. Build: `./build-wasm.sh link build-configs/my-config.yml`
 
@@ -316,9 +314,9 @@ until it passes. Each cold job uses GitHub's native four-hour job timeout.
 - [BREAKING_CHANGES.md](BREAKING_CHANGES.md) — consumer migration guide
 - [CHANGELOG.md](CHANGELOG.md) — release notes
 - [BUILD_SYSTEM.md](BUILD_SYSTEM.md) — full `OCJS_*` env-var matrix and configuration authoring
-- [docs/reference/yaml-schema.md](docs/reference/yaml-schema.md) — YAML schema reference
-- [docs/guides/custom-emcc-flags.md](docs/guides/custom-emcc-flags.md) — tuning size, speed, and build time
-- [docs/guides/trim-symbols.md](docs/guides/trim-symbols.md) — trim from `full.yml` to a consumer-sized build
-- [docs/guides/extend-with-cpp.md](docs/guides/extend-with-cpp.md) — add wrappers via `additionalCppCode` / `additionalCppFiles` / `additionalBindCode`
-- [docs/guides/reproducible-ci.md](docs/guides/reproducible-ci.md) — pin-by-SHA, `provenance.json`, SBOM, lockfile discipline
+- [YAML schema](https://opencascade-js.vercel.app/docs/toolchain/reference/yaml-schema) — YAML schema reference
+- [Custom emcc flags](https://opencascade-js.vercel.app/docs/toolchain/guides/custom-emcc-flags) — tuning size, speed, and build time
+- [Trim symbols](https://opencascade-js.vercel.app/docs/toolchain/guides/trim-symbols) — trim from `full.yml` to a consumer-sized build
+- [Extend with C++](https://opencascade-js.vercel.app/docs/toolchain/guides/extend-with-cpp) — generated C++ and raw Embind files
+- [Reproducible CI](https://opencascade-js.vercel.app/docs/toolchain/guides/reproducible-ci) — pin-by-SHA, provenance, SBOM, and lockfile discipline
 - [TODO.md](TODO.md) — contributor backlog

@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-# ── OpenCascade.js WASM Build Script ─────────────────────────────────
+# ── libcascade WASM build script ─────────────────────────────────────
 #
 # Single entry point for all build operations: PCH rebuild, binding
 # compilation, source compilation, and final WASM linking.
@@ -306,13 +306,11 @@ export OCJS_LTO="${OCJS_LTO:-0}"
 export OCJS_EXCEPTIONS="${OCJS_EXCEPTIONS:-0}"
 export OCJS_WASM_OPT_LEVEL="${OCJS_WASM_OPT_LEVEL:--O4}"
 export OCJS_CLOSURE="${OCJS_CLOSURE:-false}"
-export OCJS_EVAL_CTORS="${OCJS_EVAL_CTORS:-false}"
 export OCJS_CONVERGE="${OCJS_CONVERGE:-false}"
 export OCJS_DEFINES="${OCJS_DEFINES:-}"
 export OCJS_UNDEFINES="${OCJS_UNDEFINES:-}"
 export OCJS_SIMD="${OCJS_SIMD:-0}"
 export OCJS_RELAXED_SIMD="${OCJS_RELAXED_SIMD:-0}"
-export OCJS_BIGINT="${OCJS_BIGINT:-0}"
 export OCJS_MALLOC="${OCJS_MALLOC:-dlmalloc}"
 export THREADING="${THREADING:-single-threaded}"
 export PYTHONPATH="$OCJS_ROOT/src:${PYTHONPATH:-}"
@@ -330,7 +328,7 @@ export OCJS_OUTPUT_DIR
 # ── Print config ─────────────────────────────────────────────────────
 
 echo "╔══════════════════════════════════════════════════════════╗"
-echo "║         OpenCascade.js WASM Build                       ║"
+echo "║         libcascade WASM Build                            ║"
 echo "╠══════════════════════════════════════════════════════════╣"
 printf "║  %-14s %s\n" "EMSDK:" "$EMSDK ║"
 printf "║  %-14s %s\n" "Emscripten:" "$(emcc --version 2>/dev/null | head -1) ║"
@@ -971,11 +969,17 @@ for cmd in "${COMMANDS[@]}"; do
 import yaml, sys
 sys.path.insert(0, '$OCJS_ROOT/src')
 from cerberus import Validator
+from ocjs_bindgen.config.yaml_sources import resolve_source_files
 schema = eval(open('$OCJS_ROOT/src/customBuildSchema.py').read())
 config = yaml.safe_load(open('$YAML_CONFIG'))
 v = Validator(schema)
 if v.validate(config, schema):
     normalized = v.normalized(config)
+    resolve_source_files('$YAML_CONFIG', normalized.get('additionalCppFiles'), 'additionalCppFiles')
+    builds = [normalized['mainBuild'], *normalized.get('extraBuilds', [])]
+    for index, build in enumerate(builds):
+        field = 'mainBuild.additionalBindFiles' if index == 0 else f'extraBuilds[{index - 1}].additionalBindFiles'
+        resolve_source_files('$YAML_CONFIG', build.get('additionalBindFiles'), field)
     bindings = normalized['mainBuild']['bindings']
     name = normalized['mainBuild']['name']
     flags = normalized['mainBuild'].get('emccFlags', [])

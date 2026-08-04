@@ -81,7 +81,7 @@ export const HomeFooter = (): ReactNode => {
       </div>
 
       <p className='mt-10 border-t border-fd-border pt-6 text-xs text-fd-muted-foreground'>
-        OpenCascade.js — originally created by{' '}
+        libcascade — originally created by{' '}
         <a href='https://github.com/donalffons' className='hover:text-fd-primary hover:underline' rel='noopener noreferrer' target='_blank'>
           Sebastian Alff
         </a>

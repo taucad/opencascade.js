@@ -50,7 +50,7 @@ type ApiTreeModule = {
 type ApiTree = {
   readonly schema: number;
   readonly modules: readonly ApiTreeModule[];
-  readonly totals: { readonly classes?: number; readonly packages?: number; readonly searchEntries?: number };
+  readonly totals: { readonly classes: number; readonly packages: number; readonly searchEntries: number };
 };
 
 const TREE_PATH = resolve(process.cwd(), 'data/api-tree.json');
@@ -63,7 +63,7 @@ const loadTree = (): ApiTree => {
 const buildFiles = (tree: ApiTree): VirtualFile[] => {
   const files: VirtualFile[] = [];
 
-  const rootDescription = `Auto-generated reference for ${tree.totals.classes ?? '5k+'} bound OCCT classes across ${tree.modules.length} modules and ${tree.totals.packages ?? tree.modules.reduce((s, m) => s + m.toolkits.reduce((t, tk) => t + tk.packages.length, 0), 0)} packages.`;
+  const rootDescription = `Auto-generated reference for ${tree.totals.classes} bound OCCT classes across ${tree.modules.length} modules and ${tree.totals.packages} packages.`;
 
   files.push({
     type: 'page',

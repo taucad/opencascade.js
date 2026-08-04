@@ -343,6 +343,7 @@ def add_linking(
     ncollection_linked: int = 0,
     ncollection_total: int = 0,
     ncollection_dropped: int = 0,
+    source_files: list | None = None,
 ) -> None:
     """V5 — record link-stage facts including the auto-linked NCollection
     count.
@@ -374,6 +375,7 @@ def add_linking(
         "boundSymbols": bound_symbols,
         "symbolList": symbol_list or [],
         "emccFlags": emcc_flags or [],
+        "sourceFiles": source_files or [],
       },
     }
 

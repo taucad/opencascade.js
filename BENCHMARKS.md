@@ -2,9 +2,9 @@
 
 This document is the single source of truth for **"what measurable difference
 does this fork make for me?"**. Every shipping change to the taucad
-`opencascade.js` fork — from suffix-free overloads in the libembind patch
+`libcascade` — from suffix-free overloads in the libembind patch
 through the `opencascade_full_multi.wasm` build and the uniform return-by-value
-output convention — is quantified here against either upstream `opencascade.js`
+output convention — is quantified here against either the upstream lineage
 behaviour, native C++ OCCT, or pristine emscripten libembind.
 
 It is **orthogonal** to:
@@ -193,14 +193,14 @@ init. The **parallel gain** column is the actual win: **−644 ms / −25%**.
 2. **Ship the multi-threaded build for visualisation pipelines and batch
    modelling** — meshing-heavy workloads (STEP→glTF conversion, complex
    assembly triangulation) see a clear 1.3–1.5× improvement.
-3. **Always pair the MT binary with the four global activations**
-   (`SetParallelMode`, `SetParallelDefault`, `DefaultPool(-1)`,
-   `SetNbDefaultThreadsToLaunch`) — otherwise the binary carries pthread
-   overhead with reduced benefit (the "MT par OFF" column above).
-4. **For mobile / low-core deployments**, cap the pool:
-   `-sPTHREAD_POOL_SIZE=Math.min(navigator.hardwareConcurrency, 8)`. The
-   sweet spot is 6–8 workers; beyond that the coordination overhead exceeds
-   the parallel gain on small operations.
+3. **Enable the two global algorithm defaults** (`SetParallelMode`,
+   `SetParallelDefault`) — otherwise the binary carries pthread overhead with
+   reduced benefit (the "MT par OFF" column above). OCCT's default pool
+   already uses all logical processors and launches its full pool.
+4. **Cap mobile concurrency only from device-specific measurements** — this
+   benchmark covers a 12-worker host, not a worker-count sweep. A custom build
+   can use `Math.min(navigator.hardwareConcurrency, n)` once its target
+   workload establishes `n`.
 
 The complete deep dive (R1 `PTHREAD_POOL_SIZE` audit, per-operation
 explanations, loft 3.46× anomaly, OCCT thread-pool internals) lives in

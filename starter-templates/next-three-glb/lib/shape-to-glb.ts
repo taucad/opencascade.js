@@ -29,7 +29,7 @@ export function shapeToGlb(oc: OpenCascadeInstance, shape: TopoDS_Shape): Uint8A
   using fileInfo = new oc.TColStd_IndexedDataMapOfStringString();
   using writeProgress = new oc.Message_ProgressRange();
   const ok = writer.Perform(doc, fileInfo, writeProgress);
-  if (!ok) throw new Error('OCJS: RWGltf_CafWriter.Perform returned false');
+  if (!ok) throw new Error('libcascade: RWGltf_CafWriter.Perform returned false');
 
   const fs = oc.FS;
   const bytes = fs.readFile(tmpFile);

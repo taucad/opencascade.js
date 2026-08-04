@@ -1,12 +1,9 @@
 /**
  * Fork-internal layout guards for the `docs/` tree.
  *
- * The maintained docs layout (`guides/`, `reference/`, `policy/`,
- * `research/`) is the load-bearing skeleton contributors navigate. The
- * production-DX rollout committed to four canonical how-to guides
- * (`trim-symbols`, `extend-with-cpp`, `reproducible-ci`, `custom-emcc-flags`),
- * to every relative link inside Markdown files under docs/ resolving to an
- * existing filesystem target, and to every Markdown file beginning with an H1.
+ * Public documentation lives in `docs-site/content/docs`; the root `docs/`
+ * tree contains only repository policy, research, and implementation notes.
+ * Every relative link here must resolve and every Markdown file needs an H1.
  *
  * These guards stay inside the fork and assert filesystem facts only.
  */
@@ -16,20 +13,6 @@ import * as path from 'node:path';
 
 const REPO_ROOT = path.resolve(__dirname, '..');
 const DOCS_DIR = path.join(REPO_ROOT, 'docs');
-
-const REQUIRED_GUIDES = [
-  'trim-symbols.md',
-  'extend-with-cpp.md',
-  'reproducible-ci.md',
-  'custom-emcc-flags.md',
-] as const;
-
-const REQUIRED_DIATAXIS_DIRS = [
-  'guides',
-  'policy',
-  'reference',
-  'research',
-] as const;
 
 const walkMarkdownFiles = (root: string): string[] => {
   const out: string[] = [];
@@ -95,23 +78,6 @@ const extractRelativeLinks = (file: string): LinkRef[] => {
   void lines.length;
   return out;
 };
-
-describe('docs/ Diataxis layout', () => {
-  it.each(REQUIRED_DIATAXIS_DIRS)('contains the %s Diataxis directory', (dir) => {
-    const full = path.join(DOCS_DIR, dir);
-    expect(fs.existsSync(full), `Missing Diataxis directory: docs/${dir}/`).toBe(true);
-    expect(fs.statSync(full).isDirectory(), `docs/${dir} exists but is not a directory`).toBe(true);
-  });
-
-  it.each(REQUIRED_GUIDES)('ships the docs/guides/%s how-to', (guide) => {
-    const full = path.join(DOCS_DIR, 'guides', guide);
-    expect(
-      fs.existsSync(full),
-      `Missing canonical guide: docs/guides/${guide}. The OCJS Production DX rollout committed to this how-to.`,
-    ).toBe(true);
-    expect(fs.statSync(full).isFile()).toBe(true);
-  });
-});
 
 describe('docs/ markdown relative links resolve', () => {
   it('every relative link points at an existing file or directory', () => {

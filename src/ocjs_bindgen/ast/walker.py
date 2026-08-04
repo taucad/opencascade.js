@@ -70,7 +70,7 @@ def _collect_from_cursor(cursor, predicate):
 # Embind template-function spellings that register a named binding. The
 # first string-literal argument of the call is the JS-visible "Name". This
 # set covers the public Embind 5.0 registration surface used by OCJS's
-# `BUILTIN_ADDITIONAL_BIND_CODE` block and consumer YAML `additionalBindCode`
+# `BUILTIN_BINDINGS_SOURCE` block and consumer YAML `additionalBindFiles`
 # snippets, including top-level `function`; any future Embind registration
 # entry point would be added here
 # rather than re-parsed via regex.
@@ -131,8 +131,8 @@ def extract_class_registrations(tu) -> set[str]:
     """Return every JS-visible Name registered by an Embind call in `tu`.
 
     Walks a translation unit (built by
-    :func:`ocjs_bindgen.ast.parse.parse_additional_bind_code` on the
-    combined ``BUILTIN_ADDITIONAL_BIND_CODE + consumer additionalBindCode``
+    :func:`ocjs_bindgen.ast.parse.parse_binding_source` on the
+    combined ``BUILTIN_BINDINGS_SOURCE + consumer additionalBindFiles``
     source) and collects the first string-literal argument of every
     Embind registration call — ``class_<T>("Name")``, ``enum_<T>("Name")``,
     ``value_object<T>("Name")``, ``register_vector<T>("Name")``,
@@ -245,7 +245,7 @@ def extract_class_registrations(tu) -> set[str]:
         # `STRING_LITERAL.spelling` is the source-form literal INCLUDING
         # surrounding quotes. Embind names are always plain identifiers
         # (verified across OCJS canonical builtins + replicad's full
-        # additionalBindCode surface), so stripping both ends recovers
+        # binding-file surface), so stripping both ends recovers
         # the JS-visible Name without needing `ast.literal_eval`.
         value = literal.spelling.strip('"')
         if value:

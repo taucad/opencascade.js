@@ -11,7 +11,7 @@ Filament, and most realtime renderers consume natively. OCCT writes it via the
 
 ```typescript
 import type { TopoDS_Shape } from 'libcascade';
-import { getOc } from './ocjs-init';
+import { getOc } from './libcascade-init';
 
 export const shapeToGlb = async (shape: TopoDS_Shape): Promise<Uint8Array> => {
   const oc = await getOc();
@@ -30,9 +30,9 @@ export const shapeToGlb = async (shape: TopoDS_Shape): Promise<Uint8Array> => {
   using progress = new oc.Message_ProgressRange();
   writer.Perform(doc, metadata, progress);
 
-  const raw = oc.FS.readFile(path) as Uint8Array;
+  const bytes = oc.FS.readFile(path) as Uint8Array;
   oc.FS.unlink(path);
-  return new Uint8Array(raw);
+  return bytes;
 };
 ```
 

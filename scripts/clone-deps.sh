@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # clone-deps.sh — single entry point for cloning + activating every host-side
-# dependency the opencascade.js build needs:
+# dependency the libcascade build needs:
 #
 #   - OCCT, rapidjson, freetype  → git clone + checkout at DEPS.json commits
 #   - emsdk                       → git clone + install + activate

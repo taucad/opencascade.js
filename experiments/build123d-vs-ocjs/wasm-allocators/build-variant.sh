@@ -47,13 +47,11 @@ export OCJS_RELAXED_SIMD="0"
 export THREADING="single-threaded"
 export OCJS_DEFINES="OCCT_NO_DUMP"
 export OCJS_UNDEFINES="OCC_CONVERT_SIGNALS"
-export OCJS_BIGINT="1"
 # wasm-opt at -O3 (parity with the published OCJS build's LTO-off posture;
 # the current `single-threaded` preset uses wasm-opt -O4, but we pin -O3 here
 # so the allocator delta isn't confounded by binaryen's extra -O4 passes).
 export OCJS_WASM_OPT_LEVEL="-O3"
 export OCJS_CLOSURE="false"
-export OCJS_EVAL_CTORS="false"
 export OCJS_CONVERGE="false"
 export OCJS_OUTPUT_DIR="$OUT_DIR"
 

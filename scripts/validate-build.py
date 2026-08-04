@@ -1,9 +1,9 @@
 #!/usr/bin/python3
-"""Post-build validation for opencascade.js WASM builds.
+"""Post-build validation for libcascade WASM builds.
 
 Validates that a completed build matches the requested YAML configuration:
 - All requested symbols have compiled .o files (or resolve via NCollection
-  typedef alias / BUILTIN_ADDITIONAL_BIND_CODE / consumer additionalBindCode
+  typedef alias / built-in bindings / consumer additionalBindFiles
   via the shared `manifest_registry` consumer chain)
 - The .wasm output exists and has a reasonable size
 - Produces a machine-readable build manifest (JSON, schema `build-manifest-v3`)
@@ -31,6 +31,10 @@ sys.path.insert(0, os.path.join(OCJS_ROOT, "src"))
 # (`yaml_build.verifyBindings`) and post-link (this script) read through
 # the same loaders so the two views of "missing" can never disagree.
 from ocjs_bindgen.build_state import _write_json_atomic  # noqa: E402
+from ocjs_bindgen.config.yaml_sources import (  # noqa: E402
+    resolve_source_files,
+    source_file_manifest,
+)
 from ocjs_bindgen.link.manifest_registry import (  # noqa: E402
     builtin_binding_symbols,
     collect_compiled_symbols,
@@ -80,7 +84,7 @@ def validate_symbols(config, build_dir, *, custom_compiled_root=None):
       whose canonical IS compiled; linker substitutes at link time.
     * ``builtin`` — Embind registration name in
       ``build/additional-bind-symbols.json`` (canonical
-      BUILTIN_ADDITIONAL_BIND_CODE + consumer YAML additionalBindCode
+      built-in source + consumer additionalBindFiles
       unioned by the Phase 2 AST producer).
     * ``truly_missing`` — neither compiled, nor an alias to something
       compiled, nor a builtin registration. Triggers `pass=False`.
@@ -261,8 +265,38 @@ def build_name_from_config(config):
     return os.path.splitext(config["mainBuild"]["name"])[0]
 
 
+def resolve_config_source_manifest(yaml_path, config):
+    entries = source_file_manifest(
+        "additionalCppFiles",
+        resolve_source_files(
+            yaml_path,
+            config.get("additionalCppFiles"),
+            "additionalCppFiles",
+        ),
+    )
+    for index, build in enumerate(
+        [config["mainBuild"], *config.get("extraBuilds", [])]
+    ):
+        field = (
+            "mainBuild.additionalBindFiles"
+            if index == 0
+            else f"extraBuilds[{index - 1}].additionalBindFiles"
+        )
+        entries.extend(
+            source_file_manifest(
+                field,
+                resolve_source_files(
+                    yaml_path,
+                    build.get("additionalBindFiles"),
+                    field,
+                ),
+            )
+        )
+    return entries
+
+
 def main():
-    parser = ArgumentParser(description="Validate an opencascade.js WASM build against its YAML config")
+    parser = ArgumentParser(description="Validate a libcascade WASM build against its YAML config")
     parser.add_argument("yaml_config", help="Path to the YAML build configuration")
     parser.add_argument("output_dir", help="Directory containing the build output (.wasm, .js)")
     parser.add_argument("--build-dir", default=None, help="Build directory containing bindings/ and sources/ (default: $OCJS_ROOT/build)")
@@ -359,6 +393,7 @@ def main():
         "timestamp": build_datetime().strftime("%Y-%m-%dT%H:%M:%SZ"),
         "yaml_config": os.path.basename(args.yaml_config),
         "yaml_hash": config_hash,
+        "source_files": resolve_config_source_manifest(args.yaml_config, config),
         "validation_passed": all_pass,
         "symbols": sym_result,
         "outputs": wasm_results,

@@ -1,4 +1,4 @@
-import { getOcjs } from './ocjs-init.js';
+import { getLibcascade } from './libcascade-init.js';
 import { buildShape, type ShapeKind } from './build-shape.js';
 import { shapeToStep } from './shape-to-step.js';
 
@@ -43,7 +43,7 @@ function parseArgs(argv: string[]): Args {
 
 function printUsage(): void {
   console.log(
-    `Usage: ocjs-step --shape box|sphere|cylinder [--size N] [--radius N] [--height N] --out path.step
+    `Usage: libcascade-step --shape box|sphere|cylinder [--size N] [--radius N] [--height N] --out path.step
 
 Builds a primitive shape with libcascade and writes it to a
 STEP AP214 file. The output is verified by callers via the
@@ -54,7 +54,7 @@ ISO-10303-21 magic byte check (\`scripts/assert-step-magic.mjs\`).`,
 const args = parseArgs(process.argv.slice(2));
 
 try {
-  const oc = await getOcjs();
+  const oc = await getLibcascade();
   using shape = buildShape(oc, {
     kind: args.shape,
     size: args.size,
@@ -69,15 +69,15 @@ try {
 }
 
 /**
- * OCJS v3 throws `WebAssembly.Exception` instances when an OCCT C++
+ * libcascade v3 throws `WebAssembly.Exception` instances when an OCCT C++
  * exception crosses the WASM boundary. `getExceptionMessage` returns
- * `[message, type]`; the type token is omitted from the user-facing
+ * `[type, message]`; the type token is omitted from the user-facing
  * string because the message is what end-users want.
  */
 async function decodeOcctError(err: unknown): Promise<string> {
   if (typeof WebAssembly !== 'undefined' && err instanceof WebAssembly.Exception) {
-    const oc = await getOcjs();
-    const [message] = oc.getExceptionMessage(err);
+    const oc = await getLibcascade();
+    const [, message] = oc.getExceptionMessage(err);
     return message;
   }
   if (err instanceof Error) return err.message;

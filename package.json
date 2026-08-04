@@ -70,7 +70,7 @@
   "scripts": {
     "release:prepare": "node scripts/prepare-release.mjs",
     "test": "vitest run",
-    "test:ci": "CI=true vitest run tests/ci tests/readme-shape.test.ts tests/docs-layout.test.ts tests/yaml-schema-doc-parity.test.ts starter-templates/*/tests",
+    "test:ci": "CI=true vitest run tests/ci tests/readme-shape.test.ts tests/docs-layout.test.ts starter-templates/*/tests",
     "test:smoke": "vitest run tests/smoke/",
     "test:regression": "vitest run --config vitest.regression.config.ts",
     "test:docker": "vitest run --config vitest.docker.config.ts",

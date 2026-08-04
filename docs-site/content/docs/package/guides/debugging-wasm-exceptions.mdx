@@ -1,75 +1,44 @@
 ---
 title: Debugging wasm exceptions
-description: Decode WebAssembly.Exception into actionable error messages with getExceptionMessage.
+description: Decode WebAssembly.Exception into actionable OCCT type and message text.
 ---
 
-When OCCT throws a `Standard_Failure` inside the wasm module, the value that
-reaches your JS try/catch is a `WebAssembly.Exception` object. Printing it
-with `console.error(error)` yields `[object WebAssembly.Exception]` — useless.
-
-`libcascade` exposes `getExceptionMessage(error)` to decode
-the C++ failure into a string.
-
-## The pattern
+OCCT failures compiled with native WASM exception handling reach JavaScript as
+`WebAssembly.Exception` values. Decode them through the initialized runtime:
 
 ```typescript
-import init, { getExceptionMessage } from 'libcascade';
+import init from 'libcascade';
 
-const oc = await init({ locateFile });
+const oc = await init();
 
 try {
   using fillet = new oc.BRepFilletAPI_MakeFillet(badShape);
-  fillet.Shape(); // may throw
+  fillet.Shape();
 } catch (error: unknown) {
   if (error instanceof WebAssembly.Exception) {
-    console.error('OCCT failure:', getExceptionMessage(error));
+    const [type, message] = oc.getExceptionMessage(error);
+    console.error(`${type}: ${message}`);
   } else {
     throw error;
   }
 }
 ```
 
-`getExceptionMessage` reaches into the wasm-side `Standard_Failure::GetMessageString()`
-and returns the text OCCT actually attached to the exception (e.g.
-`"BRepFilletAPI_MakeFillet: Empty argument"`).
+`error.message` is not the C++ failure text. The helper returns a
+`[type, message]` tuple such as
+`['Standard_Failure', 'BRepFilletAPI_MakeFillet: Empty argument']`.
 
-## Why not `error.message`?
+## Common failures
 
-`WebAssembly.Exception` is a JS host object — its `message` field is empty for
-C++-thrown values. The actual text lives in C++ memory, addressable only by
-walking back into the wasm module.
-
-## Common OCCT exceptions
-
-| Message fragment | Likely cause |
+| Type or message | Likely cause |
 |---|---|
-| `Standard_OutOfRange` | Index past the end of an `NCollection_*` container |
-| `Standard_NullObject` | Method called on a null `Handle<T>` (forgot to check `.IsNull()`) |
-| `Standard_NoSuchObject` | Map lookup returned nothing |
+| `Standard_OutOfRange` | Index past an OCCT collection boundary |
+| `Standard_NullObject` | Method called through a null `Handle<T>` |
 | `Standard_TypeMismatch` | Downcast to the wrong `TopoDS_*` subtype |
-| `BRepAlgoAPI_*: ...` | Boolean failure — usually self-intersecting input |
-| `BRepFilletAPI_MakeFillet: ...` | Fillet radius too large, or degenerate edge |
-| `STEPControl_Writer: write.step.schema not set` | Forgot `Interface_Static.SetIVal('write.step.schema', 5)` |
-
-## Async-safe pattern
-
-If your call site awaits between the `try` and the throw, wrap the offending
-synchronous block tightly:
-
-```typescript
-const filletShape = await runOcctSync(() => {
-  using fillet = new oc.BRepFilletAPI_MakeFillet(shape);
-  for (const edge of edges) fillet.Add(3, edge);
-  return fillet.Shape();
-});
-```
-
-Wide async try/catch boundaries swallow the `WebAssembly.Exception` type
-discriminator on some engines.
+| `BRepAlgoAPI_*` | Invalid or self-intersecting boolean input |
+| `BRepFilletAPI_MakeFillet` | Radius too large or a degenerate edge |
 
 ## Debug builds
 
-For deep debugging, build with `-g -fwasm-exceptions -O1` and load
-[Chrome's wasm DWARF debugger](https://developer.chrome.com/blog/wasm-debugging-2020).
-You get the original C++ frames in the call stack — invaluable when an OCCT
-exception originates ten frames deep in `BOPAlgo_PaveFiller`.
+For source-level debugging, build with `-g -fwasm-exceptions -O1` and use
+[Chrome's WASM DWARF debugger](https://developer.chrome.com/blog/wasm-debugging-2020).

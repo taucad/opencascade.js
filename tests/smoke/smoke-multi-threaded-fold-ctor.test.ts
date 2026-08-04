@@ -110,7 +110,6 @@ describe.skipIf(!multiWasmExists)('Smoke: multi-threaded fold-path ctor registra
     () => {
       const oc = getOCMulti();
       using pool = oc.OSD_ThreadPool.DefaultPool(-1);
-      pool.SetNbDefaultThreadsToLaunch(pool.NbThreads());
       expect(pool.NbThreads()).toBeGreaterThan(1);
 
       using points = buildPoints(oc);

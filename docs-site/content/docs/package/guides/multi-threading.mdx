@@ -16,12 +16,13 @@ OCCT can drive multiple worker threads for mesh and boolean kernels once the pth
 
 ## When to consider it
 
-| Operation | Speedup with 4 threads | Worth the COOP/COEP cost? |
+| Measured workload | Speedup with 12 workers | Worth the COOP/COEP cost? |
 |---|---:|---|
-| `BRepMesh_IncrementalMesh` on large assemblies | 2.5–3.5× | Yes, for visualisation pipelines |
-| `BRepAlgoAPI_*` booleans on hundreds of operands | 2–3× | Yes, for batch CAD operations |
-| `STEPControl_Reader.Transfer` of large STEP files | 1.5–2× | Marginal — IO usually dominates |
-| Single-shape build (box + fillet + export) | 1.0× | No |
+| STEP import + incremental mesh | 1.33× | Yes, for visualisation pipelines |
+| Boolean cut grid | 1.81× | Yes, for batch CAD operations |
+| Incremental mesh | 1.06× | Only after profiling the real assembly |
+| Tiny two-shape boolean fuse | 0.44× | No — pool overhead dominates |
+| Complete 11-sample suite | 1.24× | Yes, for sustained mixed workloads |
 
 If your app does one boolean and one mesh per user interaction, single-threaded
 is fine. If you batch hundreds of operations, threading pays off.
@@ -59,20 +60,20 @@ call to a parallel-aware API inherits the toggle without an extra argument.
 oc.BOPAlgo_Options.SetParallelMode(true);                 // booleans
 oc.BRepMesh_IncrementalMesh.SetParallelDefault(true);     // meshing
 
-// Right-size the OCCT thread pool to all logical CPUs. -1 means
-// "use NbLogicalProcessors". SetNbDefaultThreadsToLaunch caps the
-// fan-out of any single OCCT call; default is the pool size.
+// Optional: inspect the lazily-created pool. -1 means "use all logical
+// processors" and is already the default.
 const pool = oc.OSD_ThreadPool.DefaultPool(-1);
-pool.SetNbDefaultThreadsToLaunch(pool.NbThreads());
+console.log(pool.NbThreads());
 ```
 
-After these four calls every `new BRepMesh_IncrementalMesh(shape, lin)` and
+After the two global toggles every `new BRepMesh_IncrementalMesh(shape, lin)` and
 every `BRepAlgoAPI_*` automatically fans out across the pool. **No
 per-call argument required.**
 
-Skipping the pool sizing leaves OCCT's lazy default pool smaller than the
-pre-spawned worker count baked into the binary (`PTHREAD_POOL_SIZE=navigator.hardwareConcurrency`)
-and caps speedup on mesh/boolean workloads.
+OCCT's default pool already uses `NbLogicalProcessors`, and its default
+per-launch fan-out is the full pool. Only call `Init` or
+`SetNbDefaultThreadsToLaunch` when deliberately capping concurrency, and do
+so before the pool's first job.
 
 ### Per-call activation — granular
 
@@ -94,7 +95,7 @@ bop.SetRunParallel(true);
 // ... AddArgument / AddTool / Build()
 ```
 
-`SetRunParallel(false)` is the default for per-instance APIs. OCJS does
+`SetRunParallel(false)` is the default for per-instance APIs. libcascade does
 not auto-enable it unless you flip the global default above.
 
 ### Other parallel-aware APIs
@@ -121,7 +122,7 @@ parallel flag to flip.
 - **COOP/COEP headers** lock you out of third-party iframes that don't opt in
   (e.g. embedded Stripe checkout, some auth providers). Subdomain-isolate
   your CAD surface if that matters.
-- **Thread spawn time** adds ~50–200 ms to init, scaling with pool size.
+- **Thread spawn time** added 188 ms in the 12-worker benchmark, scaling with pool size.
   Memoise the `init()` Promise.
 - **Memory** scales with `PTHREAD_POOL_SIZE × STACK_SIZE`. With the
   shipped `navigator.hardwareConcurrency` sizing, a 12-core box
@@ -132,11 +133,10 @@ parallel flag to flip.
 ## Performance notes
 
 Pthread + `-sALLOW_MEMORY_GROWTH=1` carries a documented Emscripten
-performance penalty (the `-Wpthreads-mem-growth` advisory at link time):
-every JS↔WASM memory boundary crossing has to re-resolve `HEAP*` views
-after a potential `memory.grow`, and worker-thread access to `HEAPU8`/
-`HEAPF32` is gated on the views being up-to-date in each worker's
-context. The shipped binaries already mitigate the worst of this:
+performance penalty. A typed-array view can become stale after
+`memory.grow`, so advanced pointer interop must create fresh views from
+`oc.wasmMemory.buffer` after calls that may allocate. The shipped binaries
+already mitigate the worst of this:
 
 - **mimalloc** is wired into the WASM allocator so per-thread allocation
   bypasses the global malloc contention point. The `mallinfo` undefined
@@ -146,28 +146,20 @@ context. The shipped binaries already mitigate the worst of this:
   the shipped `emccFlags`) and the symbol is dead-code-eliminated at
   module load. The warning is informational; no runtime call ever
   resolves to it.
-- **Hoist `HEAP*` references out of hot loops** when calling OCJS from
-  TypeScript. The Emscripten glue re-fetches `Module.HEAPU8` etc. on every
-  access; pulling them into a local once per batch avoids the dispatch
-  penalty:
+- **Create one typed-array view per allocation-free batch**. Do not retain it
+  across a call that may grow memory:
 
 ```typescript
-// Slow — re-resolves HEAPU8 every iteration.
-for (let i = 0; i < n; i++) {
-  Module.HEAPU8[buf + i] = bytes[i];
-}
-
-// Fast — single resolve, then tight loop.
-const heap = Module.HEAPU8;
+const heap = new Uint8Array(oc.wasmMemory.buffer);
 for (let i = 0; i < n; i++) {
   heap[buf + i] = bytes[i];
 }
 ```
 
-### `toResizableBuffer()` support matrix (May 2026)
+### `toResizableBuffer()` support matrix (August 2026)
 
 The newer [`WebAssembly.Memory.prototype.toResizableBuffer()`](https://developer.mozilla.org/en-US/docs/WebAssembly/Reference/JavaScript_interface/Memory)
-API lets a pthread-enabled binary avoid the HEAP-view re-fetch dance
+API lets a pthread-enabled binary keep typed-array views valid across growth
 entirely by returning a `SharedArrayBuffer` that automatically tracks
 `memory.grow`. The shipped `libcascade/multi` binary keeps
 `-sGROWABLE_ARRAYBUFFERS=0` (the default) because the runtime matrix is
@@ -176,7 +168,8 @@ not yet universal:
 | Runtime | Supports `toResizableBuffer()` |
 |---|---|
 | Chrome 144+ / Edge 144+ | Yes |
-| Firefox 145+ | Yes |
+| Firefox 154+ | Yes |
+| Firefox ≤153 | **No** — [WebAssembly worker transfer can hang](https://bugzilla.mozilla.org/show_bug.cgi?id=2021136) despite exposing the API |
 | Safari 26.2+ (desktop + iOS) | Yes |
 | Node.js 22 / 24 | **No** — `TypeError: wasmMemory.toResizableBuffer is not a function` |
 | Bun (all current) | **No** |
@@ -188,10 +181,10 @@ so the binary stays compatible with Node-based test runners, Bun, Deno,
 and the legacy mobile browser. A **browser-only opt-in** variant ships
 via [`full_multi_browser.yml`](/docs/toolchain/guides/multi-threading#browser-only-mt-build)
 for deployments that have audited their runtime matrix and want the
-no-resize-dance fast path on the supported browsers.
+resizable-buffer fast path on the supported browsers.
 
 For most consumers the cost is invisible — OCCT's per-call cost on
-mesh/boolean dominates the HEAP-view re-fetch by 2-3 orders of magnitude.
+mesh/boolean dominates the typed-view refresh cost by 2-3 orders of magnitude.
 Reach for `full_multi_browser.yml` only when you've profiled and the
 JS↔WASM boundary is on the hot path.
 

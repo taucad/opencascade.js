@@ -8,7 +8,7 @@ having opened libclang first.
 
 Lifting this work into its own stage fixes the V3 bootstrap-ordering bug
 that the original PR introduced — the in-process producer inside
-``yaml_build.runBuild::getAdditionalBindCodeO()`` ran *after* the
+``yaml_build.runBuild::getAdditionalBindFilesO()`` ran *after* the
 ``verifyBindings`` consumer that needed the manifest, so the loader fell
 back to "manifest absent ⇒ empty frozenset" silently. The NX dep-graph
 contract (``link.dependsOn = [..., "bind-symbols", ...]``) now hard-enforces
@@ -31,57 +31,64 @@ from collections.abc import Iterable
 
 import yaml
 
-from ocjs_bindgen.ast.parse import parse_additional_bind_code
+from ocjs_bindgen.ast.parse import parse_binding_source
 from ocjs_bindgen.ast.walker import extract_class_registrations
-from ocjs_bindgen.config.paths import getAdditionalBindCodeParseIncludePaths
-from ocjs_bindgen.embind_builtins import BUILTIN_ADDITIONAL_BIND_CODE
+from ocjs_bindgen.config.paths import getBindingSourceParseIncludePaths
+from ocjs_bindgen.config.yaml_sources import resolve_source_files
+from ocjs_bindgen.embind_builtins import BUILTIN_BINDINGS_SOURCE
 from ocjs_bindgen.link.manifest_registry import ADDITIONAL_BIND_SYMBOLS_SCHEMA
 
 
-def _iter_additional_bind_code_blocks(build_config: dict) -> Iterable[str]:
-    """Yield every consumer-supplied ``additionalBindCode`` block in the
-    YAML, in deterministic order (mainBuild first, then extraBuilds in
-    declared order). Empty blocks are skipped — they'd compile to a no-op
-    TU but waste a libclang parse.
-    """
-    main = build_config.get("mainBuild") or {}
-    main_code = main.get("additionalBindCode")
-    if main_code:
-        yield main_code
-    for extra in build_config.get("extraBuilds") or []:
-        extra_code = extra.get("additionalBindCode")
-        if extra_code:
-            yield extra_code
+def _iter_additional_bind_file_sources(
+    yaml_path: str,
+    build_config: dict,
+) -> Iterable[str]:
+    """Yield each build's ordered raw-binding translation-unit source."""
+    builds = [build_config.get("mainBuild") or {}]
+    builds.extend(build_config.get("extraBuilds") or [])
+    for index, build in enumerate(builds):
+        field = (
+            "mainBuild.additionalBindFiles"
+            if index == 0
+            else f"extraBuilds[{index - 1}].additionalBindFiles"
+        )
+        files = resolve_source_files(
+            yaml_path,
+            build.get("additionalBindFiles"),
+            field,
+        )
+        if files:
+            yield "\n".join(entry["content"] for entry in files)
 
 
 def extract_registrations_for_yaml(yaml_path: str) -> set[str]:
-    """Parse ``BUILTIN_ADDITIONAL_BIND_CODE`` plus every per-block
-    ``additionalBindCode`` in the YAML config and return the union of
+    """Parse ``BUILTIN_BINDINGS_SOURCE`` plus every per-block
+    ``additionalBindFiles`` in the YAML config and return the union of
     Embind registration names.
 
-    Each block is concatenated onto the builtin source the same way
-    ``runBuild::getAdditionalBindCodeO()`` does at link time, then parsed
-    through ``ast/parse.py::parse_additional_bind_code`` (libclang) and
+    Each build's files are concatenated onto the builtin source the same way
+    ``runBuild::getAdditionalBindFilesO()`` does at link time, then parsed
+    through ``ast/parse.py::parse_binding_source`` (libclang) and
     walked with ``ast/walker.py::extract_class_registrations`` (AST
-    visitor — no regex). The union keeps the manifest faithful to what
-    the link compile would produce when every block lands in the same TU.
+    visitor — no regex). The union keeps the manifest faithful across all
+    generated build outputs.
     """
     with open(yaml_path) as f:
         build_config = yaml.safe_load(f)
     registrations: set[str] = set()
-    sources_to_parse: list[str] = [BUILTIN_ADDITIONAL_BIND_CODE]
-    for extra in _iter_additional_bind_code_blocks(build_config):
-        sources_to_parse.append(BUILTIN_ADDITIONAL_BIND_CODE + "\n" + extra)
-    include_paths = getAdditionalBindCodeParseIncludePaths()
+    sources_to_parse: list[str] = [BUILTIN_BINDINGS_SOURCE]
+    for extra in _iter_additional_bind_file_sources(yaml_path, build_config):
+        sources_to_parse.append(BUILTIN_BINDINGS_SOURCE + "\n" + extra)
+    include_paths = getBindingSourceParseIncludePaths()
     seen_sources: set[str] = set()
     for source in sources_to_parse:
-        # De-dupe identical TUs (a YAML with no consumer additionalBindCode
+        # De-dupe identical TUs (a YAML with no consumer binding files
         # produces a single source = BUILTIN; multiple identical blocks
         # would parse the same TU repeatedly otherwise).
         if source in seen_sources:
             continue
         seen_sources.add(source)
-        tu = parse_additional_bind_code(source, include_paths)
+        tu = parse_binding_source(source, include_paths)
         registrations.update(extract_class_registrations(tu))
     return registrations
 

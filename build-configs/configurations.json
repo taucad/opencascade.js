@@ -10,10 +10,7 @@
     "OCJS_UNDEFINES": "OCC_CONVERT_SIGNALS",
     "OCJS_WASM_OPT_LEVEL": "-O4",
     "OCJS_CLOSURE": "true",
-    "OCJS_EVAL_CTORS": "true",
-    "OCJS_EVAL_CTORS_LEVEL": "2",
     "OCJS_CONVERGE": "true",
-    "OCJS_BIGINT": "1",
     "OCJS_MALLOC": "mimalloc",
     "BINARYEN_EXTRA_PASSES": ""
   },
@@ -28,10 +25,7 @@
     "OCJS_UNDEFINES": "OCC_CONVERT_SIGNALS",
     "OCJS_WASM_OPT_LEVEL": "-O3",
     "OCJS_CLOSURE": "true",
-    "OCJS_EVAL_CTORS": "true",
-    "OCJS_EVAL_CTORS_LEVEL": "2",
     "OCJS_CONVERGE": "true",
-    "OCJS_BIGINT": "1",
     "OCJS_MALLOC": "mimalloc",
     "BINARYEN_EXTRA_PASSES": ""
   },
@@ -46,10 +40,7 @@
     "OCJS_UNDEFINES": "OCC_CONVERT_SIGNALS",
     "OCJS_WASM_OPT_LEVEL": "-O4",
     "OCJS_CLOSURE": "true",
-    "OCJS_EVAL_CTORS": "true",
-    "OCJS_EVAL_CTORS_LEVEL": "2",
     "OCJS_CONVERGE": "true",
-    "OCJS_BIGINT": "1",
     "OCJS_MALLOC": "mimalloc",
     "BINARYEN_EXTRA_PASSES": ""
   },
@@ -64,10 +55,7 @@
     "OCJS_UNDEFINES": "OCC_CONVERT_SIGNALS",
     "OCJS_WASM_OPT_LEVEL": "-O4",
     "OCJS_CLOSURE": "true",
-    "OCJS_EVAL_CTORS": "true",
-    "OCJS_EVAL_CTORS_LEVEL": "2",
     "OCJS_CONVERGE": "true",
-    "OCJS_BIGINT": "1",
     "OCJS_MALLOC": "mimalloc",
     "BINARYEN_EXTRA_PASSES": ""
   },
@@ -80,8 +68,6 @@
     "THREADING": "single-threaded",
     "OCJS_WASM_OPT_LEVEL": "-O0",
     "OCJS_CLOSURE": "true",
-    "OCJS_EVAL_CTORS": "true",
-    "OCJS_EVAL_CTORS_LEVEL": "2",
     "OCJS_CONVERGE": "false",
     "BINARYEN_EXTRA_PASSES": ""
   }

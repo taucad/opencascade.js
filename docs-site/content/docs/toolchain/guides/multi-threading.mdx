@@ -1,11 +1,11 @@
 ---
 title: Custom multi-threaded build
-description: Build a pthread-enabled OCJS WASM with a trimmed symbol list or custom Emscripten flags.
+description: Build a pthread-enabled libcascade WASM with a trimmed symbol list or custom Emscripten flags.
 ---
 
 The npm package already ships a pre-built multi-threaded variant at `libcascade/multi` — see [Package — Multi-threaded build](/docs/package/guides/multi-threading) for the import recipe, COOP/COEP headers, and OCCT activation calls. Rebuild from source only when you need:
 
-- A trimmed symbol list (the shipped MT binary builds from `build-configs/full_multi.yml` with the same ~4,400 symbols as the ST binary).
+- A trimmed symbol list (the shipped MT binary builds from `build-configs/full_multi.yml` with the same bindings as the ST binary).
 - Custom `emccFlags` (alternative `STACK_SIZE`, `INITIAL_MEMORY`, capped `PTHREAD_POOL_SIZE`).
 - A relaxed-SIMD sibling for non-Safari deployments (see the callout below).
 
@@ -50,24 +50,18 @@ whatever `os.cpus().length` reports. Each worker costs `STACK_SIZE` (default
 > ### Why not a small fixed pool size?
 >
 > A round-number pool like `-sPTHREAD_POOL_SIZE=4` is tempting but
-> silently caps your speedup. On a 12-core machine OCCT's
-> `OSD_ThreadPool` requests 11 workers (`NbLogicalProcessors-1`); with a
-> pool of 4 the parallel sections degrade to 4-way fan-out and the
-> headline speedup stalls around 1.3×. Sizing the pool to
-> `navigator.hardwareConcurrency` recovers the full 2.0–2.5× on
-> mesh-dominated workloads, and shrinks gracefully on lower-core devices
-> without a separate build.
+> caps concurrency on larger machines and oversubscribes smaller ones.
+> `navigator.hardwareConcurrency` follows the host without a separate build.
+> Add a cap only after benchmarking your workload and target devices; the
+> published benchmark measures 12 workers and does not claim a universal
+> optimum for other pool sizes.
 
 > ### Relaxed-SIMD — advanced, non-default
 >
-> Do **not** add `-mrelaxed-simd` to the binary you ship to
-> browsers. Safari / WebKit (all versions as of May 2026) crash the JIT
-> when a relaxed-SIMD opcode actually executes — validation passes but
-> execution does not. If you want the 5–15 % uplift on Chromium /
-> Firefox / Node, build a sibling `occt_threaded_rsimd.wasm` with
-> `-mrelaxed-simd` and `wasm-opt --enable-relaxed-simd`, then UA-sniff in
-> your loader to serve the plain binary to WebKit and the relaxed
-> binary to everyone else.
+> Safari 26.x does not support relaxed SIMD. If profiling justifies it for
+> Chromium, Firefox, or Node, build a sibling `occt_threaded_rsimd.wasm` with
+> `-mrelaxed-simd` and `wasm-opt --enable-relaxed-simd`; retain the baseline
+> binary and select it whenever relaxed-SIMD validation fails.
 
 > ### `EVAL_CTORS=2` is dropped under threading
 >
@@ -76,18 +70,11 @@ whatever `os.cpus().length` reports. Each worker costs `STACK_SIZE` (default
 > non-deterministic under pthread workers. The trade-off is a slightly
 > larger binary in exchange for race-free startup.
 >
-> **Companion observation:** the `wasm-opt` post-link pass reports only
-> ~0.1% size reduction on MT builds vs the 4-7% it achieves on ST. That
-> is **not** a regression — `wasm-opt` would normally fold static
-> ctor calls during the same pass `EVAL_CTORS=2` enables; with that
-> flag dropped, the constructors stay live and wasm-opt has less to
-> eliminate. No action required.
-
 ## Browser-only MT build
 
-If you can guarantee your consumers run a recent browser (Chrome / Edge ≥ 144, Firefox ≥ 145, Safari ≥ 26.2 — May 2026 baseline) and you do **not** need to load the binary under Node.js, Bun, or Deno, you can opt into the `multi-threaded-browser` preset for a measurable runtime win on memory-growth-heavy workloads.
+If you can guarantee your consumers run a recent browser (Chrome / Edge ≥ 144, Firefox ≥ 154, Safari ≥ 26.2 — August 2026 baseline) and you do **not** need to load the binary under Node.js, Bun, or Deno, you can opt into the `multi-threaded-browser` preset so typed-array views track memory growth.
 
-The preset layers `-sGROWABLE_ARRAYBUFFERS=1` and `-sENVIRONMENT=web,worker` on top of the standard `multi-threaded` flag set. Internally Emscripten emits JS glue that wraps the pthread `SharedArrayBuffer` in a [resizable `ArrayBuffer` view](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/SharedArrayBuffer/grow) via `WebAssembly.Memory.prototype.toResizableBuffer()`. With that view in place, consumers can hoist `HEAP*` references out of hot loops — they no longer go stale after a memory-growth event, so the `-Wpthreads-mem-growth` link-time advisory disappears entirely and per-call HEAP re-fetches drop out of the inner loop.
+The preset layers `-sGROWABLE_ARRAYBUFFERS=1` and `-sENVIRONMENT=web,worker` on top of the standard `multi-threaded` flag set. Internally Emscripten wraps the pthread `SharedArrayBuffer` in a [resizable `ArrayBuffer` view](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/SharedArrayBuffer/grow) via `WebAssembly.Memory.prototype.toResizableBuffer()`. Typed arrays created from `oc.wasmMemory.buffer` then remain valid across memory growth, and the `-Wpthreads-mem-growth` advisory disappears.
 
 Build with:
 
@@ -97,12 +84,12 @@ Build with:
 
 The shipped recipe lives at [`build-configs/full_multi_browser.yml`](https://github.com/taucad/opencascade.js/blob/main/build-configs/full_multi_browser.yml); diff it against [`full_multi.yml`](https://github.com/taucad/opencascade.js/blob/main/build-configs/full_multi.yml) to see the exact two-flag delta.
 
-> ### Runtime support matrix — `toResizableBuffer()` (May 2026)
+> ### Runtime support matrix — `toResizableBuffer()` (August 2026)
 >
 > **Supported** — ship `full_multi_browser` artefacts to:
 >
 > - Chrome / Edge ≥ 144
-> - Firefox ≥ 145
+> - Firefox ≥ 154
 > - Safari ≥ 26.2 (desktop + iOS)
 >
 > **NOT supported** — fall back to plain `full_multi` for:
@@ -110,6 +97,7 @@ The shipped recipe lives at [`build-configs/full_multi_browser.yml`](https://git
 > - Node.js (all current LTS) — throws `TypeError: wasmMemory.toResizableBuffer is not a function` on module init.
 > - Bun and Deno (all current versions).
 > - Samsung Internet and other Chromium derivatives that lag mainline.
+> - Firefox ≤ 153 — WebAssembly worker transfer can hang even when the API exists; [the engine fix ships in Firefox 154](https://bugzilla.mozilla.org/show_bug.cgi?id=2021136).
 >
 > Because Node.js is the dominant test-harness runtime, the **default**
 > shipped multi-threaded build keeps `-sGROWABLE_ARRAYBUFFERS=0` so it

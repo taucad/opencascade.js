@@ -1,5 +1,5 @@
 /**
- * Smoke: canonical opencascade.js getting-started examples, end-to-end.
+ * Smoke: canonical libcascade getting-started examples, end-to-end.
  *
  * Modern port of the geometry-producing cases in the legacy
  * `test/index.test.ts` ("Hello, World!" box-minus-sphere cut and the

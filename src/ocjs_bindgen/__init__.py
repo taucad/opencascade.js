@@ -1,1 +1,1 @@
-"""OpenCascade.js Binding Generator - Config-driven C++ to Embind/TypeScript binding generation."""
+"""libcascade binding generator: config-driven C++ to Embind/TypeScript generation."""

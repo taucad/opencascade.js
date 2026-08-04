@@ -4,6 +4,7 @@ import { HomeFooter } from '../../components/home-footer';
 import { usedByProjects } from '../../lib/home-used-by';
 import { renderInlineCode } from '../../lib/inline-code-text';
 import { resolveIcon } from '../../lib/icon-resolver';
+import { apiTree } from '../../lib/api-source';
 import { GITHUB_REPO_URL } from '../../lib/site';
 
 const personaCards = [
@@ -117,10 +118,10 @@ const HomePage = (): ReactNode => {
           <img src='/logo.svg' alt='' className='mt-1 size-10 shrink-0 md:size-12' />
           <div className='min-w-0'>
             <h1 className='inline-block border-b-2 border-yellow-500 pb-0.5 text-4xl font-semibold tracking-tight text-balance md:text-5xl'>
-              OpenCascade.js
+              libcascade
             </h1>
             <p className='mt-3 max-w-xl text-lg text-balance text-fd-muted-foreground'>
-              The OpenCASCADE 3D CAD kernel, compiled to WebAssembly with full TypeScript bindings. Build solids, run
+              The OpenCASCADE 3D CAD kernel, compiled to WebAssembly with TypeScript bindings for {apiTree.totals.classes.toLocaleString()} classes. Build solids, run
               booleans, fillet edges, mesh, and read/write STEP — in a browser tab, a Node CLI, or an LLM tool call.
               Trim the wasm to the symbols you need, or extend it with your own C++ — no fork required.
             </p>
@@ -169,7 +170,7 @@ const HomePage = (): ReactNode => {
         </ul>
         <p className='mt-4 text-sm'>
           <Link
-            href='/docs/package/getting-started/projects-using-opencascade-js'
+            href='/docs/package/getting-started/projects-using-libcascade'
             className='text-fd-muted-foreground hover:text-fd-primary hover:underline'
           >
             See all projects →

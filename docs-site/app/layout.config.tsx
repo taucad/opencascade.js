@@ -7,7 +7,7 @@ export const NavTitle = (): ReactNode => (
   <span className="flex items-center gap-2">
     {/* eslint-disable-next-line @next/next/no-img-element -- inline SVG brand mark in nav chrome */}
     <img src="/logo.svg" alt="" className="h-5 w-5" />
-    OpenCascade.js
+    libcascade
   </span>
 );
 

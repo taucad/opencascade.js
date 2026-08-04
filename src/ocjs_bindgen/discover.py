@@ -333,7 +333,7 @@ _HARRAY_TO_ARRAY = {
 }
 
 # Mangled NCollection names that are also registered manually in
-# BUILTIN_ADDITIONAL_BIND_CODE (src/buildFromYaml.py). Embind requires each
+# BUILTIN_BINDINGS_SOURCE (src/buildFromYaml.py). Embind requires each
 # C++ type to be registered exactly once; auto-emitting these collides at
 # Module() instantiation with `BindingError: Cannot register type ... twice`.
 # The manual stubs preserve the OCCT-deprecated public names that downstream
@@ -448,7 +448,7 @@ def discover_ncollection_types(tuInfo, filter_classes_fn, source_override=None):
     ``source_override`` lets a caller force every discovery's
     ``source_classes`` to a single sentinel name. Pass
     ``CUSTOM_CODE_SOURCE_TAG`` ("__custom__") when running discovery
-    against a consumer's ``additionalCppCode`` / ``myMain.h`` so the
+    against a consumer's ``additionalCppFiles`` / ``myMain.h`` so the
     link-step reachability filter — which always seeds the YAML scope
     with that sentinel — retains every custom-code NCollection regardless
     of which OCCT classes the consumer YAML names. Without an override,

@@ -118,18 +118,18 @@ def test_redundant_alias_dropper_removes_shadowing_aliases() -> None:
   # alias must be dropped so TS declaration merging does not weaken the
   # class to `unknown`.
   src = (
-    "export declare class BRepGraphInc_BaseRef {\n"
+    "declare class BRepGraphInc_BaseRef {\n"
     "  Id(): number;\n"
     "}\n"
     "\n"
-    "export type BRepGraphInc_BaseRef = unknown;\n"
+    "type BRepGraphInc_BaseRef = unknown;\n"
     "\n"
-    "export declare class Other {}\n"
+    "declare class Other {}\n"
   )
   out = apply_rewriters(src, declared_names={"BRepGraphInc_BaseRef", "Other"})
-  assert "export type BRepGraphInc_BaseRef = unknown;" not in out
-  assert "export declare class BRepGraphInc_BaseRef" in out
-  assert "export declare class Other" in out
+  assert "type BRepGraphInc_BaseRef = unknown;" not in out
+  assert "declare class BRepGraphInc_BaseRef" in out
+  assert "declare class Other" in out
 
 
 def test_redundant_alias_dropper_preserves_stand_alone_aliases() -> None:

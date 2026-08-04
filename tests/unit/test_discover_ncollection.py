@@ -985,7 +985,7 @@ def test_write_manifest_records_anon_sentinel_for_anonymous_sources(tmp_path) ->
 
 
 # ----------------------------------------------------------------------------
-# R3 — `__custom__` sentinel for additionalCppCode / myMain.h discoveries.
+# R3 — `__custom__` sentinel for additionalCppFiles / myMain.h discoveries.
 # ----------------------------------------------------------------------------
 
 

@@ -4,8 +4,8 @@ The producer-side module hoisted from the link stage into its own NX
 target. Pins the contract that:
 
 * `extract_registrations_for_yaml` iterates **every** consumer
-  ``additionalBindCode`` block (mainBuild + extraBuilds), concatenated
-  with `BUILTIN_ADDITIONAL_BIND_CODE`, parses each via libclang, and
+  ``additionalBindFiles`` list (mainBuild + extraBuilds), concatenated
+  with `BUILTIN_BINDINGS_SOURCE`, parses each via libclang, and
   returns the union of every Embind registration name.
 * `write_manifest` serialises the union to
   ``build/additional-bind-symbols.json`` with the
@@ -66,53 +66,78 @@ def test_write_manifest_creates_build_dir_if_absent(tmp_path) -> None:
   assert os.path.isfile(manifest_path)
 
 
-def test_iter_additional_bind_code_blocks_yields_main_then_extras() -> None:
+def test_iter_additional_bind_file_sources_yields_main_then_extras(tmp_path) -> None:
   """Block iteration order is deterministic: mainBuild first, then
   extraBuilds in declared order. Mirrors the order
-  `runBuild::getAdditionalBindCodeO` would see during link, so the
+  `runBuild::getAdditionalBindFilesO` would see during link, so the
   union of parses matches what the link compile produces.
   """
-  from ocjs_bindgen.bind_symbols import _iter_additional_bind_code_blocks
+  from ocjs_bindgen.bind_symbols import _iter_additional_bind_file_sources
+
+  for name, content in {
+    "main.cpp": "MAIN",
+    "extra-one.cpp": "EXTRA_ONE",
+    "extra-two.cpp": "EXTRA_TWO",
+  }.items():
+    (tmp_path / name).write_text(content)
+  yaml_path = tmp_path / "build.yml"
 
   config = {
-    "mainBuild": {"additionalBindCode": "MAIN"},
+    "mainBuild": {"additionalBindFiles": ["main.cpp"]},
     "extraBuilds": [
-      {"additionalBindCode": "EXTRA_ONE"},
-      {"additionalBindCode": "EXTRA_TWO"},
+      {"additionalBindFiles": ["extra-one.cpp"]},
+      {"additionalBindFiles": ["extra-two.cpp"]},
     ],
   }
-  assert list(_iter_additional_bind_code_blocks(config)) == [
+  assert list(_iter_additional_bind_file_sources(str(yaml_path), config)) == [
     "MAIN",
     "EXTRA_ONE",
     "EXTRA_TWO",
   ]
 
 
-def test_iter_additional_bind_code_blocks_skips_empty_blocks() -> None:
-  """A build block without `additionalBindCode` (or with an empty
+def test_iter_additional_bind_file_sources_skips_empty_lists(tmp_path) -> None:
+  """A build block without `additionalBindFiles` (or with an empty
   string) contributes nothing — saves an empty libclang parse.
   """
-  from ocjs_bindgen.bind_symbols import _iter_additional_bind_code_blocks
+  from ocjs_bindgen.bind_symbols import _iter_additional_bind_file_sources
+
+  (tmp_path / "real.cpp").write_text("REAL")
 
   config = {
-    "mainBuild": {"additionalBindCode": ""},
+    "mainBuild": {"additionalBindFiles": []},
     "extraBuilds": [
-      {"additionalBindCode": "REAL"},
+      {"additionalBindFiles": ["real.cpp"]},
       {},
-      {"additionalBindCode": None},
+      {"additionalBindFiles": None},
     ],
   }
-  assert list(_iter_additional_bind_code_blocks(config)) == ["REAL"]
+  assert list(
+    _iter_additional_bind_file_sources(str(tmp_path / "build.yml"), config)
+  ) == ["REAL"]
 
 
-def test_iter_additional_bind_code_blocks_handles_missing_extras() -> None:
+def test_iter_additional_bind_file_sources_handles_missing_extras(tmp_path) -> None:
   """A minimal YAML with only `mainBuild` (no `extraBuilds` key) must
   not raise — most consumer configs look like this.
   """
-  from ocjs_bindgen.bind_symbols import _iter_additional_bind_code_blocks
+  from ocjs_bindgen.bind_symbols import _iter_additional_bind_file_sources
 
-  config = {"mainBuild": {"additionalBindCode": "ONLY"}}
-  assert list(_iter_additional_bind_code_blocks(config)) == ["ONLY"]
+  (tmp_path / "only.cpp").write_text("ONLY")
+  config = {"mainBuild": {"additionalBindFiles": ["only.cpp"]}}
+  assert list(
+    _iter_additional_bind_file_sources(str(tmp_path / "build.yml"), config)
+  ) == ["ONLY"]
+
+
+def test_iter_additional_bind_file_sources_fails_before_parse_for_missing_file(
+  tmp_path,
+) -> None:
+  from ocjs_bindgen.bind_symbols import _iter_additional_bind_file_sources
+
+  config = {"mainBuild": {"additionalBindFiles": ["missing.cpp"]}}
+  with pytest.raises(FileNotFoundError, match="mainBuild.additionalBindFiles"):
+    list(_iter_additional_bind_file_sources(str(tmp_path / "build.yml"), config))
 
 
 # ----------------------------------------------------------------------------
@@ -126,7 +151,7 @@ def _skip_if_no_toolchain() -> None:
   """
   try:
     paths_mod = importlib.import_module("ocjs_bindgen.config.paths")
-    paths_mod.getAdditionalBindCodeParseIncludePaths()
+    paths_mod.getBindingSourceParseIncludePaths()
   except RuntimeError as e:
     pytest.skip(f"libclang toolchain not provisioned: {e}")
 
@@ -149,12 +174,13 @@ def test_extract_registrations_for_yaml_unions_builtin_and_consumer(tmp_path) ->
       emscripten::class_<ConsumerWidget>("ConsumerWidget");
     }
   """)
+  (tmp_path / "consumer.cpp").write_text(consumer_code)
   yaml_path.write_text(
     yaml.safe_dump({
       "mainBuild": {
         "name": "test.js",
         "bindings": [],
-        "additionalBindCode": consumer_code,
+        "additionalBindFiles": ["consumer.cpp"],
       },
       "extraBuilds": [],
     })
@@ -168,7 +194,7 @@ def test_extract_registrations_for_yaml_unions_builtin_and_consumer(tmp_path) ->
 
 @pytest.mark.libclang
 def test_extract_registrations_handles_yaml_with_no_consumer_code(tmp_path) -> None:
-  """A YAML with no `additionalBindCode` blocks still produces the
+  """A YAML with no `additionalBindFiles` still produces the
   BUILTIN registration set — the bind-symbols stage is mandatory for
   every link, so the manifest always exists.
   """

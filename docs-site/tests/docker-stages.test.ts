@@ -8,9 +8,9 @@ const REQUIRED_STAGES: ReadonlyArray<{
   readonly target: string;
   readonly label: string;
 }> = [
-  { target: 'bindgen-base', label: 'opencascade.js (bindgen-base)' },
-  { target: 'final-single', label: 'opencascade.js (single-threaded)' },
-  { target: 'final-multi', label: 'opencascade.js (multi-threaded)' },
+  { target: 'bindgen-base', label: 'libcascade (bindgen-base)' },
+  { target: 'final-single', label: 'libcascade (single-threaded)' },
+  { target: 'final-multi', label: 'libcascade (multi-threaded)' },
 ];
 
 describe('Dockerfile multi-stage layout', () => {

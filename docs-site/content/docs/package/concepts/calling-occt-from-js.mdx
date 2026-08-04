@@ -3,7 +3,7 @@ title: Calling OCCT from JavaScript
 description: How OCCT C++ surfaces project into JS — suffix-free overloads, val-dispatched calls, string enums, default args, and the TopoDS bridge.
 ---
 
-The OCJS bindings present OCCT to JavaScript through a handful of conventions
+The libcascade bindings present OCCT to JavaScript through a handful of conventions
 that hide most of the C++ idioms. This page covers the call-site rules that
 apply to every API surface — constructors, methods, statics, and downcasts. For
 the shape of what comes back, see [Return shapes](./return-shapes).
@@ -28,7 +28,7 @@ manual `.delete()`. The rest of the page explains why each line works.
 
 ## No more `_N` overload suffixes
 
-OCJS V3 removed the legacy `_N` overload suffixes. You always call the
+libcascade V3 removed the legacy `_N` overload suffixes. You always call the
 suffix-free constructor or method; the runtime picks the right overload based
 on arity and argument shape.
 

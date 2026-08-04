@@ -60,14 +60,14 @@ def parse_with_deprecated_ncollection_aliases():
     )
 
 
-def parse(additionalCppCode: str = ""):
+def parse(custom_cpp_source: str = ""):
     """Build the synthetic `myMain.h` TU that drives all bindgen.
 
     The TU's primary file is a virtual `myMain.h` whose contents are the
     sorted list of OCCT include statements (from
     `ocjs_bindgen.config.paths.ocAllIncludeStatements`) followed by any
     additional C++ supplied by the caller (e.g. NCollection `using`-decls
-    emitted by the Phase 1 discovery scan, or YAML `additionalCppCode`).
+    emitted by the Phase 1 discovery scan, or YAML `additionalCppFiles`).
 
     Diagnostics from libclang are printed verbatim — they are useful when
     debugging include-path or PCH issues but do not influence the bindgen
@@ -102,7 +102,7 @@ def parse(additionalCppCode: str = ""):
             "-D__EMSCRIPTEN__",
         ]
         + includePathArgs,
-        [["myMain.h", ocAllIncludeStatements + "\n" + additionalCppCode]],
+        [["myMain.h", ocAllIncludeStatements + "\n" + custom_cpp_source]],
     )
 
     if len(translationUnit.diagnostics) > 0:
@@ -113,8 +113,8 @@ def parse(additionalCppCode: str = ""):
     return translationUnit
 
 
-def parse_additional_bind_code(cpp_source: str, include_paths: list[str]):
-    """Build a translation unit for a self-contained additionalBindCode `.cpp` snippet.
+def parse_binding_source(cpp_source: str, include_paths: list[str]):
+    """Build a translation unit for self-contained binding source.
 
     Unlike :func:`parse`, the primary virtual file IS the snippet (not
     ``myMain.h``) and the caller passes the include path set the same
@@ -124,16 +124,16 @@ def parse_additional_bind_code(cpp_source: str, include_paths: list[str]):
     into scope so ``class_<T>("Name")`` resolves as a real CALL_EXPR in
     the AST — not a string match.
 
-    Used by the link stage (:func:`runBuild.getAdditionalBindCodeO`) to
+    Used by the link stage to
     extract every Embind registration name from the combined
-    ``BUILTIN_ADDITIONAL_BIND_CODE + consumer additionalBindCode``
+    ``BUILTIN_BINDINGS_SOURCE + consumer additionalBindFiles``
     translation unit and write them to ``build/additional-bind-symbols.json``
     so the post-link symbol resolver
     (:mod:`ocjs_bindgen.link.manifest_registry`) can bucket builtin
     registrations out of ``truly_missing`` without re-parsing C++.
 
     ``include_paths`` MUST start with ``ast/parse_stubs/`` (see
-    :func:`getAdditionalBindCodeParseIncludePaths`) so the parse-only
+    :func:`getBindingSourceParseIncludePaths`) so the parse-only
     Embind stub headers shadow emsdk's real ``<emscripten/bind.h>``.
     The real headers depend on libcxx-23 builtins (``__builtin_ctzg``)
     that libclang 18.1.1 cannot resolve; the stubs declare the same
@@ -149,7 +149,7 @@ def parse_additional_bind_code(cpp_source: str, include_paths: list[str]):
     """
     index = clang.cindex.Index.create()
     translation_unit = index.parse(
-        "additionalBindCode.cpp",
+        "binding-source.cpp",
         [
             "-x",
             "c++",
@@ -162,7 +162,7 @@ def parse_additional_bind_code(cpp_source: str, include_paths: list[str]):
             # stage compiles this same source with `-include-pch
             # build/pch.h.pch`, where the PCH unconditionally pulls in
             # `<emscripten/bind.h>` (see `paths.buildPch`). Several
-            # blocks — including BUILTIN_ADDITIONAL_BIND_CODE — rely on
+            # blocks — including BUILTIN_BINDINGS_SOURCE — rely on
             # that implicit include and never `#include
             # <emscripten/bind.h>` themselves. The parse-stubs shadow of
             # bind.h is on the include path, so this force-include
@@ -172,7 +172,7 @@ def parse_additional_bind_code(cpp_source: str, include_paths: list[str]):
             "emscripten/bind.h",
             *["-I" + p for p in include_paths],
         ],
-        [["additionalBindCode.cpp", cpp_source]],
+        [["binding-source.cpp", cpp_source]],
     )
     errors = [
         diagnostic
@@ -182,7 +182,7 @@ def parse_additional_bind_code(cpp_source: str, include_paths: list[str]):
     if errors:
         formatted = "\n".join(diagnostic.format() for diagnostic in errors)
         raise RuntimeError(
-            "libclang failed to parse additionalBindCode; refusing to "
+            "libclang failed to parse binding source; refusing to "
             f"emit an incomplete registration manifest:\n{formatted}"
         )
     return translation_unit

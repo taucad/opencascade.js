@@ -1,6 +1,6 @@
 # Build System
 
-The opencascade.js build system uses **Nx** for task orchestration and caching, replacing the custom `build-cache.py` system. The underlying Python build scripts (`Common.py`, `compileBindings.py`, `buildFromYaml.py`) remain, but are now invoked through Nx targets with correct input hashing and cache management.
+The libcascade build system uses **Nx** for task orchestration and caching, replacing the custom `build-cache.py` system. The underlying Python build scripts (`Common.py`, `compileBindings.py`, `buildFromYaml.py`) remain, but are now invoked through Nx targets with correct input hashing and cache management.
 
 ## Architecture
 
@@ -184,7 +184,7 @@ All named compile-time configurations live in `build-configs/configurations.json
 
 ### Supported keys
 
-The **bare default** column is what `build-wasm.sh` would fall back to if you set neither an env var nor `--config`. The **`single-threaded` config** column is what `configurations.json`'s `single-threaded` entry sets — the production default that the published tarball is linked with and what `build-wasm.sh` selects when `OCJS_CONFIG` and `--config` are both unset (see the `OCJS_CONFIG="${OCJS_CONFIG:-single-threaded}"` fallback in `build-wasm.sh`). All four shipped configurations (`single-threaded`, `single-threaded-smallest`, `multi-threaded`, `debug`) ship with native WASM exceptions, `EVAL_CTORS=2`, and Closure on; they differ on opt level, threading, and wasm-opt budget.
+The **bare default** column is what `build-wasm.sh` would fall back to if you set neither an env var nor `--config`. The **`single-threaded` config** column is what `configurations.json`'s `single-threaded` entry sets — the production compile preset selected when `OCJS_CONFIG` and `--config` are both unset. Link-only flags such as `-sWASM_BIGINT` and `-sEVAL_CTORS=2` remain in consumer YAML.
 
 | Key                   | Description                                             | Bare default      | `single-threaded` config |
 | --------------------- | ------------------------------------------------------- | ----------------- | ------------------------ |
@@ -194,14 +194,11 @@ The **bare default** column is what `build-wasm.sh` would fall back to if you se
 | `OCJS_EH_MODE`        | Exception handling mode (`wasm` or `js`)                | `wasm`            | `wasm`                   |
 | `OCJS_SIMD`           | Enable baseline SIMD (`-msimd128`, `0` or `1`)          | `0`               | `1`                      |
 | `OCJS_RELAXED_SIMD`   | Enable Relaxed SIMD opcodes (requires `OCJS_SIMD=1`; Safari 26.x does not yet implement Relaxed SIMD) | `0` | `0`           |
-| `OCJS_BIGINT`         | Enable `-sWASM_BIGINT` for native i64↔BigInt           | `0`               | `1`                      |
 | `THREADING`           | Threading mode (`single-threaded` or `multi-threaded`)  | `single-threaded` | `single-threaded`        |
 | `OCJS_DEFINES`        | Comma-separated C preprocessor defines                  | _(empty)_         | `OCCT_NO_DUMP`           |
 | `OCJS_UNDEFINES`      | Comma-separated C preprocessor undefines                | _(empty)_         | `OCC_CONVERT_SIGNALS`    |
 | `OCJS_WASM_OPT_LEVEL` | wasm-opt optimization level                             | `-O3`             | `-O4`                    |
 | `OCJS_CLOSURE`        | Run Closure Compiler (`true` or `false`)                | `false`           | `true`                   |
-| `OCJS_EVAL_CTORS`     | Enable Emscripten eval ctors (`true` or `false`)        | `false`           | `true`                   |
-| `OCJS_EVAL_CTORS_LEVEL` | `-sEVAL_CTORS=N` level when `OCJS_EVAL_CTORS=true`    | `2`               | `2`                      |
 | `OCJS_CONVERGE`       | Use `--converge` in wasm-opt (`true` or `false`)        | `false`           | `true`                   |
 | `OCJS_MALLOC`         | Heap allocator (`dlmalloc` or `mimalloc`)               | `dlmalloc`        | `mimalloc`               |
 | `OCJS_EXTRA_CFLAGS`   | Extra compile flags appended to C/CXX                   | _(empty)_         | _(empty)_                |
@@ -217,11 +214,9 @@ Add an entry to `build-configs/configurations.json`:
     "OCJS_LTO": "1",
     "OCJS_EXCEPTIONS": "0",
     "OCJS_SIMD": "1",
-    "OCJS_BIGINT": "1",
     "THREADING": "single-threaded",
     "OCJS_WASM_OPT_LEVEL": "-O4",
     "OCJS_CLOSURE": "true",
-    "OCJS_EVAL_CTORS": "true",
     "OCJS_CONVERGE": "true"
   }
 }
@@ -342,10 +337,11 @@ OCJS_CONFIG=single-threaded OCJS_YAML=consumer.yml npx nx run ocjs:link
 ### Docker
 
 ```bash
-docker run -e OCJS_CONFIG=single-threaded \
-  -v $(pwd)/my-config.yml:/src/config.yml \
-  -v $(pwd)/output:/output \
-  opencascade-js link config.yml
+docker run --rm \
+  -v "$(pwd):/src" \
+  -u "$(id -u):$(id -g)" \
+  ghcr.io/taucad/opencascade.js:single-threaded \
+  link my-config.yml
 ```
 
 ### Checkout-based

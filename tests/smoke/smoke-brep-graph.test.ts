@@ -27,12 +27,14 @@ function readDts(): string {
 }
 
 function countDeclarations(source: string, name: string): number {
-  // Count `export declare class <name>` and `export type <name> =` /
-  // `export interface <name>` declarations. The redundant-unknown-alias dropper was meant to drop the
-  // shadowing `export type X = unknown;` once a real `export declare
-  // class X` lands; this asserts that drop happened (count must be 1).
+  // Runtime values are internal declarations plus `export type { X }`.
+  // Count declarations, not the separate export list. The redundant-unknown-
+  // alias dropper must remove `type X = unknown` once a real class lands.
   const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const re = new RegExp(`^export\\s+(?:declare\\s+class|type|interface)\\s+${escaped}\\b`, 'gm');
+  const re = new RegExp(
+    `^(?:export\\s+)?(?:declare\\s+)?(?:class|type|interface)\\s+${escaped}\\b`,
+    'gm',
+  );
   const matches = source.match(re);
   return matches ? matches.length : 0;
 }
@@ -376,7 +378,7 @@ describe.skipIf(!wasmExists)('Smoke: BRepGraph', () => {
       // and threads them through the resolver so `Current()` lands as
       // the concrete typed id.
       const dts = readDts();
-      expect(/^export declare class BRepGraph_FacesOfEdge\b/m.test(dts)).toBe(true);
+      expect(/^declare class BRepGraph_FacesOfEdge\b/m.test(dts)).toBe(true);
       expect(/Definition\(\): BRepGraphInc_FaceDef;/m.test(dts)).toBe(true);
     });
 
@@ -403,15 +405,15 @@ describe.skipIf(!wasmExists)('Smoke: BRepGraph', () => {
       // chain. Traits-member-typedef strategy's `resolve_qualified_member_type` walks the chain and
       // lands the concrete BRepGraph id types.
       const dts = readDts();
-      expect(/^export declare class BRepGraph_RefsShellsOfFace\b/m.test(dts)).toBe(true);
+      expect(/^declare class BRepGraph_RefsShellsOfFace\b/m.test(dts)).toBe(true);
     });
   });
 
   describe('Group C (unknown alias dedup) — BRepGraphInc_* declaration uniqueness', () => {
     // Audit Appendix A enumerates the BRepGraphInc_* family. Before alias dedup,
     // each name appeared twice in `dist/opencascade_full.d.ts`: once as a
-    // real `export declare class …` lifted from the per-fragment, and once
-    // as a leaked-from-other-fragments `export type … = unknown;` shadow.
+    // real `declare class …` lifted from the per-fragment, and once
+    // as a leaked-from-other-fragments `type … = unknown;` shadow.
     // The `redundant_unknown_alias_dropper` deletes the unknown shadow at
     // link time, leaving exactly one declaration per name.
     const BREP_GRAPH_INC_NAMES = [

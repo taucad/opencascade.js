@@ -6,7 +6,6 @@ import path from 'node:path';
 const ROOT = path.resolve(import.meta.dirname, '../..');
 const OLD_PACKAGE = ['@taucad', 'opencascade.js'].join('/');
 const ABANDONED_PACKAGE = 'cascadic';
-const ALLOWED_HISTORY = new Set(['CHANGELOG.md']);
 const ALLOWED_ABANDONED_PACKAGE_TESTS = new Set([
   'tests/ci/ci-contracts.test.ts',
   'tests/ci/package-identity.test.ts',
@@ -49,10 +48,8 @@ describe('npm package identity', () => {
     expect(fs.existsSync(path.join(ROOT, 'src', `${String(manifest.name)}_bindgen`))).toBe(false);
   });
 
-  it('should keep the previous scoped package only in historical changelog evidence', () => {
-    const matches = trackedFilesContaining(OLD_PACKAGE);
-    expect(matches.length).toBeGreaterThan(0);
-    expect(new Set(matches)).toEqual(ALLOWED_HISTORY);
+  it('should remove the retired scoped package from tracked source', () => {
+    expect(trackedFilesContaining(OLD_PACKAGE)).toEqual([]);
   });
 
   it('should keep the abandoned package only in explicit negative tests', () => {

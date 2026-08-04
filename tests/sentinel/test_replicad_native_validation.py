@@ -140,7 +140,7 @@ def test_additional_bind_symbols_manifest_emitted_with_v1_schema() -> None:
   )
   symbols = set(data.get("symbols", []))
   assert {"OCJS", "TopoDS", "TColStd_IndexedDataMapOfStringString"} <= symbols, (
-    f"BUILTIN_ADDITIONAL_BIND_CODE baseline registrations missing; "
+    f"BUILTIN_BINDINGS_SOURCE baseline registrations missing; "
     f"got {sorted(symbols)}"
   )
 

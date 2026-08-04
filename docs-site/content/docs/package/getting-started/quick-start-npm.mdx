@@ -20,12 +20,11 @@ pnpm add -D @types/three typescript
 
 ## 2. Initialise OCCT once
 
-```typescript title="src/ocjs-init.ts"
+```typescript title="src/libcascade-init.ts"
 import init from 'libcascade';
-import wasmUrl from 'libcascade/wasm?url';
 
 let ocPromise: ReturnType<typeof init> | undefined;
-export const getOc = () => (ocPromise ??= init({ locateFile: () => wasmUrl }));
+export const getOc = () => (ocPromise ??= init());
 ```
 
 The memoised Promise guarantees one wasm fetch and one C++ runtime init per page
@@ -35,7 +34,7 @@ the first warm-up.
 ## 3. Build a shape
 
 ```typescript title="src/build-shape.ts"
-import { getOc } from './ocjs-init';
+import { getOc } from './libcascade-init';
 
 export const buildFilletedBox = async () => {
   const oc = await getOc();
@@ -57,7 +56,7 @@ exit so the C++ heap doesn't leak.
 
 ```typescript title="src/shape-to-glb.ts"
 import type { TopoDS_Shape } from 'libcascade';
-import { getOc } from './ocjs-init';
+import { getOc } from './libcascade-init';
 
 export const shapeToGlb = async (shape: TopoDS_Shape): Promise<Uint8Array> => {
   const oc = await getOc();
@@ -71,14 +70,11 @@ export const shapeToGlb = async (shape: TopoDS_Shape): Promise<Uint8Array> => {
   using metadata = new oc.TColStd_IndexedDataMapOfStringString();
   using progress = new oc.Message_ProgressRange();
   writer.Perform(doc, metadata, progress);
-  const raw = oc.FS.readFile(path) as Uint8Array;
+  const bytes = oc.FS.readFile(path) as Uint8Array;
   oc.FS.unlink(path);
-  return new Uint8Array(raw);
+  return bytes;
 };
 ```
-
-The `new Uint8Array(raw)` copy is mandatory — `FS.readFile` returns a view into
-MEMFS that becomes invalid after `unlink`.
 
 ## 5. Render in three.js
 
@@ -114,5 +110,5 @@ Visit `localhost:5173` and you'll see a filleted gray box you can orbit.
 ## Next steps
 
 - Need a different bundler? See [Bundler & locateFile](../guides/bundler-locatefile).
-- Want a smaller wasm? See [Trim symbols](../guides/trim-symbols).
+- Want a smaller wasm? See [Trim symbols](/docs/toolchain/guides/trim-symbols).
 - Looking for STEP instead of GLB? See [Export STEP](../guides/export-step).

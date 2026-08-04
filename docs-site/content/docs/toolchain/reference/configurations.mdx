@@ -5,14 +5,17 @@ description: build-configs/configurations.json — every preset, the flags it se
 
 Compile-time presets live in [`build-configs/configurations.json`](https://github.com/taucad/opencascade.js/blob/main/build-configs/configurations.json). Each entry is a flat map of `OCJS_*` environment-variable names to values; the build CLI loads the entry and exports each key before driving `emcc` and `wasm-opt`.
 
-All shipped presets ship with the same _feature_ set — native WASM exceptions (`OCJS_EXCEPTIONS=1`, `OCJS_EH_MODE=wasm`), `EVAL_CTORS=2`, and the Closure Compiler on. They differ on optimisation level, threading mode, and the wasm-opt budget.
+All shipped presets use native WASM exceptions (`OCJS_EXCEPTIONS=1`,
+`OCJS_EH_MODE=wasm`) and the Closure Compiler. Link-only features such as
+BigInt and eval-ctors belong to each build YAML's `emccFlags`, not these
+compile-time presets.
 
 ## Shipped presets
 
 | Preset                     | Use case                                                                                  | Differentiating flags                                                          |
 | -------------------------- | ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| `single-threaded`          | Default OpenCascade.js build (`opencascade_full.*`). Browser default. | `OCJS_OPT=-O3`, `OCJS_WASM_OPT_LEVEL=-O4`, `THREADING=single-threaded`         |
-| `single-threaded-smallest` | Size-tuned variant — smaller binary at a ~5–10% runtime cost.                             | `OCJS_OPT=-Os`, `OCJS_WASM_OPT_LEVEL=-O3`, `THREADING=single-threaded`         |
+| `single-threaded`          | Default libcascade build (`opencascade_full.*`). Browser default. | `OCJS_OPT=-O3`, `OCJS_WASM_OPT_LEVEL=-O4`, `THREADING=single-threaded`         |
+| `single-threaded-smallest` | Size-tuned variant — benchmark it against your workload before shipping.                | `OCJS_OPT=-Os`, `OCJS_WASM_OPT_LEVEL=-O3`, `THREADING=single-threaded`         |
 | `multi-threaded`           | Published `libcascade/multi` build. SAB/COOP+COEP-isolated deployments.     | `OCJS_OPT=-O3`, `OCJS_WASM_OPT_LEVEL=-O4`, `THREADING=multi-threaded`          |
 | `debug`                    | Fastest build for local iteration. Not for production — no SIMD, no converge, no BigInt.  | `OCJS_OPT=-O0`, `OCJS_WASM_OPT_LEVEL=-O0`, `OCJS_SIMD=0`, `OCJS_CONVERGE=false` |
 
@@ -49,10 +52,7 @@ Append a new entry to `build-configs/configurations.json`. The shape is a flat `
     "OCJS_UNDEFINES": "OCC_CONVERT_SIGNALS",
     "OCJS_WASM_OPT_LEVEL": "-O3",
     "OCJS_CLOSURE": "true",
-    "OCJS_EVAL_CTORS": "true",
-    "OCJS_EVAL_CTORS_LEVEL": "2",
     "OCJS_CONVERGE": "true",
-    "OCJS_BIGINT": "1",
     "OCJS_MALLOC": "mimalloc",
     "BINARYEN_EXTRA_PASSES": ""
   }

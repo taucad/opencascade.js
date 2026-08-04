@@ -4,14 +4,14 @@ description: How libclang → embind → wasm-ld combine to produce the bound Ty
 ---
 
 <Callout type="info">
-  **Maintainer track.** Read this if you rebuild OCJS from source or extend it
+  **Maintainer track.** Read this if you rebuild libcascade from source or extend it
   with custom C++. If you `pnpm add libcascade` and call the published
   wasm from JS, you can skip this page — the consumer-facing rules live in
-  [Calling OCCT from JS](./calling-occt-from-js) and
-  [Return shapes](./return-shapes).
+  [Calling OCCT from JS](/docs/package/concepts/calling-occt-from-js) and
+  [Return shapes](/docs/package/concepts/return-shapes).
 </Callout>
 
-The OCJS bindings generator is a Python orchestrator over libclang and
+The libcascade bindings generator is a Python orchestrator over libclang and
 emscripten's embind. This page maps the stages and the artifacts they emit.
 
 ## Stage diagram
@@ -73,13 +73,13 @@ output:
 
 ## How custom C++ enters the pipeline
 
-`additionalCppCode` + `additionalCppFiles` get concatenated into one TU which
+`additionalCppFiles` get concatenated into one TU which
 flows through a smaller variant of stages 1+2 — bindgen discovers Handle/NCollection
 references, em++ compiles, the result links into the final wasm alongside the
 auto-generated bindings.
 
-`additionalBindCode` skips bindgen entirely — it's a literal `.cpp` snippet
-that gets compiled with `<emscripten/bind.h>` already included.
+`additionalBindFiles` skip bindgen entirely. Their `.cpp` contents compile as
+raw Embind registrations and may include their helper implementations.
 
 ## When the pipeline fails
 
@@ -87,7 +87,7 @@ that gets compiled with `<emscripten/bind.h>` already included.
 |---|---|---|
 | `libclang: cannot find <Standard_Real.hxx>` | 1 | OCCT headers not mounted into the Docker image |
 | `undefined symbol: _ZN10TopoDS_...` | 3 | Remove a `bindings:` entry whose `.o` no longer exists, or the class transitively needs another class you trimmed |
-| `BindingError: invalid type` at runtime | 3 | Duplicate `EMSCRIPTEN_BINDINGS(<name>)` group across `additionalBindCode` and a generated `.hxx` |
+| `BindingError: invalid type` at runtime | 3 | Duplicate `EMSCRIPTEN_BINDINGS(<name>)` group across `additionalBindFiles` and a generated `.hxx` |
 | Codegen emits `any` for a known type | 1 | The link step always prints a triage summary to stderr when this happens. The build still proceeds by default; set `OCJS_STRICT_TYPES=1` in CI to fail the build instead of shipping a poisoned `.d.ts`. File an issue with the printed triage summary. |
 | Codegen emits `unknown` / surfaces an unbound reference | 1 | Same gate as above. Warning printed by default; `OCJS_STRICT_TYPES=1` escalates to a hard failure for CI consumers. |
 
@@ -98,9 +98,9 @@ expose to JS consumers — overload-dispatched calls, in-place class outputs,
 `returnValue` envelopes, Handle elision — lives in two consumer-facing
 concept pages:
 
-- [Calling OCCT from JS](./calling-occt-from-js) — overload dispatch, enums,
+- [Calling OCCT from JS](/docs/package/concepts/calling-occt-from-js) — overload dispatch, enums,
   defaults, and the `TopoDS` downcast bridge.
-- [Return shapes](./return-shapes) — class outputs, envelopes, `returnValue`,
+- [Return shapes](/docs/package/concepts/return-shapes) — class outputs, envelopes, `returnValue`,
   and Handle elision.
 
 ## Docker stage mapping

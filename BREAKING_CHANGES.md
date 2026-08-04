@@ -1,6 +1,6 @@
-# Breaking Changes — OpenCascade.js v3 (`libcascade@3.0.0`)
+# Breaking Changes — libcascade v3 (`libcascade@3.0.0`)
 
-This guide describes the consumer-visible breaking changes in OpenCascade.js
+This guide describes the consumer-visible breaking changes in libcascade
 v3.
 
 It lists every consumer-visible breaking change with **Before / After** code samples. All `After` snippets are taken directly from runnable smoke tests in [`tests/smoke/`](tests/smoke/) or from the published [`dist/opencascade_full.d.ts`](dist/opencascade_full.d.ts).
@@ -50,35 +50,31 @@ const oc = await initOpenCascade({ mainJS: opencascade });
 
 ```ts
 import initOpenCascade from 'libcascade';
-const oc = await initOpenCascade({ locateFile });
+const oc = await initOpenCascade();
 ```
 
 **Action**: drop any `mainJS` / variant-selection wiring. If you previously imported a specific variant file directly, switch to the package's default export.
 
-### A2 — ESM-only with explicit `locateFile`
+### A2 — ESM-only with zero-configuration initialization
 
-The package is `"type": "module"`. CommonJS entry points are gone. The Emscripten loader still needs a `locateFile` callback so it can resolve `opencascade_full.wasm` from your bundler's output directory or your Node `node_modules` layout.
+The package is `"type": "module"`. CommonJS entry points are gone. The loader
+resolves its adjacent `opencascade_full.wasm` automatically. Provide
+`locateFile` only when a bundler or deployment relocates that asset.
 
 The wasm binary is exposed via subpath exports — `libcascade/wasm` for the single-threaded default and `libcascade/multi/wasm` for the pthread-enabled variant — which are the only supported ways to reach the binaries from consumer code. The same identifiers work under Vite's `?url` suffix, Node's `import.meta.resolve`, Bun, and Deno.
 
-For the multi-threaded variant, import `libcascade/multi` instead of the package root and resolve wasm through `libcascade/multi/wasm`. Browser deployments require cross-origin isolation headers; see the [multi-threaded build guide](https://ocjs.org/docs/package/guides/multi-threading) on ocjs.org.
+For the multi-threaded variant, import `libcascade/multi` instead of the package root and resolve wasm through `libcascade/multi/wasm`. Browser deployments require cross-origin isolation headers; see the [multi-threaded build guide](https://opencascade-js.vercel.app/docs/package/guides/multi-threading).
 
 For Node ESM consumers:
 
 ```ts
-import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
 import type { OpenCascadeInstance } from 'libcascade';
 import init from 'libcascade';
-
-const WASM_DIR = dirname(fileURLToPath(import.meta.resolve('libcascade/wasm')));
 
 let _oc: OpenCascadeInstance | undefined;
 export async function initOC(): Promise<OpenCascadeInstance> {
   if (!_oc) {
-    _oc = await init({
-      locateFile: (filename: string) => join(WASM_DIR, filename),
-    });
+    _oc = await init();
   }
   return _oc;
 }
@@ -102,7 +98,9 @@ import wasmUrl from 'libcascade/multi/wasm?url';
 const oc = await init({ locateFile: () => wasmUrl });
 ```
 
-**Action**: pass `locateFile` to every `init()` call and remove any CommonJS `require()` of the package. Reach for wasm through `libcascade/wasm` (default) or `libcascade/multi/wasm` (threaded) — `dist/*` deep paths are not part of the package's public surface.
+**Action**: remove CommonJS `require()` and call `init()` directly. If your
+bundler relocates WASM, wire `locateFile` through `libcascade/wasm` (default)
+or `libcascade/multi/wasm` (threaded). `dist/*` deep paths are not public.
 
 ---
 
@@ -151,7 +149,7 @@ Reference smoke tests: [`tests/smoke/smoke-output-params.test.ts`](tests/smoke/s
 | Non-`void` | None                                                                | Native return (no envelope). `Curve(): Handle_Geom_Curve`                                                                                                                                                                           |
 | Non-`void` | Class only (mutated in place)                                       | Native return. Read mutated classes from your input variables. `curve.D0(u, pt) → void`; `surface.D2(u, v, P, D1U, D1V, D2U, D2V, D2UV) → void`                                                                                     |
 | `void`     | Class only                                                          | `void`. Read mutated classes from your input variables. `BRepBndLib.Add(shape, box, useTri) → void`                                                                                                                                 |
-| Non-`void` | Primitives / enums / elided Handles (with or without class outputs) | Envelope with `returnValue` for the C++ return + one named field per non-class output. Class outputs are NOT echoed. `Surface.Bounds(u1, u2, v1, v2): { U1: number; U2: number; V1: number; V2: number; [Symbol.dispose](): void }` |
+| Non-`void` | Primitives / enums / elided Handles (with or without class outputs) | Envelope with `returnValue` for the C++ return + one named field per non-class output. Class outputs are NOT echoed. A primitive-only `Surface.Bounds(u1, u2, v1, v2)` result is `{ U1: number; U2: number; V1: number; V2: number }`. |
 | `void`     | Primitives / enums / elided Handles (with or without class outputs) | Envelope with the same shape minus `returnValue`                                                                                                                                                                                    |
 
 **The six return-shape rules:**
@@ -178,8 +176,8 @@ Reference smoke tests: [`tests/smoke/smoke-output-params.test.ts`](tests/smoke/s
 | --------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `Geom_Curve.D0` (class out, void return)                                                                  | `const pt = new oc.gp_Pnt(); curve.D0(u, pt); console.log(pt.X(), pt.Y(), pt.Z())`                                                                                                                                       | `curve.D0(u, pt); console.log(pt.X(), pt.Y(), pt.Z())` — identical mechanic                                                                                                                                                                            |
 | `Geom_Curve.D2` (3 class outs, void return)                                                               | `curve.D2(u, p, v1, v2); console.log(p.X(), v1.X(), v2.X())` — caller allocates `p`, `v1`, `v2`                                                                                                                          | `curve.D2(u, p, v1, v2); console.log(p.X(), v1.X(), v2.X())` — identical mechanic                                                                                                                                                                      |
-| `Geom_Surface.Bounds` (4 primitive outs, void return)                                                     | `const u1 = { current: 0 }, u2 = { current: 0 }, v1 = { current: 0 }, v2v = { current: 0 }; surface.Bounds(u1, u2, v1, v2v); console.log(u1.current, u2.current, v1.current, v2v.current)`                               | `using r = surface.Bounds(0, 0, 0, 0); console.log(r.U1, r.U2, r.V1, r.V2)` — primitives ride the envelope; `{ current: 0 }` wrappers gone                                                                                                             |
-| `BRepGProp.VolumeProperties` (class out, native return)                                                   | `const props = new oc.GProp_GProps(); const epsilon = oc.BRepGProp.VolumeProperties(shape, props); console.log(props.Mass(), epsilon)`                                                                                  | `using props = new oc.GProp_GProps(); const epsilon = BRepGProp.VolumeProperties(shape, props); console.log(props.Mass(), epsilon)` — identical mechanic; `using` optional but recommended                                                            |
+| `Geom_Surface.Bounds` (4 primitive outs, void return)                                                     | `const u1 = { current: 0 }, u2 = { current: 0 }, v1 = { current: 0 }, v2v = { current: 0 }; surface.Bounds(u1, u2, v1, v2v); console.log(u1.current, u2.current, v1.current, v2v.current)`                               | `const r = surface.Bounds(0, 0, 0, 0); console.log(r.U1, r.U2, r.V1, r.V2)` — primitives ride the non-disposable envelope; `{ current: 0 }` wrappers gone                                                                                             |
+| `BRepGProp.VolumeProperties` (class out, native return)                                                   | `const props = new oc.GProp_GProps(); const epsilon = oc.BRepGProp.VolumeProperties(shape, props); console.log(props.Mass(), epsilon)`                                                                                  | `using props = new oc.GProp_GProps(); const epsilon = oc.BRepGProp.VolumeProperties(shape, props); console.log(props.Mass(), epsilon)` — identical mechanic; the caller-owned class is disposable                                                    |
 | `BRepBndLib.Add` (class out, void return)                                                                 | `const box = new oc.Bnd_Box(); oc.BRepBndLib.Add(shape, box, useTri); console.log(box.IsVoid())`                                                                                                                         | `BRepBndLib.Add(shape, box, useTri); console.log(box.IsVoid())` — reuse the caller-allocated `box`                                                                                                                                                     |
 | `BRep_Builder.MakeVertex` (class out, void return)                                                        | `const v = new oc.TopoDS_Vertex(); builder.MakeVertex(v, p, tol); console.log(v.IsNull())`                                                                                                                               | `builder.MakeVertex(v, p, tol); console.log(v.IsNull())` — identical mechanic                                                                                                                                                                          |
 | `XCAFDoc_ColorTool.GetColor` (boolean return, class out)                                                  | `const color = new oc.Quantity_Color(); const hasColor = colorTool.GetColor_N(label, type, color); console.log(hasColor, color.Red(), color.Green(), color.Blue())`                                                      | `const hasColor = colorTool.GetColor(label, type, color); console.log(hasColor, color.Red(), color.Green(), color.Blue())` — class output stays caller-allocated; boolean return surfaces directly (no envelope: only output is a class)               |
@@ -285,7 +283,7 @@ A caught exception is now a `WebAssembly.Exception`, decodable via the runtime h
 
 ```ts
 import init from 'libcascade';
-const oc = await init({ locateFile });
+const oc = await init();
 
 try {
   using cone = new oc.BRepPrimAPI_MakeCone(1, 0.5, 0); // Standard_DomainError: zero height
@@ -470,13 +468,15 @@ const bucket = shape.HashCode(1024);
 
 **After (consumer-side)** — derive a bucket from a stable shape property you already track, or maintain an external `Map<TopoDS_Shape, number>` keyed by reference identity for the lifetime of the shape.
 
-**After (custom build)** — if you need the original bucket-mod-N semantics, inject a wrapper into your own YAML's `additionalCppCode`:
+**After (custom build)** — if you need the original bucket-mod-N semantics,
+put a wrapper in `wrappers/shape-hasher.cpp` and list it under
+`additionalCppFiles`:
 
 ```cpp
 #include <functional>
 #include <TopoDS_Shape.hxx>
 
-class OCJS_ShapeHasher {
+class ShapeHasher {
 public:
   static int HashCode(const TopoDS_Shape& shape, int upperBound) {
     if (upperBound <= 0) return 0;
@@ -487,11 +487,15 @@ public:
 ```
 
 ```yaml
-bindings:
-  - symbol: OCJS_ShapeHasher
+additionalCppFiles:
+  - wrappers/shape-hasher.cpp
+
+mainBuild:
+  bindings:
+    - symbol: ShapeHasher
 ```
 
-Then call it as `oc.OCJS_ShapeHasher.HashCode(shape, 1024)`.
+Then call it as `oc.ShapeHasher.HashCode(shape, 1024)`.
 
 **Action**: remove `.HashCode()` calls; either accept the loss or rebuild a custom variant with the snippet above.
 
@@ -510,7 +514,7 @@ Every same-arity method-overload group is now backed by a **single** embind val-
 
 Two consumer-visible consequences:
 
-1. **JS-indistinguishable primitive pairs are collapsed at codegen time.** OCCT V8's NCollection `size_t` API migration ([OCCT `#1212`](https://dev.opencascade.org/content/occt-800)) introduced parallel `int`/`size_t` overloads for every indexed-container accessor (`NCollection_IndexedMap::FindKey`, `Substitute`, `RemoveLast` callsites, etc.). JS classifies both as `"number"`, so the dispatcher cannot distinguish them at runtime. The codegen now keeps the V8-modern `size_t` variant and drops the legacy `int` variant — only one entry survives per JS-equivalent signature. The `_N`-suffixed variants for these specific pairs are no longer emitted because there is no longer ambiguity to disambiguate.
+1. **JS-indistinguishable primitive pairs are collapsed at codegen time.** OCCT V8's NCollection `size_t` API migration ([OCCT 8.0.0 release](https://dev.opencascade.org/content/open-cascade-technology-800-release)) introduced parallel `int`/`size_t` overloads for every indexed-container accessor (`NCollection_IndexedMap::FindKey`, `Substitute`, `RemoveLast` callsites, etc.). JS classifies both as `"number"`, so the dispatcher cannot distinguish them at runtime. The codegen now keeps the V8-modern `size_t` variant and drops the legacy `int` variant — only one entry survives per JS-equivalent signature. The `_N`-suffixed variants for these specific pairs are no longer emitted because there is no longer ambiguity to disambiguate.
 
 2. **Mixed static + instance same-arity groups now emit both `class_function` and `function`.** A handful of OCCT classes expose `static` and non-`static` overloads with identical arity (e.g. `XCAFDoc_ColorTool::GetColor` has a `static GetColor(TDF_Label, …)` family and an instance `GetColor(TopoDS_Shape, …)` family with the same arity). Previously the entire group was registered as one instance `.function(…)` and `oc.Class.foo(...)` static call sites hit an arity mismatch. Both shapes now exist on the JS class: `oc.XCAFDoc_ColorTool.GetColor(label, type, color)` (static) and `colorTool.GetColor(shape, type, color)` (instance) both dispatch correctly.
 
@@ -575,12 +579,12 @@ docker run --rm -v "$(pwd):/src" ghcr.io/taucad/opencascade.js:beta \
 ./build-wasm.sh --config debug full build-configs/full.yml
 ```
 
-The four shipped configurations (full env-var matrix in [BUILD_SYSTEM.md](BUILD_SYSTEM.md)) — every entry ships with native WASM exceptions, `EVAL_CTORS=2`, and Closure on; they differ only in optimisation level, threading, and wasm-opt budget:
+The four shipped configurations (full env-var matrix in [BUILD_SYSTEM.md](BUILD_SYSTEM.md)) select compile and optimizer settings. Link-only flags remain explicit in each consumer YAML; `full.yml` uses native WASM exceptions, `EVAL_CTORS=2`, and Closure for the published single-threaded build:
 
 | Name                       | Purpose                                                                                                              |
 | -------------------------- | -------------------------------------------------------------------------------------------------------------------- |
 | `single-threaded`          | What the published tarball is built with: `-O3`, baseline SIMD, BigInt, wasm-opt `-O4`, converge. Browser default.   |
-| `single-threaded-smallest` | Size-tuned variant: `-Os` compile + wasm-opt `-O3`. Same feature set, smaller binary at a ~5–10% runtime cost.       |
+| `single-threaded-smallest` | Size-tuned variant: `-Os` compile + wasm-opt `-O3`. Benchmark it against the target workload before shipping.       |
 | `multi-threaded`           | `-O3` + SIMD + native exceptions, threading on. For COOP/COEP-isolated, SAB-enabled deployments.                     |
 | `debug`                    | `-O0` compile + wasm-opt `-O0`, SIMD off, converge off. Fastest build for iteration — not for production.            |
 
@@ -588,7 +592,7 @@ v2 had no named-configuration system — the YAML's `emccFlags` block was the on
 
 ### F2 — Reference `full.yml` bundled in the image; exceptions on by default
 
-v2 shipped example YAML templates (`customBuild_example.yml` and friends) and expected consumers to hand-write their config from scratch. v3 bundles a reference `full.yml` inside the Docker image at `/opencascade.js/build-configs/full.yml` — the same ~4,400-symbol list the published tarball builds from — so consumers can extract it as a starting point and trim down. The reference YAML's `emccFlags` block carries v3's defaults: `-fwasm-exceptions`, `-sEXPORT_EXCEPTION_HANDLING_HELPERS`, `-sWASM_BIGINT`, `-sEVAL_CTORS=2`, `-msimd128`.
+v2 shipped example YAML templates (`customBuild_example.yml` and friends) and expected consumers to hand-write their config from scratch. v3 bundles the complete reference `full.yml` inside the Docker image at `/opencascade.js/build-configs/full.yml`, so consumers can extract the exact symbol list used by the published tarball and trim it down. The reference YAML's `emccFlags` block carries v3's defaults: `-fwasm-exceptions`, `-sEXPORT_EXCEPTION_HANDLING_HELPERS`, `-sWASM_BIGINT`, `-sEVAL_CTORS=2`, `-msimd128`.
 
 **v3 workflow** — extract the reference, trim, build:
 

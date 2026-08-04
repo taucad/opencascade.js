@@ -8,18 +8,18 @@ Vite 6 + TS + three.js 0.180+ + `libcascade` via the `libcascade/multi` subpath.
 - `libcascade/multi` with wasm at `libcascade/multi/wasm?url`
 - `libcascade`, using the `libcascade/multi` and `libcascade/multi/wasm` subpaths
 - Cross-origin isolation headers in `vite.config.ts` (required for `SharedArrayBuffer`)
-- Global parallel activation in `src/ocjs-init.ts` per the [multi-threading guide](https://github.com/taucad/opencascade.js/blob/main/docs-site/content/docs/package/guides/multi-threading.mdx)
+- Global parallel activation in `src/libcascade-init.ts` per the [multi-threading guide](https://github.com/taucad/opencascade.js/blob/main/docs-site/content/docs/package/guides/multi-threading.mdx)
 
 ## Files
 
 | File                   | Role                                                                  |
 | ---------------------- | --------------------------------------------------------------------- |
 | `src/main.ts`          | Boots the viewer, runs the pipeline, surfaces thread count + errors   |
-| `src/ocjs-init.ts`     | Memoized `libcascade/multi` init + parallel activation    |
+| `src/libcascade-init.ts`     | Memoized `libcascade/multi` init + parallel activation    |
 | `src/build-shape.ts`   | Demo compound; booleans fan out via `SetParallelMode(true)`           |
 | `src/shape-to-glb.ts`  | Parallel mesh + GLB export via `SetParallelDefault(true)`             |
 | `src/three-viewer.ts`  | three.js scene + `OrbitControls`                                      |
-| `vite.config.ts`       | Port 3003, COOP/COEP headers, `optimizeDeps.exclude` for OCJS         |
+| `vite.config.ts`       | Port 3003, COOP/COEP headers, `optimizeDeps.exclude` for libcascade         |
 
 ## Run
 

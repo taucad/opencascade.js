@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# docker-e2e-validate.sh — production-readiness gate for the opencascade.js
+# docker-e2e-validate.sh — production-readiness gate for the libcascade
 # Docker image (PR donalffons/opencascade.js#301).
 #
 # Validates published images using build-configs/*.yml in this repo (not

@@ -3,11 +3,12 @@ title: Bundler & locateFile
 description: How to wire the OCCT wasm asset in Vite, Next.js, Bun, Deno, and plain Node.
 ---
 
-`init()` accepts a `locateFile` callback that returns the URL where the runtime
-should fetch the wasm binary. The right answer depends on your bundler.
+Start with `await init()`. The package resolves its adjacent WASM asset without
+configuration in Node and compatible bundlers. Use `locateFile` only when a
+bundler or deployment copies the binary to another URL.
 
 The package exposes the binary through the `libcascade/wasm`
-subpath export. Every snippet on this page resolves the wasm through that
+subpath export. Every relocation recipe on this page resolves the wasm through that
 specifier; resolving it any other way (deep `node_modules` paths, direct
 `dist/*` imports) bypasses the package's `exports` map and breaks under
 strict bundler resolution.
@@ -15,7 +16,7 @@ strict bundler resolution.
 ## Vite 6+
 
 Vite's `?url` suffix turns any asset import into a content-hashed URL string.
-Use it for both dev and production:
+Use it when you want Vite to emit a content-hashed asset URL:
 
 ```typescript
 import init from 'libcascade';
@@ -59,7 +60,7 @@ await copyFile(src, 'public/opencascade_full.wasm');
 
 Then reference the public path:
 
-```typescript title="lib/ocjs-init.ts"
+```typescript title="lib/libcascade-init.ts"
 'use client';
 import init from 'libcascade';
 
@@ -109,7 +110,7 @@ above works unchanged.
 Webpack 5 handles wasm via `asset/resource` (preferred) or the legacy
 `file-loader`. Wire `locateFile` to the emitted URL:
 
-```typescript title="src/ocjs-init.ts"
+```typescript title="src/libcascade-init.ts"
 import init from 'libcascade';
 import wasmUrl from 'libcascade/wasm';
 
@@ -152,8 +153,8 @@ V3 docs. Use Vite, current Next.js, Bun, Node, Deno, or Webpack 5 instead.
 
 ## Common pitfalls
 
-- **`locateFile` is mandatory**. The single-file V3 build does not auto-discover
-  its wasm sibling — every consumer must provide a URL.
+- **Prefer zero configuration**. Add `locateFile` only when the deployed WASM
+  URL differs from the package-adjacent default.
 - **Don't bundle the wasm inline**. Bundling the 12+ MB binary as base64 explodes
   your JS payload and prevents the browser's wasm streaming compiler.
 - **Cache the `init` Promise**. Re-calling `init()` re-instantiates the wasm
@@ -177,8 +178,6 @@ Run the following **once** after `await init(...)` in every recipe below — it 
 ```typescript
 oc.BOPAlgo_Options.SetParallelMode(true);
 oc.BRepMesh_IncrementalMesh.SetParallelDefault(true);
-const pool = oc.OSD_ThreadPool.DefaultPool(-1);
-pool.SetNbDefaultThreadsToLaunch(pool.NbThreads());
 ```
 
 ### Vite 6+
@@ -191,8 +190,6 @@ const oc = await init({ locateFile: () => wasmUrl });
 
 oc.BOPAlgo_Options.SetParallelMode(true);
 oc.BRepMesh_IncrementalMesh.SetParallelDefault(true);
-const pool = oc.OSD_ThreadPool.DefaultPool(-1);
-pool.SetNbDefaultThreadsToLaunch(pool.NbThreads());
 ```
 
 ### Next.js 15 (App Router)
@@ -208,7 +205,7 @@ await mkdir('public', { recursive: true });
 await copyFile(src, 'public/opencascade_full_multi.wasm');
 ```
 
-```typescript title="lib/ocjs-init-multi.ts"
+```typescript title="lib/libcascade-init-multi.ts"
 'use client';
 import init from 'libcascade/multi';
 
@@ -217,8 +214,6 @@ export const getOcMulti = () =>
   (ocPromise ??= init({ locateFile: () => '/opencascade_full_multi.wasm' }).then((oc) => {
     oc.BOPAlgo_Options.SetParallelMode(true);
     oc.BRepMesh_IncrementalMesh.SetParallelDefault(true);
-    const pool = oc.OSD_ThreadPool.DefaultPool(-1);
-    pool.SetNbDefaultThreadsToLaunch(pool.NbThreads());
     return oc;
   }));
 ```
@@ -238,8 +233,6 @@ const oc = await init({ locateFile: (file: string) => join(WASM_DIR, file) });
 
 oc.BOPAlgo_Options.SetParallelMode(true);
 oc.BRepMesh_IncrementalMesh.SetParallelDefault(true);
-const pool = oc.OSD_ThreadPool.DefaultPool(-1);
-pool.SetNbDefaultThreadsToLaunch(pool.NbThreads());
 ```
 
 Per-call overrides (`SetRunParallel(true)`, `BRepMesh_IncrementalMesh(..., isInParallel=true)`) remain available for granular opt-in. See [Multi-threaded build — Per-call activation](./multi-threading#per-call-activation--granular).

@@ -1,0 +1,60 @@
+---
+title: init() function
+description: Default export of libcascade — signature, options, and singleton pattern.
+---
+
+`init` is the only runtime export of `libcascade`. It instantiates the WASM
+module and resolves to the bound OCCT runtime.
+
+```typescript
+import init from 'libcascade';
+
+const oc = await init();
+```
+
+The package finds its adjacent WASM file automatically in Node and compatible
+bundlers. Supply `locateFile` only when your bundler or deployment relocates
+the asset; see [Bundler & locateFile](../../guides/bundler-locatefile).
+
+## Options
+
+<auto-type-table path="../../../../../node_modules/libcascade/dist/opencascade_full.d.ts" name="InitOpenCascadeOptions" />
+
+## Memoised singleton pattern
+
+WASM instantiation is expensive. Memoise the Promise when several call sites
+share one runtime:
+
+```typescript
+import init from 'libcascade';
+
+let ocPromise: ReturnType<typeof init> | undefined;
+export const getOc = () => (ocPromise ??= init());
+```
+
+## Return type
+
+The resolved object exposes every bound class and namespace as instance
+properties (`oc.BRepPrimAPI_MakeBox`, `oc.TopoDS`) together with `oc.FS`,
+`oc.wasmMemory`, and exception helpers such as `oc.getExceptionMessage`.
+
+Named imports from `libcascade` are TypeScript types only:
+
+```typescript
+import init, { type OpenCascadeInstance, type TopoDS_Shape } from 'libcascade';
+```
+
+## Multi-threaded subpath
+
+`libcascade/multi` has the same default initializer and options contract:
+
+```typescript
+import init from 'libcascade/multi';
+
+const oc = await init();
+oc.BOPAlgo_Options.SetParallelMode(true);
+oc.BRepMesh_IncrementalMesh.SetParallelDefault(true);
+```
+
+Browser deployments also need cross-origin isolation. See
+[Multi-threaded build](../../guides/multi-threading).

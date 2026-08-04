@@ -10,7 +10,7 @@ writers depending on whether you need an assembly tree.
 
 ```typescript
 import type { TopoDS_Shape } from 'libcascade';
-import { getOc } from './ocjs-init';
+import { getOc } from './libcascade-init';
 
 export const shapeToStep = async (shape: TopoDS_Shape): Promise<Uint8Array> => {
   const oc = await getOc();
@@ -34,9 +34,9 @@ export const shapeToStep = async (shape: TopoDS_Shape): Promise<Uint8Array> => {
     throw new Error('STEP Write failed');
   }
 
-  const raw = oc.FS.readFile(path) as Uint8Array;
+  const bytes = oc.FS.readFile(path) as Uint8Array;
   oc.FS.unlink(path);
-  return new Uint8Array(raw);
+  return bytes;
 };
 ```
 
@@ -51,7 +51,7 @@ shape into an XCAF document first, then use `STEPCAFControl_Writer.Perform`.
 multi-file mode and emits an empty STEP body.
 
 ```typescript
-import { getOc } from './ocjs-init';
+import { getOc } from './libcascade-init';
 
 export const assemblyToStep = async (shapes: Array<{ name: string; shape: TopoDS_Shape }>) => {
   const oc = await getOc();
@@ -73,9 +73,9 @@ export const assemblyToStep = async (shapes: Array<{ name: string; shape: TopoDS
   const ok = writer.Perform(doc, path, progress);
   if (!ok) throw new Error('STEP assembly write failed');
 
-  const raw = oc.FS.readFile(path) as Uint8Array;
+  const bytes = oc.FS.readFile(path) as Uint8Array;
   oc.FS.unlink(path);
-  return new Uint8Array(raw);
+  return bytes;
 };
 ```
 
@@ -104,5 +104,4 @@ auto-detect schema and treat 5 and 6 interchangeably for pure geometry.
 - Check `IFSelect_RetDone` after **both** `Transfer` and `Write` — partial
   failures are silent otherwise.
 - Always `unlink` the MEMFS path after `FS.readFile` to free the wasm heap.
-- Copy bytes out of MEMFS (`new Uint8Array(raw)`) — the original view becomes
-  detached after `unlink`.
+- `FS.readFile` returns owned bytes that remain valid after `unlink`.

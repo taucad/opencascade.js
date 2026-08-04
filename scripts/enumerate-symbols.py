@@ -16,7 +16,7 @@ Parity with ``discover.py`` is enforced by
 ``tests/sentinel/test_enumeration_matches_discover.py``.
 
 Usage:
-    # Auto-detect OCCT at deps/OCCT (relative to opencascade.js root)
+    # Auto-detect OCCT at deps/OCCT (relative to the repository root)
     python3 scripts/enumerate-symbols.py
 
     # Explicit OCCT source path
@@ -134,10 +134,9 @@ def generate_yaml(classes, enums, typedefs, handle_classes: set[str]) -> str:
         lines.append(f"  - symbol: {sym}")
 
     # NOTE: TColStd_IndexedDataMapOfStringString and TopoDS_Bind_ are NOT
-    # re-emitted here — they are the canonical responsibility of
-    # BUILTIN_ADDITIONAL_BIND_CODE in src/ocjs_bindgen/embind_builtins.py
-    # (concatenated before this YAML's additionalBindCode at link time).
-    # Re-registering them here would emit two
+    # re-emitted here — they are the canonical responsibility of the built-in
+    # binding source in src/ocjs_bindgen/embind_builtins.py. Re-registering
+    # them here would emit two
     # `class_<…>("TColStd_IndexedDataMapOfStringString")` blocks — Embind
     # enforces uniqueness on JS public names and aborts Module()
     # instantiation with `BindingError: Cannot register public name 'X'
@@ -145,42 +144,8 @@ def generate_yaml(classes, enums, typedefs, handle_classes: set[str]) -> str:
     # here because BUILTIN registers `TopoDS` instead under a distinct
     # JS name; both can coexist.
     lines.extend([
-        "  additionalBindCode: |",
-        "    #include <TopoDS.hxx>",
-        "    #include <TopoDS_Vertex.hxx>",
-        "    #include <TopoDS_Edge.hxx>",
-        "    #include <TopoDS_Wire.hxx>",
-        "    #include <TopoDS_Face.hxx>",
-        "    #include <TopoDS_Shell.hxx>",
-        "    #include <TopoDS_Solid.hxx>",
-        "    #include <TopoDS_CompSolid.hxx>",
-        "    #include <TopoDS_Compound.hxx>",
-        "    #include <FairCurve_Batten.hxx>",
-        "    #include <FairCurve_MinimalVariation.hxx>",
-        "    #include <FairCurve_AnalysisCode.hxx>",
-        "    struct TopoDS_Cast {};",
-        "    using namespace emscripten;",
-        '    EMSCRIPTEN_BINDINGS(ocjs_additional) {',
-        '      function("FairCurve_Batten_Compute", optional_override([](FairCurve_Batten& self, int nbIter, double tol) -> int {',
-        "        FairCurve_AnalysisCode code;",
-        "        self.Compute(code, nbIter, tol);",
-        "        return static_cast<int>(code);",
-        "      }));",
-        '      function("FairCurve_MinimalVariation_Compute", optional_override([](FairCurve_MinimalVariation& self, int nbIter, double tol) -> int {',
-        "        FairCurve_AnalysisCode code;",
-        "        self.Compute(code, nbIter, tol);",
-        "        return static_cast<int>(code);",
-        "      }));",
-        '      class_<TopoDS_Cast>("TopoDS_Cast")',
-        '        .class_function("Edge", optional_override([](const TopoDS_Shape& s) -> TopoDS_Edge { return TopoDS::Edge(s); }))',
-        '        .class_function("Wire", optional_override([](const TopoDS_Shape& s) -> TopoDS_Wire { return TopoDS::Wire(s); }))',
-        '        .class_function("Face", optional_override([](const TopoDS_Shape& s) -> TopoDS_Face { return TopoDS::Face(s); }))',
-        '        .class_function("Vertex", optional_override([](const TopoDS_Shape& s) -> TopoDS_Vertex { return TopoDS::Vertex(s); }))',
-        '        .class_function("Shell", optional_override([](const TopoDS_Shape& s) -> TopoDS_Shell { return TopoDS::Shell(s); }))',
-        '        .class_function("Solid", optional_override([](const TopoDS_Shape& s) -> TopoDS_Solid { return TopoDS::Solid(s); }))',
-        '        .class_function("Compound", optional_override([](const TopoDS_Shape& s) -> TopoDS_Compound { return TopoDS::Compound(s); }))',
-        "        ;",
-        "    }",
+        "  additionalBindFiles:",
+        "  - full-bindings.cpp",
         "  emccFlags:",
         # Native WASM exception handling (matches OCJS_CONFIG=single-threaded
         # in nx.json which compiles every .o with -fwasm-exceptions). Without

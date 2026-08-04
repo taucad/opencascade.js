@@ -1,6 +1,6 @@
 ---
 title: YAML schema
-description: Every key the build YAML accepts — mainBuild, extraBuilds, additionalCppCode, additionalCppFiles, additionalBindCode.
+description: Every key the build YAML accepts — mainBuild, extraBuilds, additionalCppFiles, and additionalBindFiles.
 ---
 
 The build YAML controls which OCCT classes get bound, which C++ wrapper code
@@ -15,19 +15,15 @@ mainBuild:
     - symbol: <ClassName>
   emccFlags:
     - <flag>
-  additionalBindCode: |
-    EMSCRIPTEN_BINDINGS(custom) { ... }
+  additionalBindFiles:
+    - bindings/custom.cpp
 
 extraBuilds:
   - name: <string>
     bindings: [...]
     emccFlags: [...]
-    additionalBindCode: |
-      ...
-
-additionalCppCode: |
-  typedef opencascade::handle<Geom_Curve> Handle_Geom_Curve;
-  class MyWrapper { ... };
+    additionalBindFiles:
+      - bindings/variant.cpp
 
 additionalCppFiles:
   - path/to/extra.cpp
@@ -67,10 +63,12 @@ if missing from the list.
 Emscripten linker flags. See [Custom emcc flags](../guides/custom-emcc-flags)
 for the recommended baseline and per-flag rationale.
 
-### `mainBuild.additionalBindCode`
+### `mainBuild.additionalBindFiles`
 
-Per-build raw `EMSCRIPTEN_BINDINGS(...)` registrations compiled with
-`<emscripten/bind.h>` already included. See [Extend with C++](../guides/extend-with-cpp).
+Per-build `.cpp` files containing raw `EMSCRIPTEN_BINDINGS(...)`
+registrations. The files compile directly, may include their own helper
+implementation, and skip generated TypeScript bindings. See
+[Extend with C++](../guides/extend-with-cpp).
 
 ## Symbol resolution classes
 
@@ -78,8 +76,8 @@ Every YAML-requested symbol becomes a linked binding through exactly one of four
 
 1. **Direct compilation.** `bindings: - symbol: gp_Pnt` causes the generator to emit `build/bindings/gp_Pnt.cpp`, which `compileBindings.py` compiles into `build/compiled-bindings/gp_Pnt.cpp.o`. Detected by `ocjs_bindgen.link.manifest_registry.collect_compiled_symbols`. Reported as `satisfied_by_compiled` (count surfaces as `symbols.compiled`).
 2. **NCollection typedef alias.** `bindings: - symbol: TColgp_Array1OfPnt` resolves via the canonical mangled spelling `NCollection_Array1_gp_Pnt`; the linker substitutes the typedef at link time. Mapping lives in `build/ncollection-manifest.json`. Detected by `manifest_registry.load_ncollection_alias_index`. Reported under `symbols.alias_resolved` as `{alias, canonical}` entries.
-3. **Embind builtin.** OCJS's `BUILTIN_ADDITIONAL_BIND_CODE` block (`OCJS`, `TopoDS`, `TColStd_IndexedDataMapOfStringString`) registers Embind class wrappers with no `.cpp.o` of their own. Detected by `manifest_registry.builtin_binding_symbols` reading `build/additional-bind-symbols.json`.
-4. **Consumer `additionalBindCode`.** YAML's own `mainBuild.additionalBindCode` block undergoes the same Embind pathway. The link stage compiles `BUILTIN_ADDITIONAL_BIND_CODE + consumer additionalBindCode` into ONE translation unit so the AST producer emits a single `additional-bind-symbols.json` manifest covering both sources. Reported under `symbols.builtin` (no separate bucket).
+3. **Embind builtin.** libcascade's built-in binding source (`OCJS`, `TopoDS`, `TColStd_IndexedDataMapOfStringString`) registers Embind class wrappers with no generated binding object of their own. Detected by `manifest_registry.builtin_binding_symbols` reading `build/additional-bind-symbols.json`.
+4. **Consumer `additionalBindFiles`.** YAML's own `mainBuild.additionalBindFiles` undergoes the same Embind pathway. Each output compiles the built-in source plus its ordered consumer files as one translation unit; the AST producer records their registration-name union in `additional-bind-symbols.json`. Reported under `symbols.builtin` (no separate bucket).
 
 Anything that survives all four lookups lands in `symbols.missing` and triggers `validation_passed=false`. The link step also raises immediately via `yaml_build.verifyBindings` (no env-var gate) so a YAML asking for a symbol the toolchain cannot provide fails the link, not just the post-link audit.
 
@@ -92,7 +90,7 @@ Every mechanism above has exactly one **producer** — a pipeline stage with the
 | Manifest                                         | Producer                                                                                                                                                      | Consumer loader                                       |
 | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
 | `build/ncollection-manifest.json`                | `ocjs_bindgen.discover`                                                                                                                                       | `manifest_registry.load_ncollection_alias_index`      |
-| `build/additional-bind-symbols.json`             | `runBuild::getAdditionalBindCodeO()` (libclang AST via `ocjs_bindgen.ast.parse_additional_bind_code` + `ocjs_bindgen.ast.walker.extract_class_registrations`) | `manifest_registry.builtin_binding_symbols`           |
+| `build/additional-bind-symbols.json`             | `runBuild::getAdditionalBindFilesO()` (libclang AST via `ocjs_bindgen.ast.parse_binding_source` + `ocjs_bindgen.ast.walker.extract_class_registrations`) | `manifest_registry.builtin_binding_symbols`           |
 | `build/compiled-bindings/*.cpp.o`                | `compileBindings.py`                                                                                                                                          | `manifest_registry.collect_compiled_symbols`          |
 | `build/compiled-bindings/binding-report.json`    | `compileBindings.py`                                                                                                                                          | `validate-build.py::validate_binding_report`          |
 | `<variant>.provenance.json::nCollectionManifest` | `yaml_build.main` via `provenance.add_linking(ncollection_linked=, ncollection_total=, ncollection_dropped=)`                                                 | `generate-api-reference.mjs`, `scripts/docker-e2e-validate.sh` |
@@ -106,33 +104,24 @@ Same schema as `mainBuild`. Each entry produces a sibling wasm artifact.
 Useful for shipping multiple variants (e.g. baseline + relaxed-SIMD) from one
 YAML pass.
 
-## `additionalCppCode`
-
-Inline C++ injected into a generated `.cpp` file compiled with the same flags
-as the bindings TU. Common uses:
-
-1. Handle typedefs (`typedef opencascade::handle<T> Handle_T;`).
-2. Free-function helpers reachable from `additionalBindCode`.
-3. Small `value_object<T>` POD definitions.
-
 ## `additionalCppFiles`
 
-List of `.cpp` files concatenated onto `additionalCppCode` before custom-binding
-generation runs.
+Top-level list of `.cpp` files inspected by bindgen before generated custom
+bindings are compiled.
 
 ```yaml
-additionalCppCode: |
-  typedef opencascade::handle<Geom_BSplineSurface> Handle_Geom_BSplineSurface;
-
 additionalCppFiles:
   - wrappers/fair-curve.cpp
   - wrappers/shape-cast.cpp
 ```
 
-- Paths resolve relative to the YAML file's directory; absolute paths also accepted.
-- File contents are appended in declaration order.
-- `additionalCppCode` wins on conflict because it precedes file contents in the TU.
-- A missing file fails-loud at validate time.
+- Paths resolve relative to the YAML file's directory; absolute paths are accepted.
+- File contents are concatenated in declaration order and read as UTF-8.
+- Missing, unreadable, or non-file paths fail validation.
+- Normalized paths and SHA-256 digests are recorded in manifests and provenance.
+
+`additionalBindFiles` follows the same path, ordering, validation, and identity
+rules, but belongs inside each build block.
 
 ## `generateTypescriptDefinitions`
 
@@ -147,7 +136,7 @@ for ultra-fast iteration builds).
 
 `validate` checks the YAML against the schema and exits non-zero on any
 malformed entry, unknown key, duplicated symbol, or missing
-`additionalCppFiles` path. It does not run the C++ pipeline — pair it with
+`additionalCppFiles` or `additionalBindFiles` path. It does not run the C++ pipeline — pair it with
 `./build-wasm.sh link` to actually produce the wasm.
 
 ## Related

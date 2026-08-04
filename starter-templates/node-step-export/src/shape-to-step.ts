@@ -27,13 +27,13 @@ export async function shapeToStep(
     transferProgress,
   );
   if (status !== oc.IFSelect_ReturnStatus.IFSelect_RetDone) {
-    throw new Error(`OCJS: STEPControl_Writer.Transfer returned status=${String(status)}`);
+    throw new Error(`libcascade: STEPControl_Writer.Transfer returned status=${String(status)}`);
   }
 
   const tmp = '/out.step';
   const writeStatus = writer.Write(tmp);
   if (writeStatus !== oc.IFSelect_ReturnStatus.IFSelect_RetDone) {
-    throw new Error(`OCJS: STEPControl_Writer.Write returned status=${String(writeStatus)}`);
+    throw new Error(`libcascade: STEPControl_Writer.Write returned status=${String(writeStatus)}`);
   }
 
   const bytes = oc.FS.readFile(tmp);

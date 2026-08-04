@@ -1,4 +1,4 @@
-# Contributing to opencascade.js
+# Contributing to libcascade
 
 Contributions target `main`. The `occt-v8-emscripten-5` branch is an automated,
 fast-forward-only mirror retained as the head of the historical upstream pull

@@ -1,18 +1,18 @@
 """Embind built-in registration source.
 
-The literal C++ text compiled into every ``additionalBindCode`` translation
+The literal C++ text compiled with every ``additionalBindFiles`` translation
 unit at link time. Hosted as a module-level constant so the dedicated
 ``ocjs_bindgen.bind_symbols`` NX stage can parse it via libclang without
 importing ``ocjs_bindgen.link.yaml_build`` (which would transitively pull
 in the entire link driver — and thus break NX dep-graph isolation between
 the ``bind-symbols`` and ``link`` stages).
 
-Both this module and ``link.yaml_build`` import ``BUILTIN_ADDITIONAL_BIND_CODE``
+Both this module and ``link.yaml_build`` import ``BUILTIN_BINDINGS_SOURCE``
 from here so the link compile and the bind-symbols extractor always see
 byte-identical source. ``OCJS_RBV_PREAMBLE`` is included for the same
 reason — the binding preamble injected into every generated binding TU
 shares the forward-decl + inline-namespace helpers that
-``BUILTIN_ADDITIONAL_BIND_CODE`` itself depends on, so co-locating both
+``BUILTIN_BINDINGS_SOURCE`` itself depends on, so co-locating both
 constants keeps the producer/consumer surface in one file.
 """
 
@@ -42,7 +42,7 @@ namespace ocjs {
 }
 """
 
-BUILTIN_ADDITIONAL_BIND_CODE = r"""
+BUILTIN_BINDINGS_SOURCE = r"""
 #include <TopoDS.hxx>
 #include <TopoDS_Vertex.hxx>
 #include <TopoDS_Edge.hxx>

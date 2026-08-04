@@ -115,7 +115,9 @@ def test_nccollection_manifest_round_trips_through_finalize(
   assert sidecar["schema"] == "wasm-build-provenance-v2"
 
 
-def test_provenance_omits_execution_state(tmp_path, provenance_module) -> None:
+def test_provenance_omits_nondeterministic_execution_state(
+  tmp_path, provenance_module
+) -> None:
   sidecar = _finalised_sidecar(
     tmp_path,
     provenance_module,
@@ -127,7 +129,6 @@ def test_provenance_omits_execution_state(tmp_path, provenance_module) -> None:
   )
   forbidden = {
     "cacheHit",
-    "sourceFiles",
     "bindingFiles",
     "compileDuration_s",
     "linkDuration_s",
@@ -138,6 +139,7 @@ def test_provenance_omits_execution_state(tmp_path, provenance_module) -> None:
   assert forbidden.isdisjoint(sidecar["compilation"])
   assert forbidden.isdisjoint(sidecar["linking"])
   assert forbidden.isdisjoint(sidecar["postProcessing"])
+  assert sidecar["linking"]["sourceFiles"] == []
 
 
 def test_zero_ncollection_edge_case_still_round_trips(

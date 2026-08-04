@@ -4,7 +4,7 @@ description: Build a custom WASM via Docker — trim symbols, extend with C++, s
 ---
 
 Pull the multi-arch GHCR image, link a custom YAML, trim symbols to the surface you need, extend
-with your own C++ via `additionalCppCode`, and ship reproducible CI builds with provenance and SBOM.
+with file-backed C++, and ship reproducible CI builds with provenance and SBOM.
 
 <Cards>
   <Card title="Quickstart — Docker" href="/docs/toolchain/getting-started/quick-start-docker">
@@ -14,7 +14,7 @@ with your own C++ via `additionalCppCode`, and ship reproducible CI builds with 
     Reduce wasm size by binding only the OCCT classes your app uses.
   </Card>
   <Card title="Extend with C++" href="/docs/toolchain/guides/extend-with-cpp">
-    Add custom C++ via additionalCppCode, additionalCppFiles, and additionalBindCode.
+    Add generated C++ via additionalCppFiles or raw Embind via additionalBindFiles.
   </Card>
   <Card title="YAML schema" href="/docs/toolchain/reference/yaml-schema">
     Reference for the custom build YAML schema.
