@@ -853,7 +853,8 @@ def runBuild(
   if os.environ.get("OCJS_CLOSURE", "false") == "true":
     linkCmd.extend(["--closure", "1"])
   print(f"Linking {len(bindingsO)} bindings + {len(sourcesO)} sources ...", flush=True)
-  subprocess.check_call(linkCmd)
+  binaryen_env = {**os.environ, "BINARYEN_CORES": "1"}
+  subprocess.check_call(linkCmd, env=binaryen_env)
 
   wasmFile = output_dir + "/" + os.path.splitext(build["name"])[0] + ".wasm"
   emsdk = os.environ.get("EMSDK", "")
@@ -891,7 +892,7 @@ def runBuild(
           wasm_opt_flag_list.append(pass_name)
           wasmOptCmd.append(pass_name)
     wasmOptCmd.extend([wasmFile, "-o", wasmFile])
-    subprocess.check_call(wasmOptCmd)
+    subprocess.check_call(wasmOptCmd, env=binaryen_env)
     sizeAfter = os.path.getsize(wasmFile)
     reduction = (1 - sizeAfter / sizeBefore) * 100 if sizeBefore > 0 else 0
     print(f"wasm-opt: {sizeBefore / (1024*1024):.1f} MB -> {sizeAfter / (1024*1024):.1f} MB ({reduction:.1f}% reduction)", flush=True)
