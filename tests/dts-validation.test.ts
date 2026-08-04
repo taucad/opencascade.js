@@ -1,5 +1,5 @@
 /**
- * TypeScript declaration validation suite for opencascade.js builds.
+ * TypeScript declaration validation suite for libcascade builds.
  *
  * Parses generated .d.ts files using the TypeScript compiler API and validates:
  * - Symbol coverage against the build manifest
@@ -717,6 +717,40 @@ for (const target of SEMANTIC_GAP_TARGETS) {
     }
 
     const semanticAll = getAllDiagnostics(dts.program, dts.sourceFile);
+
+    it('should expose only the default initializer as a runtime ESM export', () => {
+      const exportedValues = dts.sourceFile.statements.flatMap((statement) => {
+        if (
+          !ts.isClassDeclaration(statement) &&
+          !ts.isEnumDeclaration(statement) &&
+          !ts.isFunctionDeclaration(statement) &&
+          !ts.isVariableStatement(statement) &&
+          !ts.isModuleDeclaration(statement)
+        ) return [];
+        const modifiers = ts.canHaveModifiers(statement) ? ts.getModifiers(statement) : undefined;
+        if (!modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword)) return [];
+        return [
+          modifiers.some((modifier) => modifier.kind === ts.SyntaxKind.DefaultKeyword)
+            ? 'default'
+            : statement.getText(dts.sourceFile).split(/\s+/).slice(0, 5).join(' '),
+        ];
+      });
+      expect(exportedValues).toEqual(['default']);
+    });
+
+    it('should expose OCCT declarations through type-only named exports', () => {
+      const namedExports = dts.sourceFile.statements.filter(
+        (statement): statement is ts.ExportDeclaration =>
+          ts.isExportDeclaration(statement) &&
+          statement.exportClause !== undefined &&
+          ts.isNamedExports(statement.exportClause) &&
+          statement.exportClause.elements.length > 0,
+      );
+      expect(namedExports.length).toBeGreaterThan(0);
+      expect(namedExports.every((declaration) => declaration.isTypeOnly)).toBe(true);
+      expect(dts.content).toContain('export type { BRepPrimAPI_MakeBox };');
+      expect(dts.content).toContain('export type { TopoDS_Shape };');
+    });
 
     // undeclared name leaks (TS2304/TS2552). The early-return in
     // resolve_type previously emitted spellings without validating they were

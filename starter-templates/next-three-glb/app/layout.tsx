@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 
 export const metadata: Metadata = {
-  title: 'opencascade.js + three.js GLB starter',
+  title: 'libcascade + three.js GLB starter',
   description: 'v3 starter: build a TopoDS shape, mesh to GLB, render in three.js inside Next 16',
 };
 

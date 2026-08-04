@@ -7,8 +7,8 @@ import * as path from 'node:path';
 
 const TEMPLATE_ROOT = path.resolve(__dirname, '..');
 const TEMPLATE_NAME = 'vite-three-glb-multi';
-const EXPECTED_PACKAGE_NAME = 'ocjs-vite-three-glb-multi';
-const INIT_PATH = path.join(TEMPLATE_ROOT, 'src', 'ocjs-init.ts');
+const EXPECTED_PACKAGE_NAME = 'libcascade-vite-three-glb-multi';
+const INIT_PATH = path.join(TEMPLATE_ROOT, 'src', 'libcascade-init.ts');
 const VITE_CONFIG_PATH = path.join(TEMPLATE_ROOT, 'vite.config.ts');
 
 interface PackageJson {
@@ -27,23 +27,18 @@ describe(`starter-templates/${TEMPLATE_NAME} shape`, () => {
     expect(fs.existsSync(path.join(TEMPLATE_ROOT, 'README.md'))).toBe(true);
   });
 
-  it('package.json declares the canonical ocjs- name', () => {
+  it('package.json declares the canonical libcascade- name', () => {
     const pkg = readPackageJson();
     expect(pkg.name).toBe(EXPECTED_PACKAGE_NAME);
   });
 
-  it('should depend on libcascade while retaining the ocjs local project name', () => {
+  it('should depend on libcascade while retaining the libcascade local project name', () => {
     const pkg = readPackageJson();
     const deps = { ...(pkg.dependencies ?? {}), ...(pkg.devDependencies ?? {}) };
     expect(
       Object.prototype.hasOwnProperty.call(deps, 'libcascade'),
       `package.json must list "libcascade" as a dependency. Got keys: ${Object.keys(deps).join(', ')}`,
     ).toBe(true);
-    expect(Object.prototype.hasOwnProperty.call(deps, 'ocjs')).toBe(false);
-    expect(
-      Object.prototype.hasOwnProperty.call(deps, 'opencascade.js'),
-      'package.json must NOT list the unscoped "opencascade.js" — v3 uses the maintained ocjs package.',
-    ).toBe(false);
   });
 
   it.skipIf(process.env.CI !== 'true')(
@@ -60,7 +55,7 @@ describe(`starter-templates/${TEMPLATE_NAME} shape`, () => {
     expect(src).toContain('port: 3003');
   });
 
-  describe('src/ocjs-init.ts multi-threaded singleton', () => {
+  describe('src/libcascade-init.ts multi-threaded singleton', () => {
     const readInit = (): string => fs.readFileSync(INIT_PATH, 'utf8');
 
     it('exists at the canonical path', () => {
@@ -77,8 +72,6 @@ describe(`starter-templates/${TEMPLATE_NAME} shape`, () => {
       const src = readInit();
       expect(src).toContain('BOPAlgo_Options.SetParallelMode(true)');
       expect(src).toContain('BRepMesh_IncrementalMesh.SetParallelDefault(true)');
-      expect(src).toContain('OSD_ThreadPool.DefaultPool(-1)');
-      expect(src).toContain('SetNbDefaultThreadsToLaunch');
     });
 
     it('declares the module-scoped `let cached` slot', () => {

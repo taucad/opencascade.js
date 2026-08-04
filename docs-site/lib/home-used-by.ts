@@ -1,4 +1,4 @@
-/** Production apps listed in projects-using-opencascade-js.mdx — keep in sync with that page. */
+/** Production apps listed in projects-using-libcascade.mdx — keep in sync with that page. */
 export const usedByProjects = [
   { name: 'ArchiYou', href: 'https://archiyou.com/' },
   { name: 'BitByBit', href: 'https://bitbybit.dev/' },

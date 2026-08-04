@@ -21,6 +21,7 @@ from ocjs_bindgen.link.yaml_build import (
   _STRICT_TYPES_REWRITE_BUDGET,
   _count_unknown_tokens,
   _enforce_strict_types_gate,
+  _internalize_runtime_declarations,
 )
 
 
@@ -34,8 +35,7 @@ def _reset_diagnostics_and_env(monkeypatch):
 
 
 # ----------------------------------------------------------------------------
-# `_count_unknown_tokens` — bare-identifier counter with the
-# `Record<string, unknown>` baseline excluded.
+# `_count_unknown_tokens` — bare-identifier counter.
 # ----------------------------------------------------------------------------
 
 
@@ -44,25 +44,9 @@ def test_count_unknown_zero_for_clean_source() -> None:
   assert _count_unknown_tokens(source) == 0
 
 
-def test_count_unknown_excludes_record_string_unknown_baseline() -> None:
-  """The hand-written `init(options?: Record<string, unknown>)` template is
-  emitted by every build and must NOT count as a rewrite. Two occurrences
-  of `Record<string, unknown>` should net out to zero rewrites."""
-  source = (
-    "export default function init(options?: Record<string, unknown>): "
-    "Promise<OpenCascadeInstance>;\n"
-    "export type Init2 = (o: Record<string, unknown>) => void;\n"
-  )
-  assert _count_unknown_tokens(source) == 0
-
-
 def test_count_unknown_detects_method_signature_rewrite() -> None:
-  """A method whose return type was rewritten to `: unknown` is a smoking
-  gun — must be detected. Mixed with the baseline `Record<string, unknown>`
-  the count returns 1 (one rewrite, baseline excluded)."""
+  """A method rewritten to `unknown` is a smoking gun and must be detected."""
   source = (
-    "export default function init(options?: Record<string, unknown>): "
-    "Promise<OpenCascadeInstance>;\n"
     "export declare class Poly_Triangulation {\n"
     "  MapNodeArray(): unknown;\n"
     "}\n"
@@ -89,6 +73,26 @@ def test_count_unknown_handles_multiple_rewrites() -> None:
     "method3(): Array<unknown>;\n"
   )
   assert _count_unknown_tokens(source) == 3
+
+
+def test_runtime_declarations_are_type_only_exports() -> None:
+  source, exports = _internalize_runtime_declarations(
+    "export declare class Foo {}\n"
+    "export declare const Kind: { A: Kind };\n"
+    "export type Kind = 'A';\n"
+    "export interface Options {}\n"
+    "export declare namespace FS { function readFile(): Uint8Array }\n"
+    "export declare function getExceptionMessage(exception: unknown): string;\n"
+  )
+
+  assert "export declare" not in source
+  assert "declare class Foo" in source
+  assert "declare const Kind" in source
+  assert "type Kind" in source
+  assert "interface Options" in source
+  assert "declare namespace FS" in source
+  assert "declare function getExceptionMessage" in source
+  assert exports == ["Foo", "Kind", "Options"]
 
 
 # ----------------------------------------------------------------------------

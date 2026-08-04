@@ -9,7 +9,7 @@
  * canonical multi-Handle elision case.
  *
  * Validates the EM_JS-registered shared disposer wired by
- * `BUILTIN_ADDITIONAL_BIND_CODE`:
+ * `BUILTIN_BINDINGS_SOURCE`:
  *   - The container exposes a callable `[Symbol.dispose]` member.
  *   - Calling the disposer deletes every owned embind handle field.
  *   - The `using` declaration drives the disposer at scope exit.

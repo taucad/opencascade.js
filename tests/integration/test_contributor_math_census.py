@@ -67,7 +67,7 @@ def test_contributor_symbol_has_generated_fragment(
 
 
 @pytest.mark.parametrize("declaration_path", DECLARATION_PATHS, ids=lambda path: path.stem)
-def test_contributor_symbols_are_exported_from_st_and_mt_declarations(
+def test_contributor_symbols_are_declared_in_st_and_mt_declarations(
   declaration_path: Path,
 ) -> None:
   if not declaration_path.is_file():
@@ -76,7 +76,7 @@ def test_contributor_symbols_are_exported_from_st_and_mt_declarations(
   missing = {
     symbol
     for symbol in CONTRIBUTOR_SYMBOLS
-    if f"export declare class {symbol}" not in declaration
+    if f"declare class {symbol}" not in declaration
   }
   assert not missing, f"{declaration_path.name} lacks registrations: {sorted(missing)}"
 

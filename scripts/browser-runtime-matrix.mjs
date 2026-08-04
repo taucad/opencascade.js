@@ -41,7 +41,6 @@ try {
   if (${JSON.stringify(variant)} === 'multi') {
     const pool = oc.OSD_ThreadPool.DefaultPool(-1);
     owned.push(pool);
-    pool.SetNbDefaultThreadsToLaunch(pool.NbThreads());
     oc.BRepMesh_IncrementalMesh.SetParallelDefault(true);
     const mesh = new oc.BRepMesh_IncrementalMesh(shape, 0.1, false, 0.1, true);
     const progress = new oc.Message_ProgressRange();

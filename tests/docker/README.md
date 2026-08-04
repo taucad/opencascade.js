@@ -33,7 +33,7 @@ step. Local runs leave it unset and exercise the custom multi-threaded fixture.
 
 ## How it works
 
-- `docker-helpers.ts` stages each fixture into a fresh per-test workdir under
+- `docker-helpers.ts` stages the fixture source directory into a fresh per-test workdir under
   `tests/docker/.work/<name>/` (gitignored, inside the repo so Docker Desktop's
   default `/Users` file sharing exposes it as `/src`) and runs the image with
   the documented single-mount Quickstart:
@@ -53,7 +53,7 @@ step. Local runs leave it unset and exercise the custom multi-threaded fixture.
 
 | Fixture                  | Image  | Verifies |
 | ------------------------ | ------ | -------- |
-| `simple.yml`             | single | Inline `additionalCppCode` class is bound; OCCT instantiates; unlisted `TopoDS_Face` is filtered out |
+| `simple.yml`             | single | `additionalCppFiles` class is bound; OCCT instantiates; unlisted `TopoDS_Face` is filtered out |
 | `errorUnknownProp1.yml`  | single | Unknown key nested under `mainBuild` is rejected (non-zero exit) |
 | `errorUnknownProp2.yml`  | single | Unknown top-level key is rejected (non-zero exit) |
 | `multi-threaded.yml`     | multi  | pthread module reports `OSD_ThreadPool.NbThreads() > 1` and meshes a 50-sphere compound in parallel |

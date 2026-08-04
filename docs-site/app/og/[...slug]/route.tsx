@@ -27,7 +27,7 @@ export const GET = async (_request: Request, { params }: RouteParams): Promise<R
           fontFamily: 'sans-serif',
         }}
       >
-        <div style={{ fontSize: 28, opacity: 0.75 }}>OpenCascade.js</div>
+        <div style={{ fontSize: 28, opacity: 0.75 }}>libcascade</div>
         <div style={{ fontSize: 64, fontWeight: 700, marginTop: 24, lineHeight: 1.15 }}>{title}</div>
         {description ? (
           <div style={{ fontSize: 28, marginTop: 28, opacity: 0.85, lineHeight: 1.35 }}>

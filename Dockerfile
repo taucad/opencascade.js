@@ -1,4 +1,4 @@
-# opencascade.js — OCCT V8 WASM build image
+# libcascade — OCCT V8 WASM build image
 #
 # Build:
 #   DOCKER_BUILDKIT=1 docker build -t opencascade-js .
@@ -84,7 +84,7 @@
 # ═════════════════════════════════════════════════════════════════════════════
 FROM emscripten/emsdk:5.0.1@sha256:c89732ef63a56de5a96395c5a8c1c7904f7420131a045406e6fedc4cbe1cc198 AS deps-base
 
-LABEL org.opencontainers.image.title="opencascade.js (deps-base)" \
+LABEL org.opencontainers.image.title="libcascade (deps-base)" \
       org.opencontainers.image.description="OS toolchain + dependency clones (emsdk, Node 24, uv, Python 3.14, OCCT, rapidjson, freetype, LLVM 17 — header-trimmed)"
 
 # ── System packages ─────────────────────────────────────────────────────────
@@ -361,7 +361,7 @@ ARG VERSION
 ARG SOURCE_URL=https://github.com/taucad/opencascade.js
 ENV OCJS_SOURCE_COMMIT="${REVISION}" \
     SOURCE_DATE_EPOCH="${OCJS_SOURCE_DATE_EPOCH}"
-LABEL org.opencontainers.image.title="opencascade.js (bindgen-base)" \
+LABEL org.opencontainers.image.title="libcascade (bindgen-base)" \
       org.opencontainers.image.description="Custom-bindings starting point: OCCT patches + PCH + generate index pre-baked (.cpp sources pruned; re-run generate against your YAML)" \
       org.opencontainers.image.source="${SOURCE_URL}" \
       org.opencontainers.image.url="${SOURCE_URL}" \
@@ -449,8 +449,8 @@ ARG VERSION
 ARG SOURCE_URL=https://github.com/taucad/opencascade.js
 ENV OCJS_SOURCE_COMMIT="${REVISION}" \
     SOURCE_DATE_EPOCH="${OCJS_SOURCE_DATE_EPOCH}"
-LABEL org.opencontainers.image.title="opencascade.js (single-threaded)" \
-      org.opencontainers.image.description="OpenCASCADE.js single-threaded WASM build image (warm cache, ≤5min link)" \
+LABEL org.opencontainers.image.title="libcascade (single-threaded)" \
+      org.opencontainers.image.description="libcascade single-threaded WASM build image (warm cache, ≤5min link)" \
       org.opencontainers.image.source="${SOURCE_URL}" \
       org.opencontainers.image.url="${SOURCE_URL}" \
       org.opencontainers.image.revision="${REVISION}" \
@@ -483,8 +483,8 @@ ARG VERSION
 ARG SOURCE_URL=https://github.com/taucad/opencascade.js
 ENV OCJS_SOURCE_COMMIT="${REVISION}" \
     SOURCE_DATE_EPOCH="${OCJS_SOURCE_DATE_EPOCH}"
-LABEL org.opencontainers.image.title="opencascade.js (multi-threaded)" \
-      org.opencontainers.image.description="OpenCASCADE.js multi-threaded WASM build image (requires COOP/COEP on consumer pages)" \
+LABEL org.opencontainers.image.title="libcascade (multi-threaded)" \
+      org.opencontainers.image.description="libcascade multi-threaded WASM build image (requires COOP/COEP on consumer pages)" \
       org.opencontainers.image.source="${SOURCE_URL}" \
       org.opencontainers.image.url="${SOURCE_URL}" \
       org.opencontainers.image.revision="${REVISION}" \

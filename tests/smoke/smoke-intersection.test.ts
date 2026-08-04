@@ -6,7 +6,7 @@
  * with finite parameter ranges (not RealFirst/RealLast sentinels like ±2e+100).
  *
  * This test isolates the issue from the replicad layer to determine if the
- * problem is in opencascade.js bindings or in replicad's usage.
+ * problem is in libcascade bindings or in replicad's usage.
  */
 import { describe, it, expect, beforeAll } from 'vitest';
 import { initOC, getOC, wasmExists } from './helpers.js';

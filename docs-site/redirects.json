@@ -9,7 +9,7 @@
   { "source": "/docs/advanced/multi-threading/custom-build", "destination": "/docs/toolchain/guides/multi-threading", "permanent": true },
   { "source": "/docs/developer-docs/overview", "destination": "/docs/toolchain/concepts/bindgen-pipeline", "permanent": true },
   { "source": "/docs/concepts/ncollection-and-handles", "destination": "/docs/package/concepts/handles-and-collections", "permanent": true },
-  { "source": "/docs/about", "destination": "/docs/package/getting-started/what-is-opencascade-js", "permanent": true },
+  { "source": "/docs/about", "destination": "/docs/package/getting-started/what-is-libcascade", "permanent": true },
   { "source": "/docs/app-dev-workflow/workflow", "destination": "/docs", "permanent": true },
   { "source": "/docs/app-dev-workflow/pre-built", "destination": "/docs/package/getting-started/quick-start-npm", "permanent": true },
   { "source": "/docs/examples/polygon", "destination": "/docs/package/examples/polygon-extrusion", "permanent": true },

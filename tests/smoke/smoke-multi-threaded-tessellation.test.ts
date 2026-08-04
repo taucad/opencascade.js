@@ -28,7 +28,6 @@ describe.skipIf(!multiWasmExists)('Smoke: multi-threaded parallel tessellation',
 
       oc.BRepMesh_IncrementalMesh.SetParallelDefault(true);
       using pool = oc.OSD_ThreadPool.DefaultPool(-1);
-      pool.SetNbDefaultThreadsToLaunch(pool.NbThreads());
       expect(pool.NbThreads()).toBeGreaterThan(1);
 
       using compound = new oc.TopoDS_Compound();

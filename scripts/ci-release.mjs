@@ -33,6 +33,46 @@ const validateReleaseFiles = (files, prerelease) => {
   assert(unexpected.length === 0, `release commit has unexpected files: ${unexpected.join(', ')}`);
 };
 
+export const hasReleaseNotes = (changelog, version) =>
+  changelog.split(/\r?\n/).some((line) =>
+    line === `# ${version}` ||
+    line === `## ${version}` ||
+    line.startsWith(`# ${version} (`) ||
+    line.startsWith(`## ${version} (`));
+
+const deriveReleasePublication = ({
+  common,
+  packageMatch,
+  packageVersion,
+  commitSubject,
+  changedFiles,
+  changelog,
+}) => {
+  const releaseMatch = RELEASE_SUBJECT.exec(commitSubject);
+  assert(releaseMatch, `release source is not a release commit: ${commitSubject}`);
+  assert(
+    releaseMatch[1] === packageVersion,
+    `release subject ${releaseMatch[1]} does not match ${packageVersion}`,
+  );
+  const prerelease = packageMatch[4] !== undefined;
+  if (prerelease) {
+    assert(/^beta\.[1-9]\d*$/.test(packageMatch[4]), `unsupported release prerelease: ${packageMatch[4]}`);
+  }
+  validateReleaseFiles(changedFiles, prerelease);
+  assert(hasReleaseNotes(changelog, packageVersion), `CHANGELOG.md has no ${packageVersion} release section`);
+  return {
+    ...common,
+    version: packageVersion,
+    channel: prerelease ? 'beta' : 'latest',
+    npmPublish: true,
+    ghcrPromote: true,
+    isRelease: true,
+    kind: prerelease ? 'beta-release' : 'stable-release',
+    releaseTag: `v${packageVersion}`,
+    prerelease,
+  };
+};
+
 /**
  * @param {{
  *   event: string,
@@ -42,6 +82,9 @@ const validateReleaseFiles = (files, prerelease) => {
  *   packageVersion: string,
  *   commitSubject?: string,
  *   changedFiles?: string[],
+ *   operation?: string,
+ *   requestedVersion?: string,
+ *   changelog?: string,
  * }} input
  */
 export const deriveRelease = ({
@@ -52,6 +95,9 @@ export const deriveRelease = ({
   packageVersion,
   commitSubject = '',
   changedFiles = [],
+  operation = 'canary',
+  requestedVersion = '',
+  changelog = '',
 }) => {
   assert(SHA.test(sha), 'sha must be a lowercase 40-character hexadecimal commit');
   assert(/^\d+$/.test(String(commitEpoch)), 'commitEpoch must be a non-negative integer');
@@ -78,6 +124,25 @@ export const deriveRelease = ({
   }
 
   if (event === 'workflow_dispatch') {
+    assert(
+      operation === 'canary' || operation === 'resume-release',
+      `unsupported manual operation: ${operation}`,
+    );
+    if (operation === 'resume-release') {
+      assert(ref === 'refs/heads/main', `release resume must run from protected main: ${ref}`);
+      assert(
+        requestedVersion === packageVersion,
+        `requested release ${requestedVersion} does not match ${packageVersion}`,
+      );
+      return deriveReleasePublication({
+        common,
+        packageMatch,
+        packageVersion,
+        commitSubject,
+        changedFiles,
+        changelog,
+      });
+    }
     assert(ref.startsWith('refs/heads/'), `manual canary ref must be a branch: ${ref}`);
     return {
       ...common,
@@ -115,24 +180,14 @@ export const deriveRelease = ({
     };
   }
 
-  const subjectVersion = releaseMatch[1];
-  assert(subjectVersion === packageVersion, `release subject ${subjectVersion} does not match ${packageVersion}`);
-  const prerelease = packageMatch[4] !== undefined;
-  if (prerelease) {
-    assert(/^beta\.[1-9]\d*$/.test(packageMatch[4]), `unsupported release prerelease: ${packageMatch[4]}`);
-  }
-  validateReleaseFiles(changedFiles, prerelease);
-  return {
-    ...common,
-    version: packageVersion,
-    channel: prerelease ? 'beta' : 'latest',
-    npmPublish: true,
-    ghcrPromote: true,
-    isRelease: true,
-    kind: prerelease ? 'beta-release' : 'stable-release',
-    releaseTag: `v${packageVersion}`,
-    prerelease,
-  };
+  return deriveReleasePublication({
+    common,
+    packageMatch,
+    packageVersion,
+    commitSubject,
+    changedFiles,
+    changelog,
+  });
 };
 
 const parseArgs = (argv) =>
@@ -156,6 +211,9 @@ if (process.argv[1] === new URL(import.meta.url).pathname) {
       packageVersion: args['package-version'],
       commitSubject: args['commit-subject'],
       changedFiles,
+      operation: args.operation,
+      requestedVersion: args['requested-version'],
+      changelog: fs.readFileSync('CHANGELOG.md', 'utf8'),
     });
     const lines = Object.entries(release).map(
       ([key, value]) => `${key.replace(/[A-Z]/g, (character) => `_${character.toLowerCase()}`)}=${value}`,

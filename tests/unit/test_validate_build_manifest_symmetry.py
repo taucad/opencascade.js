@@ -17,7 +17,7 @@ without coupling the test to the link's actual binding shape):
 * 2 NCollection typedef aliases whose canonical IS compiled —
   ``alias_resolved`` for the alias names; ``satisfied_by_compiled`` for
   the canonical when the alias appears as requested binding
-* 1 `BUILTIN_ADDITIONAL_BIND_CODE`-style registration — must land in
+* 1 `BUILTIN_BINDINGS_SOURCE`-style registration — must land in
   ``builtin``
 * 1 binding with no `.cpp.o`, no alias, no builtin entry — must land
   in ``truly_missing`` and trip `validation_passed=False`
@@ -25,6 +25,7 @@ without coupling the test to the link's actual binding shape):
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 import os
@@ -250,6 +251,43 @@ def test_validate_symbols_passes_iff_truly_missing_empty(symmetry_build) -> None
   # entry can never affect resolution of other entries.
   assert failing["alias_resolved"] == passing["alias_resolved"]
   assert failing["builtin"] == passing["builtin"]
+
+
+def test_source_manifest_preserves_field_and_file_order(tmp_path) -> None:
+  vb = _load_validate_build_module()
+  for name, content in {
+    "first.cpp": "FIRST\n",
+    "second.cpp": "SECOND\n",
+    "main.cpp": "MAIN\n",
+    "extra.cpp": "EXTRA\n",
+  }.items():
+    (tmp_path / name).write_text(content, encoding="utf-8")
+
+  config = {
+    "additionalCppFiles": ["first.cpp", "second.cpp"],
+    "mainBuild": {"additionalBindFiles": ["main.cpp"]},
+    "extraBuilds": [{"additionalBindFiles": ["extra.cpp"]}],
+  }
+  entries = vb.resolve_config_source_manifest(str(tmp_path / "build.yml"), config)
+
+  assert [(entry["field"], entry["path"]) for entry in entries] == [
+    ("additionalCppFiles", "first.cpp"),
+    ("additionalCppFiles", "second.cpp"),
+    ("mainBuild.additionalBindFiles", "main.cpp"),
+    ("extraBuilds[0].additionalBindFiles", "extra.cpp"),
+  ]
+  assert entries[0]["sha256"] == hashlib.sha256(b"FIRST\n").hexdigest()
+
+
+def test_source_manifest_fails_for_missing_cpp_file(tmp_path) -> None:
+  vb = _load_validate_build_module()
+  config = {
+    "additionalCppFiles": ["missing.cpp"],
+    "mainBuild": {},
+    "extraBuilds": [],
+  }
+  with pytest.raises(FileNotFoundError, match="additionalCppFiles"):
+    vb.resolve_config_source_manifest(str(tmp_path / "build.yml"), config)
 
 
 def test_validate_symbols_accepts_yaml_custom_compiled_object(

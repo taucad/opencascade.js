@@ -78,7 +78,7 @@ def test_link_target_depends_transitively_on_bind_symbols() -> None:
 
 
 def test_bind_symbols_target_depends_on_pch() -> None:
-  """`bind-symbols` parses BUILTIN + consumer additionalBindCode with
+  """`bind-symbols` parses BUILTIN + consumer additionalBindFiles with
   libclang against `build/occt-includes/`, which `step_pch` produces.
   Without the `pch` dep, the libclang parse would fail on a fresh tree
   with "TopoDS.hxx not found".

@@ -26,7 +26,7 @@ await fs.mkdir(PUBLIC_DIR, { recursive: true });
 await fs.copyFile(SRC, DEST);
 const stat = await fs.stat(DEST);
 console.log(
-  `[ocjs-next-three-glb] copied opencascade_full.wasm (${stat.size} bytes) ` +
+  `[libcascade-next-three-glb] copied opencascade_full.wasm (${stat.size} bytes) ` +
     `from ${path.relative(PROJECT_ROOT, SRC)} to ${path.relative(PROJECT_ROOT, DEST)}`,
 );
 

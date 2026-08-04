@@ -1,5 +1,5 @@
 {
-  "name": "ocjs-next-three-glb",
+  "name": "libcascade-next-three-glb",
   "private": true,
   "version": "0.0.0",
   "scripts": {
@@ -8,7 +8,7 @@
     "start": "next start --port 3000",
     "typecheck": "tsc --noEmit",
     "postinstall": "node ./scripts/copy-wasm.mjs",
-    "smoke": "node ../_shared/smoke-render.mjs --url http://localhost:3000 --canvas '#ocjs-canvas canvas' --screenshot smoke.png"
+    "smoke": "node ../_shared/smoke-render.mjs --url http://localhost:3000 --canvas '#libcascade-canvas canvas' --screenshot smoke.png"
   },
   "dependencies": {
     "@react-three/drei": "^10.7.7",

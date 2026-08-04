@@ -24,6 +24,7 @@ from ocjs_bindgen.config.flags import (
     validate_build_flags,
 )
 from ocjs_bindgen.config.paths import BUILD_DIR, OCJS_ROOT, PCH_FILE, getFlatIncludePaths
+from ocjs_bindgen.config.yaml_sources import resolve_source_files, source_file_manifest
 from ocjs_bindgen.link.manifest_registry import (
     builtin_binding_symbols as _builtin_binding_symbols,
 )
@@ -75,24 +76,15 @@ _ncollection_link_stats: dict[str, int] = {
 #
 # Tunable so that diagnostic non-shipping builds can opt out cleanly.
 _STRICT_TYPES_REWRITE_BUDGET = 0
-# Tokens used to detect `: unknown;` / `: unknown)` / `<unknown,...>` rewrites
-# without false-positives on `Record<string, unknown>` (which appears verbatim
-# in the hand-written `init(options?: ...)` signature and is NOT a rewrite).
+# Tokens used to detect `: unknown;` / `: unknown)` / `<unknown,...>` rewrites.
 _UNKNOWN_TOKEN_RE = re.compile(
   r"(?<![A-Za-z0-9_])unknown(?![A-Za-z0-9_])"
 )
-_RECORD_STRING_UNKNOWN_LITERAL = "Record<string, unknown>"
 
 
 def _count_unknown_tokens(source: str) -> int:
-  """Return the number of bare `unknown` identifier tokens in `source`,
-  excluding the hand-written `Record<string, unknown>` init signature which
-  contributes a known constant baseline of one occurrence per build."""
-  hits = len(_UNKNOWN_TOKEN_RE.findall(source))
-  # Subtract the literal that's emitted unconditionally by the init signature
-  # template so a clean build reports zero rewrites instead of two.
-  hits -= source.count(_RECORD_STRING_UNKNOWN_LITERAL)
-  return max(0, hits)
+  """Return the number of bare `unknown` identifier tokens in `source`."""
+  return len(_UNKNOWN_TOKEN_RE.findall(source))
 
 
 def _render_type_only_aliases(
@@ -171,7 +163,7 @@ def _enforce_strict_types_gate(
   if rewrites_to_unknown > _STRICT_TYPES_REWRITE_BUDGET:
     candidates = []
     for line in typescriptDefinitionOutput.splitlines():
-      if _UNKNOWN_TOKEN_RE.search(line) and _RECORD_STRING_UNKNOWN_LITERAL not in line:
+      if _UNKNOWN_TOKEN_RE.search(line):
         candidates.append(line.strip())
         if len(candidates) >= 10:
           break
@@ -233,9 +225,9 @@ def _enforce_strict_types_gate(
 # `LinkRewriter` chain that future passes (e.g. `RedundantUnknownAliasDropper`)
 # can plug into without re-touching the link driver.
 # Forward-declaration + inline-namespace preamble injected into BOTH the
-# additionalBindCode TU AND every generated binding TU (via embindPreamble in
+# binding-source TU AND every generated binding TU (via embindPreamble in
 # generateBindings.py). The EM_JS *definition* lives only in the
-# additionalBindCode TU (a regular C function — one definition only) so the
+# binding-source TU (a regular C function — one definition only) so the
 # linker resolves the symbol once; the per-binding TUs see the namespace
 # helpers and an extern "C" forward decl. Without this in the binding
 # preamble, every binding that references `::ocjs::getRbvDispose()` fails to
@@ -247,7 +239,7 @@ def _enforce_strict_types_gate(
 # from there so the link compile and the bind-symbols extractor always see
 # byte-identical source.
 from ocjs_bindgen.embind_builtins import (  # noqa: E402
-    BUILTIN_ADDITIONAL_BIND_CODE,
+    BUILTIN_BINDINGS_SOURCE,
 )
 from ocjs_bindgen.link.rewrite import (  # noqa: E402
     replace_undeclared_with_unknown as _replace_undeclared_with_unknown,
@@ -305,7 +297,7 @@ def verifyBindings(
     print(
       f"INFO: {len(builtin_hits)} of {len(bindings)} requested bindings "
       f"resolve via Embind builtin registration in the link-stage "
-      f"additionalBindCode TU:",
+      f"binding-source TU:",
       flush=True,
     )
     for name in sorted(builtin_hits)[:20]:
@@ -371,7 +363,7 @@ _CUSTOM_CODE_SOURCE_TAG = "__custom__"
 
 
 # R10 — OCCT-internal deprecation pragmas fired transitively via
-# `BUILTIN_ADDITIONAL_BIND_CODE`. Headers `NCollection_Vector.hxx` and
+# `BUILTIN_BINDINGS_SOURCE`. Headers `NCollection_Vector.hxx` and
 # `TColStd_IndexedDataMapOfStringString.hxx` emit `#pragma message(...)` on
 # every include (clang reports them under `[-W#pragma-messages]`). The
 # headers are OCCT-internal and not actionable from OCJS — filter the
@@ -444,7 +436,7 @@ def _compute_yaml_class_scope(
       converge on the next link cycle; replaces the legacy
       `_NCOLLECTION_TOKEN_RE` regex scrape of the rendered `.d.ts`),
     - every custom-code class compiled into `build/bindings/myMain.h/`
-      (these classes are linked into the bundle by the additionalCppCode
+      (these classes are linked into the bundle by the additionalCppFiles
       pipeline, so any NCollection they reference is reachable),
     - the `__custom__` sentinel so future discoveries tagged with
       `CUSTOM_CODE_SOURCE_TAG` survive unconditionally.
@@ -625,22 +617,6 @@ def _warn_consistency(build):
     )
 
 
-_KNOWN_HEAP_METHODS = frozenset({
-  'HEAP8', 'HEAPU8', 'HEAP16', 'HEAPU16',
-  'HEAP32', 'HEAPU32', 'HEAPF32', 'HEAPF64',
-})
-
-_HEAP_JSDOC = {
-  'HEAP8':   'Signed 8-bit integer view of the WASM linear memory. Index by byte offset.',
-  'HEAPU8':  'Unsigned 8-bit integer view of the WASM linear memory. Index by byte offset.',
-  'HEAP16':  'Signed 16-bit integer view of the WASM linear memory. Index by byte offset / 2.',
-  'HEAPU16': 'Unsigned 16-bit integer view of the WASM linear memory. Index by byte offset / 2.',
-  'HEAP32':  'Signed 32-bit integer view of the WASM linear memory. Index by byte offset / 4.',
-  'HEAPU32': 'Unsigned 32-bit integer view of the WASM linear memory. Index by byte offset / 4.',
-  'HEAPF32': '32-bit floating-point view of the WASM linear memory. Index by byte offset / 4.',
-  'HEAPF64': '64-bit floating-point view of the WASM linear memory. Index by byte offset / 8.',
-}
-
 def _parse_exported_runtime_methods(emcc_flags):
   """Extract runtime method names from -sEXPORTED_RUNTIME_METHODS in emccFlags."""
   for flag in emcc_flags:
@@ -651,12 +627,59 @@ def _parse_exported_runtime_methods(emcc_flags):
   return ['FS']
 
 
+def _internalize_runtime_declarations(source: str) -> tuple[str, list[str]]:
+  """Keep runtime values private while exporting their TypeScript types."""
+  type_names = set(
+    re.findall(
+      r"^export\s+(?:declare\s+)?(?:abstract\s+)?class\s+([A-Za-z_][A-Za-z0-9_]*)",
+      source,
+      re.MULTILINE,
+    )
+  )
+  type_names.update(
+    re.findall(
+      r"^export\s+(?:declare\s+)?type\s+([A-Za-z_][A-Za-z0-9_]*)",
+      source,
+      re.MULTILINE,
+    )
+  )
+  type_names.update(
+    re.findall(
+      r"^export\s+(?:declare\s+)?interface\s+([A-Za-z_][A-Za-z0-9_]*)",
+      source,
+      re.MULTILINE,
+    )
+  )
+  source = re.sub(
+    r"^export\s+declare\s+(?=(?:abstract\s+)?class\b|const\b|function\b|namespace\b)",
+    "declare ",
+    source,
+    flags=re.MULTILINE,
+  )
+  source = re.sub(
+    r"^export\s+declare\s+(?=type\b|interface\b)",
+    "",
+    source,
+    flags=re.MULTILINE,
+  )
+  source = re.sub(
+    r"^export\s+(?=(?:abstract\s+)?class\b|type\b|interface\b)",
+    "",
+    source,
+    flags=re.MULTILINE,
+  )
+  return source, sorted(type_names)
+
+
 def runBuild(
   build,
   libraryBasePath,
   *,
   scratchPath=None,
   custom_compiled_root=None,
+  additional_cpp_files=None,
+  additional_bind_files=None,
+  additional_bind_field="additionalBindFiles",
 ):
   try:
     validate_build_flags()
@@ -665,23 +688,23 @@ def runBuild(
     raise SystemExit(1) from None
   _warn_consistency(build)
 
-  def getAdditionalBindCodeO():
-    combined = BUILTIN_ADDITIONAL_BIND_CODE
-    if "additionalBindCode" in build:
-      combined += "\n" + build["additionalBindCode"]
+  def getAdditionalBindFilesO():
+    combined = BUILTIN_BINDINGS_SOURCE
+    for bind_file in additional_bind_files or []:
+      combined += "\n" + bind_file["content"]
     additional_bind_root = os.path.join(
       scratchPath or libraryBasePath,
-      "additionalBindCode",
+      "additionalBindFiles",
     )
     os.makedirs(additional_bind_root, exist_ok=True)
-    additionalBindCodeFileName = os.path.join(
+    additionalBindFilesFileName = os.path.join(
       additional_bind_root,
       build["name"] + ".cpp",
     )
-    f = open(additionalBindCodeFileName, "w")
+    f = open(additionalBindFilesFileName, "w")
     f.write(combined)
     f.close()
-    print("building " + additionalBindCodeFileName)
+    print("building " + additionalBindFilesFileName)
     OPT_LEVEL = os.environ.get("OCJS_OPT", "-O0")
     USE_LTO = os.environ.get("OCJS_LTO", "0") == "1"
     exception_flags = WASM_EXCEPTION_FLAGS
@@ -701,17 +724,17 @@ def runBuild(
       *(["-pthread"] if os.environ["THREADING"] == "multi-threaded" else []),
       *(["-include-pch", PCH_FILE] if os.path.exists(PCH_FILE) else []),
       *["-I" + p for p in getFlatIncludePaths()],
-      "-c", additionalBindCodeFileName,
+      "-c", additionalBindFilesFileName,
     ]
     # R10 — capture stderr so we can filter the OCCT-internal
     # deprecation-pragma noise (see `_filter_occt_deprecation_pragmas`),
     # then re-emit the cleaned stream + a single INFO summary. The
-    # `BUILTIN_ADDITIONAL_BIND_CODE` block above includes
+    # `BUILTIN_BINDINGS_SOURCE` block above includes
     # `<TColStd_IndexedDataMapOfStringString.hxx>` directly which
     # transitively pulls `NCollection_Vector.hxx` — both fire a
     # `#pragma message` on every TU that includes them; collapsing the
     # noise here is purely cosmetic but keeps the link log readable.
-    _bindcode_cmd = [*command, "-o", additionalBindCodeFileName + ".o"]
+    _bindcode_cmd = [*command, "-o", additionalBindFilesFileName + ".o"]
     _bindcode_result = subprocess.run(
       _bindcode_cmd,
       capture_output=True,
@@ -732,7 +755,7 @@ def runBuild(
       print(
         f"INFO: filtered {dropped} OCCT-internal deprecation pragma(s) "
         f"from {', '.join(_DEPRECATED_OCCT_HEADERS)} "
-        f"(transitive includes via BUILTIN_ADDITIONAL_BIND_CODE; not "
+        f"(transitive includes via BUILTIN_BINDINGS_SOURCE; not "
         f"actionable from OCJS)",
         flush=True,
       )
@@ -752,8 +775,8 @@ def runBuild(
     # invoked from a separate process would see the bind-symbols stage's
     # view, and the two could legitimately differ if any code path edited
     # one but not the other.
-    return additionalBindCodeFileName + ".o"
-  additionalBindCodeO = getAdditionalBindCodeO()
+    return additionalBindFilesFileName + ".o"
+  additionalBindFilesO = getAdditionalBindFilesO()
   print("Running build: " + build["name"], flush=True)
   bindingsO = []
   compiled_bindings = libraryBasePath + "/compiled-bindings"
@@ -843,7 +866,7 @@ def runBuild(
   output_dir = os.environ.get("OCJS_OUTPUT_DIR", os.getcwd())
   linkCmd = [
     "emcc", "-lembind",
-    *([additionalBindCodeO] if additionalBindCodeO else []),
+    *([additionalBindFilesO] if additionalBindFilesO else []),
     *bindingsO, *sourcesO,
     "-o", output_dir + "/" + build["name"],
     *(["-pthread"] if os.environ["THREADING"] == "multi-threaded" else []),
@@ -911,6 +934,13 @@ def runBuild(
       ncollection_linked=_ncollection_link_stats["linked"],
       ncollection_total=_ncollection_link_stats["total"],
       ncollection_dropped=_ncollection_link_stats["dropped"],
+      source_files=(
+        source_file_manifest("additionalCppFiles", additional_cpp_files or [])
+        + source_file_manifest(
+          additional_bind_field,
+          additional_bind_files or [],
+        )
+      ),
     )
 
   print("Build finished", flush=True)
@@ -969,14 +999,14 @@ def main():
     raise Exception(v.errors)
   buildConfig = v.normalized(buildConfig)
 
-  additionalCppCode = buildConfig["additionalCppCode"]
-  yaml_dir = os.path.dirname(os.path.abspath(args.filename))
-  for cpp_file in buildConfig.get("additionalCppFiles", []):
-    resolved = os.path.join(yaml_dir, cpp_file) if not os.path.isabs(cpp_file) else cpp_file
-    if not os.path.isfile(resolved):
-      raise FileNotFoundError(f"additionalCppFiles: file not found: {resolved} (from '{cpp_file}')")
-    with open(resolved) as f:
-      additionalCppCode += "\n" + f.read()
+  additional_cpp_files = resolve_source_files(
+    args.filename,
+    buildConfig.get("additionalCppFiles"),
+    "additionalCppFiles",
+  )
+  additional_cpp_source = "\n".join(
+    entry["content"] for entry in additional_cpp_files
+  )
 
   global _auto_symbols
   full_set = _load_full_manifest_symbols(BUILD_DIR)
@@ -991,7 +1021,7 @@ def main():
   os.makedirs(link_work_path, exist_ok=True)
   print("Generating custom code bindings...", flush=True)
   generateCustomCodeBindings(
-    additionalCppCode,
+    additional_cpp_source,
     known_exports=known_exports,
     output_dir=custom_bindings_root,
   )
@@ -1042,13 +1072,28 @@ def main():
       libraryBasePath,
       scratchPath=link_work_path,
       custom_compiled_root=custom_compiled_root,
+      additional_cpp_files=additional_cpp_files,
+      additional_bind_files=resolve_source_files(
+        args.filename,
+        buildConfig["mainBuild"].get("additionalBindFiles"),
+        "mainBuild.additionalBindFiles",
+      ),
+      additional_bind_field="mainBuild.additionalBindFiles",
     )
-    for extraBuild in buildConfig["extraBuilds"]:
+    for index, extraBuild in enumerate(buildConfig["extraBuilds"]):
+      field = f"extraBuilds[{index}].additionalBindFiles"
       runBuild(
         extraBuild,
         libraryBasePath,
         scratchPath=link_work_path,
         custom_compiled_root=custom_compiled_root,
+        additional_cpp_files=additional_cpp_files,
+        additional_bind_files=resolve_source_files(
+          args.filename,
+          extraBuild.get("additionalBindFiles"),
+          field,
+        ),
+        additional_bind_field=field,
       )
 
   typescriptDefinitions = _collect_dts_fragments(
@@ -1071,7 +1116,7 @@ def main():
       for cls, ancestor_chain in (dts.get("ancestors") or {}).items():
         ancestorChains.setdefault(cls, ancestor_chain)
 
-    # Declarations for built-in types provided via BUILTIN_ADDITIONAL_BIND_CODE
+    # Declarations for built-in types provided via BUILTIN_BINDINGS_SOURCE
     # PR 1.8 — `declarations/` lives at `src/declarations/`; resolve via the
     # module-level `OCJS_ROOT` (imported at top of file).
     declarations_dir = os.path.join(OCJS_ROOT, 'src', 'declarations')
@@ -1090,11 +1135,6 @@ def main():
     runtime_methods = _parse_exported_runtime_methods(
       buildConfig["mainBuild"].get("emccFlags", [])
     )
-    heap_methods_requested = [m for m in runtime_methods if m in _KNOWN_HEAP_METHODS]
-    if heap_methods_requested:
-      with open(os.path.join(declarations_dir, 'emscripten-runtime.d.ts')) as f:
-        typescriptDefinitionOutput += f.read() + "\n\n"
-
     # Auto-generated `export namespace <prefix> { ... }` blocks were removed in
     # v3.0 (see CHANGELOG). Consumers must now use the flat `gp_Pnt`,
     # `TopoDS_Edge`, ... names directly. The hand-written `TopoDS` runtime API
@@ -1129,7 +1169,7 @@ def main():
         " * @returns A `[type, message]` tuple where `type` is the C++ exception class name\n" + \
         " *   (e.g. `'Standard_DomainError'`) and `message` is the exception text.\n" + \
         " */\n" + \
-        "export declare function getExceptionMessage(ex: WebAssembly.Exception): [string, string];\n" + \
+        "export declare function getExceptionMessage(ex: WebAssembly.Exception): [type: string, message: string];\n" + \
         "/**\n" + \
         " * Increment the reference count of a `WebAssembly.Exception` to prevent premature disposal.\n" + \
         " *\n" + \
@@ -1152,18 +1192,14 @@ def main():
     if 'FS' in runtime_methods:
       runtime_lines.append('  /** Emscripten virtual filesystem for reading/writing files in the WASM heap. */')
       runtime_lines.append('  FS: typeof FS;')
-    for m in heap_methods_requested:
-      doc = _HEAP_JSDOC.get(m, f'{m} view of the WASM linear memory.')
-      runtime_lines.append(f'  /** {doc} */')
-      runtime_lines.append(f'  {m}: typeof {m};')
     if 'wasmMemory' in runtime_methods:
       runtime_lines.append('  /**')
       runtime_lines.append('   * The live `WebAssembly.Memory` instance backing the WASM linear memory.')
       runtime_lines.append('   *')
       runtime_lines.append('   * Use `wasmMemory.buffer` to obtain the current `ArrayBuffer` after any')
       runtime_lines.append('   * call that may have grown memory (e.g. allocations during `extract()`).')
-      runtime_lines.append('   * Cached `HEAP*` views may be detached after growth — taking fresh views')
-      runtime_lines.append('   * off `wasmMemory.buffer` is the safe pattern.')
+      runtime_lines.append('   * Existing typed-array views may be detached after growth; create fresh')
+      runtime_lines.append('   * views from `wasmMemory.buffer` after calls that may allocate.')
       runtime_lines.append('   */')
       runtime_lines.append('  wasmMemory: WebAssembly.Memory;')
     runtime_type = '{\n' + '\n'.join(runtime_lines) + '\n}' if runtime_lines else '{}'
@@ -1171,8 +1207,6 @@ def main():
     runtime_desc_parts = []
     if 'FS' in runtime_methods:
       runtime_desc_parts.append('the Emscripten virtual filesystem (`oc.FS`)')
-    if heap_methods_requested:
-      runtime_desc_parts.append('WASM heap views (' + ', '.join(f'`oc.{m}`' for m in heap_methods_requested) + ')')
     if 'wasmMemory' in runtime_methods:
       runtime_desc_parts.append('the live `WebAssembly.Memory` (`oc.wasmMemory`)')
     runtime_desc = ' and '.join(runtime_desc_parts) if runtime_desc_parts else 'Emscripten runtime methods'
@@ -1213,15 +1247,31 @@ def main():
       emitted_type_names,
     )
 
+    typescriptDefinitionOutput, named_type_exports = _internalize_runtime_declarations(
+      typescriptDefinitionOutput
+    )
+    type_export_lines = "\n".join(
+      f"export type {{ {name} }};" for name in named_type_exports
+    )
+
     typescriptDefinitionOutput += \
-      "\n/**\n" + \
-      " * Union of the Emscripten runtime exports and all bound OCCT classes, enums, and functions.\n" + \
+      "\n" + type_export_lines + "\n\n" + \
+      "/**\n" + \
+      " * Intersection of the Emscripten runtime exports and all bound OCCT classes, enums, and functions.\n" + \
       " *\n" + \
       " * Returned by {@link init | `init`} after the WASM module is fully loaded. Access any\n" + \
       " * OCCT binding as a property (e.g. `oc.BRepPrimAPI_MakeBox`) and use\n" + \
       " * " + runtime_desc + ".\n" + \
       " */\n" + \
       "export type OpenCascadeInstance = " + runtime_type + " & {\n  " + ";\n  ".join(map(lambda x: x["export"] + ": typeof " + x["export"], deduped_exports)) + ";\n" + \
+      "};\n\n" + \
+      "/** Options accepted by the generated Emscripten module factory. */\n" + \
+      "export type InitOpenCascadeOptions = {\n" + \
+      "  locateFile?: (path: string, scriptDirectory: string) => string;\n" + \
+      "  wasmBinary?: ArrayBuffer | Uint8Array;\n" + \
+      "  wasmMemory?: WebAssembly.Memory;\n" + \
+      "  print?: (text: string) => void;\n" + \
+      "  printErr?: (text: string) => void;\n" + \
       "};\n\n" + \
       "/**\n" + \
       " * Initialize the OpenCASCADE WASM module and return the fully populated instance.\n" + \
@@ -1230,10 +1280,10 @@ def main():
       " * `OpenCascadeInstance` provides access to all bound OCCT classes and the\n" + \
       " * Emscripten virtual filesystem.\n" + \
       " *\n" + \
-      " * @param options - Emscripten module overrides (e.g. `locateFile`, `print`, `instantiateWasm`).\n" + \
+      " * @param options - Supported Emscripten module-factory overrides.\n" + \
       " * @returns The initialized instance with all OCCT bindings and the `FS` namespace.\n" + \
       " */\n" + \
-      "export default function init(options?: Record<string, unknown>): Promise<OpenCascadeInstance>;\n"
+      "export default function init(options?: InitOpenCascadeOptions): Promise<OpenCascadeInstance>;\n"
 
     # PR 1.6 — Diagnostics live on the injected service. Read via the
     # process-wide singleton to preserve the legacy shared-bucket behaviour.
@@ -1255,6 +1305,7 @@ def main():
     # (no value at runtime, structural fallback at type level) to keep the
     # generated `.d.ts` semantically valid (zero TS2304/TS2552 diagnostics).
     declared_names = {x["export"] for x in deduped_exports}
+    declared_names.update(named_type_exports)
     declared_names.update(
       re.findall(r"^export\s+(?:declare\s+)?(?:abstract\s+)?class\s+([A-Za-z_][A-Za-z0-9_]*)", typescriptDefinitionOutput, re.MULTILINE)
     )

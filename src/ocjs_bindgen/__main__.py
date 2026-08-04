@@ -1,4 +1,4 @@
-"""CLI entry point for the OpenCascade.js binding generator.
+"""CLI entry point for the libcascade binding generator.
 
 Usage:
     python -m ocjs_bindgen --config bindgen-filters.yaml

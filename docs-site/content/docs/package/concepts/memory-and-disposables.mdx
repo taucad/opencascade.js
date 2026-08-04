@@ -21,23 +21,30 @@ Declare every disposable OCCT object with `using` so the runtime invokes
 } // ← both disposed here, in reverse declaration order
 ```
 
-The OCJS repo includes an oxlint rule, `ocjs-lint/require-using-on-disposable`,
+The libcascade source repository includes an oxlint rule, `ocjs-lint/require-using-on-disposable`,
 that flags any plain `const`/`let` declaration of a disposable as an error.
 It's wired into the in-repo `eslint.config.mjs` for the smoke-test suite but
 is **not** auto-installed by `pnpm add libcascade` — the published npm tarball ships
 the wasm, JS loader, `.d.ts`, API-reference feed, manifests, provenance, and
-changelogs. If you want the rule in your own project, copy it from the OCJS
+changelogs. If you want the rule in your own project, copy it from the libcascade
 repo into your local lint setup.
 
-## Pure-data containers
+## Primitive-only result objects
 
-Return-by-value (RBV) containers whose fields are all primitives (no nested
-disposables) **do not** auto-emit `[Symbol.dispose]`. You can use them without
-`using`:
+Result objects whose fields are all primitives (no nested OCCT objects) do
+**not** emit `[Symbol.dispose]`. You can use them without `using`:
 
 ```typescript
-// gp_Pnt has only doubles — no dispose
-const point = transform.TransformedPoint(p0);
+const bounds = surface.Bounds(0, 0, 0, 0);
+console.log(bounds.U1, bounds.U2, bounds.V1, bounds.V2);
+```
+
+An OCCT class is still disposable even when it represents a small value. For
+example, `gp_Pnt` owns a wasm-side C++ object, so both constructed and returned
+points need `using`:
+
+```typescript
+using point = p0.Transformed(transform);
 console.log(point.X(), point.Y(), point.Z());
 ```
 
@@ -78,7 +85,7 @@ recur often enough to keep in your toolbox.
 
 Some BRep_Tool overloads return an RBV envelope that owns several embind
 handles (e.g. `PolygonOnTriangulation` in its 2-arg form returns a
-`{ P, T, L }` triple). Binding the whole envelope through `using` is the
+`{ P, T }` pair). Binding the whole envelope through `using` is the
 easy path, but if you only want to forward it once and free everything in
 one shot — `stack.use()` adopts the envelope and lets the parent stack
 cascade through its `[Symbol.dispose]`.
@@ -101,6 +108,13 @@ handle, and on success `move()`s the stack into the return value (which
 empties the iteration-scoped stack so its scope-exit dispose is a no-op).
 
 ```typescript
+import type {
+  Poly_Triangulation,
+  TopLoc_Location,
+  TopoDS_Edge,
+  TopoDS_Shape,
+} from 'libcascade';
+
 function findFirstTriangulatedEdge(shape: TopoDS_Shape):
   DisposableStack & { edge: TopoDS_Edge; tri: Poly_Triangulation; loc: TopLoc_Location } {
   const oc = getOC();
@@ -133,7 +147,7 @@ using polygon = oc.BRep_Tool.PolygonOnTriangulation(ctx.edge, ctx.tri, ctx.loc);
 ```
 
 `DisposableStack` is part of the JS standard library wherever
-`[Symbol.dispose]` is — no OCJS-specific runtime is involved. See
+`[Symbol.dispose]` is — no libcascade-specific runtime is involved. See
 [MDN: DisposableStack](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/DisposableStack)
 for the full surface (`defer`, `adopt`, `disposed`, etc.).
 
@@ -171,13 +185,13 @@ for (let i = 0; i < 1000; i++) {
 
 ## Diagnosing leaks
 
-Wasm heap grows monotonically — to detect a leak, measure
-`oc.HEAP8.byteLength` before and after a representative workload.
+Wasm heap grows monotonically — to detect a leak, measure the live memory
+buffer before and after a representative workload.
 
 ```typescript
-const before = oc.HEAP8.byteLength;
+const before = oc.wasmMemory.buffer.byteLength;
 runWorkload();
-const after = oc.HEAP8.byteLength;
+const after = oc.wasmMemory.buffer.byteLength;
 console.log(`heap delta: ${(after - before) / 1024} KB`);
 ```
 

@@ -3015,7 +3015,7 @@ class TypescriptBindings(Bindings):
        the post-using-decl `tuInfo` and seeds class, template-typedef, and
        enum names. Called from `generateBindings.__main__` before `process()`.
 
-    2. **Custom-code path** (`additionalCppCode` block from YAML):
+    2. **Custom-code path** (`additionalCppFiles` from YAML):
        `generateCustomCodeBindings(customCode, known_exports=...)` accepts an
        explicit seed set computed by `buildFromYaml.main` from
        (a) YAML `bindings:` symbols ∪ (b) `_auto_symbols` ∪ (c) AST-discovered

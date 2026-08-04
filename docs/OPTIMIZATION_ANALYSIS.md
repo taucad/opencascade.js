@@ -1,6 +1,6 @@
 # Optimization Analysis
 
-Analysis of all optimization flags applied across the opencascade.js WASM build pipeline, identifying what is in use, what is structurally blocked by OCCT, and what remains actionable. Conducted March 2026 against Emscripten 5.0.1 / Binaryen 125 / LLVM 20 / OCCT 8.
+Analysis of all optimization flags applied across the libcascade WASM build pipeline, identifying what is in use, what is structurally blocked by OCCT, and what remains actionable. Conducted March 2026 against Emscripten 5.0.1 / Binaryen 125 / LLVM 20 / OCCT 8.
 
 ## Build Pipeline
 

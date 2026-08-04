@@ -41,10 +41,13 @@
         "required": True,
         "type": "string",
       },
-      "additionalBindCode": {
+      "additionalBindFiles": {
         "required": False,
-        "type": "string",
-        "default": "",
+        "type": "list",
+        "schema": {
+          "type": "string",
+        },
+        "default": [],
       },
     },
   },
@@ -86,10 +89,13 @@
           "--no-entry",
         ],
       },
-      "additionalBindCode": {
+      "additionalBindFiles": {
         "required": False,
-        "type": "string",
-        "default": "",
+        "type": "list",
+        "schema": {
+          "type": "string",
+        },
+        "default": [],
       },
       "name": {
         "required": True,
@@ -97,11 +103,6 @@
       },
     },
     "default": [],
-  },
-  "additionalCppCode": {
-    "required": False,
-    "type": "string",
-    "default": "",
   },
   "additionalCppFiles": {
     "required": False,

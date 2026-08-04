@@ -1,146 +1,104 @@
 ---
 title: Extend with C++
-description: Decision tree across additionalCppCode, additionalCppFiles, and additionalBindCode mechanisms.
+description: Add file-backed C++ implementations or raw Embind registrations to a custom build.
 ---
 
-OCCT exposes hundreds of free functions, POD structs, and helper utilities the
-bindgen does not (and cannot) reach automatically. When you need one of them —
-or want an ergonomic wrapper around an OCCT API — the YAML config gives you
-three mechanisms:
+Custom builds accept two file-backed extension mechanisms. Paths are relative
+to the YAML file, read as UTF-8, and concatenated in declaration order. Missing
+or unreadable files fail validation before compilation.
 
-1. **`additionalCppCode`** — inline C++ embedded directly in the YAML scalar.
-2. **`additionalCppFiles`** — one or more `.cpp` files concatenated onto `additionalCppCode`.
-3. **`mainBuild.additionalBindCode`** — per-build raw `EMSCRIPTEN_BINDINGS(...)` registrations.
+## `additionalCppFiles` — generated bindings
 
-## Decision tree
+Use `additionalCppFiles` for C++ classes that libcascade's bindgen should
+inspect and expose with generated JavaScript and TypeScript bindings:
 
-```text
-Are you adding new C++ implementation code (wrapper class, free function, POD)?
-├── YES → Will the impl grow beyond ~100 lines or want syntax highlighting?
-│        ├── YES → additionalCppFiles
-│        └── NO  → additionalCppCode (inline)
-└── NO  → You are only adding raw embind registrations on existing symbols
-         → mainBuild.additionalBindCode
-```
-
-The three compose. A typical custom binding ships a `.cpp` file
-(`additionalCppFiles`) plus an `EMSCRIPTEN_BINDINGS(...)` block
-(`additionalBindCode`) that registers what the `.cpp` defined.
-
-## Mechanism 1 — `additionalCppCode` (inline)
-
-For short snippets that belong with the YAML for context — handle typedefs, a
-single free function, a small POD.
-
-```yaml
-additionalCppCode: |
-  #include <Standard_Real.hxx>
-  Standard_Real addReals(Standard_Real a, Standard_Real b) { return a + b; }
-
-mainBuild:
-  name: my_build
-  additionalBindCode: |
-    EMSCRIPTEN_BINDINGS(my_build_extras) {
-      emscripten::function("addReals", &addReals);
-    }
-```
-
-Now `oc.addReals(1.5, 2.25)` returns `3.75`.
-
-## Mechanism 2 — `additionalCppFiles` (multi-file)
-
-When the wrapper grows past ~100 lines or you want real `.cpp` files for editor
-support and review, move it to `additionalCppFiles`. The files are concatenated
-onto `additionalCppCode` (in that order) into one translation unit before custom-binding
-generation runs.
-
-```yaml
+```yaml title="build-configs/custom.yml"
 additionalCppFiles:
   - wrappers/fair-curve.cpp
 
 mainBuild:
-  additionalBindCode: |
-    EMSCRIPTEN_BINDINGS(my_build_faircurve) {
-      emscripten::function("computeFairCurve", &computeFairCurve);
-    }
+  name: custom
+  bindings:
+    - symbol: FairCurve
 ```
 
-Paths in `additionalCppFiles` are resolved relative to the YAML file's
-directory. A missing file fails-loud at validate time.
-
-## Mechanism 3 — `additionalBindCode` (raw embind)
-
-Use this when bindgen cannot emit the registration you need. Common cases:
-
-- Binding a free function (bindgen registers classes, not free functions).
-- Defining a `value_object<T>` POD authored in `additionalCppCode` / `additionalCppFiles`.
-- Registering an `emscripten::vector` / `emscripten::map` an NCollection
-  auto-discovery pass does not cover.
-
-```yaml
-additionalCppCode: |
-  struct PointXY { double X; double Y; };
-
-mainBuild:
-  additionalBindCode: |
-    EMSCRIPTEN_BINDINGS(my_build_pointxy) {
-      emscripten::value_object<PointXY>("PointXY")
-        .field("X", &PointXY::X)
-        .field("Y", &PointXY::Y);
-    }
-```
-
-Every `EMSCRIPTEN_BINDINGS(<name>)` group **must use a unique name** across the
-block and any auto-generated binding TUs — embind enforces uniqueness at module
-load time.
-
-## Worked example — wrapper class with constructor + methods
-
-```cpp title="wrappers/shape-cast.cpp"
-#include <TopoDS.hxx>
-#include <TopoDS_Edge.hxx>
-#include <TopoDS_Face.hxx>
+```cpp title="build-configs/wrappers/fair-curve.cpp"
 #include <TopoDS_Shape.hxx>
 
-class ShapeCast {
+class FairCurve {
 public:
-  static TopoDS_Edge toEdge(const TopoDS_Shape& s) { return TopoDS::Edge(s); }
-  static TopoDS_Face toFace(const TopoDS_Shape& s) { return TopoDS::Face(s); }
+  TopoDS_Shape Build() const { /* ... */ }
 };
 ```
 
-```yaml title="build-configs/my-config.yml"
-additionalCppFiles:
-  - wrappers/shape-cast.cpp
+The generator discovers classes, constructors, methods, enums, referenced
+OCCT types, and `Handle<T>`/NCollection aliases from these files. Generated
+declarations become part of the build's `.d.ts`.
 
+## `additionalBindFiles` — raw Embind
+
+Use per-build `additionalBindFiles` when you need Embind features the
+generator does not emit, such as free functions, `value_object`, collection
+registrations, or `allow_subclass`:
+
+```yaml title="build-configs/custom.yml"
 mainBuild:
+  name: custom
   bindings:
-    - symbol: TopoDS_Shape
-    - symbol: TopoDS_Edge
-    - symbol: TopoDS_Face
-  additionalBindCode: |
-    EMSCRIPTEN_BINDINGS(my_build_shape_cast) {
-      emscripten::class_<ShapeCast>("ShapeCast")
-        .class_function("toEdge", &ShapeCast::toEdge)
-        .class_function("toFace", &ShapeCast::toFace);
-    }
+    - symbol: gp_Pnt
+  additionalBindFiles:
+    - bindings/helpers.cpp
 ```
 
-JS:
+```cpp title="build-configs/bindings/helpers.cpp"
+#include <Standard_Real.hxx>
+#include <emscripten/bind.h>
+
+Standard_Real addReals(Standard_Real a, Standard_Real b) { return a + b; }
+
+EMSCRIPTEN_BINDINGS(custom_helpers) {
+  emscripten::function("addReals", &addReals);
+}
+```
+
+An `additionalBindFiles` source may contain both its helper implementation and
+its `EMSCRIPTEN_BINDINGS(...)` block, as above. It compiles directly and skips
+bindgen, so consumers own any TypeScript declaration for raw exports.
+
+For example, keep the generated module contract and add only the manual
+surface your application registered:
 
 ```typescript
-const edge = oc.ShapeCast.toEdge(genericShape);
+import init, { type OpenCascadeInstance } from './custom.js';
+
+type CustomInstance = OpenCascadeInstance & {
+  addReals(a: number, b: number): number;
+};
+
+const oc = (await init()) as CustomInstance;
+console.log(oc.addReals(1.5, 2.25));
 ```
 
-## Pitfalls
+`additionalBindFiles` belongs to `mainBuild` or an `extraBuilds` entry because
+its registrations can differ by output. `additionalCppFiles` is top-level and
+shared by every output in the YAML.
 
-- **Duplicate `EMSCRIPTEN_BINDINGS` group names** crash the module at load time.
-- **Forgetting to bind the underlying OCCT class** in `bindings:` causes the
-  wrapper to compile but the runtime cast to throw.
-- **Using `Handle<T>` without the typedef** works in C++ but produces no useful
-  JS shape. Add `typedef opencascade::handle<T> Handle_T;`.
+## Which one?
 
-## Related
+- Prefer `additionalCppFiles` for ordinary classes and generated types.
+- Use `additionalBindFiles` only for a binding construct bindgen cannot emit.
+- Do not list the same source under both keys.
 
-- [YAML schema](../reference/yaml-schema) — schema for every YAML key.
-- [Emscripten embind reference](https://emscripten.org/docs/porting/connecting_cpp_and_javascript/embind.html).
+Both file lists and their SHA-256 digests are recorded in the build manifest
+and provenance sidecar, making file changes part of artifact identity.
+
+## Validate and build
+
+```bash
+./build-wasm.sh validate build-configs/custom.yml
+./build-wasm.sh link build-configs/custom.yml
+```
+
+See [YAML schema](../reference/yaml-schema) for the full contract and
+[Derive a C++ class in JavaScript](./derive-cpp-class-in-js) for an
+`allow_subclass` example.

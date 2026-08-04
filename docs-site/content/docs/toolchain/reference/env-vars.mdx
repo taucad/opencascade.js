@@ -12,11 +12,12 @@ command line, in CI, or in `build-configs/configurations.json`.
 |---|---|---|
 | `OCJS_EXCEPTIONS` | `1` | Compile every TU with `-fwasm-exceptions`. Mixed builds fail at link. |
 | `OCJS_SIMD` | `1` | Compile every TU with `-msimd128` (baseline SIMD). |
-| `OCJS_RELAXED_SIMD` | `0` | Additionally emit `-mrelaxed-simd`. Chrome/Firefox-only — breaks Safari. |
-| `OCJS_BIGINT` | `1` | Compile with `-sWASM_BIGINT`. Saves ~30 KB JS glue. |
-| `OCJS_EVAL_CTORS_LEVEL` | `2` | `-sEVAL_CTORS=N`. Levels: 0 off, 1 safe-side-effect, 2 full. |
-| `OCJS_LTO` | `0` | Enable LLVM LTO. Smaller binary, ~3× slower build. |
+| `OCJS_RELAXED_SIMD` | `0` | Additionally emit `-mrelaxed-simd`. Safari 26.x lacks support; keep the baseline build for Safari. |
+| `OCJS_LTO` | `0` | Enable LLVM LTO. The measured full build grew 21%, so shipped presets keep it off. |
 | `OCJS_STRICT_TYPES` | `0` (warn-only) | When the link-time `.d.ts` post-processor rewrites method signatures to `unknown` (or codegen collects unbound-reference diagnostics), the build always prints a triage summary to stderr. Set `=1` to escalate that condition to a build failure. |
+
+`-sWASM_BIGINT` and `-sEVAL_CTORS=N` are Emscripten link settings. Put them
+in the YAML build's `emccFlags`; they are not `OCJS_*` compile variables.
 
 ## Build orchestration
 

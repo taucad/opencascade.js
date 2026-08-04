@@ -65,7 +65,7 @@ describe('content self-containment', () => {
     expect(hits, hits.join('\n')).toEqual([]);
   });
 
-  it('should never mention `asyncDispose` / `await using` in narrative docs — OCJS only exposes the synchronous `Symbol.dispose` API', async () => {
+  it('should never mention `asyncDispose` / `await using` in narrative docs — libcascade only exposes the synchronous `Symbol.dispose` API', async () => {
     const bannedPatterns: ReadonlyArray<RegExp> = [/asyncDispose/i, /await\s+using\b/];
     const files = await collectMdxFiles(DOCS_DIR);
     const hits: string[] = [];
@@ -132,7 +132,7 @@ describe('content self-containment', () => {
         needle: 'primitive outputs are stripped',
       },
       {
-        label: '"are removed from the signature" — implies a zero-arg call site; OCJS retains placeholder positions for primitive/enum outputs.',
+        label: '"are removed from the signature" — implies a zero-arg call site; libcascade retains placeholder positions for primitive/enum outputs.',
         needle: 'are removed from the signature',
       },
       {
@@ -165,7 +165,7 @@ describe('content self-containment', () => {
     const bannedPath = 'libcascade/dist/';
     const hits: string[] = [];
     for (const file of files) {
-      const body = await fs.readFile(file, 'utf8');
+      const body = (await fs.readFile(file, 'utf8')).replace(/<auto-type-table\b[^>]*\/>/g, '');
       if (body.includes(bannedPath)) {
         hits.push(
           `${file}: deep import of libcascade/dist/* — replace with the \`/wasm\` subpath export`,

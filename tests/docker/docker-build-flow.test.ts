@@ -47,7 +47,7 @@ describe.skipIf(!dockerTestsEnabled() || !['all', 'final-single'].includes(STAGE
       expect(shape.IsNull()).toBe(true);
       shape.delete();
 
-      // The inline additionalCppCode class is bound and callable.
+      // The class from additionalCppFiles is bound and callable.
       expect(oc.Test.foo()).toBe(123);
 
       // Symbol filtering: an unlisted OCCT class is absent from the build.
@@ -95,7 +95,6 @@ describe.skipIf(!dockerTestsEnabled() || !['all', 'final-multi'].includes(STAGE)
 
       // Parallel mode: the pre-spawned thread pool reports more than one worker.
       const pool = oc.OSD_ThreadPool.DefaultPool(-1);
-      pool.SetNbDefaultThreadsToLaunch(pool.NbThreads());
       expect(pool.NbThreads()).toBeGreaterThan(1);
 
       // Build a compound of spheres and mesh it in parallel.

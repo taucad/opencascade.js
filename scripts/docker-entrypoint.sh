@@ -42,7 +42,7 @@ HOST_PWD="$PWD"
 
 show_help() {
   cat <<'EOF'
-docker-entrypoint.sh — opencascade.js Docker dispatcher
+docker-entrypoint.sh — libcascade Docker dispatcher
 
 Subcommands (Nx-cached):
   link <yaml>           Build the bindings end-to-end. Nx walks the dependency

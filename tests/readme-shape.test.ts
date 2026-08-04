@@ -34,7 +34,7 @@ const README_REQUIRED_SECTIONS = [
   '## Tags',
   "## What's New in v3",
   '## Documentation',
-  '## Projects Using opencascade.js',
+  '## Projects Using libcascade',
   '## License',
 ] as const;
 
@@ -68,10 +68,10 @@ describe('README.md shape', () => {
     expect(body).toMatch(/\(MAINTAINER\.md(#[\w-]+)?\)/);
   });
 
-  it('should identify libcascade only as the npm coordinate for OpenCascade.js', () => {
+  it('should present libcascade as the npm package', () => {
     const body = fs.readFileSync(README_PATH, 'utf-8');
     expect(body).toContain('pnpm add libcascade');
-    expect(body).toContain('OpenCascade.js is published on npm as `libcascade`');
+    expect(body).toContain('`libcascade` brings the OpenCASCADE Technology kernel');
     expect(body).not.toContain('Tau-maintained fork');
   });
 });

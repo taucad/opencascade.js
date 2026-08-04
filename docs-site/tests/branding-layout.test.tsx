@@ -1,7 +1,12 @@
-import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { afterEach, describe, it, expect } from 'vitest';
+import { cleanup, render, screen } from '@testing-library/react';
 import { metadata } from '../app/layout';
+import HomePage from '../app/(home)/page';
 import { NavTitle, TauAttributionFooter } from '../app/layout.config';
+import { ApiClassCount } from '../components/api-class-count';
+import { apiTree } from '../lib/api-source';
+
+afterEach(cleanup);
 
 describe('branding layout metadata', () => {
   it('should configure favicon icons', () => {
@@ -16,7 +21,7 @@ describe('branding layout chrome', () => {
   it('should render nav title with logo and site name', () => {
     const { container } = render(<NavTitle />);
     expect(container.querySelector('img')?.getAttribute('src')).toBe('/logo.svg');
-    expect(screen.getByText('OpenCascade.js')).toBeTruthy();
+    expect(screen.getByText('libcascade')).toBeTruthy();
   });
 
   it('should render Tau attribution footer linking to the FAQ', () => {
@@ -25,5 +30,12 @@ describe('branding layout chrome', () => {
     expect(faqLink.getAttribute('href')).toBe('/docs/package/getting-started/faq');
     expect(screen.getByText(/Maintained by/i)).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Tau' }).getAttribute('href')).toBe('https://tau.new');
+  });
+
+  it('should render the exact synced API class total', () => {
+    const count = apiTree.totals.classes.toLocaleString();
+    render(<HomePage />);
+    expect(screen.getByText(new RegExp(`${count} classes`))).toBeTruthy();
+    expect(ApiClassCount()).toBe(count);
   });
 });

@@ -6,10 +6,10 @@ description: Compile-time OCJS_* env vars vs link-time emccFlags — what each c
 <Callout type="info">
   **Maintainer track.** Skip this page if you consume the published npm
   package — every shipped build already pins the right channel-1 flags. The
-  channels matter when you rebuild OCJS from source.
+  channels matter when you rebuild libcascade from source.
 </Callout>
 
-OpenCascade.js exposes two configuration channels with different lifecycles and
+libcascade exposes two configuration channels with different lifecycles and
 different scope. Treat them as orthogonal — confusion between the two is the
 most common cause of build errors.
 
@@ -23,12 +23,10 @@ final wasm is linked from.
 | `OCJS_EXCEPTIONS=1` | Compile with `-fwasm-exceptions` everywhere |
 | `OCJS_SIMD=1` | Compile with `-msimd128` |
 | `OCJS_RELAXED_SIMD=1` | Additionally emit `-mrelaxed-simd` (Chrome/Firefox only) |
-| `OCJS_BIGINT=1` | Compile with `-sWASM_BIGINT` |
-| `OCJS_EVAL_CTORS_LEVEL=2` | `-sEVAL_CTORS=2` |
 | `OCJS_STRICT_TYPES=1` | Escalate missing-typedef warning to a build failure (default `0`: warn-only — the triage summary is always printed to stderr) |
 
 [^lto]: `OCJS_LTO` exists but is intentionally off in every shipped preset.
-    The workspace benchmarks showed LTO increasing the wasm size for OCJS's
+    The workspace benchmarks showed LTO increasing the wasm size for libcascade's
     object distribution, so it stays disabled. Flip it on locally only if
     you're benchmarking a specific bindings trim.
 
@@ -47,6 +45,8 @@ mainBuild:
     - -sMODULARIZE=1
     - -sEXPORT_ES6=1
     - -sALLOW_MEMORY_GROWTH=1
+    - -sWASM_BIGINT
+    - -sEVAL_CTORS=2
 ```
 
 These flags control loader shape (ESM vs CommonJS), memory limits, and
@@ -55,7 +55,7 @@ or SIMD configuration the `.o` files were compiled with.
 
 ## Why the split?
 
-The bindgen produces ~4,400 `.o` files in the maintainer Docker pipeline. Caching
+The bindgen produces one `.o` file per generated binding in the maintainer Docker pipeline. Caching
 them across consumer builds turns a 30-minute full build into a 60-second link.
 The cache key must be deterministic — that's what the compile-time channel
 fingerprint guards.
@@ -72,10 +72,11 @@ Almost never as a consumer. The published build is the named
 
 - `OCJS_EXCEPTIONS=1` + `OCJS_EH_MODE=wasm` (native wasm exceptions)
 - `OCJS_SIMD=1` (baseline SIMD, Safari-compatible)
-- `OCJS_BIGINT=1` (no i64 legalisation)
-- `OCJS_EVAL_CTORS=true` + `OCJS_EVAL_CTORS_LEVEL=2`
 - `OCJS_CLOSURE=true` + `OCJS_CONVERGE=true`
 - `THREADING=single-threaded`
+
+The matching `full.yml` carries `-sWASM_BIGINT` and `-sEVAL_CTORS=2` at
+link time. The threaded YAML retains BigInt but deliberately omits eval-ctors.
 
 Presets are addressed by name, not by raw env vars — see
 [Named compile-time configurations](../reference/configurations) for the full

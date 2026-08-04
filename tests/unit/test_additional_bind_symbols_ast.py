@@ -2,9 +2,9 @@
 
 Real-libclang fixture coverage for the Phase 2 producer/consumer pair:
 
-  - Producer: :func:`ocjs_bindgen.ast.parse.parse_additional_bind_code` +
+  - Producer: :func:`ocjs_bindgen.ast.parse.parse_binding_source` +
     :func:`ocjs_bindgen.ast.walker.extract_class_registrations` parse the
-    same combined `BUILTIN_ADDITIONAL_BIND_CODE + consumer additionalBindCode`
+    same combined `BUILTIN_BINDINGS_SOURCE + consumer additionalBindFiles`
     TU the link stage compiles via `emcc -c`. The extracted Embind
     registration names are serialised to
     ``build/additional-bind-symbols.json``.
@@ -35,7 +35,7 @@ pytestmark = pytest.mark.libclang
 
 
 def _skip_if_no_toolchain() -> tuple:
-  """Return (`parse_additional_bind_code`, `extract_class_registrations`,
+  """Return (`parse_binding_source`, `extract_class_registrations`,
   `include_paths`) when the vendored LLVM 17 + emsdk toolchain is present,
   otherwise skip the test.
 
@@ -47,13 +47,13 @@ def _skip_if_no_toolchain() -> tuple:
   """
   try:
     paths_mod = importlib.import_module("ocjs_bindgen.config.paths")
-    include_paths = paths_mod.getAdditionalBindCodeParseIncludePaths()
+    include_paths = paths_mod.getBindingSourceParseIncludePaths()
   except RuntimeError as e:
     pytest.skip(f"libclang toolchain not provisioned: {e}")
   parse_mod = importlib.import_module("ocjs_bindgen.ast.parse")
   walker_mod = importlib.import_module("ocjs_bindgen.ast.walker")
   return (
-    parse_mod.parse_additional_bind_code,
+    parse_mod.parse_binding_source,
     walker_mod.extract_class_registrations,
     include_paths,
   )
@@ -64,28 +64,28 @@ def _extract(source: str) -> set[str]:
   set the AST walker extracts. Shared helper so each test reads as a
   fixture + assertion pair without import boilerplate.
   """
-  parse_additional_bind_code, extract_class_registrations, include_paths = (
+  parse_binding_source, extract_class_registrations, include_paths = (
     _skip_if_no_toolchain()
   )
-  tu = parse_additional_bind_code(source, include_paths)
+  tu = parse_binding_source(source, include_paths)
   return extract_class_registrations(tu)
 
 
 # ----------------------------------------------------------------------------
-# Canonical BUILTIN_ADDITIONAL_BIND_CODE block — verifies the OCJS builtins
+# Canonical BUILTIN_BINDINGS_SOURCE block — verifies the OCJS builtins
 # extract to the exact frozen set the post-link validator expects.
 # ----------------------------------------------------------------------------
 
 
 def test_canonical_builtin_block_extracts_exactly_three_names() -> None:
-  """The frozen contract — the OCJS BUILTIN_ADDITIONAL_BIND_CODE block
+  """The frozen contract — the OCJS BUILTIN_BINDINGS_SOURCE block
   registers exactly `OCJS`, `TopoDS`, `TColStd_IndexedDataMapOfStringString`.
   This pins the wire contract for `build/additional-bind-symbols.json`'s
   baseline (any future addition to the builtin block must update this
   assertion in the same change).
   """
-  from ocjs_bindgen.link.yaml_build import BUILTIN_ADDITIONAL_BIND_CODE
-  registered = _extract(BUILTIN_ADDITIONAL_BIND_CODE)
+  from ocjs_bindgen.link.yaml_build import BUILTIN_BINDINGS_SOURCE
+  registered = _extract(BUILTIN_BINDINGS_SOURCE)
   assert registered == {
     "OCJS",
     "TopoDS",
@@ -94,7 +94,7 @@ def test_canonical_builtin_block_extracts_exactly_three_names() -> None:
 
 
 # ----------------------------------------------------------------------------
-# Consumer-flavoured additionalBindCode (replicad shape) — verifies the
+# Consumer-flavoured binding file (replicad shape) — verifies the
 # walker handles real-world snippets without regex assumptions.
 # ----------------------------------------------------------------------------
 
@@ -225,30 +225,30 @@ def test_parse_errors_fail_instead_of_emitting_an_empty_manifest() -> None:
   parse the canonical built-in block into an empty AST and only fail later as
   a set mismatch (or, outside tests, write an incomplete symbol manifest).
   """
-  parse_additional_bind_code, _, include_paths = _skip_if_no_toolchain()
+  parse_binding_source, _, include_paths = _skip_if_no_toolchain()
   source = '#include <ocjs_header_that_does_not_exist.hxx>\n'
   with pytest.raises(
     RuntimeError,
     match="refusing to emit an incomplete registration manifest",
   ):
-    parse_additional_bind_code(source, include_paths)
+    parse_binding_source(source, include_paths)
 
 
 def test_builtin_plus_consumer_unions_in_single_tu() -> None:
-  """The link stage concatenates ``BUILTIN_ADDITIONAL_BIND_CODE`` with
-  the consumer's ``additionalBindCode`` and compiles them as ONE TU.
+  """The link stage concatenates ``BUILTIN_BINDINGS_SOURCE`` with
+  the consumer's ``additionalBindFiles`` and compiles them as ONE TU.
   The walker must return the UNION of both sources because that's
   exactly what `manifest_registry.builtin_binding_symbols` will use to
   satisfy requested bindings.
   """
-  from ocjs_bindgen.link.yaml_build import BUILTIN_ADDITIONAL_BIND_CODE
+  from ocjs_bindgen.link.yaml_build import BUILTIN_BINDINGS_SOURCE
   consumer = textwrap.dedent(r"""
     struct ConsumerThing {};
     EMSCRIPTEN_BINDINGS(consumer_extra) {
       emscripten::class_<ConsumerThing>("ConsumerThing");
     }
     """)
-  registered = _extract(BUILTIN_ADDITIONAL_BIND_CODE + "\n" + consumer)
+  registered = _extract(BUILTIN_BINDINGS_SOURCE + "\n" + consumer)
   assert registered >= {
     "OCJS",
     "TopoDS",

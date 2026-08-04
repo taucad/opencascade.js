@@ -5,7 +5,7 @@
  * the same template:
  *
  *   /** <class doxygen> *\/
- *   export declare class <Name> [extends <Bases>] {
+ *   [export] declare class <Name> [extends <Bases>] {
  *     /** <jsdoc> *\/
  *     constructor(...)                             // 0-N overloads
  *     /** <jsdoc> *\/
@@ -27,9 +27,9 @@
  * "raw" entry on the parsed class so it stays visible in the viewer.
  */
 
-const TOPLEVEL_CLASS_RE = /export\s+declare\s+class\s+([A-Za-z_][\w$]*)(?:\s+extends\s+([^\{]+?))?\s*\{/;
-const TOPLEVEL_CONST_ENUM_RE = /export\s+declare\s+const\s+([A-Za-z_][\w$]*)\s*[:=]\s*\{([\s\S]*?)\}\s*;?\s*$/m;
-const ALIAS_RE = /export\s+(?:type|declare\s+type)\s+([A-Za-z_][\w$]*)\s*=\s*([^;]+);/;
+const TOPLEVEL_CLASS_RE = /(?:export\s+)?declare\s+class\s+([A-Za-z_][\w$]*)(?:\s+extends\s+([^\{]+?))?\s*\{/;
+const TOPLEVEL_CONST_ENUM_RE = /(?:export\s+)?declare\s+const\s+([A-Za-z_][\w$]*)\s*[:=]\s*\{([\s\S]*?)\}\s*;?\s*$/m;
+const ALIAS_RE = /(?:export\s+)?(?:declare\s+)?type\s+([A-Za-z_][\w$]*)\s*=\s*([^;]+);/;
 
 const NOISE_NAMES = new Set(['delete', '[Symbol.dispose]']);
 const NOISE_COMMENT_RE = /Releases the C\+\+ object/i;

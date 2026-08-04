@@ -1,17 +1,17 @@
 ---
 title: FAQ
-description: Project lineage, maintenance, and how to contribute to OpenCascade.js.
+description: Project lineage, maintenance, and how to contribute to libcascade.
 ---
 
 ## What is the project lineage?
 
-OpenCascade.js was originally created by
+libcascade was originally created by
 [Sebastian Alff (`donalffons`)](https://github.com/donalffons) as a port of
 [OpenCASCADE Technology (OCCT)](https://dev.opencascade.org/) to WebAssembly
 via Emscripten. The current project is developed and released from
 [`taucad/opencascade.js`](https://github.com/taucad/opencascade.js).
 
-OpenCascade.js does **not** modify the OCCT C++ source beyond a set of
+libcascade does **not** modify the OCCT C++ source beyond a set of
 patches applied at build time. The pipeline downloads a tagged OCCT commit,
 compiles with Emscripten, auto-generates embind bindings from libclang, and
 ships the wasm + TypeScript surface as an npm package.

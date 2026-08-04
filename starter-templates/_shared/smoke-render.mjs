@@ -42,12 +42,12 @@ const browser = await chromium.launch();
 const context = await browser.newContext();
 const page = await context.newPage();
 
-const ocjsErrors = [];
+const libcascadeErrors = [];
 page.on('console', (msg) => {
   if (msg.type() !== 'error') return;
   const text = msg.text();
   if (/OCCT|OpenCascade|emscripten/i.test(text)) {
-    ocjsErrors.push(text);
+    libcascadeErrors.push(text);
   }
 });
 
@@ -70,7 +70,7 @@ try {
 
 let unique = new Set();
 const deadline = Date.now() + TIMEOUT_MS;
-while (Date.now() < deadline && unique.size <= 1 && ocjsErrors.length === 0) {
+while (Date.now() < deadline && unique.size <= 1 && libcascadeErrors.length === 0) {
   const screenshot = PNG.sync.read(await canvasHandle.screenshot());
   unique = sampleGrid(screenshot, SAMPLE_SIZE);
   if (unique.size <= 1) await page.waitForTimeout(250);
@@ -82,10 +82,10 @@ if (SCREENSHOT_PATH) {
 
 await browser.close();
 
-if (ocjsErrors.length > 0) {
+if (libcascadeErrors.length > 0) {
   console.error(
-    `smoke-render: ${ocjsErrors.length} OCJS-related console.error observed:\n  ` +
-      ocjsErrors.join('\n  '),
+    `smoke-render: ${libcascadeErrors.length} libcascade-related console.error observed:\n  ` +
+      libcascadeErrors.join('\n  '),
   );
   process.exit(4);
 }

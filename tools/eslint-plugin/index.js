@@ -2,7 +2,7 @@
  * Local ESLint plugin: `ocjs-lint`
  *
  * Vendored from the upstream tau-lint workspace plugin to keep
- * `opencascade.js` self-contained — the published OCJS repository must not
+ * `libcascade` self-contained — the published source repository must not
  * carry a hard reference to a sibling `libs/oxlint/` checkout.
  *
  * Today the only rule we ship is `require-using-on-disposable`, the

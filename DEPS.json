@@ -1,6 +1,6 @@
 {
   "$schema": "deps-lock-v1",
-  "description": "Pinned dependency versions for reproducible opencascade.js builds. Both Dockerfile and build-wasm.sh reference this file.",
+  "description": "Pinned dependency versions for reproducible libcascade builds. Both Dockerfile and build-wasm.sh reference this file.",
   "dependencies": {
     "occt": {
       "repository": "https://github.com/Open-Cascade-SAS/OCCT.git",

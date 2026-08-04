@@ -1,5 +1,5 @@
 /**
- * Geometry testing helpers for opencascade.js smoke tests.
+ * Geometry testing helpers for libcascade smoke tests.
  *
  * Provides utilities for:
  * - Converting OpenCASCADE shapes to GLB via XCAF + RWGltf_CafWriter

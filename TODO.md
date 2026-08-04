@@ -1,4 +1,4 @@
-# opencascade.js — backlog (v3)
+# libcascade — backlog (v3)
 
 An honest, public backlog. Items here are either next-cut work or known investigations that have not yet landed. Closed items live in [`CHANGELOG.md`](CHANGELOG.md). Test failures and bugs go to GitHub issues, not here.
 

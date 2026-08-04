@@ -6,6 +6,21 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      operation:
+        description: Publish a canary or resume one exact release commit
+        required: true
+        default: canary
+        type: choice
+        options: [canary, resume-release]
+      version:
+        description: Exact SemVer for resume-release
+        required: false
+        type: string
+      release_sha:
+        description: Full release commit SHA for resume-release
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -38,6 +53,30 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Select exact source
+        id: source
+        env:
+          OPERATION: ${{ inputs.operation || 'canary' }}
+          RELEASE_SHA: ${{ inputs.release_sha }}
+          REQUESTED_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          selected_sha="$GITHUB_SHA"
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ] && [ "$OPERATION" = resume-release ]; then
+            [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+            test -n "$REQUESTED_VERSION"
+            git cat-file -e "$RELEASE_SHA^{commit}"
+            git fetch origin main
+            git merge-base --is-ancestor "$RELEASE_SHA" origin/main
+            selected_sha="$RELEASE_SHA"
+            git checkout --detach "$selected_sha"
+          elif [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+            test "$OPERATION" = canary
+            test -z "$RELEASE_SHA"
+            test -z "$REQUESTED_VERSION"
+          fi
+          echo "selected_sha=$selected_sha" >> "$GITHUB_OUTPUT"
+
       - name: Set up Node
         uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
@@ -51,8 +90,10 @@ jobs:
         id: release
         env:
           EVENT: ${{ github.event_name }}
+          OPERATION: ${{ inputs.operation || 'canary' }}
           REF: ${{ github.ref }}
-          SHA: ${{ github.sha }}
+          REQUESTED_VERSION: ${{ inputs.version }}
+          SHA: ${{ steps.source.outputs.selected_sha }}
         run: |
           set -euo pipefail
           epoch="$(git show -s --format=%ct "$SHA")"
@@ -63,7 +104,9 @@ jobs:
           fi
           node scripts/ci-release.mjs \
             --event "$EVENT" \
+            --operation "$OPERATION" \
             --ref "$REF" \
+            --requested-version "$REQUESTED_VERSION" \
             --sha "$SHA" \
             --commit-epoch "$epoch" \
             --package-version "$(node -p "require('./package.json').version")" \
@@ -78,6 +121,7 @@ jobs:
           node --check scripts/package-candidate.mjs
           node --check scripts/prepare-release.mjs
           node --check scripts/ghcr-retention.mjs
+          node --check scripts/ghcr-promotion.mjs
           node --check scripts/lib/*.mjs
           node --check docs-site/scripts/*.mjs
           bash -n build-wasm.sh scripts/*.sh
@@ -91,6 +135,7 @@ jobs:
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           fetch-depth: 0
+          ref: ${{ needs.preflight.outputs.full_sha }}
 
       - name: Set up Node
         uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
@@ -164,6 +209,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ needs.preflight.outputs.full_sha }}
       - name: Vale
         uses: vale-cli/vale-action@85f9f7f2c5f449ac0ae5b66662961bae3f77ca6a # v2.1.2
         with:
@@ -187,6 +234,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ needs.preflight.outputs.full_sha }}
 
       - name: Set up Node
         uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
@@ -337,6 +386,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ needs.preflight.outputs.full_sha }}
 
       - name: Set up Node
         uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
@@ -545,6 +596,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ needs.preflight.outputs.full_sha }}
 
       - name: Download single-threaded outputs
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
@@ -633,12 +686,17 @@ jobs:
 
   package-runtime:
     name: package · installed runtime
-    needs: package-assemble
-    if: always() && needs.package-assemble.result == 'success'
+    needs: [preflight, package-assemble]
+    if: >-
+      always() &&
+      needs.preflight.result == 'success' &&
+      needs.package-assemble.result == 'success'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ needs.preflight.outputs.full_sha }}
       - name: Set up Node
         uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
@@ -656,12 +714,17 @@ jobs:
 
   package-browser:
     name: package · browser runtime matrix
-    needs: package-assemble
-    if: always() && needs.package-assemble.result == 'success'
+    needs: [preflight, package-assemble]
+    if: >-
+      always() &&
+      needs.preflight.result == 'success' &&
+      needs.package-assemble.result == 'success'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ needs.preflight.outputs.full_sha }}
       - name: Set up Node
         uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
@@ -677,12 +740,17 @@ jobs:
 
   package-templates:
     name: package · active templates
-    needs: package-assemble
-    if: always() && needs.package-assemble.result == 'success'
+    needs: [preflight, package-assemble]
+    if: >-
+      always() &&
+      needs.preflight.result == 'success' &&
+      needs.package-assemble.result == 'success'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ needs.preflight.outputs.full_sha }}
       - name: Set up Node
         uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
@@ -707,6 +775,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ needs.preflight.outputs.full_sha }}
       - name: Set up Node
         uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
@@ -742,8 +812,10 @@ jobs:
       needs.preflight.outputs.ghcr_promote == 'true' &&
       needs.preflight.result == 'success' &&
       needs.candidate-build.result == 'success' &&
-      needs.package-gate.result == 'success'
-    needs: [preflight, candidate-build, package-gate]
+      needs.package-gate.result == 'success' &&
+      (needs.preflight.outputs.is_release != 'true' || needs.release-reproducibility.result == 'success') &&
+      (needs.preflight.outputs.kind == 'main' || needs.npm-publish.result == 'success')
+    needs: [preflight, candidate-build, package-gate, release-reproducibility, npm-publish]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -754,6 +826,10 @@ jobs:
       matrix:
         stage: [final-single, final-multi, bindgen-base]
     steps:
+      - name: Checkout exact source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ needs.preflight.outputs.full_sha }}
       - name: Download tested digests
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
@@ -777,20 +853,9 @@ jobs:
           VERSION: ${{ needs.preflight.outputs.version }}
         run: |
           set -euo pipefail
-          case "$STAGE" in
-            final-single) prefix=single-threaded; branch_prefix=branch ;;
-            final-multi) prefix=multi-threaded; branch_prefix=multi-threaded-branch ;;
-            bindgen-base) prefix=bindgen-base; branch_prefix=bindgen-base-branch ;;
-          esac
-          case "$KIND" in
-            stable-release) tags=("$prefix" "$VERSION-$prefix" "sha-${FULL_SHA:0:8}-$prefix") ;;
-            beta-release) tags=("$VERSION-$prefix" "sha-${FULL_SHA:0:8}-$prefix") ;;
-            main) tags=("$branch_prefix-main" "$branch_prefix-main-$FULL_SHA") ;;
-            manual-canary) tags=("canary-${FULL_SHA:0:8}-$prefix") ;;
-            *) echo "Unsupported GHCR promotion kind: $KIND" >&2; exit 1 ;;
-          esac
-          args=()
-          for tag in "${tags[@]}"; do args+=(-t "${REGISTRY_IMAGE}:$tag"); done
+          promotion="$(node scripts/ghcr-promotion.mjs tags "$KIND" "$STAGE" "$VERSION" "$FULL_SHA")"
+          mapfile -t immutable_tags < <(jq -r '.immutable[]' <<< "$promotion")
+          mapfile -t mutable_tags < <(jq -r '.mutable[]' <<< "$promotion")
           sources=()
           for arch in amd64 arm64; do
             dir="${RUNNER_TEMP}/digests/digest-${STAGE}-${arch}-${GITHUB_RUN_ID}"
@@ -799,66 +864,16 @@ jobs:
             test "${#files[@]}" -eq 1
             sources+=("${REGISTRY_IMAGE}@sha256:$(basename "${files[0]}")")
           done
-
-          native_digests() {
-            local reference="$1"
-            local digests
-            digests="$(
-              docker buildx imagetools inspect "$reference" --raw |
-                jq -r '
-                  if (.manifests? | type) == "array" then
-                    .manifests[] |
-                    select(.annotations["vnd.docker.reference.type"] != "attestation-manifest") |
-                    .digest
-                  else empty end
-                '
-            )"
-            if [ -n "$digests" ]; then
-              printf '%s\n' "$digests"
-            else
-              printf '%s\n' "${reference##*@}"
-            fi
-          }
-          expected_native_digests="$(
-            for source in "${sources[@]}"; do native_digests "$source"; done |
-              sort -u |
-              paste -sd, -
-          )"
-
-          reuse=false
-          if [ "$KIND" = manual-canary ] &&
-            docker buildx imagetools inspect "${REGISTRY_IMAGE}:${tags[0]}" >/dev/null 2>&1; then
-            published_native_digests="$(
-              native_digests "${REGISTRY_IMAGE}:${tags[0]}" |
-                sort -u |
-                paste -sd, -
-            )"
-            if [ "$published_native_digests" != "$expected_native_digests" ]; then
-              echo "Canary tag collision for ${REGISTRY_IMAGE}:${tags[0]}" >&2
-              exit 1
-            fi
-            reuse=true
+          for tag in "${immutable_tags[@]}"; do
+            bash scripts/promote-ghcr-tag.sh \
+              immutable "$REGISTRY_IMAGE" "$tag" "$FULL_SHA" "$VERSION" "${sources[@]}"
+          done
+          if [ "$KIND" = main ]; then
+            for tag in "${mutable_tags[@]}"; do
+              bash scripts/promote-ghcr-tag.sh \
+                mutable "$REGISTRY_IMAGE" "$tag" "$FULL_SHA" "$VERSION" "${sources[@]}"
+            done
           fi
-          if [ "$reuse" = false ]; then
-            docker buildx imagetools create "${args[@]}" "${sources[@]}"
-          fi
-          published_native_digests="$(
-            native_digests "${REGISTRY_IMAGE}:${tags[0]}" |
-              sort -u |
-              paste -sd, -
-          )"
-          test "$published_native_digests" = "$expected_native_digests"
-          platforms="$(
-            docker buildx imagetools inspect "${REGISTRY_IMAGE}:${tags[0]}" --raw |
-              jq -r '[
-                .manifests[] |
-                select(.annotations["vnd.docker.reference.type"] != "attestation-manifest") |
-                .platform | "\(.os)/\(.architecture)"
-              ] | sort | join(",")'
-          )"
-          test "$platforms" = "linux/amd64,linux/arm64"
-          digest="$(docker buildx imagetools inspect "${REGISTRY_IMAGE}:${tags[0]}" --format '{{json .Manifest}}' | jq -r '.digest')"
-          cosign sign --yes "${REGISTRY_IMAGE}@${digest}"
 
   release-reproducibility:
     name: release · reproducibility
@@ -968,6 +983,7 @@ jobs:
             throw new Error(`unexpected provenance commit: ${source?.digest.gitCommit}`);
           }
           NODE
+            test "$(npm view libcascade dist-tags --json | jq -r --arg channel "$CHANNEL" '.[$channel]')" = "$VERSION"
             echo "Exact version already exists with matching bytes and source identity"
           else
             npm publish ./candidate.tgz --ignore-scripts --access public --tag "$CHANNEL" --provenance
@@ -986,8 +1002,13 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: read
+      packages: write
+      id-token: write
     steps:
+      - name: Checkout exact source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ needs.preflight.outputs.full_sha }}
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: ${{ needs.package-assemble.outputs.artifact }}
@@ -1005,10 +1026,17 @@ jobs:
         run: npm install --global npm@11.5.1
       - name: Set up Buildx
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
+      - name: Log in to GHCR
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
       - name: Install cosign
         uses: sigstore/cosign-installer@3454372f43399081ed03b604cb2d021dabca52bb # v3
       - name: Verify exact registry bytes, provenance, signatures, and runtime
         env:
+          CHANNEL: ${{ needs.preflight.outputs.channel }}
           FULL_SHA: ${{ needs.preflight.outputs.full_sha }}
           KIND: ${{ needs.preflight.outputs.kind }}
           VERSION: ${{ needs.preflight.outputs.version }}
@@ -1020,6 +1048,7 @@ jobs:
             sleep 10
           done
           test "$(npm view "libcascade@$VERSION" dist.integrity)" = "$(cat candidate.sha512)"
+          test "$(npm view libcascade dist-tags --json | jq -r --arg channel "$CHANNEL" '.[$channel]')" = "$VERSION"
           export ATTESTATION_URL
           ATTESTATION_URL="$(npm view "libcascade@$VERSION" dist.attestations.url)"
           node --input-type=module <<'NODE'
@@ -1135,6 +1164,7 @@ jobs:
                 docker buildx imagetools inspect "${REGISTRY_IMAGE}@${digest}" \
                   --format '{{json .Image.Config.Labels}}'
               )"
+              test "$(jq -r '."org.opencontainers.image.source"' <<< "$labels")" = "https://github.com/taucad/opencascade.js"
               test "$(jq -r '."org.opencontainers.image.revision"' <<< "$labels")" = "$FULL_SHA"
               test "$(jq -r '."org.opencontainers.image.version"' <<< "$labels")" = "$VERSION"
             done
@@ -1143,6 +1173,25 @@ jobs:
               --certificate-oidc-issuer https://token.actions.githubusercontent.com \
               "$REGISTRY_IMAGE:$tag"
           done
+          if [ "$KIND" = stable-release ]; then
+            for stage in final-single final-multi bindgen-base; do
+              case "$stage" in
+                final-single) prefix=single-threaded ;;
+                final-multi) prefix=multi-threaded ;;
+                bindgen-base) prefix=bindgen-base ;;
+              esac
+              promotion="$(
+                node "$GITHUB_WORKSPACE/scripts/ghcr-promotion.mjs" \
+                  tags "$KIND" "$stage" "$VERSION" "$FULL_SHA"
+              )"
+              mapfile -t mutable_tags < <(jq -r '.mutable[]' <<< "$promotion")
+              for tag in "${mutable_tags[@]}"; do
+                bash "$GITHUB_WORKSPACE/scripts/promote-ghcr-tag.sh" \
+                  mutable "$REGISTRY_IMAGE" "$tag" "$FULL_SHA" "$VERSION" \
+                  "$REGISTRY_IMAGE:$VERSION-$prefix"
+              done
+            done
+          fi
           {
             echo "## Published candidate"
             echo
@@ -1187,6 +1236,7 @@ jobs:
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           fetch-depth: 0
+          ref: ${{ needs.preflight.outputs.full_sha }}
 
       - name: Create or verify annotated tag
         env:
@@ -1218,11 +1268,13 @@ jobs:
             END { if (!found) exit 2 }
           ' CHANGELOG.md > "$RUNNER_TEMP/release-notes.md"
           test -s "$RUNNER_TEMP/release-notes.md"
-          if gh release view "$TAG" --json tagName,name,isDraft,isPrerelease,url > "$RUNNER_TEMP/release.json" 2>/dev/null; then
+          if gh release view "$TAG" --json tagName,name,isDraft,isPrerelease,url,body > "$RUNNER_TEMP/release.json" 2>/dev/null; then
             test "$(jq -r .tagName "$RUNNER_TEMP/release.json")" = "$TAG"
             test "$(jq -r .name "$RUNNER_TEMP/release.json")" = "$TAG"
             test "$(jq -r .isDraft "$RUNNER_TEMP/release.json")" = false
             test "$(jq -r .isPrerelease "$RUNNER_TEMP/release.json")" = "$PRERELEASE"
+            jq -r .body "$RUNNER_TEMP/release.json" > "$RUNNER_TEMP/existing-release-notes.md"
+            diff -u "$RUNNER_TEMP/release-notes.md" "$RUNNER_TEMP/existing-release-notes.md"
           else
             args=("$TAG" --verify-tag --title "$TAG" --notes-file "$RUNNER_TEMP/release-notes.md")
             if [ "$PRERELEASE" = true ]; then args+=(--prerelease); fi
@@ -1294,6 +1346,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ needs.preflight.outputs.full_sha }}
 
       - name: Download exact docs candidate
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
@@ -1358,6 +1412,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ needs.preflight.outputs.full_sha }}
 
       - name: Download exact docs candidate
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8

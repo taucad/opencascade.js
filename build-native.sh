@@ -2,7 +2,7 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-echo "=== OpenCascade.js Native Build ==="
+echo "=== libcascade Native Build ==="
 
 # Shared emsdk with assimpjs
 export EMSDK="${EMSDK:-$(cd ../assimpjs/emsdk && pwd)}"

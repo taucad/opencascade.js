@@ -7,7 +7,7 @@ warning lines to the bindgen output and obscured genuine include-path /
 PCH issues. These tests pin the suppression so future flag refactors don't
 silently regress it.
 
-Hermetic: parses a minimal `additionalCppCode` snippet that doesn't depend
+Hermetic: parses a minimal custom C++ snippet that doesn't depend
 on the OCCT include tree (the diagnostic fires from the libclang invocation
 itself, not from header resolution). Skipped when libclang isn't available
 in the test environment.
@@ -33,8 +33,8 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-def _collect_diagnostics(additionalCppCode: str = ""):
-  """Run `parse` against `additionalCppCode` and return the diagnostic
+def _collect_diagnostics(custom_cpp_source: str = ""):
+  """Run `parse` against custom C++ and return the diagnostic
   spelling list. Wrapped so the test body asserts on a flat list of
   strings rather than the libclang Diagnostic objects (which don't
   marshall through pytest's assertion-rewriter cleanly).
@@ -44,7 +44,7 @@ def _collect_diagnostics(additionalCppCode: str = ""):
   diagnostic entries — the test asserts ONE specific token absence,
   not the absence of every diagnostic.
   """
-  tu = parse(additionalCppCode)
+  tu = parse(custom_cpp_source)
   return [d.format() for d in tu.diagnostics]
 
 
@@ -69,7 +69,7 @@ def test_libclang_no_unused_command_line_argument() -> None:
 
 
 def test_libclang_no_unused_argument_with_additional_cpp_code() -> None:
-  """Same suppression must hold when `additionalCppCode` is non-empty
+  """Same suppression must hold when custom C++ is non-empty
   (the custom-code path also flows through `parse`). Pins the contract
   that the flag list is shared across both invocation surfaces.
   """
@@ -78,6 +78,6 @@ def test_libclang_no_unused_argument_with_additional_cpp_code() -> None:
   assert not any(
     "unused-command-line-argument" in d for d in diagnostics
   ), (
-    "R7 regression on the additionalCppCode path — see "
+    "R7 regression on the custom C++ path — see "
     "`test_libclang_no_unused_command_line_argument` for remediation."
   )

@@ -35,7 +35,6 @@ describe('multi-threaded package subpath', () => {
       oc.BOPAlgo_Options.SetParallelMode(true);
       oc.BRepMesh_IncrementalMesh.SetParallelDefault(true);
       using pool = oc.OSD_ThreadPool.DefaultPool(-1);
-      pool.SetNbDefaultThreadsToLaunch(pool.NbThreads());
 
       using boxA = new oc.BRepPrimAPI_MakeBox(10, 10, 10);
       using boxB = new oc.BRepPrimAPI_MakeBox(5, 5, 5);

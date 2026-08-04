@@ -421,9 +421,9 @@ _PARSE_STUBS_DIR = os.path.join(
 )
 
 
-def getAdditionalBindCodeParseIncludePaths() -> list[str]:
+def getBindingSourceParseIncludePaths() -> list[str]:
     """Return the full -I path set for libclang to parse the link-stage
-    `BUILTIN_ADDITIONAL_BIND_CODE + consumer additionalBindCode` TU.
+    `BUILTIN_BINDINGS_SOURCE + consumer additionalBindFiles` TU.
 
     Combines (in deliberate path-search order):
       1. ``ast/parse_stubs/`` — minimal parse-only Embind / em_js / val

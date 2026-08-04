@@ -1,4 +1,4 @@
-# OpenCascade.js Binding Generator Filter Configuration
+# libcascade binding-generator filter configuration
 # This file drives which OCCT symbols are included/excluded during binding generation.
 # Semantic rules (abstract classes, deleted constructors, etc.) remain in code.
 #

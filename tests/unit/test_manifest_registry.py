@@ -147,7 +147,7 @@ def test_load_ncollection_alias_index_maps_typedef_aliases_to_canonical(tmp_path
 
 def test_load_ncollection_alias_index_returns_empty_when_no_typedefs(tmp_path) -> None:
   """A v2 manifest with no typedef aliases (e.g. only direct `using`
-  declarations in `additionalCppCode`) must yield an empty alias index —
+  declarations in `additionalCppFiles`) must yield an empty alias index —
   not a crash. `source_classes[]` is no longer consulted for alias
   resolution; its presence/absence doesn't enter this code path.
   """

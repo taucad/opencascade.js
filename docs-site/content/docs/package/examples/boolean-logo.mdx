@@ -1,6 +1,6 @@
 ---
 title: Boolean logo
-description: Build the OCJS logo with boolean cuts and rotations against a sphere.
+description: Build the libcascade logo with boolean cuts and rotations against a sphere.
 ---
 
 A worked example of boolean operations — start with a sphere, cut it four
@@ -9,7 +9,7 @@ visualise the result.
 
 ```typescript title="examples/boolean-logo.ts"
 import type { TopoDS_Shape } from 'libcascade';
-import { getOc } from './ocjs-init';
+import { getOc } from './libcascade-init';
 
 export const buildLogo = async (): Promise<TopoDS_Shape> => {
   const oc = await getOc();
@@ -83,7 +83,7 @@ export const buildLogo = async (): Promise<TopoDS_Shape> => {
 2. `makeCut` constructs a transform (translate + scale), wraps it in a
    `TopLoc_Location`, moves a copy of the sphere, and subtracts it via
    `BRepAlgoAPI_Cut`.
-3. Four sequential cuts produce one half of the OCJS logo glyph.
+3. Four sequential cuts produce one half of the libcascade logo glyph.
 4. `BRepAlgoAPI_Fuse` welds the half to a 180°-rotated copy of itself.
 5. A final 30° rotation tilts the logo.
 

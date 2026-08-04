@@ -1,4 +1,6 @@
 import { expectTypeOf, it } from 'vitest';
+import initRuntime from '../dist/opencascade_full';
+import { BRepPrimAPI_MakeBox as BRepPrimAPI_MakeBoxValue } from '../dist/opencascade_full';
 import type init from '../dist/opencascade_full';
 import type {
   gp_Pnt,
@@ -6,7 +8,13 @@ import type {
   TopoDS_Shape,
   BRepPrimAPI_MakeBox,
   TopAbs_ShapeEnum,
+  InitOpenCascadeOptions,
+  OpenCascadeInstance,
 } from '../dist/opencascade_full';
+
+void initRuntime;
+// @ts-expect-error OCCT values are properties of OpenCascadeInstance, not named ESM exports.
+void BRepPrimAPI_MakeBoxValue;
 
 it('should return correct types for gp_Pnt methods', () => {
   expectTypeOf<gp_Pnt['X']>().returns.toBeNumber();
@@ -59,5 +67,17 @@ it('should support Symbol.dispose for using declarations', () => {
 });
 
 it('should return Promise<OpenCascadeInstance> from init', () => {
-  expectTypeOf<typeof init>().returns.resolves.not.toBeVoid();
+  expectTypeOf<typeof init>().returns.resolves.toEqualTypeOf<OpenCascadeInstance>();
+});
+
+it('should expose only the supported optional initialization inputs', () => {
+  expectTypeOf<keyof InitOpenCascadeOptions>().toEqualTypeOf<
+    'locateFile' | 'wasmBinary' | 'wasmMemory' | 'print' | 'printErr'
+  >();
+  expectTypeOf<InitOpenCascadeOptions['locateFile']>().toEqualTypeOf<
+    ((path: string, scriptDirectory: string) => string) | undefined
+  >();
+  expectTypeOf<InitOpenCascadeOptions['wasmBinary']>().toEqualTypeOf<
+    ArrayBuffer | Uint8Array | undefined
+  >();
 });

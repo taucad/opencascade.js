@@ -71,7 +71,7 @@ export declare class TopoDS {
 }
 
 /**
- * OpenCascade.js runtime helpers for exception introspection.
+ * libcascade runtime helpers for exception introspection.
  *
  * Provides access to OCCT exception data when exception handling is enabled
  * (`-fexceptions` / `-sDISABLE_EXCEPTION_CATCHING=0`).

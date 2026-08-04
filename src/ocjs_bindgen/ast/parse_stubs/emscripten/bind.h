@@ -3,7 +3,7 @@
 //
 // This header is NEVER seen by emcc — the real link uses the real
 // `<emscripten/bind.h>` from emsdk's sysroot. The AST producer
-// (`ast/parse.py::parse_additional_bind_code`) puts `parse_stubs/` first
+// (`ast/parse.py::parse_binding_source`) puts `parse_stubs/` first
 // on the include path so libclang shadows the real header.
 //
 // We declare every Embind registration entry point as a real C++
@@ -97,7 +97,7 @@ auto select_overload(Signature (ClassType::*method)) -> decltype(method) {
   return method;
 }
 
-// Embind helpers referenced from BUILTIN_ADDITIONAL_BIND_CODE callbacks.
+// Embind helpers referenced from BUILTIN_BINDINGS_SOURCE callbacks.
 inline int allow_raw_pointers() { return 0; }
 struct pure_virtual {};
 template <typename T>

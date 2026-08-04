@@ -3,7 +3,6 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { pathToFileURL } from 'node:url';
 import { PACKAGE_FILES, validateExactFiles } from '../../scripts/package-candidate.mjs';
 
 const tarball = process.env.OCJS_PACKAGE_TARBALL;
@@ -11,6 +10,7 @@ if (!tarball) throw new Error('OCJS_PACKAGE_TARBALL is required');
 
 let workDir: string;
 let packageDir: string;
+let consumerPath: string;
 
 const walk = (root: string, relative = ''): string[] => fs.readdirSync(path.join(root, relative), {
   withFileTypes: true,
@@ -27,6 +27,42 @@ beforeAll(() => {
     stdio: 'inherit',
   });
   packageDir = path.join(workDir, 'node_modules/libcascade');
+  consumerPath = path.join(workDir, 'consumer.mjs');
+  fs.writeFileSync(consumerPath, `
+import * as single from 'libcascade';
+import * as multi from 'libcascade/multi';
+
+const results = [];
+for (const [name, module, threaded] of [
+  ['single', single, false],
+  ['multi', multi, true],
+]) {
+  const oc = await module.default();
+  const box = new oc.BRepPrimAPI_MakeBox(1, 2, 3);
+  const shape = box.Shape();
+  oc.FS.writeFile('/owned.bin', new Uint8Array([3, 1, 4, 1, 5]));
+  const bytes = oc.FS.readFile('/owned.bin');
+  const independentBuffer = bytes.buffer !== oc.wasmMemory.buffer;
+  oc.FS.unlink('/owned.bin');
+  const pool = threaded ? oc.OSD_ThreadPool.DefaultPool(-1) : undefined;
+  results.push({
+    name,
+    moduleKeys: Object.keys(module).sort(),
+    threaded,
+    memory: oc.wasmMemory.buffer.constructor.name,
+    shapeIsNull: shape.IsNull(),
+    exceptionHelper: typeof oc.getExceptionMessage,
+    independentBuffer,
+    bytesAfterUnlink: [...bytes],
+    threads: pool?.NbThreads() ?? 1,
+  });
+  pool?.delete();
+  shape.delete();
+  box.delete();
+  oc.PThread?.terminateAllThreads?.();
+}
+console.log(JSON.stringify(results));
+`);
 });
 
 afterAll(() => fs.rmSync(workDir, { recursive: true, force: true }));
@@ -36,7 +72,7 @@ describe('installed npm candidate', () => {
     validateExactFiles(walk(packageDir), PACKAGE_FILES, 'installed package');
   });
 
-  it('resolves every public export and boots both runtimes', async () => {
+  it('resolves every public export', () => {
     const manifest = JSON.parse(fs.readFileSync(path.join(packageDir, 'package.json'), 'utf8'));
     expect(manifest.name).toBe('libcascade');
     expect(Object.keys(manifest.exports).sort()).toEqual([
@@ -50,26 +86,44 @@ describe('installed npm candidate', () => {
       package: { name: 'libcascade', version: manifest.version },
     });
     expect(reference.source.commit).toMatch(/^[0-9a-f]{40}$/);
+  });
 
-    for (const variant of [
-      { module: 'opencascade_full.js', wasm: 'opencascade_full.wasm', threaded: false },
-      { module: 'opencascade_full_multi.js', wasm: 'opencascade_full_multi.wasm', threaded: true },
-    ]) {
-      const init = (await import(pathToFileURL(path.join(packageDir, 'dist', variant.module)).href)).default;
-      const oc = await init({ locateFile: (file: string) => path.join(packageDir, 'dist', file) });
-      expect(oc.wasmMemory).toBeInstanceOf(WebAssembly.Memory);
-      expect(oc.wasmMemory.buffer).toBeInstanceOf(
-        variant.threaded ? SharedArrayBuffer : ArrayBuffer,
-      );
-      using box = new oc.BRepPrimAPI_MakeBox(1, 2, 3);
-      using shape = box.Shape();
-      expect(shape.IsNull()).toBe(false);
-      if (variant.threaded) {
-        using pool = oc.OSD_ThreadPool.DefaultPool(-1);
-        expect(pool.NbThreads()).toBeGreaterThan(1);
-        oc.PThread?.terminateAllThreads?.();
-      }
-      expect(fs.statSync(path.join(packageDir, 'dist', variant.wasm)).size).toBeGreaterThan(1_000_000);
+  it('boots both public entry points without options and preserves owned file bytes', () => {
+    const stdout = execFileSync(process.execPath, [consumerPath], {
+      cwd: workDir,
+      encoding: 'utf8',
+      timeout: 120_000,
+    });
+    const results = JSON.parse(stdout.trim().split('\n').at(-1) ?? '[]');
+
+    expect(results).toEqual([
+      {
+        name: 'single',
+        moduleKeys: ['default'],
+        threaded: false,
+        memory: 'ArrayBuffer',
+        shapeIsNull: false,
+        exceptionHelper: 'function',
+        independentBuffer: true,
+        bytesAfterUnlink: [3, 1, 4, 1, 5],
+        threads: 1,
+      },
+      expect.objectContaining({
+        name: 'multi',
+        moduleKeys: ['default'],
+        threaded: true,
+        memory: 'SharedArrayBuffer',
+        shapeIsNull: false,
+        exceptionHelper: 'function',
+        independentBuffer: true,
+        bytesAfterUnlink: [3, 1, 4, 1, 5],
+        threads: expect.any(Number),
+      }),
+    ]);
+    expect(results[1].threads).toBeGreaterThan(1);
+
+    for (const wasm of ['opencascade_full.wasm', 'opencascade_full_multi.wasm']) {
+      expect(fs.statSync(path.join(packageDir, 'dist', wasm)).size).toBeGreaterThan(1_000_000);
     }
   });
 });

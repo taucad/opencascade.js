@@ -87,15 +87,14 @@ wrong overload.
 Primitive-only envelopes (every field is a number, boolean, or string) **do
 not carry `[Symbol.dispose]`**. Plain `const` works; you don't need `using` on
 the result. This is enforced by the type-level contract in
-`tests/disposable-containers.test-d.ts` — the type tests are the canonical
-truth even where the `BREAKING_CHANGES.md` §B2 table row still shows a
-disposer on the `Bounds` shape.
+`tests/disposable-containers.test-d.ts`; the generated declarations are the
+canonical truth.
 
 ## `returnValue`, not `result`
 
 When a method has a non-`void` C++ return _and_ primitive/enum/Handle
 outputs, the envelope grows a `returnValue` field carrying the native return.
-The OCJS v2 name `result` is gone in V3.
+The v2 name `result` is gone in V3.
 
 ```typescript
 using batten = new oc.FairCurve_Batten(p1, p2, /* height */ 0.5);
@@ -158,7 +157,7 @@ wrappers that must be released. Always bind them with `using`.
 
 The canonical type-level contract lives in
 `tests/disposable-containers.test-d.ts` and `tests/output-params.test-d.ts`
-in the OCJS repo — when in doubt, the type definitions are the source of
+in the libcascade source repository — when in doubt, the type definitions are the source of
 truth.
 
 ## Disposer idempotency

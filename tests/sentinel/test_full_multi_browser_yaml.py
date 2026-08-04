@@ -3,7 +3,7 @@
 The browser-only multi-threaded build (see Recommendation R12 in
 ``docs/research/ocjs-replicad-multi-link-warning-audit.md``) layers
 ``-sGROWABLE_ARRAYBUFFERS=1`` on top of the default ``full_multi.yml`` so
-consumers can hoist ``HEAP*`` references out of hot loops. The flag works
+consumer-created typed arrays can remain valid across memory growth. The flag works
 by making Emscripten emit JS glue that calls
 ``WebAssembly.Memory.prototype.toResizableBuffer()`` at module init —
 unavailable in Node.js / Bun / Deno as of May 2026.

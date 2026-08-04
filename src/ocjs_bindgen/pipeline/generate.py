@@ -412,7 +412,7 @@ def generateCustomCodeBindings(
   *,
   output_dir=None,
 ):
-  """Generate Embind C++ and TypeScript fragments for the YAML's `additionalCppCode` block.
+  """Generate Embind C++ and TypeScript fragments for the YAML's custom C++ files.
 
   Callers MUST pass `known_exports` so cross-class references inside the
   custom C++ (for example, a wrapper method returning `TopoDS_Shape`, or one

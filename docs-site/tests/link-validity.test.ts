@@ -1,8 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { promises as fs } from 'node:fs';
-import { join, resolve, dirname } from 'node:path';
+import { join, resolve, dirname, posix } from 'node:path';
 
 const DOCS_DIR = resolve(import.meta.dirname, '../content/docs');
+const PUBLIC_DIR = resolve(import.meta.dirname, '../public');
 const API_TREE_PATH = resolve(import.meta.dirname, '../data/api-tree.json');
 const EXCLUDED = new Set(['api']);
 
@@ -71,6 +72,34 @@ const collectMdxRoutes = async (): Promise<ReadonlySet<string>> => {
   return routes;
 };
 
+const routeForFile = (file: string): string => {
+  const rel = file.substring(DOCS_DIR.length).replace(/\\/g, '/');
+  return `/docs${rel.replace(/\.mdx$/, '').replace(/\/index$/, '')}`;
+};
+
+const docTargetRoute = (file: string, target: string): string | undefined => {
+  const [pathOnly] = target.split('#');
+  if (!pathOnly || pathOnly.startsWith('http')) return undefined;
+  if (pathOnly === '/docs' || pathOnly.startsWith('/docs/')) return pathOnly.replace(/\/$/, '');
+  if (pathOnly.startsWith('/')) return undefined;
+  return posix.normalize(posix.join(posix.dirname(routeForFile(file)), pathOnly)).replace(/\/$/, '');
+};
+
+const headingSlug = (heading: string): string =>
+  heading
+    .replace(/<[^>]+>/g, '')
+    .replace(/[`*_~]/g, '')
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s-]/gu, '')
+    .replace(/\s/g, '-');
+
+const collectAnchors = (body: string): ReadonlySet<string> => {
+  const anchors = new Set<string>();
+  for (const match of body.matchAll(/^#{1,6}\s+(.+)$/gm)) anchors.add(headingSlug(match[1]!));
+  for (const match of body.matchAll(/\bid=["']([^"']+)["']/g)) anchors.add(match[1]!);
+  return anchors;
+};
+
 describe('link validity', () => {
   it('should never escape the fork root with ../../ relative paths', async () => {
     const escapePrefix = '..' + '/..' + '/docs/';
@@ -86,17 +115,20 @@ describe('link validity', () => {
     expect(hits, hits.join('\n')).toEqual([]);
   });
 
-  it('should resolve every relative .mdx / .md link to a file that exists', async () => {
+  it('should resolve every relative file link and public asset', async () => {
     const files = await collectMdxFiles(DOCS_DIR);
     const broken: string[] = [];
     for (const file of files) {
       const body = await fs.readFile(file, 'utf8');
       for (const match of body.matchAll(MD_LINK_RE)) {
         const target = match[1]!;
-        if (target.startsWith('http') || target.startsWith('/')) continue;
+        if (target.startsWith('http')) continue;
         if (target.startsWith('#')) continue;
-        if (!/\.(mdx?|json|ts)$/.test(target)) continue;
-        const resolved = resolve(dirname(file), target.split('#')[0]!);
+        const pathOnly = target.split(/[?#]/)[0]!;
+        if (!posix.extname(pathOnly)) continue;
+        const resolved = pathOnly.startsWith('/')
+          ? resolve(PUBLIC_DIR, `.${pathOnly}`)
+          : resolve(dirname(file), pathOnly);
         if (!(await exists(resolved))) broken.push(`${file}: ${target}`);
       }
     }
@@ -107,16 +139,23 @@ describe('link validity', () => {
     const files = await collectMdxFiles(DOCS_DIR);
     const apiUrls = await loadApiUrls();
     const mdxRoutes = await collectMdxRoutes();
+    const routeFiles = new Map(files.map((file) => [routeForFile(file), file]));
     const broken: string[] = [];
     for (const file of files) {
       const body = await fs.readFile(file, 'utf8');
       for (const match of body.matchAll(MD_LINK_RE)) {
         const target = match[1]!;
-        if (!target.startsWith('/docs/') && target !== '/docs') continue;
-        const [pathOnly] = target.split('#');
-        const normalised = pathOnly!.replace(/\/$/, '');
-        const resolves = mdxRoutes.has(normalised) || apiUrls.has(normalised);
-        if (!resolves) broken.push(`${file}: ${target}`);
+        const route = docTargetRoute(file, target);
+        if (!route || /\.(mdx?|json|ts)$/.test(route)) continue;
+        if (!mdxRoutes.has(route) && !apiUrls.has(route)) {
+          broken.push(`${file}: ${target}`);
+          continue;
+        }
+        const fragment = target.split('#')[1];
+        const targetFile = routeFiles.get(route);
+        if (!fragment || !targetFile) continue;
+        const anchors = collectAnchors(await fs.readFile(targetFile, 'utf8'));
+        if (!anchors.has(decodeURIComponent(fragment))) broken.push(`${file}: ${target}`);
       }
     }
     expect(broken, broken.join('\n')).toEqual([]);

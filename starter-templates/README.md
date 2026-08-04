@@ -1,4 +1,4 @@
-# opencascade.js v3 starter templates
+# libcascade v3 starter templates
 
 Production-ready, copy-and-go starters for `libcascade`. Each template demonstrates a canonical loading pattern, a representative geometry pipeline, and a smoke test that ships green in CI.
 
@@ -8,7 +8,7 @@ Production-ready, copy-and-go starters for `libcascade`. Each template demonstra
 | ------------------------------------ | ------------------------------------------------------------------------- | -------------------------------------------------------------- |
 | [`vite-three-glb`](./vite-three-glb) | Vite 6 + TS + three.js 0.180+                                             | Build a Shape, mesh to GLB, render in three.js with OrbitControls |
 | [`vite-three-glb-multi`](./vite-three-glb-multi) | Vite 6 + TS + three.js + `libcascade/multi`      | Same GLB pipeline with COOP/COEP + pthread wasm + parallel mesh/boolean |
-| [`next-three-glb`](./next-three-glb) | Next 15 App Router + React 19 + `@react-three/fiber` + `@react-three/drei` | Client-only OCJS init via `dynamic(..., { ssr: false })` inside `'use client'` |
+| [`next-three-glb`](./next-three-glb) | Next 15 App Router + React 19 + `@react-three/fiber` + `@react-three/drei` | Client-only libcascade init via `dynamic(..., { ssr: false })` inside `'use client'` |
 | [`node-step-export`](./node-step-export) | Node 22+ ESM + `tsx`                                                  | Headless `cli build sphere --out sphere.step` with `import.meta.resolve` |
 
 Each subdirectory is self-contained: a `package.json` with a single canonical dependency (`libcascade`), a pinned `pnpm-lock.yaml`, and a `README.md` with the exact reproduction steps used by CI.
@@ -19,7 +19,7 @@ Every v3 template implements the same handful of contracts. If you start from th
 
 | Concern                | Canonical pattern                                                                                              | Why                                                                                                   |
 | ---------------------- | -------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| OCJS init              | A memoized `Promise<OpenCascadeInstance>` exported from `ocjs-init.ts`; never called inside React render path  | Init is expensive and exactly-once; multiple in-flight `init({...})` calls produce duplicate runtimes |
+| libcascade init              | A memoized `Promise<OpenCascadeInstance>` exported from `libcascade-init.ts`; never called inside React render path  | Init is expensive and exactly-once; multiple in-flight `init({...})` calls produce duplicate runtimes |
 | `locateFile`           | `import wasmUrl from 'libcascade/wasm?url'` (Vite) / `new URL(import.meta.resolve('libcascade/wasm'))` (Node) / `postinstall` copy into `public/` (Next public assets) | Lets the Emscripten loader find `opencascade_full.wasm` regardless of bundler or runtime              |
 | Shape disposal         | `using shape = ...` (TC39 explicit-resource-management) at the call site                                       | Deterministic free of WASM-side `Standard_Transient` objects without leaking into long-lived closures |
 | Exception decoding     | `try { ... } catch (e) { console.error(oc.getExceptionMessage?.(e) ?? e); throw e; }` at consumer boundaries   | The native-WASM-exceptions build returns opaque pointers in JS; `getExceptionMessage` resolves them   |
@@ -46,7 +46,3 @@ The helper exits non-zero on any of:
 - The page emits a `console.error` whose text matches `OCCT|OpenCascade|emscripten` (catches loader/init failures that did not crash the test outright)
 
 See the per-template READMEs for the wired-up invocations.
-
-## v2-beta templates
-
-The legacy `ocjs-create-*` templates have moved to [`legacy/`](./legacy/). They target `opencascade.js@beta.x` (the pre-rename, pre-ESM-only line) and are kept for archaeological reference only. New work should start from the templates above, not `legacy/`.

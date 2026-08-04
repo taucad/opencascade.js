@@ -12,7 +12,7 @@ tune optimisation level, exception model, SIMD, and target environments.
 mainBuild:
   emccFlags:
     - -O3
-    - -fwasm-exceptions      # native wasm exceptions; faster than JS exceptions
+    - -fwasm-exceptions      # native wasm exceptions
     - -msimd128              # baseline SIMD (Safari + everyone else)
     - -sWASM_BIGINT          # i64 stays as BigInt, no legalisation glue
     - -sEVAL_CTORS=2         # static-init evaluation at build time
@@ -27,11 +27,11 @@ mainBuild:
 
 | Flag | Why |
 |---|---|
-| `-O3` | Full LLVM optimisation. `-Os` is ~5% smaller, ~10% slower at runtime. `-O0` for debugging only. |
-| `-fwasm-exceptions` | Uses Wasm `try_table`. ~5–10% smaller and faster than `-fexceptions` (JS-based) when supported (every modern engine). |
-| `-msimd128` | Baseline SIMD. ~15% perf win on mesh and boolean kernels. Safari-compatible. |
-| `-mrelaxed-simd` | Chrome/Firefox-only additional SIMD ops. Adds another ~5% perf but breaks Safari — only ship if you can fall back. |
-| `-sWASM_BIGINT` | Removes the i64↔i32-pair shim. Saves ~30 KB JS glue. |
+| `-O3` | Production LLVM optimisation. Use `-Os` for a size-tuned build and measure its workload cost; use `-O0` only for debugging. |
+| `-fwasm-exceptions` | Uses native Wasm exception instructions instead of JavaScript `invoke_*` trampolines. |
+| `-msimd128` | Baseline WebAssembly SIMD supported by the package's browser matrix. |
+| `-mrelaxed-simd` | Additional relaxed SIMD operations. Safari 26.x lacks support, so keep a baseline sibling build if enabled. |
+| `-sWASM_BIGINT` | Removes the i64↔i32-pair legalisation shim. |
 | `-sEVAL_CTORS=2` | Runs static initialisers at build time. Smaller payload + faster startup. |
 | `-sMODULARIZE=1 -sEXPORT_ES6=1` | Required for `import init from '...'`. |
 | `-sENVIRONMENT=web,worker,node` | Strips dead env detection. Without this the runtime probes for `process`/`window`/`importScripts`. |
@@ -44,7 +44,7 @@ mainBuild:
 
 `-fwasm-exceptions` requires that **all** `.o` files AND the linker use the flag
 consistently. Mixed builds produce `__cpp_exception` as an unresolved import at
-link time. The default OCJS build sets `OCJS_EXCEPTIONS=1` everywhere; only
+link time. The default libcascade build sets `OCJS_EXCEPTIONS=1` everywhere; only
 override if you have a very narrow constraint (e.g. a wasm engine without
 `try_table` support).
 
@@ -63,7 +63,7 @@ instantiate. Ship relaxed-SIMD only if you maintain a fallback baseline build.
 | 1 | Eval ctors with safe side effects |
 | 2 | Recommended — full ctor evaluation, requires `-O2`+ |
 
-`EVAL_CTORS=2` is the OCJS shipped default and the right answer almost always.
+`EVAL_CTORS=2` is the libcascade shipped default and the right answer almost always.
 
 ## What you can NOT change at link time
 

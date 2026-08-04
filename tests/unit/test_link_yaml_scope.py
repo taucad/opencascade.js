@@ -479,7 +479,7 @@ def test_verify_bindings_clean_input_emits_nothing(tmp_path, capsys) -> None:
 
 
 def test_verify_bindings_accepts_yaml_custom_compiled_object(tmp_path) -> None:
-  """A class declared by ``additionalCppCode`` is compiled into the
+  """A class declared by ``additionalCppFiles`` is compiled into the
   YAML-owned link-work tree, not the global compiled-bindings tree.
   """
   library_base = _write_compiled_bindings_tree(tmp_path, ["TopoDS_Shape"])

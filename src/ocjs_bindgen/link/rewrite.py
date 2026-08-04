@@ -29,7 +29,7 @@ Existing rewriters
 Registered passes
 -----------------
   - `redundant_unknown_alias_dropper` — drops cross-fragment
-    `export type X = unknown;` declarations whose name is also exported as
+    `type X = unknown;` declarations whose name is also emitted as
     a real class / interface / non-unknown type alias somewhere else in
     the merged file. Per-fragment finalisers emit stubs for namespace-scoped
     interfaces using a per-fragment view of `self.exports`, so fragment B
@@ -88,18 +88,19 @@ _HERITAGE_RE = re.compile(
 # Used to discriminate aliases that genuinely shadow a real export from
 # stand-alone `unknown` aliases (e.g. `std_type_info`) which must remain.
 _REAL_CLASS_DECL_RE = re.compile(
-  r"^export\s+(?:declare\s+)?(?:abstract\s+)?class\s+([A-Za-z_][A-Za-z0-9_]*)\b",
+  r"^(?:export\s+)?(?:declare\s+)?(?:abstract\s+)?class\s+([A-Za-z_][A-Za-z0-9_]*)\b",
   re.MULTILINE,
 )
 _REAL_IFACE_DECL_RE = re.compile(
-  r"^export\s+(?:declare\s+)?interface\s+([A-Za-z_][A-Za-z0-9_]*)\b",
+  r"^(?:export\s+)?(?:declare\s+)?interface\s+([A-Za-z_][A-Za-z0-9_]*)\b",
   re.MULTILINE,
 )
-# Captures every `export type X = RHS;` (single-line). RHS classification
+# Captures every top-level `type X = RHS;` (single-line). Runtime declarations
+# are internalized before this pass, so `export` is optional. RHS classification
 # happens in the dropper itself so we avoid brittle MULTILINE/`$`/`\s*`
 # lookahead interactions when discriminating `unknown` from real aliases.
 _TYPE_ALIAS_DECL_RE = re.compile(
-  r"^export\s+(?:declare\s+)?type\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*([^;\n]+?)\s*;[ \t]*\r?\n?",
+  r"^(?:export\s+)?(?:declare\s+)?type\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*([^;\n]+?)\s*;[ \t]*\r?\n?",
   re.MULTILINE,
 )
 
@@ -186,8 +187,8 @@ def undeclared_to_unknown_rewriter(ctx: RewriteContext) -> list[Edit]:
 
 
 def redundant_unknown_alias_dropper(ctx: RewriteContext) -> list[Edit]:
-  """Rewriter C — drop `export type X = unknown;` declarations whose name
-  is also exported as a real class / interface / non-`unknown` type alias
+  """Rewriter C — drop `type X = unknown;` declarations whose name
+  is also emitted as a real class / interface / non-`unknown` type alias
   somewhere else in the merged file.
 
   Per-fragment finalisers emit stubs for namespace-scoped interfaces using

@@ -6,7 +6,7 @@ import './global.css';
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
-  title: { default: SITE_TITLE, template: '%s — OpenCascade.js' },
+  title: { default: SITE_TITLE, template: '%s — libcascade' },
   description: SITE_DESCRIPTION,
   icons: {
     icon: '/favicon.ico',

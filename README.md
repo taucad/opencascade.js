@@ -1,17 +1,17 @@
 <p align="center">
-  <img src="https://github.com/donalffons/opencascade.js/raw/master/images/logo.svg" alt="Logo" width="50%">
+  <img src="images/logo.svg" alt="libcascade" width="50%">
 
-  <h3 align="center">opencascade.js</h3>
+  <h3 align="center">libcascade</h3>
 
   <p align="center">
     A port of the <a href="https://www.opencascade.com/">OpenCascade</a> CAD library to JavaScript and WebAssembly via Emscripten.
     <br />
-    <a href="https://ocjs.org/"><strong>Explore the docs »</strong></a>
+    <a href="https://opencascade-js.vercel.app/"><strong>Explore the docs »</strong></a>
     <br />
     <br />
     <a href="https://github.com/taucad/opencascade.js/issues">Issues</a>
     ·
-    <a href="https://github.com/taucad/opencascade.js/discussions">Discuss</a>
+    <a href="https://github.com/taucad/opencascade.js/issues">Get help</a>
   </p>
 </p>
 
@@ -27,13 +27,14 @@
 | **Use OCCT from JS or TS** (npm install, ESM `init`)       | [Quickstart (npm)](#quickstart-npm)                                                       |
 | **Run a reproducible build** (CI, Docker, custom YAML)     | [Quickstart (Docker)](#quickstart-docker)                                                 |
 | **See what changed in v3** (OCCT V8, ESM-only, exceptions) | [What's New in v3](#whats-new-in-v3) · [BREAKING_CHANGES.md](BREAKING_CHANGES.md)         |
-| **Customize the binding set** (trim YAML, add wrappers)    | [docs/reference/yaml-schema.md](docs/reference/yaml-schema.md)                            |
+| **Customize the binding set** (trim YAML, add wrappers)    | [YAML schema](https://opencascade-js.vercel.app/docs/toolchain/reference/yaml-schema)      |
 | **Build OCCT WASM from source** (maintainers/contributors) | [MAINTAINER.md](MAINTAINER.md)                                                            |
 | **Contribute or report an issue**                          | [Contributing](#contributing) · [Issues](https://github.com/taucad/opencascade.js/issues) |
 
 ## Quickstart (npm)
 
-OpenCascade.js is published on npm as `libcascade`. Its source remains in
+`libcascade` brings the OpenCASCADE Technology kernel to JavaScript and
+WebAssembly. Its source is maintained in
 [`taucad/opencascade.js`](https://github.com/taucad/opencascade.js); it is not
 an official Open CASCADE Technology distribution.
 
@@ -42,7 +43,10 @@ pnpm add libcascade
 # or: npm install libcascade
 ```
 
-The package is ESM-only with a default-export `init` function. Pass `locateFile` so the Emscripten loader can resolve the wasm binary from your bundler's output (browser) or `node_modules` layout (Node). Both runtimes reach the binary through the `libcascade/wasm` subpath export — no `dist/...` deep imports required.
+The package is ESM-only with one runtime export: the default `init` function.
+It resolves the adjacent WASM automatically. Use `locateFile` only when a
+bundler or deployment relocates the binary; `libcascade/wasm` is the supported
+asset subpath, with no `dist/...` deep imports.
 
 Build-time tools can consume the deterministic API-reference feed through
 `libcascade/api-reference.json`. It includes the parsed class/member hierarchy, the
@@ -50,16 +54,9 @@ full source commit, build provenance, and exact input hashes; site-specific
 routes and search indexes remain consumer-derived.
 
 ```ts
-// Node
-import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
 import init from 'libcascade';
 
-const WASM_DIR = dirname(fileURLToPath(import.meta.resolve('libcascade/wasm')));
-
-const oc = await init({
-  locateFile: (filename: string) => join(WASM_DIR, filename),
-});
+const oc = await init();
 
 using box = new oc.BRepPrimAPI_MakeBox(10, 10, 10);
 const shape = box.Shape();
@@ -80,22 +77,13 @@ The published tarball ships pre-built WASM at `dist/opencascade_full.{wasm,js,d.
 For batch meshing, boolean grids, and STEP→glTF pipelines that benefit from OCCT's internal thread pool, import the pthread-enabled variant instead of the default:
 
 ```ts
-// Node
-import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
 import init from 'libcascade/multi';
 
-const WASM_DIR = dirname(fileURLToPath(import.meta.resolve('libcascade/multi/wasm')));
+const oc = await init();
 
-const oc = await init({
-  locateFile: (filename: string) => join(WASM_DIR, filename),
-});
-
-// Run once after init — flip OCCT global parallel defaults and size the thread pool.
+// Run once after init — flip OCCT global parallel defaults.
 oc.BOPAlgo_Options.SetParallelMode(true); // booleans fan out by default
 oc.BRepMesh_IncrementalMesh.SetParallelDefault(true); // meshing fan out by default
-const pool = oc.OSD_ThreadPool.DefaultPool(-1); // lazy-init pool to NbLogicalProcessors
-pool.SetNbDefaultThreadsToLaunch(pool.NbThreads()); // let each call use all workers
 ```
 
 ```ts
@@ -107,11 +95,9 @@ const oc = await init({ locateFile: () => wasmUrl });
 
 oc.BOPAlgo_Options.SetParallelMode(true);
 oc.BRepMesh_IncrementalMesh.SetParallelDefault(true);
-using pool = oc.OSD_ThreadPool.DefaultPool(-1);
-pool.SetNbDefaultThreadsToLaunch(pool.NbThreads());
 ```
 
-Browsers require `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp` on every page that loads the threaded wasm. See the [multi-threaded build guide](https://ocjs.org/docs/package/guides/multi-threading) for activation, benchmarks, and when not to ship threaded; [toolchain custom-build](https://ocjs.org/docs/toolchain/guides/multi-threading) covers the YAML recipe for trimmed MT variants.
+Browsers require `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp` on every page that loads the threaded wasm. See the [multi-threaded build guide](https://opencascade-js.vercel.app/docs/package/guides/multi-threading) for activation, benchmarks, and when not to ship threaded; [toolchain custom-build](https://opencascade-js.vercel.app/docs/toolchain/guides/multi-threading) covers the YAML recipe for trimmed MT variants.
 
 ## Quickstart (Docker)
 
@@ -154,7 +140,7 @@ Docker resolves the right architecture from every published manifest list automa
 
 - **OCCT 8.0.1** — 1,085+ commits of improvements; 22-31% faster boolean operations
 - **Emscripten 5.0.1** — LLVM 17, modern WASM features
-- **Native WASM Exceptions** — `-fwasm-exceptions` replaces JS invoke trampolines; decodable end-to-end via `getExceptionMessage`
+- **Native WASM Exceptions** — `-fwasm-exceptions` replaces JS invoke trampolines; decodable end-to-end via `oc.getExceptionMessage`
 - **ESM-only distribution** — `"type": "module"`; default export is single-threaded `opencascade_full.{js,wasm,d.ts}`; multi-threaded `opencascade_full_multi.{js,wasm,d.ts}` ships under `libcascade/multi` and `/multi/wasm`
 - **Full TypeScript bindings** — Doxygen-derived JSDoc rendered correctly in Monaco IntelliSense
 - **Suffix-free overloads** — single symbol per class with val-based dispatcher, no more `_2`/`_3` subclasses (measured at ~264 ns/call, <0.011% of wall time on typical CAD models — see [BENCHMARKS.md](BENCHMARKS.md))
@@ -169,14 +155,14 @@ See [CHANGELOG.md](CHANGELOG.md) for the full v3.0.0 entry. For empirical eviden
 - [CHANGELOG.md](CHANGELOG.md) — release notes
 - **[BENCHMARKS.md](BENCHMARKS.md)** — empirical evidence hub: wall-clock CAD perf vs native C++, multi-threading speedup, embind dispatch cost, RBV overhead
 - [MAINTAINER.md](MAINTAINER.md) — native build, env vars, customization for maintainers and contributors
-- [docs/reference/yaml-schema.md](docs/reference/yaml-schema.md) — YAML schema (bindings, emccFlags, additionalCppCode, additionalCppFiles, additionalBindCode)
+- [YAML schema](https://opencascade-js.vercel.app/docs/toolchain/reference/yaml-schema) — bindings, flags, `additionalCppFiles`, and `additionalBindFiles`
 - [BUILD_SYSTEM.md](BUILD_SYSTEM.md) — `OCJS_*` env-var matrix and configuration authoring
-- [docs/guides/custom-emcc-flags.md](docs/guides/custom-emcc-flags.md) — tuning size, speed, and build time
-- [docs/guides/trim-symbols.md](docs/guides/trim-symbols.md) — trim from `full.yml` to a consumer-sized build
-- [docs/guides/extend-with-cpp.md](docs/guides/extend-with-cpp.md) — add wrappers via `additionalCppCode` / `additionalCppFiles` / `additionalBindCode`
-- [docs/guides/reproducible-ci.md](docs/guides/reproducible-ci.md) — pin-by-SHA, `provenance.json`, SBOM, lockfile discipline
+- [Custom emcc flags](https://opencascade-js.vercel.app/docs/toolchain/guides/custom-emcc-flags) — tuning size, speed, and build time
+- [Trim symbols](https://opencascade-js.vercel.app/docs/toolchain/guides/trim-symbols) — trim from `full.yml` to a consumer-sized build
+- [Extend with C++](https://opencascade-js.vercel.app/docs/toolchain/guides/extend-with-cpp) — generated C++ and raw Embind files
+- [Reproducible CI](https://opencascade-js.vercel.app/docs/toolchain/guides/reproducible-ci) — pin-by-SHA, provenance, SBOM, and lockfile discipline
 
-## Projects Using opencascade.js
+## Projects Using libcascade
 
 - [ArchiYou](https://archiyou.com/) — Library, Code-CAD Design Tool, Community Hub
 - [BitByBit](https://bitbybit.dev/) — Code- & node-based CAD Design Tool
