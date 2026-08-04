@@ -177,6 +177,13 @@ exists, the publish job compares the registry tarball with the candidate. It
 succeeds only for identical bytes and provenance; changed bytes under an
 existing version fail without moving tags or creating a release.
 
+Release publication is deliberately ordered: all candidate and consumer gates,
+then release reproducibility, npm under the intended `beta` or `latest` tag,
+immutable version/SHA GHCR manifests, registry verification, stable moving
+GHCR aliases, and finally the annotated Git tag and GitHub Release. Untagged
+candidate image digests may exist before the gates because they are
+content-addressed and cannot be selected by a release tag.
+
 ### Cutting a Release
 
 Contributors add `.nx/version-plans/*.md` files to package-affecting pull
@@ -223,6 +230,29 @@ creates/verifies the annotated `v<version>` tag and GitHub Release. No release
 PR comments are required: the CI summary, npm provenance, annotated tag, and
 GitHub Release are the durable record. Never create the tag before registry
 verification.
+
+If a release run stops after publication begins, resume that same semantic
+version from its exact release commit:
+
+```bash
+gh workflow run docker.yml \
+  --repo taucad/opencascade.js \
+  --ref main \
+  -f operation=resume-release \
+  -f version=3.0.0-beta.1 \
+  -f release_sha=<full-40-character-release-sha>
+```
+
+The resume operation accepts only a release commit already contained in
+protected `main`, validates its subject, package version, changelog, changed
+files, and Version Plan lifecycle, and rebuilds that exact source through the
+same gates. An absent immutable object is created, an exact object is reused,
+and any mismatch stops the run. It never republishes an existing npm version,
+mutates an npm dist-tag separately, or overwrites an immutable GHCR tag. A
+failure before npm publication does not consume the version: restore the
+development metadata, fix the workflow through a protected PR, and prepare the
+same version again. Once npm has published a version, only exact-source resume
+may complete it; changed artifacts require a new authorized version.
 
 ### Local documentation from CI artifacts
 

@@ -4,6 +4,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { parse } from 'yaml';
 import { deriveRelease } from '../../scripts/ci-release.mjs';
+import {
+  decideGhcrPromotion,
+  deriveGhcrTags,
+} from '../../scripts/ghcr-promotion.mjs';
 import { validateRequestedVersion } from '../../scripts/prepare-release.mjs';
 import { DIST_FILES, PACKAGE_FILES, validateExactFiles } from '../../scripts/package-candidate.mjs';
 import { selectVersions } from '../../scripts/ghcr-retention.mjs';
@@ -68,6 +72,91 @@ describe('CI contracts', () => {
     })).toThrow('manual canary ref must be a branch');
   });
 
+  it('should resume only an exact release version and source commit', () => {
+    const release = deriveRelease({
+      event: 'workflow_dispatch',
+      operation: 'resume-release',
+      ref: 'refs/heads/main',
+      sha: SHA,
+      commitEpoch: EPOCH,
+      packageVersion: '3.0.0-beta.1',
+      requestedVersion: '3.0.0-beta.1',
+      commitSubject: 'chore(release): ocjs v3.0.0-beta.1',
+      changedFiles: ['CHANGELOG.md', 'package-lock.json', 'package.json'],
+      changelog: '## 3.0.0-beta.1 (2026-08-04)',
+    });
+    expect(release).toMatchObject({
+      channel: 'beta',
+      fullSha: SHA,
+      isRelease: true,
+      kind: 'beta-release',
+      version: '3.0.0-beta.1',
+    });
+    expect(() => deriveRelease({
+      event: 'workflow_dispatch',
+      operation: 'resume-release',
+      ref: 'refs/heads/feature/release',
+      sha: SHA,
+      commitEpoch: EPOCH,
+      packageVersion: '3.0.0-beta.1',
+      requestedVersion: '3.0.0-beta.1',
+      commitSubject: 'chore(release): ocjs v3.0.0-beta.1',
+      changedFiles: ['CHANGELOG.md', 'package-lock.json', 'package.json'],
+    })).toThrow('release resume must run from protected main');
+    expect(() => deriveRelease({
+      event: 'workflow_dispatch',
+      operation: 'resume-release',
+      ref: 'refs/heads/main',
+      sha: SHA,
+      commitEpoch: EPOCH,
+      packageVersion: '3.0.0-beta.1',
+      requestedVersion: '3.0.0-beta.2',
+      commitSubject: 'chore(release): ocjs v3.0.0-beta.1',
+      changedFiles: ['CHANGELOG.md', 'package-lock.json', 'package.json'],
+    })).toThrow('requested release 3.0.0-beta.2 does not match 3.0.0-beta.1');
+  });
+
+  it('should derive immutable GHCR tags separately from moving aliases', () => {
+    expect(deriveGhcrTags({
+      fullSha: SHA,
+      kind: 'stable-release',
+      stage: 'final-single',
+      version: '3.0.0',
+    })).toEqual({
+      immutable: ['3.0.0-single-threaded', 'sha-d5736f09-single-threaded'],
+      mutable: ['single-threaded'],
+    });
+    expect(deriveGhcrTags({
+      fullSha: SHA,
+      kind: 'beta-release',
+      stage: 'final-multi',
+      version: '3.0.0-beta.1',
+    })).toEqual({
+      immutable: ['3.0.0-beta.1-multi-threaded', 'sha-d5736f09-multi-threaded'],
+      mutable: [],
+    });
+    expect(deriveGhcrTags({
+      fullSha: SHA,
+      kind: 'main',
+      stage: 'bindgen-base',
+      version: '3.0.0-beta.0',
+    })).toEqual({
+      immutable: [`bindgen-base-branch-main-${SHA}`],
+      mutable: ['bindgen-base-branch-main'],
+    });
+  });
+
+  it.each([
+    [{ exists: false, mutable: false }, 'create'],
+    [{ exists: true, mutable: false, exact: true, signatureValid: true }, 'reuse'],
+    [{ exists: true, mutable: false, exact: true, signatureValid: false }, 'sign'],
+    [{ exists: true, mutable: false, exact: false, signatureValid: false }, 'conflict'],
+    [{ exists: true, mutable: true, exact: false, signatureValid: false }, 'replace'],
+    [{ exists: true, mutable: true, exact: true, signatureValid: true }, 'reuse'],
+  ] as const)('should select GHCR promotion action for %j', (state, action) => {
+    expect(decideGhcrPromotion(state)).toBe(action);
+  });
+
   it('should classify only exact release-PR merges as beta or stable publications', () => {
     const betaReleaseFiles = ['CHANGELOG.md', 'package-lock.json', 'package.json'];
     const stableReleaseFiles = [
@@ -84,6 +173,7 @@ describe('CI contracts', () => {
       packageVersion: '3.0.0-beta.1',
       commitSubject: 'chore(release): ocjs v3.0.0-beta.1',
       changedFiles: betaReleaseFiles,
+      changelog: '## 3.0.0-beta.1 (2026-08-04)',
     })).toMatchObject({
       version: '3.0.0-beta.1',
       channel: 'beta',
@@ -100,7 +190,18 @@ describe('CI contracts', () => {
       packageVersion: '3.0.0',
       commitSubject: 'chore(release): ocjs v3.0.0',
       changedFiles: stableReleaseFiles,
+      changelog: '# 3.0.0 (2026-08-04)',
     })).toMatchObject({ channel: 'latest', kind: 'stable-release', prerelease: false });
+    expect(() => deriveRelease({
+      event: 'push',
+      ref: 'refs/heads/main',
+      sha: SHA,
+      commitEpoch: EPOCH,
+      packageVersion: '3.0.0-beta.1',
+      commitSubject: 'chore(release): ocjs v3.0.0-beta.1',
+      changedFiles: betaReleaseFiles,
+      changelog: '# 3.0.0 (2026-08-04)',
+    })).toThrow('CHANGELOG.md has no 3.0.0-beta.1 release section');
     expect(() => deriveRelease({
       event: 'push',
       ref: 'refs/heads/main',
@@ -282,7 +383,14 @@ describe('CI contracts', () => {
     const ci = workflow('docker.yml');
     expect(ci.on.push.branches).toEqual(['main']);
     expect(ci.on.pull_request.branches).toEqual(['main']);
-    expect(ci.on).toHaveProperty('workflow_dispatch', null);
+    expect(ci.on.workflow_dispatch.inputs.operation).toMatchObject({
+      default: 'canary',
+      options: ['canary', 'resume-release'],
+      required: true,
+      type: 'choice',
+    });
+    expect(ci.on.workflow_dispatch.inputs.version.required).toBe(false);
+    expect(ci.on.workflow_dispatch.inputs.release_sha.required).toBe(false);
     expect(ci.concurrency['cancel-in-progress']).toContain("github.event_name == 'pull_request'");
     expect(ci.jobs['npm-publish'].concurrency).toMatchObject({
       queue: 'max',
@@ -357,13 +465,14 @@ describe('CI contracts', () => {
 
   it('should promote exactly one tested digest per native architecture', () => {
     const source = fs.readFileSync(path.join(ROOT, '.github/workflows/docker.yml'), 'utf8');
+    const promotion = fs.readFileSync(path.join(ROOT, 'scripts/promote-ghcr-tag.sh'), 'utf8');
     expect(source).toContain('digest-${STAGE}-${arch}-${GITHUB_RUN_ID}');
     expect(source).toContain('for arch in amd64 arm64');
     expect(source).toContain('test "${#files[@]}" -eq 1');
     expect(source).toContain(
       'select(.annotations["vnd.docker.reference.type"] != "attestation-manifest")',
     );
-    expect(source).toContain('test "$platforms" = "linux/amd64,linux/arm64"');
+    expect(promotion).toContain("test \"$platforms\" = 'linux/amd64,linux/arm64'");
   });
 
   it('should publish immutable manual canary image coordinates', () => {
@@ -378,10 +487,10 @@ describe('CI contracts', () => {
 
     expect(promote.env.KIND).toBe('${{ needs.preflight.outputs.kind }}');
     expect(promote.env).not.toHaveProperty('BRANCH');
-    expect(promote.run).toContain('manual-canary) tags=("canary-${FULL_SHA:0:8}-$prefix")');
-    expect(promote.run).toContain('main) tags=("$branch_prefix-main" "$branch_prefix-main-$FULL_SHA")');
-    expect(promote.run).toContain('Canary tag collision');
-    expect(promote.run).toContain('expected_native_digests');
+    expect(promote.run).toContain('scripts/ghcr-promotion.mjs tags');
+    expect(promote.run).toContain('scripts/promote-ghcr-tag.sh');
+    const helper = fs.readFileSync(path.join(ROOT, 'scripts/promote-ghcr-tag.sh'), 'utf8');
+    expect(helper).toContain('node "$script_dir/ghcr-promotion.mjs" decide');
     expect(promote.run).not.toContain('$branch_prefix-$BRANCH');
     const digestDownload = ci.jobs['registry-verify'].steps.find(
       ({ name }: { name?: string }) => name === 'Download tested digests',
@@ -537,7 +646,7 @@ describe('CI contracts', () => {
   it('should test the exact npm candidate in the six-cell browser runtime matrix', () => {
     const ci = workflow('docker.yml');
     const browser = ci.jobs['package-browser'];
-    expect(browser.needs).toBe('package-assemble');
+    expect(browser.needs).toEqual(['preflight', 'package-assemble']);
     expect(browser.strategy).toBeUndefined();
     expect(ci.jobs['package-templates'].strategy).toBeUndefined();
     expect(ci.jobs['package-gate'].needs).toEqual([
@@ -620,6 +729,14 @@ describe('CI contracts', () => {
     expect(ci.jobs['candidate-build'].needs).toBe('preflight');
     expect(ci.jobs['package-assemble'].needs).toEqual(['preflight', 'quality', 'candidate-gate']);
     expect(ci.jobs['ghcr-promote'].needs).toContain('package-gate');
+    expect(ci.jobs['ghcr-promote'].needs).toContain('release-reproducibility');
+    expect(ci.jobs['ghcr-promote'].needs).toContain('npm-publish');
+    expect(ci.jobs['ghcr-promote'].if).toContain(
+      "needs.preflight.outputs.is_release != 'true' || needs.release-reproducibility.result == 'success'",
+    );
+    expect(ci.jobs['ghcr-promote'].if).toContain(
+      "needs.preflight.outputs.kind == 'main' || needs.npm-publish.result == 'success'",
+    );
     expect(ci.jobs['npm-publish'].needs).toContain('package-gate');
     expect(ci.jobs['npm-publish'].permissions).toEqual({ contents: 'read', 'id-token': 'write' });
     expect(ci.jobs['npm-publish'].steps.some(({ uses }: { uses?: string }) =>
@@ -649,12 +766,51 @@ describe('CI contracts', () => {
     const promote = ci.jobs['ghcr-promote'].steps.find(
       ({ name }: { name?: string }) => name === 'Attach consumer-facing tags',
     );
-    expect(promote.run).toContain(
-      'stable-release) tags=("$prefix" "$VERSION-$prefix" "sha-${FULL_SHA:0:8}-$prefix")',
+    expect(promote.run).toContain('scripts/ghcr-promotion.mjs tags');
+    expect(promote.run).not.toContain('stable-release) tags=("$prefix"');
+    const verify = ci.jobs['registry-verify'].steps.find(
+      ({ name }: { name?: string }) =>
+        name === 'Verify exact registry bytes, provenance, signatures, and runtime',
     );
-    expect(promote.run).toContain(
-      'beta-release) tags=("$VERSION-$prefix" "sha-${FULL_SHA:0:8}-$prefix")',
+    expect(ci.jobs['registry-verify'].permissions).toEqual({
+      contents: 'read',
+      'id-token': 'write',
+      packages: 'write',
+    });
+    expect(verify.run).toContain('scripts/ghcr-promotion.mjs');
+    expect(verify.run).toContain('tags "$KIND" "$stage" "$VERSION" "$FULL_SHA"');
+    expect(verify.run).toContain('mutable');
+  });
+
+  it('should build every dispatched release resume from the validated source SHA', () => {
+    const ci = workflow('docker.yml');
+    const selectSource = ci.jobs.preflight.steps.find(
+      ({ name }: { name?: string }) => name === 'Select exact source',
     );
+    expect(selectSource.run).toContain('[[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]');
+    expect(selectSource.run).toContain('git merge-base --is-ancestor "$RELEASE_SHA" origin/main');
+    expect(selectSource.run).toContain('git checkout --detach "$selected_sha"');
+    const jobs = ci.jobs as Record<string, {
+      steps?: Array<{ uses?: string, with?: { ref?: string } }>,
+    }>;
+    const checkoutJobs = Object.entries(jobs).filter(([, job]) =>
+      job.steps?.some(({ uses }) => uses?.startsWith('actions/checkout@')),
+    );
+    for (const [jobName, job] of checkoutJobs) {
+      if (jobName === 'preflight') continue;
+      const checkout = job.steps!.find(
+        ({ uses }: { uses?: string }) => uses?.startsWith('actions/checkout@'),
+      );
+      expect(checkout!.with?.ref, jobName).toBe('${{ needs.preflight.outputs.full_sha }}');
+    }
+  });
+
+  it('should restore the reusable beta.0 development baseline', () => {
+    const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
+    const changelog = fs.readFileSync(path.join(ROOT, 'CHANGELOG.md'), 'utf8');
+    expect(manifest.version).toBe('3.0.0-beta.0');
+    expect(changelog).not.toContain('## 3.0.0-beta.1');
+    expect(fs.existsSync(path.join(ROOT, '.nx/version-plans/ocjs-package-rename.md'))).toBe(true);
   });
 
   it('should finalize releases and deploy Vercel only from the verified candidate', () => {
@@ -723,16 +879,18 @@ describe('CI contracts', () => {
     expect(ci.jobs['registry-verify'].if).toContain("needs.preflight.outputs.npm_publish == 'true'");
   });
 
-  it('should provision Node without a checkout in artifact-only registry jobs', () => {
+  it('should keep npm trusted publication artifact-only', () => {
     const ci = workflow('docker.yml');
     const nodeVersion = fs.readFileSync(path.join(ROOT, '.nvmrc'), 'utf8').trim();
-    for (const jobName of ['npm-publish', 'registry-verify']) {
-      const setupNode = ci.jobs[jobName].steps.find(
-        ({ uses }: { uses?: string }) => uses?.startsWith('actions/setup-node@'),
-      );
-      expect(setupNode.with, jobName).toMatchObject({ 'node-version': nodeVersion });
-      expect(setupNode.with, jobName).not.toHaveProperty('node-version-file');
-    }
+    const publish = ci.jobs['npm-publish'];
+    const setupNode = publish.steps.find(
+      ({ uses }: { uses?: string }) => uses?.startsWith('actions/setup-node@'),
+    );
+    expect(setupNode.with).toMatchObject({ 'node-version': nodeVersion });
+    expect(setupNode.with).not.toHaveProperty('node-version-file');
+    expect(publish.steps.some(
+      ({ uses }: { uses?: string }) => uses?.startsWith('actions/checkout@'),
+    )).toBe(false);
   });
 
   it('should pin every workflow action to a full commit', () => {

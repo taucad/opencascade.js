@@ -1,14 +1,3 @@
-## 3.0.0-beta.1 (2026-08-03)
-
-### ⚠️  Breaking Changes
-
-- Publish `libcascade`, add the packaged ([#4](https://github.com/taucad/opencascade.js/pull/4), [#3](https://github.com/taucad/opencascade.js/issues/3), [#5](https://github.com/taucad/opencascade.js/issues/5), [#6](https://github.com/taucad/opencascade.js/issues/6))
-  API-reference feed, and adopt reviewed release PRs with deterministic canaries.
-
-### ❤️ Thank You
-
-- Richard Fontein @rifont
-
 ## Earlier releases (v0.1.x – v1.1.x)
 
 Pre-v3 release notes, preserved verbatim. The two giant class lists from `v1.1.0` are wrapped in `<details>` for readability — expand to view.
