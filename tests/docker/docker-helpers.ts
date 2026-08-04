@@ -62,8 +62,8 @@ export type LinkResult = {
 };
 
 /**
- * Stage `<fixture>` into a fresh per-test workdir under `tests/docker/.work/`
- * and run `docker run … <image> link <fixture>` against it. The workdir lives
+ * Stage the fixture source directory into a fresh per-test workdir under
+ * `tests/docker/.work/` and run `docker run … <image> link <fixture>` against it. The workdir lives
  * inside the repo (under `/Users`) so Docker Desktop's default file sharing
  * exposes it to the container as `/src`.
  */
@@ -71,7 +71,7 @@ export function runLink(image: string, fixture: string, workName: string): LinkR
   const workDir = path.join(WORK_ROOT, workName);
   fs.rmSync(workDir, { recursive: true, force: true });
   fs.mkdirSync(workDir, { recursive: true });
-  fs.copyFileSync(path.join(FIXTURES_DIR, fixture), path.join(workDir, fixture));
+  fs.cpSync(FIXTURES_DIR, workDir, { recursive: true });
 
   const uid = typeof process.getuid === 'function' ? process.getuid() : 0;
   const gid = typeof process.getgid === 'function' ? process.getgid() : 0;

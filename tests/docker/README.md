@@ -33,7 +33,7 @@ step. Local runs leave it unset and exercise the custom multi-threaded fixture.
 
 ## How it works
 
-- `docker-helpers.ts` stages each fixture into a fresh per-test workdir under
+- `docker-helpers.ts` stages the fixture source directory into a fresh per-test workdir under
   `tests/docker/.work/<name>/` (gitignored, inside the repo so Docker Desktop's
   default `/Users` file sharing exposes it as `/src`) and runs the image with
   the documented single-mount Quickstart:
