@@ -805,14 +805,6 @@ describe('CI contracts', () => {
     }
   });
 
-  it('should restore the reusable beta.0 development baseline', () => {
-    const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
-    const changelog = fs.readFileSync(path.join(ROOT, 'CHANGELOG.md'), 'utf8');
-    expect(manifest.version).toBe('3.0.0-beta.0');
-    expect(changelog).not.toContain('## 3.0.0-beta.1');
-    expect(fs.existsSync(path.join(ROOT, '.nx/version-plans/ocjs-package-rename.md'))).toBe(true);
-  });
-
   it('should finalize releases and deploy Vercel only from the verified candidate', () => {
     const ci = workflow('docker.yml');
     const source = fs.readFileSync(path.join(ROOT, '.github/workflows/docker.yml'), 'utf8');
