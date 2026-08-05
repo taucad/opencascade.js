@@ -139,7 +139,7 @@ Docker resolves the right architecture from every published manifest list automa
 ## What's New in v3
 
 - **OCCT 8.0.1** — 1,085+ commits of improvements; 22-31% faster boolean operations
-- **Emscripten 5.0.1** — LLVM 17, modern WASM features
+- **Emscripten 6.0.5** — LLVM 24, modern WASM features
 - **Native WASM Exceptions** — `-fwasm-exceptions` replaces JS invoke trampolines; decodable end-to-end via `oc.getExceptionMessage`
 - **ESM-only distribution** — `"type": "module"`; default export is single-threaded `opencascade_full.{js,wasm,d.ts}`; multi-threaded `opencascade_full_multi.{js,wasm,d.ts}` ships under `libcascade/multi` and `/multi/wasm`
 - **Full TypeScript bindings** — Doxygen-derived JSDoc rendered correctly in Monaco IntelliSense

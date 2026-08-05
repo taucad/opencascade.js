@@ -708,7 +708,9 @@ describe('CI contracts', () => {
     expect(workflowSource).not.toContain('Browser multi-threaded boot');
   });
 
-  it('should export wasmMemory from every canonical full-build configuration', () => {
+  it('should explicitly export memory and exception helpers from every canonical full build', () => {
+    const runtimeMethods =
+      '-sEXPORTED_RUNTIME_METHODS=["FS","wasmMemory","getExceptionMessage","incrementExceptionRefcount","decrementExceptionRefcount"]';
     for (const relative of [
       'build-configs/full.yml',
       'build-configs/full_multi.yml',
@@ -716,7 +718,8 @@ describe('CI contracts', () => {
       'scripts/enumerate-symbols.py',
     ]) {
       const source = fs.readFileSync(path.join(ROOT, relative), 'utf8');
-      expect(source, relative).toContain('-sEXPORTED_RUNTIME_METHODS=["FS","wasmMemory"]');
+      expect(source, relative).toContain(runtimeMethods);
+      expect(source, relative).not.toContain('-sEXPORT_EXCEPTION_HANDLING_HELPERS');
     }
   });
 

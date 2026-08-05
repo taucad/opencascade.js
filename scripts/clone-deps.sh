@@ -92,6 +92,7 @@ clone_or_checkout "freetype"  "$(read_dep freetype repository)"  "$(read_dep fre
 
 # ── 2. Emscripten SDK ───────────────────────────────────────────────────────
 EMSDK_REPO=$(read_dep emscripten repository)
+EMSDK_COMMIT=$(read_dep emscripten commit)
 EMSDK_VERSION=$(read_dep emscripten emsdk_version)
 EMSDK_DIR="$DEST_DIR/emsdk"
 
@@ -102,6 +103,12 @@ EMSDK_DIR="$DEST_DIR/emsdk"
 if [ ! -x "$EMSDK_DIR/emsdk" ]; then
   echo "Cloning emsdk from $EMSDK_REPO..."
   git clone --quiet "$EMSDK_REPO" "$EMSDK_DIR"
+fi
+
+if [ -d "$EMSDK_DIR/.git" ] && [ "$(git -C "$EMSDK_DIR" rev-parse HEAD)" != "$EMSDK_COMMIT" ]; then
+  echo "Checking out emsdk at $EMSDK_COMMIT..."
+  git -C "$EMSDK_DIR" fetch --quiet origin
+  git -C "$EMSDK_DIR" checkout --quiet "$EMSDK_COMMIT"
 fi
 
 if ! "$EMSDK_DIR/emsdk" list 2>/dev/null | grep -q "$EMSDK_VERSION.*INSTALLED"; then

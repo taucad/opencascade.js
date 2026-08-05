@@ -82,7 +82,7 @@
 # OS toolchain + dependency clones, with LLVM 17 trim and cache purge folded
 # into the clone-deps RUN so all of those bytes are gone from the layer.
 # ═════════════════════════════════════════════════════════════════════════════
-FROM emscripten/emsdk:5.0.1@sha256:c89732ef63a56de5a96395c5a8c1c7904f7420131a045406e6fedc4cbe1cc198 AS deps-base
+FROM emscripten/emsdk:6.0.5@sha256:76a44fff907397784decc435115d07fcb9587a4f1504977f39f3745e538e3a1e AS deps-base
 
 LABEL org.opencontainers.image.title="libcascade (deps-base)" \
       org.opencontainers.image.description="OS toolchain + dependency clones (emsdk, Node 24, uv, Python 3.14, OCCT, rapidjson, freetype, LLVM 17 — header-trimmed)"
@@ -108,6 +108,7 @@ RUN --mount=type=cache,target=/var/cache/apt,id=ocjs-apt,sharing=locked \
     gnupg \
     jq \
     libc6-dev \
+    openjdk-21-jre-headless \
     unzip \
     xz-utils
 

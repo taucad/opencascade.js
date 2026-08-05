@@ -26,11 +26,10 @@ mainBuild:
     - symbol: OSD_ThreadPool
   emccFlags:
     - -fwasm-exceptions
-    - -sEXPORT_EXCEPTION_HANDLING_HELPERS
     - -sEXPORT_ES6=1
     - -sMODULARIZE
     - -sALLOW_MEMORY_GROWTH=1
-    - -sEXPORTED_RUNTIME_METHODS=["FS"]
+    - -sEXPORTED_RUNTIME_METHODS=["FS","getExceptionMessage","incrementExceptionRefcount","decrementExceptionRefcount"]
     - -sINITIAL_MEMORY=128MB
     - -sMAXIMUM_MEMORY=4GB
     - -sERROR_ON_UNDEFINED_SYMBOLS=0

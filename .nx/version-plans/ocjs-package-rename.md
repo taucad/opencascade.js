@@ -8,7 +8,7 @@ v3 is a ground-up modernisation: OCCT V8 (GA), native WebAssembly exceptions, ES
 
 ### Highlights
 
-- **OCCT V8.0.1** (GA, up from V7.6.2) and **Emscripten 5.0.1** (up from 3.1.14).
+- **OCCT V8.0.1** (GA, up from V7.6.2) and **Emscripten 6.0.5** (up from 3.1.14).
 - **libclang 18.1.1** for the bindgen parser (up from `15.0.6.1`), paired with vendored **LLVM 17.0.6** libc++ + clang resource headers to satisfy the LLVM project's libc++/clang N-1 compat-window policy. This is what makes the v3 bindings _accurate_ for OCCT V8 — libclang 18 exposes `templateTypedefs`, sees through `DEFINE_STANDARD_HANDLE` expansions, and resolves `NCollection_*` template instantiations that v2's libclang 15 either skipped, mislabelled as `UNEXPOSED`, or surfaced as duplicate registrations. The parse environment is hermetic: `src/ocjs_bindgen/config/paths.py` routes libclang at the vendored libc++ headers and clang resource directory, not at the host system's clang.
 - **Native WebAssembly exceptions** (`-fwasm-exceptions`) replace JS `invoke_*` trampolines: ~12% gzipped size overhead vs. the prior ~80%, with zero happy-path performance cost. `WebAssembly.Exception` is decodable end-to-end through instance helpers such as `oc.getExceptionMessage` — see [§C](BREAKING_CHANGES.md#section-c--webassembly-exception-handling).
 - **Performance vs. V7.6.2**: 22-31% faster boolean operations, 16-19% faster fillets, 23-29% faster complex models. Full numbers in [Appendix G](BREAKING_CHANGES.md#appendix-g--performance--size).
@@ -34,7 +34,7 @@ Each entry deep-links into [BREAKING_CHANGES.md](BREAKING_CHANGES.md) for Before
 - **[C — WebAssembly exception handling](BREAKING_CHANGES.md#section-c--webassembly-exception-handling)** — caught exceptions are `WebAssembly.Exception` instances; decode via `oc.getExceptionMessage`.
 - **[D — OCCT V8 API](BREAKING_CHANGES.md#section-d--occt-v8-api-breaking-changes)** — `TopoDS` namespace bridge replaces direct namespace binding; `Bnd_Box::Get` removed (use `CornerMin` / `CornerMax`); `Poly_Triangulation` normals API now value-returning; `BRepMesh_IncrementalMesh` constructor signature; `TopoDS_Shape::HashCode` removed with no shipped replacement; same-arity overload dispatch unified across static + instance variants; JS-indistinguishable `int`/`size_t` NCollection pairs collapsed at codegen time (V8's `size_t` migration).
 - **[E — Removed symbol families](BREAKING_CHANGES.md#section-e--removed-symbol-families)** — `OpenGl_*` / `Aspect_Window` / rest of `TKOpenGl` (headless target); `TopOpe*` (use `BOPAlgo_*` / `BRepAlgoAPI_*`); legacy `Standard_Transient`-based collections (use auto-discovered `NCollection_*`); `GCE2d_*` aliases (use `GC_*2d`).
-- **[F — Build flag changes](BREAKING_CHANGES.md#section-f--build-flag-changes)** — source-build CLI replaced (`src/buildFromYaml.py` → `build-wasm.sh` with explicit subcommands and an optional `--config <name>` selecting an optimisation profile from `configurations.json`); reference `full.yml` bundled inside the Docker image as the starting point for custom builds; native WebAssembly exceptions on by default; Emscripten flag renames and additions from the 3.x → 5.x toolchain upgrade.
+- **[F — Build flag changes](BREAKING_CHANGES.md#section-f--build-flag-changes)** — source-build CLI replaced (`src/buildFromYaml.py` → `build-wasm.sh` with explicit subcommands and an optional `--config <name>` selecting an optimisation profile from `configurations.json`); reference `full.yml` bundled inside the Docker image as the starting point for custom builds; native WebAssembly exceptions on by default; Emscripten flag renames and additions from the 3.x → 6.x toolchain upgrade.
 
 ### Build system
 
@@ -48,7 +48,7 @@ Each entry deep-links into [BREAKING_CHANGES.md](BREAKING_CHANGES.md) for Before
 - **Nx-based caching** — the full pipeline (`apply-patches` → `pch` → `generate-bindings` → `compile-bindings` → `compile-sources` → `link` → `validate` → `provenance`) is wired through Nx with content-addressed inputs (including git-ignored files), so partial rebuilds are surgical. Clean full build ≈ 30 minutes; cache hits skip compilation entirely. Stale `.o` files compiled with one set of flags are invalidated when the flags change.
 - **Validation harness** (`build-wasm.sh validate <yaml>`) — post-build checks that every requested symbol has a compiled `.o`, the `.wasm` exists at a reasonable size, and Emscripten EH helpers are present in the linked JS glue when requested.
 - **Configurable optimisation** — `wasm-opt` runs at `-O4` for production configs and `-O3` for size-tuned; `--traps-never-happen` is enabled; `OCJS_EXTRA_CFLAGS` passes arbitrary flags through to `emcc`.
-- **Updated Dockerfile** to `emscripten/emsdk:5.0.1` with pinned digest, dependencies cloned at exact commits from `DEPS.json`, entrypoint via `build-wasm.sh` with env-var passthrough; a Docker E2E validation script is included.
+- **Updated Dockerfile** to `emscripten/emsdk:6.0.5` with pinned digest, dependencies cloned at exact commits from `DEPS.json`, entrypoint via `build-wasm.sh` with env-var passthrough; a Docker E2E validation script is included.
 
 ### Tests
 
@@ -72,6 +72,6 @@ Full commit hashes live in [DEPS.json](DEPS.json).
 - OCCT `V8_0_1` (GA, commit `b8f597c6`)
 - rapidjson post-1.1.0 (commit `24b5e7a8`)
 - freetype `VER-2-13-0` (commit `de8b92dd`)
-- Emscripten `5.0.1` (digest `sha256:c89732ef…`)
+- Emscripten `6.0.5` (LLVM 24; digest `sha256:76a44fff…`)
 - libclang `18.1.1` (Python binding, pinned in `pyproject.toml` and `uv.lock`; up from v2's `15.0.6.1`)
 - LLVM `17.0.6` (vendored prebuilt — parse-side libc++ + clang resource headers; N-1 compat with libclang 18.1.1)

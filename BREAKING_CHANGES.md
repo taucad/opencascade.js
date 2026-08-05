@@ -275,7 +275,7 @@ v2's exception build wrapped every potentially-throwing call site in a JavaScrip
 
 v3 uses native WASM exceptions (`-fwasm-exceptions`): the `throw` and `catch` instructions live in the WASM bytecode itself, the JS trampolines disappear, and the gzipped exception overhead drops to ~12%. The happy path has zero overhead.
 
-The shipped `full.yml` build is linked with the helpers needed to decode exceptions from JS (`-sEXPORT_EXCEPTION_HANDLING_HELPERS`). Browser support: see [Compatibility floor](#compatibility-floor).
+The shipped `full.yml` build explicitly exports the helpers needed to decode and release exceptions from JS through `-sEXPORTED_RUNTIME_METHODS`. Browser support: see [Compatibility floor](#compatibility-floor).
 
 ### C2 — Catch / decode pattern (consumer-facing)
 
@@ -329,7 +329,7 @@ emccFlags:
 ```yaml
 emccFlags:
   - -fwasm-exceptions
-  - -sEXPORT_EXCEPTION_HANDLING_HELPERS
+  - -sEXPORTED_RUNTIME_METHODS=["FS","wasmMemory","getExceptionMessage","incrementExceptionRefcount","decrementExceptionRefcount"]
 ```
 
 Every `.o` file in your build must use the same exception ABI; mixing `-fexceptions` and `-fwasm-exceptions` produces an unresolved `__cpp_exception` import at link time. The `OCJS_EXCEPTIONS=1` env var (or any of the named configurations in [`build-configs/configurations.json`](build-configs/configurations.json) that set it) handles this consistently.
@@ -592,7 +592,7 @@ v2 had no named-configuration system — the YAML's `emccFlags` block was the on
 
 ### F2 — Reference `full.yml` bundled in the image; exceptions on by default
 
-v2 shipped example YAML templates (`customBuild_example.yml` and friends) and expected consumers to hand-write their config from scratch. v3 bundles the complete reference `full.yml` inside the Docker image at `/opencascade.js/build-configs/full.yml`, so consumers can extract the exact symbol list used by the published tarball and trim it down. The reference YAML's `emccFlags` block carries v3's defaults: `-fwasm-exceptions`, `-sEXPORT_EXCEPTION_HANDLING_HELPERS`, `-sWASM_BIGINT`, `-sEVAL_CTORS=2`, `-msimd128`.
+v2 shipped example YAML templates (`customBuild_example.yml` and friends) and expected consumers to hand-write their config from scratch. v3 bundles the complete reference `full.yml` inside the Docker image at `/opencascade.js/build-configs/full.yml`, so consumers can extract the exact symbol list used by the published tarball and trim it down. The reference YAML's `emccFlags` block carries v3's defaults: `-fwasm-exceptions`, explicit exception helpers in `-sEXPORTED_RUNTIME_METHODS`, `-sWASM_BIGINT`, `-sEVAL_CTORS=2`, `-msimd128`.
 
 **v3 workflow** — extract the reference, trim, build:
 
@@ -615,12 +615,13 @@ See the [trim-symbols guide](docs/guides/trim-symbols.md) for the full extract-t
 
 | Direction | Flag                                                               |
 | --------- | ------------------------------------------------------------------ |
-| Removed   | `-sUSE_ES6_IMPORT_META=0` (default in Emscripten 5.x)              |
+| Removed   | `-sUSE_ES6_IMPORT_META=0` (default in current Emscripten)          |
 | Removed   | `-sDISABLE_EXCEPTION_CATCHING=0` (replaced by `-fwasm-exceptions`) |
 | Removed   | `-fexceptions` (replaced by `-fwasm-exceptions`)                   |
+| Removed   | `-sEXPORT_EXCEPTION_HANDLING_HELPERS` (replaced by explicit runtime-method exports) |
 | Renamed   | `-sLLD_REPORT_UNDEFINED` → `-sERROR_ON_UNDEFINED_SYMBOLS=0`        |
 | Added     | `-fwasm-exceptions` (default for `full.yml`)                       |
-| Added     | `-sEXPORT_EXCEPTION_HANDLING_HELPERS` (default for `full.yml`)     |
+| Added     | exception helpers in `-sEXPORTED_RUNTIME_METHODS` (default for `full.yml`) |
 | Added     | `-sWASM_BIGINT` (default for `full.yml`)                           |
 | Added     | `-sEVAL_CTORS=2` (default for `full.yml`)                          |
 | Added     | `-msimd128` (default for `full.yml`)                               |
