@@ -72,6 +72,44 @@ describe('CI contracts', () => {
     })).toThrow('manual canary ref must be a branch');
   });
 
+  it('should require reproducibility for an exact release pull request without publishing it', () => {
+    expect(deriveRelease({
+      event: 'pull_request',
+      ref: 'refs/pull/14/merge',
+      sha: SHA,
+      commitEpoch: EPOCH,
+      packageVersion: '3.0.0-beta.1',
+      commitSubject: 'chore(release): ocjs v3.0.0-beta.1',
+      changedFiles: ['CHANGELOG.md', 'package-lock.json', 'package.json'],
+      changelog: '## 3.0.0-beta.1 (2026-08-05)',
+    })).toMatchObject({
+      version: '3.0.0-beta.1',
+      channel: 'none',
+      kind: 'release-pull-request',
+      npmPublish: false,
+      ghcrPromote: false,
+      isRelease: false,
+      reproducibilityRequired: true,
+    });
+
+    const ci = workflow('docker.yml');
+    const releaseStep = ci.jobs.preflight.steps.find(
+      ({ name }: { name?: string }) => name ===
+        'Validate event and derive immutable release metadata',
+    );
+    expect(ci.jobs.preflight.outputs.reproducibility_required).toBe(
+      '${{ steps.release.outputs.reproducibility_required }}',
+    );
+    expect(releaseStep.env).toMatchObject({
+      BASE_SHA: '${{ github.event.pull_request.base.sha }}',
+      HEAD_SHA: '${{ github.event.pull_request.head.sha }}',
+    });
+    expect(releaseStep.run).toContain('metadata_sha="$HEAD_SHA"');
+    expect(ci.jobs['release-reproducibility'].if).toBe(
+      "needs.preflight.outputs.reproducibility_required == 'true'",
+    );
+  });
+
   it('should resume only an exact release version and source commit', () => {
     const release = deriveRelease({
       event: 'workflow_dispatch',
@@ -732,12 +770,15 @@ describe('CI contracts', () => {
     expect(ci.jobs['ghcr-promote'].needs).toContain('release-reproducibility');
     expect(ci.jobs['ghcr-promote'].needs).toContain('npm-publish');
     expect(ci.jobs['ghcr-promote'].if).toContain(
-      "needs.preflight.outputs.is_release != 'true' || needs.release-reproducibility.result == 'success'",
+      "needs.preflight.outputs.reproducibility_required != 'true' || needs.release-reproducibility.result == 'success'",
     );
     expect(ci.jobs['ghcr-promote'].if).toContain(
       "needs.preflight.outputs.kind == 'main' || needs.npm-publish.result == 'success'",
     );
     expect(ci.jobs['npm-publish'].needs).toContain('package-gate');
+    expect(ci.jobs['npm-publish'].if).toContain(
+      "needs.preflight.outputs.reproducibility_required != 'true' || needs.release-reproducibility.result == 'success'",
+    );
     expect(ci.jobs['npm-publish'].permissions).toEqual({ contents: 'read', 'id-token': 'write' });
     expect(ci.jobs['npm-publish'].steps.some(({ uses }: { uses?: string }) =>
       uses?.startsWith('actions/checkout@'),

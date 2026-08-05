@@ -67,6 +67,7 @@ const deriveReleasePublication = ({
     npmPublish: true,
     ghcrPromote: true,
     isRelease: true,
+    reproducibilityRequired: true,
     kind: prerelease ? 'beta-release' : 'stable-release',
     releaseTag: `v${packageVersion}`,
     prerelease,
@@ -107,9 +108,28 @@ export const deriveRelease = ({
   const common = {
     fullSha: sha,
     sourceDateEpoch: String(commitEpoch),
+    reproducibilityRequired: false,
   };
 
   if (event === 'pull_request') {
+    if (RELEASE_SUBJECT.test(commitSubject)) {
+      return {
+        ...deriveReleasePublication({
+          common,
+          packageMatch,
+          packageVersion,
+          commitSubject,
+          changedFiles,
+          changelog,
+        }),
+        channel: 'none',
+        npmPublish: false,
+        ghcrPromote: false,
+        isRelease: false,
+        kind: 'release-pull-request',
+        releaseTag: '',
+      };
+    }
     return {
       ...common,
       version: `${core}-canary.${sha.slice(0, 8)}`,
