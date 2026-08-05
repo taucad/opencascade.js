@@ -763,8 +763,8 @@ step_patch_embind() {
   local emsdk_version
   emsdk_version="$(tr -d '"[:space:]' 2>/dev/null < "$embind_dir/emscripten-version.txt")"
   if [ "$emsdk_version" != "6.0.5" ]; then
-    echo "WARNING: libembind patch was created for emsdk 6.0.5 but found $emsdk_version" >&2
-    echo "         The patch may fail or produce incorrect results." >&2
+    echo "ERROR: libembind patch requires emsdk 6.0.5 but found $emsdk_version" >&2
+    exit 1
   fi
 
   _sha256() {
