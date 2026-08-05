@@ -44,6 +44,7 @@ jobs:
       kind: ${{ steps.release.outputs.kind }}
       npm_publish: ${{ steps.release.outputs.npm_publish }}
       prerelease: ${{ steps.release.outputs.prerelease }}
+      reproducibility_required: ${{ steps.release.outputs.reproducibility_required }}
       release_tag: ${{ steps.release.outputs.release_tag }}
       source_date_epoch: ${{ steps.release.outputs.source_date_epoch }}
       version: ${{ steps.release.outputs.version }}
@@ -89,7 +90,9 @@ jobs:
       - name: Validate event and derive immutable release metadata
         id: release
         env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
           EVENT: ${{ github.event_name }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           OPERATION: ${{ inputs.operation || 'canary' }}
           REF: ${{ github.ref }}
           REQUESTED_VERSION: ${{ inputs.version }}
@@ -97,7 +100,13 @@ jobs:
         run: |
           set -euo pipefail
           epoch="$(git show -s --format=%ct "$SHA")"
-          if git rev-parse "$SHA^" >/dev/null 2>&1; then
+          metadata_sha="$SHA"
+          if [ "$EVENT" = pull_request ]; then
+            [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+            [[ "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]
+            git diff --name-only "$BASE_SHA" "$HEAD_SHA" > "$RUNNER_TEMP/changed-files.txt"
+            metadata_sha="$HEAD_SHA"
+          elif git rev-parse "$SHA^" >/dev/null 2>&1; then
             git diff --name-only "$SHA^" "$SHA" > "$RUNNER_TEMP/changed-files.txt"
           else
             git diff-tree --root --no-commit-id --name-only -r "$SHA" > "$RUNNER_TEMP/changed-files.txt"
@@ -110,7 +119,7 @@ jobs:
             --sha "$SHA" \
             --commit-epoch "$epoch" \
             --package-version "$(node -p "require('./package.json').version")" \
-            --commit-subject "$(git show -s --format=%s "$SHA")" \
+            --commit-subject "$(git show -s --format=%s "$metadata_sha")" \
             --changed-files-file "$RUNNER_TEMP/changed-files.txt"
 
       - name: Fast syntax checks
@@ -813,7 +822,7 @@ jobs:
       needs.preflight.result == 'success' &&
       needs.candidate-build.result == 'success' &&
       needs.package-gate.result == 'success' &&
-      (needs.preflight.outputs.is_release != 'true' || needs.release-reproducibility.result == 'success') &&
+      (needs.preflight.outputs.reproducibility_required != 'true' || needs.release-reproducibility.result == 'success') &&
       (needs.preflight.outputs.kind == 'main' || needs.npm-publish.result == 'success')
     needs: [preflight, candidate-build, package-gate, release-reproducibility, npm-publish]
     runs-on: ubuntu-latest
@@ -877,7 +886,7 @@ jobs:
 
   release-reproducibility:
     name: release · reproducibility
-    if: needs.preflight.outputs.is_release == 'true'
+    if: needs.preflight.outputs.reproducibility_required == 'true'
     needs: preflight
     uses: ./.github/workflows/reproducibility.yml
     with:
@@ -893,7 +902,7 @@ jobs:
       needs.preflight.result == 'success' &&
       needs.package-assemble.result == 'success' &&
       needs.package-gate.result == 'success' &&
-      (needs.preflight.outputs.is_release != 'true' || needs.release-reproducibility.result == 'success')
+      (needs.preflight.outputs.reproducibility_required != 'true' || needs.release-reproducibility.result == 'success')
     needs: [preflight, package-assemble, package-gate, release-reproducibility]
     runs-on: ubuntu-latest
     concurrency:
