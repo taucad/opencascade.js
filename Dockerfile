@@ -103,7 +103,7 @@ RUN --mount=type=cache,target=/var/cache/apt,id=ocjs-apt,sharing=locked \
     build-essential \
     ca-certificates \
     curl \
-    doxygen \
+    doxygen=1.9.8+ds-2ubuntu0.1 \
     git \
     gnupg \
     jq \
