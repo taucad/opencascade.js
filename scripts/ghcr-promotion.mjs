@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+import semver from 'semver';
+
 const STAGES = {
   'bindgen-base': {
     prefix: 'bindgen-base',
@@ -26,6 +28,10 @@ export const deriveGhcrTags = ({ fullSha, kind, stage, version }) => {
   const names = STAGES[stage];
   assert(names, `unsupported GHCR stage: ${stage}`);
   assert(/^[0-9a-f]{40}$/.test(fullSha), 'fullSha must be a lowercase 40-character commit');
+  assert(
+    semver.valid(version) === version && semver.parse(version).build.length === 0,
+    'version must be exact SemVer without build metadata',
+  );
   const shaTag = `sha-${fullSha.slice(0, 8)}-${names.prefix}`;
   switch (kind) {
     case 'beta-release':
@@ -37,7 +43,7 @@ export const deriveGhcrTags = ({ fullSha, kind, stage, version }) => {
       };
     case 'manual-canary':
       return {
-        immutable: [`canary-${fullSha.slice(0, 8)}-${names.prefix}`],
+        immutable: [`${version}-${names.prefix}`],
         mutable: [],
       };
     case 'stable-release':
@@ -53,12 +59,7 @@ export const deriveGhcrTags = ({ fullSha, kind, stage, version }) => {
 /**
  * @param {{ exists: boolean, mutable: boolean, exact?: boolean, signatureValid?: boolean }} state
  */
-export const decideGhcrPromotion = ({
-  exists,
-  mutable,
-  exact = false,
-  signatureValid = false,
-}) => {
+export const decideGhcrPromotion = ({ exists, mutable, exact = false, signatureValid = false }) => {
   if (!exists) return 'create';
   if (!exact) return mutable ? 'replace' : 'conflict';
   return signatureValid ? 'reuse' : 'sign';
@@ -72,12 +73,14 @@ if (process.argv[1] === new URL(import.meta.url).pathname) {
       process.stdout.write(`${JSON.stringify(deriveGhcrTags({ fullSha, kind, stage, version }))}\n`);
     } else if (command === 'decide') {
       const [exists, mutable, exact, signatureValid] = args;
-      process.stdout.write(`${decideGhcrPromotion({
-        exists: exists === 'true',
-        mutable: mutable === 'true',
-        exact: exact === 'true',
-        signatureValid: signatureValid === 'true',
-      })}\n`);
+      process.stdout.write(
+        `${decideGhcrPromotion({
+          exists: exists === 'true',
+          mutable: mutable === 'true',
+          exact: exact === 'true',
+          signatureValid: signatureValid === 'true',
+        })}\n`,
+      );
     } else {
       throw new Error(`unsupported command: ${command || '(missing)'}`);
     }

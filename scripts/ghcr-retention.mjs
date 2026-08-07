@@ -2,18 +2,17 @@
 
 const DAY = 86_400_000;
 const BRANCH = /^(branch|multi-threaded-branch|bindgen-base-branch)-(.+?)(?:-([0-9a-f]{40}))?$/;
-const CANARY = /^canary-([0-9a-f]{8})-(single-threaded|multi-threaded|bindgen-base)$/;
+const CANARY =
+  /^(?:canary-[0-9a-f]{8}|\d+\.\d+\.\d+-canary\.[0-9a-f]{8})-(single-threaded|multi-threaded|bindgen-base)$/;
 const CACHE = /^buildcache-(amd64|arm64)-(final-single|final-multi|bindgen-base)$/;
-const RELEASE = /^(single-threaded|multi-threaded|bindgen-base|\d+\.\d+(?:\.\d+)?(?:-[0-9A-Za-z.-]+)?|sha-[0-9a-f]+-(?:single-threaded|multi-threaded|bindgen-base))$/;
+const RELEASE =
+  /^(single-threaded|multi-threaded|bindgen-base|\d+\.\d+(?:\.\d+)?(?:-[0-9A-Za-z.-]+)?|sha-[0-9a-f]+-(?:single-threaded|multi-threaded|bindgen-base))$/;
 const REFERRER = /^sha256-[0-9a-f]+\.(?:sig|att)$/;
 
 const age = (version, now) => now - new Date(version.created_at).getTime();
 const tagsOf = (version) => version.metadata?.container?.tags ?? [];
 
-export const selectVersions = (versions, {
-  now = Date.now(),
-  referencedDigests = new Set(),
-} = {}) => {
+export const selectVersions = (versions, { now = Date.now(), referencedDigests = new Set() } = {}) => {
   const protectedIds = new Set();
   const branchFamilies = new Map();
   const canaryFamilies = new Map();
@@ -31,13 +30,13 @@ export const selectVersions = (versions, {
     const cache = tags.map((tag) => CACHE.exec(tag)).filter(Boolean);
     const families = new Set([
       ...branch.map((match) => `branch:${match[1]}:${match[2]}`),
-      ...canary.map((match) => `canary:${match[2]}`),
+      ...canary.map((match) => `canary:${match[1]}`),
       ...cache.map((match) => `cache:${match[1]}:${match[2]}`),
     ]);
     if (
-      tags.some((tag) => RELEASE.test(tag) || REFERRER.test(tag))
-      || branch.length + canary.length + cache.length !== tags.length
-      || families.size !== 1
+      tags.some((tag) => (RELEASE.test(tag) && !CANARY.test(tag)) || REFERRER.test(tag)) ||
+      branch.length + canary.length + cache.length !== tags.length ||
+      families.size !== 1
     ) {
       protectedIds.add(version.id);
       continue;
@@ -47,7 +46,7 @@ export const selectVersions = (versions, {
       branchFamilies.set(key, [...(branchFamilies.get(key) ?? []), version]);
     }
     if (canary.length) {
-      const key = canary[0][2];
+      const key = canary[0][1];
       canaryFamilies.set(key, [...(canaryFamilies.get(key) ?? []), version]);
     }
     if (cache.length) {
@@ -122,10 +121,9 @@ export const listReferencedDigests = async (versions) => {
   const referenced = new Set();
   for (const version of versions.filter((candidate) => tagsOf(candidate).length)) {
     referenced.add(version.name);
-    const manifest = await registryJson(
-      `https://ghcr.io/v2/taucad/opencascade.js/manifests/${version.name}`,
-      { headers },
-    );
+    const manifest = await registryJson(`https://ghcr.io/v2/taucad/opencascade.js/manifests/${version.name}`, {
+      headers,
+    });
     for (const descriptor of manifest.manifests ?? []) referenced.add(descriptor.digest);
     if (manifest.subject?.digest) referenced.add(manifest.subject.digest);
   }
@@ -139,9 +137,18 @@ if (process.argv[1] === new URL(import.meta.url).pathname) {
     const versions = await listVersions();
     const referencedDigests = await listReferencedDigests(versions);
     const selected = selectVersions(versions, { referencedDigests });
-    console.log(JSON.stringify(selected.map(({ id, name, created_at, metadata }) => ({
-      id, name, created_at, tags: metadata?.container?.tags ?? [],
-    })), null, 2));
+    console.log(
+      JSON.stringify(
+        selected.map(({ id, name, created_at, metadata }) => ({
+          id,
+          name,
+          created_at,
+          tags: metadata?.container?.tags ?? [],
+        })),
+        null,
+        2,
+      ),
+    );
     if (deleting) {
       for (const { id } of selected) {
         await github(`/orgs/taucad/packages/container/opencascade.js/versions/${id}`, { method: 'DELETE' });
