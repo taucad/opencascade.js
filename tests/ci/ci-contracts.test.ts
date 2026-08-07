@@ -6,7 +6,12 @@ import { parse } from 'yaml';
 import { deriveRelease } from '../../scripts/ci-release.mjs';
 import { decideGhcrPromotion, deriveGhcrTags } from '../../scripts/ghcr-promotion.mjs';
 import { validateRequestedVersion } from '../../scripts/prepare-release.mjs';
-import { DIST_FILES, PACKAGE_FILES, validateExactFiles } from '../../scripts/package-candidate.mjs';
+import {
+  ASSEMBLED_DIST_FILES,
+  DIST_FILES,
+  PACKAGE_FILES,
+  validateExactFiles,
+} from '../../scripts/package-candidate.mjs';
 import { selectVersions } from '../../scripts/ghcr-retention.mjs';
 
 const SHA = 'd5736f09aabbccddeeff00112233445566778899';
@@ -350,11 +355,15 @@ describe('CI contracts', () => {
 
   it('should keep the package allowlists exact', () => {
     expect(DIST_FILES).toHaveLength(19);
+    expect(ASSEMBLED_DIST_FILES).toHaveLength(22);
     expect(PACKAGE_FILES).toHaveLength(25);
     expect(DIST_FILES).toContain('api-reference.json');
     expect(DIST_FILES).toContain('types.d.ts');
     expect(DIST_FILES).not.toContain('opencascade_single.d.ts');
     expect(DIST_FILES).not.toContain('opencascade_multi.d.ts');
+    expect(ASSEMBLED_DIST_FILES).toContain('exports.json');
+    expect(ASSEMBLED_DIST_FILES).toContain('opencascade_single.d.ts');
+    expect(ASSEMBLED_DIST_FILES).toContain('opencascade_multi.d.ts');
     expect(() => validateExactFiles([...DIST_FILES, 'stale.wasm'], DIST_FILES, 'dist')).toThrow('extra=[stale.wasm]');
   });
 
@@ -955,6 +964,21 @@ describe('CI contracts', () => {
       ({ name }: { name?: string }) => name === 'Full runtime, regression, and declaration gates',
     );
     expect(packageGate.run).toContain('npm test -- --exclude tests/no-clobber-validation.test.ts');
+  });
+
+  it('should assemble the package surface before validating same-run dist', () => {
+    const ci = workflow('docker.yml');
+    const steps = ci.jobs['package-assemble'].steps;
+    const installIndex = steps.findIndex(({ name }: { name?: string }) => name === 'Install locked test tools');
+    const assembleIndex = steps.findIndex(({ name }: { name?: string }) => name === 'Assemble exact same-run dist');
+    const assemble = steps[assembleIndex];
+    expect(installIndex).toBeGreaterThan(-1);
+    expect(assembleIndex).toBeGreaterThan(installIndex);
+    expect(assemble.run).toContain('npm run build:toolchain');
+    expect(assemble.run).toContain('node packages/toolchain/bin/libcascade.mjs assemble --write-exports');
+    expect(assemble.run.indexOf('assemble --write-exports')).toBeLessThan(
+      assemble.run.indexOf('node scripts/package-candidate.mjs dist'),
+    );
   });
 
   it('should bridge the mutually exclusive candidate matrices explicitly', () => {

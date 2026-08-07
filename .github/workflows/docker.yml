@@ -620,16 +620,6 @@ jobs:
           name: npm-dist-multi-${{ github.run_id }}
           path: ${{ runner.temp }}/multi
 
-      - name: Assemble exact same-run dist
-        env:
-          OCJS_EXPECTED_SHA: ${{ needs.preflight.outputs.full_sha }}
-        run: |
-          rm -rf dist
-          mkdir dist
-          cp "${{ runner.temp }}/single/"* dist/
-          cp "${{ runner.temp }}/multi/"* dist/
-          node scripts/package-candidate.mjs dist
-
       - name: Set up Node
         uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
@@ -641,6 +631,19 @@ jobs:
 
       - name: Install locked test tools
         run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Assemble exact same-run dist
+        env:
+          OCJS_EXPECTED_SHA: ${{ needs.preflight.outputs.full_sha }}
+        run: |
+          rm -rf dist
+          mkdir dist
+          cp "${{ runner.temp }}/single/"* dist/
+          cp "${{ runner.temp }}/multi/"* dist/
+          npm run build:toolchain
+          node packages/toolchain/bin/libcascade.mjs assemble --write-exports
+          git diff --exit-code -- package.json
+          node scripts/package-candidate.mjs dist
 
       - name: Full runtime, regression, and declaration gates
         run: |

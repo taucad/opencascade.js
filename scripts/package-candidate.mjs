@@ -26,6 +26,13 @@ export const DIST_FILES = [
   'variant.d.ts',
 ].sort();
 
+export const ASSEMBLED_DIST_FILES = [
+  ...DIST_FILES,
+  'exports.json',
+  'opencascade_multi.d.ts',
+  'opencascade_single.d.ts',
+].sort();
+
 export const PACKAGE_FILES = [
   'BREAKING_CHANGES.md',
   'CHANGELOG.md',
@@ -87,8 +94,8 @@ export const requireSinglePackResult = (packed) => {
 
 export const validateDist = (directory) => {
   const files = fs.readdirSync(directory).sort();
-  validateExactFiles(files, DIST_FILES, 'dist');
-  for (const file of DIST_FILES) {
+  validateExactFiles(files, ASSEMBLED_DIST_FILES, 'assembled dist');
+  for (const file of ASSEMBLED_DIST_FILES) {
     if (fs.statSync(path.join(directory, file)).size === 0) throw new Error(`empty dist file: ${file}`);
   }
 };
@@ -128,7 +135,7 @@ if (process.argv[1] === new URL(import.meta.url).pathname) {
     const directory = path.resolve(process.argv[2] ?? 'dist');
     validateDist(directory);
     if (process.env.OCJS_EXPECTED_SHA) validateProvenance(directory, process.env.OCJS_EXPECTED_SHA);
-    console.log(`candidate dist contains exactly ${DIST_FILES.length} non-empty files`);
+    console.log(`assembled dist contains exactly ${ASSEMBLED_DIST_FILES.length} non-empty files`);
   } catch (error) {
     console.error(error.message);
     process.exit(1);
