@@ -551,6 +551,17 @@ describe('CI contracts', () => {
     expect(promotion).toContain('test "$platforms" = \'linux/amd64,linux/arm64\'');
   });
 
+  it('should install locked dependencies before deriving GHCR tags', () => {
+    const ci = workflow('docker.yml');
+    for (const jobName of ['ghcr-promote', 'registry-verify']) {
+      const steps = ci.jobs[jobName].steps as Array<{ run?: string }>;
+      const install = steps.findIndex(({ run }) => run === 'npm ci --ignore-scripts --no-audit --no-fund');
+      const promotion = steps.findIndex(({ run }) => run?.includes('scripts/ghcr-promotion.mjs'));
+      expect(install).toBeGreaterThan(-1);
+      expect(install).toBeLessThan(promotion);
+    }
+  });
+
   it('should publish immutable manual canary image coordinates', () => {
     const ci = workflow('docker.yml');
     const promote = ci.jobs['ghcr-promote'].steps.find(
