@@ -1,10 +1,19 @@
 ---
-title: YAML schema
-description: Every key the build YAML accepts — mainBuild, extraBuilds, additionalCppFiles, and additionalBindFiles.
+title: Container yml contract
+description: Internals — the yml the CLI renders for the container, its keys, and how requested symbols resolve into linked bindings.
 ---
 
-The build YAML controls which OCCT classes get bound, which C++ wrapper code
-is injected, and which emscripten linker flags drive the final wasm.
+<Callout type="info">
+  **Internals.** You do not write this file. `libcascade build` renders one yml
+  per variant from [`libcascade.config.ts`](./config) into `.libcascade/` and
+  hands it to the container. This page documents the contract between the two,
+  for reading a rendered yml or debugging a build. The user-facing surface is
+  the [config reference](./config); `libcascade build --render-only` shows you
+  what it produces.
+</Callout>
+
+The yml controls which OCCT classes get bound, which C++ wrapper code is
+injected, and which Emscripten linker flags drive the final wasm.
 
 ## Top-level shape
 
@@ -31,7 +40,7 @@ additionalCppFiles:
 generateTypescriptDefinitions: true
 ```
 
-The canonical Cerberus definition lives in `src/customBuildSchema.py`.
+The canonical Cerberus definition lives in `src/customBuildSchema.py`; the renderer that emits this shape lives in the toolchain package.
 
 ## `mainBuild`
 
@@ -60,8 +69,10 @@ if missing from the list.
 
 ### `mainBuild.emccFlags`
 
-Emscripten linker flags. See [Custom emcc flags](../guides/custom-emcc-flags)
-for the recommended baseline and per-flag rationale.
+Emscripten linker flags. The renderer emits these from `settings`,
+`compilerFlags`, and `rawFlags` in a canonical order. See
+[Emscripten settings and flags](../guides/custom-emcc-flags) for the
+recommended baseline and per-flag rationale.
 
 ### `mainBuild.additionalBindFiles`
 
@@ -100,9 +111,13 @@ When a manifest is missing, consumers fail loudly with a pointer at `pnpm nx run
 
 ## `extraBuilds`
 
-Same schema as `mainBuild`. Each entry produces a sibling wasm artifact.
-Useful for shipping multiple variants (e.g. baseline + relaxed-SIMD) from one
-YAML pass.
+Same schema as `mainBuild`. Each entry produces a sibling wasm artifact from
+one yml pass.
+
+The toolchain does not use this key: it renders **one yml per variant**, each
+with a single `mainBuild`, so a variant failure is isolated and `--variant`
+can select one. `extraBuilds` remains part of the container contract for
+hand-written ymls.
 
 ## `additionalCppFiles`
 
@@ -128,19 +143,24 @@ rules, but belongs inside each build block.
 Default `true`. Set to `false` to skip `.d.ts` generation (rare — useful only
 for ultra-fast iteration builds).
 
-## Validation
+## Inspecting the rendered yml
 
 ```bash
-./build-wasm.sh validate build-configs/my-config.yml
+npx libcascade build --render-only
 ```
 
-`validate` checks the YAML against the schema and exits non-zero on any
-malformed entry, unknown key, duplicated symbol, or missing
-`additionalCppFiles` or `additionalBindFiles` path. It does not run the C++ pipeline — pair it with
-`./build-wasm.sh link` to actually produce the wasm.
+Renders one yml per variant into `.libcascade/` and prints their paths without
+needing a container engine. That is the supported way to read this contract for
+your own build — and the first gate when migrating an existing hand-written
+yml, since the flag *set* should match even though the renderer emits a
+canonical flag order.
+
+The config's own invariants — wrapper files existing on disk, unique variant
+names, `null` unsets with a base key to unset — are checked when the config
+loads, before anything is rendered.
 
 ## Related
 
-- [Trim symbols](../guides/trim-symbols) — end-to-end workflow.
-- [Extend with C++](../guides/extend-with-cpp) — when to reach for which mechanism.
-- [Custom emcc flags](../guides/custom-emcc-flags) — flag-by-flag rationale.
+- [Config reference](./config) — the file you actually write.
+- [Migrate from a yml build](../getting-started/migrate-from-yaml) — the field-by-field mapping.
+- [Extend with C++](../guides/extend-with-cpp) — which `customBindings` scope renders into which key.

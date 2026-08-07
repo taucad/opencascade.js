@@ -29,17 +29,21 @@ emscripten's embind. This page maps the stages and the artifacts they emit.
   end
   subgraph "Stage 3 — link (wasm-ld)"
     B2 --> C1[wasm-ld + emcc glue]
-    C1 --> C2[dist/opencascade_full.wasm]
-    C1 --> C3[dist/opencascade_full.js]
-    A5 --> C4[dist/opencascade_full.d.ts]
+    C1 --> C2[dist/opencascade_single.wasm]
+    C1 --> C3[dist/opencascade_single.js]
+    A5 --> C4["dist/opencascade_single.d.ts (build intermediate)"]
+  end
+  subgraph "Stage 4 — package assembly"
+    C4 --> D1[libcascade assemble]
+    D1 --> D2[dist/types.d.ts + dist/variant.d.ts]
   end
 `} />
 
 ## Stage 1 — bindgen
 
-`scripts/build-wasm.sh bindings` invokes the Python bindgen which:
+The in-image `bindings` stage invokes the Python bindgen which:
 
-1. Walks every header listed in the active YAML via libclang.
+1. Walks every header reachable from the rendered yml's `bindings:` list via libclang.
 2. Builds an AST per class, applies the `bindgen-filters.yaml` exclusions, and
    classifies each member as constructor / static method / instance method /
    property.
@@ -60,8 +64,8 @@ consumer builds — that's the speedup that makes a custom-trimmed build take
 
 ## Stage 3 — link
 
-`emcc` links the selected `.o` files (per the consumer YAML's `bindings:`
-list) against the pre-compiled OCCT library archives in `dist/libs/`. The
+`emcc` links the selected `.o` files — the ones your config's `bindings` array
+resolved to — against the pre-compiled OCCT library archives in `dist/libs/`. The
 output:
 
 - `<name>.wasm` — the wasm binary.
@@ -71,23 +75,28 @@ output:
 - `<name>.build-manifest.json` — symbol coverage report (requested vs compiled,
   wasm bytes, validation flags).
 
+`<name>.d.ts` is a build intermediate. `libcascade assemble` verifies that the
+variant declarations agree, then publishes the shared surface as `types.d.ts`
+and `variant.d.ts`; npm packages do not ship per-variant declaration files.
+
 ## How custom C++ enters the pipeline
 
-`additionalCppFiles` get concatenated into one TU which
-flows through a smaller variant of stages 1+2 — bindgen discovers Handle/NCollection
-references, em++ compiles, the result links into the final wasm alongside the
-auto-generated bindings.
+A `customBindings` entry with the default `scope: 'all'` is concatenated into
+one translation unit which flows through a smaller variant of stages 1+2 —
+bindgen discovers Handle/NCollection references, `em++` compiles, and the
+result links into the final wasm alongside the auto-generated bindings.
 
-`additionalBindFiles` skip bindgen entirely. Their `.cpp` contents compile as
-raw Embind registrations and may include their helper implementations.
+`scope: 'main'` skips bindgen entirely. Those `.cpp` contents compile as raw
+Embind registrations and may include their helper implementations. See
+[Extend with C++](../guides/extend-with-cpp).
 
 ## When the pipeline fails
 
 | Symptom | Stage | Fix |
 |---|---|---|
 | `libclang: cannot find <Standard_Real.hxx>` | 1 | OCCT headers not mounted into the Docker image |
-| `undefined symbol: _ZN10TopoDS_...` | 3 | Remove a `bindings:` entry whose `.o` no longer exists, or the class transitively needs another class you trimmed |
-| `BindingError: invalid type` at runtime | 3 | Duplicate `EMSCRIPTEN_BINDINGS(<name>)` group across `additionalBindFiles` and a generated `.hxx` |
+| `undefined symbol: _ZN10TopoDS_...` | 3 | Remove a `bindings` entry whose `.o` no longer exists, or the class transitively needs another class you trimmed |
+| `BindingError: invalid type` at runtime | 3 | Duplicate `EMSCRIPTEN_BINDINGS(<name>)` group across a `scope: 'main'` file and a generated `.hxx` |
 | Codegen emits `any` for a known type | 1 | The link step always prints a triage summary to stderr when this happens. The build still proceeds by default; set `OCJS_STRICT_TYPES=1` in CI to fail the build instead of shipping a poisoned `.d.ts`. File an issue with the printed triage summary. |
 | Codegen emits `unknown` / surfaces an unbound reference | 1 | Same gate as above. Warning printed by default; `OCJS_STRICT_TYPES=1` escalates to a hard failure for CI consumers. |
 

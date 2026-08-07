@@ -1,16 +1,34 @@
 ---
 title: Multi-threaded build
-description: Opt into pthread-enabled OCCT for parallel meshing and boolean workloads via libcascade/multi.
+description: Select pthread-enabled OCCT for parallel meshing and boolean workloads with createInstance.
 ---
 
-The npm package ships **two** pre-built variants:
+The npm package ships **two** pre-built variants of one binding set:
 
-| Import | Binary | When to use |
+| Variant | Binary | When to use |
 | --- | --- | --- |
-| `libcascade` (default) | `opencascade_full.wasm` | Embeddable widgets, one-op-per-click UX, no COOP/COEP |
-| `libcascade/multi` | `opencascade_full_multi.wasm` | Batch mesh/boolean, STEP→glTF pipelines, COOP/COEP-isolated surfaces |
+| `single` | `opencascade_single.wasm` | Embeddable widgets, one-op-per-click UX, no COOP/COEP |
+| `multi` | `opencascade_multi.wasm` | Batch mesh/boolean, STEP→glTF pipelines, COOP/COEP-isolated surfaces |
 
-Load the threaded variant the same way as the default — import `libcascade/multi` and resolve wasm through `libcascade/multi/wasm`. See [Bundler & locateFile](./bundler-locatefile#multi-threaded-variant) for Vite, Next.js, and Node recipes.
+Ask for the threaded one by name:
+
+```typescript
+import { createInstance } from 'libcascade/init';
+
+const oc = await createInstance({ variant: 'multi' });
+```
+
+`createInstance` owns the worker plumbing — the glue self-reference Emscripten
+spawns pthread workers from, Node `file:` URL → path conversion, and OCCT
+thread-pool sizing. Omit `variant` and it selects the most capable variant this
+host supports, which is `multi` wherever the capability probe passes. Pass
+`threadCount` to cap OCCT's default pool.
+
+Both variants share one `OpenCascadeInstance` type, so a shape from either is
+assignable wherever the other is expected. See
+[Bundler & locateFile](./bundler-locatefile#multi-threaded-variant) for Vite,
+Next.js, and Node recipes, and [Entry points](../reference/libcascade-api/init-function)
+for the full options contract.
 
 OCCT can drive multiple worker threads for mesh and boolean kernels once the pthread-enabled wasm is loaded. That requires hard browser prerequisites (`SharedArrayBuffer` + cross-origin isolation) in the browser; Node 22+ exposes `SharedArrayBuffer` without extra headers.
 
@@ -44,6 +62,10 @@ refuse to expose `SharedArrayBuffer` and the wasm fails to instantiate.
 
 Node 22+ exposes `SharedArrayBuffer` unconditionally — no headers needed.
 
+Under Vite, also set `worker: { format: 'es' }`: Emscripten's pthread workers
+are ES modules with top-level await, which the default `iife` worker format
+cannot emit.
+
 ## Triggering OCCT parallelism
 
 OCCT respects its own `OSD_Parallel` switches once threads exist. Two
@@ -56,7 +78,7 @@ The cleanest option: flip the OCCT-wide defaults once, then any subsequent
 call to a parallel-aware API inherits the toggle without an extra argument.
 
 ```typescript
-// Run once after `await init({...})`.
+// Run once after `await createInstance({ variant: 'multi' })`.
 oc.BOPAlgo_Options.SetParallelMode(true);                 // booleans
 oc.BRepMesh_IncrementalMesh.SetParallelDefault(true);     // meshing
 
@@ -123,7 +145,7 @@ parallel flag to flip.
   (e.g. embedded Stripe checkout, some auth providers). Subdomain-isolate
   your CAD surface if that matters.
 - **Thread spawn time** added 188 ms in the 12-worker benchmark, scaling with pool size.
-  Memoise the `init()` Promise.
+  Memoise the `createInstance()` Promise.
 - **Memory** scales with `PTHREAD_POOL_SIZE × STACK_SIZE`. With the
   shipped `navigator.hardwareConcurrency` sizing, a 12-core box
   reserves ~96 MB of stack on top of `INITIAL_MEMORY`.
@@ -142,8 +164,8 @@ already mitigate the worst of this:
   bypasses the global malloc contention point. The `mallinfo` undefined
   symbol you'll see in custom-build link logs is mimalloc's debug-stats
   reporter — `wasm-ld` emits a single `-Wjs-compiler` warning for it
-  (the link permits it via the broad `-Wl,--allow-undefined` flag in
-  the shipped `emccFlags`) and the symbol is dead-code-eliminated at
+  (the link permits it via the broad `-Wl,--allow-undefined` entry in
+  the shipped build's `rawFlags`) and the symbol is dead-code-eliminated at
   module load. The warning is informational; no runtime call ever
   resolves to it.
 - **Create one typed-array view per allocation-free batch**. Do not retain it
@@ -176,16 +198,16 @@ not yet universal:
 | Deno (all current) | **No** |
 | Samsung Internet | **No** (as of May 2026) |
 
-The default `full_multi.yml` therefore keeps `-sGROWABLE_ARRAYBUFFERS=0`
-so the binary stays compatible with Node-based test runners, Bun, Deno,
-and the legacy mobile browser. A **browser-only opt-in** variant ships
-via [`full_multi_browser.yml`](/docs/toolchain/guides/multi-threading#browser-only-mt-build)
+The shipped `multi` variant therefore keeps `GROWABLE_ARRAYBUFFERS` off so the
+binary stays compatible with Node-based test runners, Bun, Deno, and the legacy
+mobile browser. A custom build can add a
+[browser-only variant](/docs/toolchain/guides/multi-threading#browser-only-mt-build)
 for deployments that have audited their runtime matrix and want the
-resizable-buffer fast path on the supported browsers.
+resizable-buffer fast path.
 
 For most consumers the cost is invisible — OCCT's per-call cost on
 mesh/boolean dominates the typed-view refresh cost by 2-3 orders of magnitude.
-Reach for `full_multi_browser.yml` only when you've profiled and the
+Reach for the browser-only variant only when you've profiled and the
 JS↔WASM boundary is on the hot path.
 
 ## When NOT to ship threaded
@@ -195,9 +217,13 @@ JS↔WASM boundary is on the hot path.
 - Your target users include Safari ≤16 — older Safari refused
   `SharedArrayBuffer` in cross-origin-isolated contexts.
 
-For most consumers the single-threaded default wins on simplicity. Reach for
-`libcascade/multi` only when you have measured the bottleneck.
+For most consumers the single-threaded variant wins on simplicity. Force it
+with `createInstance({ variant: 'single' })`, or globally before any import:
+
+```javascript
+globalThis[Symbol.for('libcascade.select')] = 'single';
+```
 
 ## Custom builds
 
-Need a smaller threaded binary (trimmed symbol list) or custom Emscripten flags? See [Toolchain — Custom multi-threaded build](/docs/toolchain/guides/multi-threading) for the YAML recipe and `PTHREAD_POOL_SIZE` rationale.
+Need a smaller threaded binary (trimmed symbol list) or different Emscripten settings? See [Toolchain — Custom multi-threaded build](/docs/toolchain/guides/multi-threading) for the config recipe and `PTHREAD_POOL_SIZE` rationale.

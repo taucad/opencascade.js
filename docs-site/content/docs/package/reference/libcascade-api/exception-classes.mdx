@@ -8,9 +8,7 @@ surfaces them as `WebAssembly.Exception` values and the initialized runtime
 decodes their C++ type and message.
 
 ```typescript
-import init from 'libcascade';
-
-const oc = await init();
+import oc from 'libcascade';
 
 try {
   riskyOcctCall();

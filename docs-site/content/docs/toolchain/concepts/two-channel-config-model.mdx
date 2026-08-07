@@ -1,12 +1,13 @@
 ---
 title: Two-channel config model
-description: Compile-time OCJS_* env vars vs link-time emccFlags — what each channel controls and when to reach for it.
+description: Compile-time OCJS_* env vars vs link-time settings — what each channel controls and when to reach for it.
 ---
 
 <Callout type="info">
   **Maintainer track.** Skip this page if you consume the published npm
   package — every shipped build already pins the right channel-1 flags. The
-  channels matter when you rebuild libcascade from source.
+  channels matter when you rebuild libcascade from source; a custom build
+  configures channel 2 only.
 </Callout>
 
 libcascade exposes two configuration channels with different lifecycles and
@@ -34,19 +35,20 @@ These flags pin into a **build-flags manifest** alongside each cached `.o`.
 Mixing builds with mismatched flags fails-loud at link time — never silent
 ABI breakage.
 
-## Channel 2 — link-time `emccFlags`
+## Channel 2 — link-time settings and flags
 
-Set per-consumer-build in your YAML. Apply only to the final `emcc` link step.
+Set per-consumer-build in `libcascade.config.ts`. Apply only to the final
+`emcc` link step.
 
-```yaml
-mainBuild:
-  emccFlags:
-    - -O3
-    - -sMODULARIZE=1
-    - -sEXPORT_ES6=1
-    - -sALLOW_MEMORY_GROWTH=1
-    - -sWASM_BIGINT
-    - -sEVAL_CTORS=2
+```typescript notypecheck
+settings: {
+  MODULARIZE: true,
+  EXPORT_ES6: true,
+  ALLOW_MEMORY_GROWTH: true,
+  WASM_BIGINT: true,
+  EVAL_CTORS: 2,
+},
+compilerFlags: { optimize: 'O3' },
 ```
 
 These flags control loader shape (ESM vs CommonJS), memory limits, and
@@ -60,7 +62,7 @@ them across consumer builds turns a 30-minute full build into a 60-second link.
 The cache key must be deterministic — that's what the compile-time channel
 fingerprint guards.
 
-If consumers could change compile-time flags via YAML, the cache invariant
+If consumers could change compile-time flags from their own config, the cache invariant
 would break: a downstream `-fexceptions` request would silently rebuild every
 class, defeating the cache. Splitting the channels makes the contract
 explicit.
@@ -75,8 +77,9 @@ Almost never as a consumer. The published build is the named
 - `OCJS_CLOSURE=true` + `OCJS_CONVERGE=true`
 - `THREADING=single-threaded`
 
-The matching `full.yml` carries `-sWASM_BIGINT` and `-sEVAL_CTORS=2` at
-link time. The threaded YAML retains BigInt but deliberately omits eval-ctors.
+The matching config carries `WASM_BIGINT: true` and `EVAL_CTORS: 2` at link
+time. The threaded variant retains BigInt but removes eval-ctors with
+`EVAL_CTORS: null`.
 
 Presets are addressed by name, not by raw env vars — see
 [Named compile-time configurations](../reference/configurations) for the full
@@ -98,9 +101,10 @@ If a build acts strangely:
    cat build/build-flags.json
    ```
    For the **published** tarball, the consumer-facing equivalent is
-   `dist/opencascade_full.provenance.json`, which captures the active preset,
+   `dist/opencascade_single.provenance.json`, which captures the active preset,
    compile flags, and commit SHA the wasm was built from.
-2. Confirm channel-2 flags in the YAML actually made it into the wasm:
+2. Confirm channel-2 settings actually made it into the wasm
+   (`libcascade build --render-only` prints the rendered flag list first):
    ```bash
    strings dist/my-build.wasm | grep -E 'STACK_SIZE|MAXIMUM_MEMORY'
    ```

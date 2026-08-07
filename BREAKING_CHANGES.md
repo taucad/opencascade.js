@@ -3,7 +3,7 @@
 This guide describes the consumer-visible breaking changes in libcascade
 v3.
 
-It lists every consumer-visible breaking change with **Before / After** code samples. All `After` snippets are taken directly from runnable smoke tests in [`tests/smoke/`](tests/smoke/) or from the published [`dist/opencascade_full.d.ts`](dist/opencascade_full.d.ts).
+It lists every consumer-visible breaking change with **Before / After** code samples. All `After` snippets are taken directly from runnable smoke tests in [`tests/smoke/`](tests/smoke/) or the generated declaration artifacts in `dist/`.
 
 If you only build WASM yourself (no JS consumption), skip ahead to [Section F — Build flag changes](#section-f--build-flag-changes).
 
@@ -34,9 +34,9 @@ To run on older runtimes, build a custom variant from source by overriding `OCJS
 
 ## Section A — Module loading
 
-### A1 — `dist/` layout: single triple, no facade
+### A1 — `dist/` layout: two variants, one assembled surface
 
-v2 shipped a barrel module that lazily required one of several pre-built variants from `dist/`. v3 ships exactly one variant — `opencascade_full.{js,wasm,d.ts}` — and exports its loader as the package's default export. There is no facade module to choose between variants.
+v2 shipped a barrel module that lazily required one of several pre-built variants from `dist/`. v3 ships single- and multi-threaded variants behind one assembled package surface. The package root is an eagerly initialised, capability-selected instance; `libcascade/init` exposes the explicit factory.
 
 **Before**
 
@@ -49,58 +49,99 @@ const oc = await initOpenCascade({ mainJS: opencascade });
 **After**
 
 ```ts
-import initOpenCascade from 'libcascade';
-const oc = await initOpenCascade();
+import oc from 'libcascade';
 ```
 
-**Action**: drop any `mainJS` / variant-selection wiring. If you previously imported a specific variant file directly, switch to the package's default export.
+**Action**: drop any `mainJS` wiring. Use the eager package root, or call `createInstance` from `libcascade/init` when you need options or an explicit variant.
 
 ### A2 — ESM-only with zero-configuration initialization
 
-The package is `"type": "module"`. CommonJS entry points are gone. The loader
-resolves its adjacent `opencascade_full.wasm` automatically. Provide
-`locateFile` only when a bundler or deployment relocates that asset.
+The package is `"type": "module"`. CommonJS entry points are gone. The eager
+root and `createInstance` resolve the selected variant's adjacent WASM
+automatically. Provide `locateFile` only when a bundler or deployment relocates
+that asset.
 
-The wasm binary is exposed via subpath exports — `libcascade/wasm` for the single-threaded default and `libcascade/multi/wasm` for the pthread-enabled variant — which are the only supported ways to reach the binaries from consumer code. The same identifiers work under Vite's `?url` suffix, Node's `import.meta.resolve`, Bun, and Deno.
+The wasm binaries are exposed via subpath exports — `libcascade/wasm` for the single-threaded binary and `libcascade/multi/wasm` for the pthread-enabled binary — which are the only supported ways to reach them from consumer code. The same identifiers work under Vite's `?url` suffix, Node's `import.meta.resolve`, Bun, and Deno.
 
-For the multi-threaded variant, import `libcascade/multi` instead of the package root and resolve wasm through `libcascade/multi/wasm`. Browser deployments require cross-origin isolation headers; see the [multi-threaded build guide](https://opencascade-js.vercel.app/docs/package/guides/multi-threading).
+For the multi-threaded variant, call `createInstance({ variant: 'multi' })`. Browser deployments require cross-origin isolation headers; see the [multi-threaded build guide](https://opencascade-js.vercel.app/docs/package/guides/multi-threading).
 
 For Node ESM consumers:
 
 ```ts
-import type { OpenCascadeInstance } from 'libcascade';
-import init from 'libcascade';
+import oc from 'libcascade';
 
-let _oc: OpenCascadeInstance | undefined;
-export async function initOC(): Promise<OpenCascadeInstance> {
-  if (!_oc) {
-    _oc = await init();
-  }
-  return _oc;
-}
+using box = new oc.BRepPrimAPI_MakeBox(10, 10, 10);
 ```
 
 For a Vite / browser app, resolve the WASM URL through your bundler:
 
 ```ts
-import init from 'libcascade';
+import { createInstance } from 'libcascade/init';
 import wasmUrl from 'libcascade/wasm?url';
 
-const oc = await init({ locateFile: () => wasmUrl });
+const oc = await createInstance({ variant: 'single', locateFile: () => wasmUrl });
 ```
 
 For the multi-threaded build (COOP/COEP-isolated deployments only):
 
 ```ts
-import init from 'libcascade/multi';
+import { createInstance } from 'libcascade/init';
 import wasmUrl from 'libcascade/multi/wasm?url';
 
-const oc = await init({ locateFile: () => wasmUrl });
+const oc = await createInstance({ variant: 'multi', locateFile: () => wasmUrl });
 ```
 
-**Action**: remove CommonJS `require()` and call `init()` directly. If your
-bundler relocates WASM, wire `locateFile` through `libcascade/wasm` (default)
-or `libcascade/multi/wasm` (threaded). `dist/*` deep paths are not public.
+**Action**: remove CommonJS `require()`. Import the eager root for zero-config
+use, or call `createInstance`. If your bundler relocates WASM, wire `locateFile`
+through the matching WASM subpath. `dist/*` deep paths are not public.
+
+### A3 — Artifact filenames follow `<name>_<variant>`
+
+The build artifacts are named for their variant. Every build in the toolchain —
+libcascade's own included — emits `<config name>_<variant name>`, so the
+single-threaded build is `opencascade_single` and the multi-threaded build is
+`opencascade_multi`.
+
+| v2 / v3 pre-release | v3 |
+| --- | --- |
+| `dist/opencascade_full.js` | `dist/opencascade_single.js` |
+| `dist/opencascade_full.wasm` | `dist/opencascade_single.wasm` |
+| `dist/opencascade_full.d.ts` | `dist/types.d.ts` |
+| `dist/opencascade_full.js.symbols` | `dist/opencascade_single.js.symbols` |
+| `dist/opencascade_full.build-manifest.json` | `dist/opencascade_single.build-manifest.json` |
+| `dist/opencascade_full.provenance.json` | `dist/opencascade_single.provenance.json` |
+| `dist/opencascade_full_multi.*` | `dist/opencascade_multi.*` |
+
+**This does not move the supported interface.** `libcascade`, `libcascade/init`,
+`libcascade/wasm`, `libcascade/single`, `libcascade/single/wasm`,
+`libcascade/multi` and `libcascade/multi/wasm` all resolve exactly as before —
+the subpath exports are the stable contract, and they are the only supported way
+to reach a binary. If you import through them, nothing changes.
+
+You are affected only if you bypassed them:
+
+**Before**
+
+```ts
+// deep path into dist/ — never supported, and now broken
+import init from 'libcascade/dist/opencascade_full.js';
+const oc = await init({ locateFile: () => '/opencascade_full.wasm' });
+```
+
+**After**
+
+```ts
+import { createInstance } from 'libcascade/init';
+import wasmUrl from 'libcascade/wasm?url';
+
+const oc = await createInstance({ variant: 'single', locateFile: () => wasmUrl });
+```
+
+**Action**: if you copy the binary into a static directory yourself (a Next.js
+`public/` copy step, a CDN upload, a `locateFile` returning a hard-coded path),
+rename the copied file and the string that points at it. Resolve the source
+through `libcascade/wasm` or `libcascade/multi/wasm` rather than a `dist/`
+path, and the filename stops being your problem.
 
 ---
 
@@ -132,7 +173,7 @@ using box = new oc.BRepPrimAPI_MakeBox(10, 20, 30);
 using edge = new oc.BRepBuilderAPI_MakeEdge(p1, p2);
 ```
 
-For genuinely ambiguous cases that share an arity (e.g. two constructors that both take three numbers but mean different things), the codegen still emits `_N` symbols — grep `dist/opencascade_full.d.ts` to find the exact name.
+For genuinely ambiguous cases that share an arity (e.g. two constructors that both take three numbers but mean different things), the codegen still emits `_N` symbols — grep `dist/types.d.ts` to find the exact name.
 
 **Action**: search-and-replace `_N` overload subclass names with the bare symbol. Most call sites collapse cleanly; the few that don't surface as TypeScript errors with the correct alternative spelling visible in IntelliSense.
 
@@ -232,7 +273,7 @@ console.log(r.P, r.T); // freshly-assigned Handles owned by r's Symbol.dispose
 // it is never echoed into r per the §B2 class-in-place rule.
 ```
 
-Other affected signatures (full list materialises in `dist/opencascade_full.d.ts`):
+Other affected signatures (full list materialises in `dist/types.d.ts`):
 
 | Method                                                | v2 (caller allocates `new oc.Handle_<T>()` for each elided slot)                                                                                  | v3 (slot elided)                                             |
 | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
@@ -282,8 +323,7 @@ The shipped `full.yml` build explicitly exports the helpers needed to decode and
 A caught exception is now a `WebAssembly.Exception`, decodable via the runtime helpers. The pattern below is the same one used by [`tests/smoke/smoke-exceptions.test.ts`](tests/smoke/smoke-exceptions.test.ts):
 
 ```ts
-import init from 'libcascade';
-const oc = await init();
+import oc from 'libcascade';
 
 try {
   using cone = new oc.BRepPrimAPI_MakeCone(1, 0.5, 0); // Standard_DomainError: zero height
@@ -344,7 +384,7 @@ OCCT itself moved from V7.6.2 → V8.0.0 (commit `d3056ef`). The classes and met
 
 OCCT's `TopoDS` is a C++ namespace, not a class, so Embind cannot bind it directly. v3 ships a bridge class registered under the name `TopoDS` that exposes the eight downcast functions as static methods.
 
-Reference: [`tests/smoke/smoke-output-params.test.ts:126`](tests/smoke/smoke-output-params.test.ts), `dist/opencascade_full.d.ts:202837`.
+Reference: [`tests/smoke/smoke-output-params.test.ts:126`](tests/smoke/smoke-output-params.test.ts); search the named symbol in `dist/types.d.ts`.
 
 **Before** (v2 patterns varied — `prototype.Edge`, `_TopoDS_Edge`, manual `getPointer`, etc.)
 
@@ -371,7 +411,7 @@ const compSolid = oc.TopoDS.CompSolid(shape);
 
 OCCT V8 dropped the six-output-parameter accessor in favour of corner getters.
 
-Reference: `dist/opencascade_full.d.ts:19008`.
+Reference: search the named symbol in `dist/types.d.ts`.
 
 **Before**
 
@@ -402,7 +442,7 @@ console.log(min.X(), min.Y(), min.Z(), max.X(), max.Y(), max.Z());
 
 v2's `HasNormals()` + per-pass output reference is replaced by `HasNormals()` + value-returning `Normal(index)`.
 
-Reference: `dist/opencascade_full.d.ts:20576-20624`.
+Reference: search the named symbols in `dist/types.d.ts`.
 
 **Before**
 
@@ -435,7 +475,7 @@ To set normals, use `tri.SetNormal(i, gpDir)` (replaces v2's mutate-in-place cal
 
 OCCT V8 reorganised the constructor overload set. The previously-common 5-arity convenience constructor is still available, but it now sits alongside additional `IMeshTools_Parameters`-based overloads, and the canonical signature has changed parameter order.
 
-Reference: `dist/opencascade_full.d.ts:82824-82831`.
+Reference: search the named symbols in `dist/types.d.ts`.
 
 **Before** (v2 `_N`-suffixed dispatch)
 
@@ -454,7 +494,7 @@ params.Angle = 0.5;
 using meshFromParams = new oc.BRepMesh_IncrementalMesh(shape, params);
 ```
 
-**Action**: drop the `_N` suffix; if your call site looks ambiguous, check the matching overload arity in `dist/opencascade_full.d.ts`.
+**Action**: drop the `_N` suffix; if your call site looks ambiguous, check the matching overload arity in `dist/types.d.ts`.
 
 ### D5 — `TopoDS_Shape::HashCode` removed
 
