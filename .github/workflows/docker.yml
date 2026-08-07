@@ -842,6 +842,12 @@ jobs:
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           ref: ${{ needs.preflight.outputs.full_sha }}
+      - name: Set up Node
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: '24.10.0'
+      - name: Install locked Node tools
+        run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Download tested digests
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
@@ -1034,6 +1040,8 @@ jobs:
         with:
           node-version: '24.10.0'
           registry-url: https://registry.npmjs.org
+      - name: Install locked Node tools
+        run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Use the publication npm version
         run: npm install --global npm@11.5.1
       - name: Set up Buildx
