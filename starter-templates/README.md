@@ -7,7 +7,7 @@ Production-ready, copy-and-go starters for `libcascade`. Each template demonstra
 | Template                             | Stack                                                                     | What it shows                                                  |
 | ------------------------------------ | ------------------------------------------------------------------------- | -------------------------------------------------------------- |
 | [`vite-three-glb`](./vite-three-glb) | Vite 6 + TS + three.js 0.180+                                             | Build a Shape, mesh to GLB, render in three.js with OrbitControls |
-| [`vite-three-glb-multi`](./vite-three-glb-multi) | Vite 6 + TS + three.js + `libcascade/multi`      | Same GLB pipeline with COOP/COEP + pthread wasm + parallel mesh/boolean |
+| [`vite-three-glb-multi`](./vite-three-glb-multi) | Vite 6 + TS + three.js + threaded `libcascade`   | Same GLB pipeline with COOP/COEP + pthread wasm + parallel mesh/boolean |
 | [`next-three-glb`](./next-three-glb) | Next 15 App Router + React 19 + `@react-three/fiber` + `@react-three/drei` | Client-only libcascade init via `dynamic(..., { ssr: false })` inside `'use client'` |
 | [`node-step-export`](./node-step-export) | Node 22+ ESM + `tsx`                                                  | Headless `cli build sphere --out sphere.step` with `import.meta.resolve` |
 

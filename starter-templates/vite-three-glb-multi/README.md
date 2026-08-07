@@ -1,12 +1,12 @@
 # vite-three-glb-multi
 
-Vite 6 + TS + three.js 0.180+ + `libcascade` via the `libcascade/multi` subpath. Same box-with-hole → GLB → three.js pipeline as [`vite-three-glb`](../vite-three-glb), but loads the pthread-enabled wasm with COOP/COEP headers and activates OCCT parallel mesh/boolean defaults at init.
+Vite 6 + TS + three.js 0.180+ + the threaded `libcascade` variant. Same box-with-hole → GLB → three.js pipeline as [`vite-three-glb`](../vite-three-glb), but loads the pthread-enabled wasm with COOP/COEP headers and activates OCCT parallel mesh/boolean defaults at init.
 
 ## Stack
 
 - Vite 6 (`pnpm dev` → http://localhost:3003)
-- `libcascade/multi` with wasm at `libcascade/multi/wasm?url`
-- `libcascade`, using the `libcascade/multi` and `libcascade/multi/wasm` subpaths
+- `createInstance({ variant: 'multi' })` from `libcascade/init`
+- Pthread-enabled wasm at `libcascade/multi/wasm?url`
 - Cross-origin isolation headers in `vite.config.ts` (required for `SharedArrayBuffer`)
 - Global parallel activation in `src/libcascade-init.ts` per the [multi-threading guide](https://github.com/taucad/opencascade.js/blob/main/docs-site/content/docs/package/guides/multi-threading.mdx)
 
@@ -15,7 +15,7 @@ Vite 6 + TS + three.js 0.180+ + `libcascade` via the `libcascade/multi` subpath.
 | File                   | Role                                                                  |
 | ---------------------- | --------------------------------------------------------------------- |
 | `src/main.ts`          | Boots the viewer, runs the pipeline, surfaces thread count + errors   |
-| `src/libcascade-init.ts`     | Memoized `libcascade/multi` init + parallel activation    |
+| `src/libcascade-init.ts`     | Memoized threaded init + parallel activation              |
 | `src/build-shape.ts`   | Demo compound; booleans fan out via `SetParallelMode(true)`           |
 | `src/shape-to-glb.ts`  | Parallel mesh + GLB export via `SetParallelDefault(true)`             |
 | `src/three-viewer.ts`  | three.js scene + `OrbitControls`                                      |

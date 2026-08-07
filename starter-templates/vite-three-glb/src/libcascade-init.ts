@@ -1,17 +1,19 @@
-import init from 'libcascade';
+import { createInstance, type OpenCascadeInstance } from 'libcascade/init';
 import wasmUrl from 'libcascade/wasm?url';
 
-let cached: ReturnType<typeof init> | null = null;
+let cached: Promise<OpenCascadeInstance> | null = null;
 
 /**
  * Canonical exactly-once libcascade init for browser bundles.
  *
  * The memoized Promise is the single source of truth for the WASM runtime;
- * never call `init({...})` directly elsewhere in the bundle.
+ * never call `createInstance({...})` directly elsewhere in the bundle.
  */
-export function getLibcascade(): ReturnType<typeof init> {
+export function getLibcascade(): Promise<OpenCascadeInstance> {
   if (cached === null) {
-    cached = init({ locateFile: () => wasmUrl });
+    const instance = createInstance({ variant: 'single', locateFile: () => wasmUrl });
+    cached = instance;
+    return instance;
   }
   return cached;
 }

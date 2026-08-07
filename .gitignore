@@ -57,8 +57,12 @@ docs-site/data.backup-*/
 
 # Build output
 /dist/
+packages/toolchain/dist/
 
 # Docker build-flow test scratch (per-test workdirs + manual trial dir)
 /tests/docker/.work/
 /tests/docker/.trial/
 .vercel
+
+# `libcascade build` scratch: rendered ymls + raw container output
+.libcascade/

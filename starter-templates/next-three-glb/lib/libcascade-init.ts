@@ -1,19 +1,24 @@
 'use client';
 
-import init from 'libcascade';
+import { createInstance, type OpenCascadeInstance } from 'libcascade/init';
 
-let cached: ReturnType<typeof init> | null = null;
+let cached: Promise<OpenCascadeInstance> | null = null;
 
 /**
  * Canonical exactly-once libcascade init for Next 15 client components.
  *
- * `opencascade_full.wasm` is copied into `public/` by the `postinstall`
+ * `opencascade_single.wasm` is copied into `public/` by the `postinstall`
  * script, so `locateFile` resolves to the same-origin URL. Memoization
  * is module-scoped — Next.js component re-renders never re-init.
  */
-export function getLibcascade(): ReturnType<typeof init> {
+export function getLibcascade(): Promise<OpenCascadeInstance> {
   if (cached === null) {
-    cached = init({ locateFile: () => '/opencascade_full.wasm' });
+    const instance = createInstance({
+      variant: 'single',
+      locateFile: () => '/opencascade_single.wasm',
+    });
+    cached = instance;
+    return instance;
   }
   return cached;
 }

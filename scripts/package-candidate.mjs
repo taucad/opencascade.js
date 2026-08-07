@@ -6,18 +6,24 @@ import crypto from 'node:crypto';
 
 export const DIST_FILES = [
   'api-reference.json',
+  'index.d.ts',
+  'index.js',
+  'init.d.ts',
+  'init.js',
+  'init.multi.js',
+  'init.single.js',
   'opencascade_single.build-manifest.json',
-  'opencascade_single.d.ts',
   'opencascade_single.js',
   'opencascade_single.js.symbols',
   'opencascade_single.provenance.json',
   'opencascade_single.wasm',
   'opencascade_multi.build-manifest.json',
-  'opencascade_multi.d.ts',
   'opencascade_multi.js',
   'opencascade_multi.js.symbols',
   'opencascade_multi.provenance.json',
   'opencascade_multi.wasm',
+  'types.d.ts',
+  'variant.d.ts',
 ].sort();
 
 export const PACKAGE_FILES = [
@@ -116,13 +122,13 @@ if (process.argv[1] === new URL(import.meta.url).pathname) {
       const packed = JSON.parse(fs.readFileSync(process.argv[packJson + 1], 'utf8'));
       const candidate = requireSinglePackResult(packed);
       validateExactFiles(candidate.files.map(({ path: file }) => file), PACKAGE_FILES, 'npm tarball');
-      console.log('npm tarball contains exactly 19 files');
+      console.log(`npm tarball contains exactly ${PACKAGE_FILES.length} files`);
       process.exit(0);
     }
     const directory = path.resolve(process.argv[2] ?? 'dist');
     validateDist(directory);
     if (process.env.OCJS_EXPECTED_SHA) validateProvenance(directory, process.env.OCJS_EXPECTED_SHA);
-    console.log('candidate dist contains exactly 13 non-empty files');
+    console.log(`candidate dist contains exactly ${DIST_FILES.length} non-empty files`);
   } catch (error) {
     console.error(error.message);
     process.exit(1);

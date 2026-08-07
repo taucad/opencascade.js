@@ -62,9 +62,12 @@ describe(`starter-templates/${TEMPLATE_NAME} shape`, () => {
       expect(fs.existsSync(INIT_PATH)).toBe(true);
     });
 
-    it('imports the multi subpath and wasm asset', () => {
+    it('imports createInstance and the multi wasm asset', () => {
       const src = readInit();
-      expect(src).toContain("libcascade/multi'");
+      // The multi glue is selected by `createInstance({ variant: 'multi' })`;
+      // only the wasm asset needs an explicit bundler import.
+      expect(src).toContain("libcascade/init'");
+      expect(src).toContain("variant: 'multi'");
       expect(src).toContain('libcascade/multi/wasm?url');
     });
 

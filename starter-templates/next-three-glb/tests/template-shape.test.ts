@@ -78,13 +78,13 @@ describe(`starter-templates/${TEMPLATE_NAME} shape`, () => {
       ).toBe(true);
     });
 
-    it('invokes init({...}) exactly once', () => {
+    it('invokes createInstance({...}) exactly once', () => {
       const src = readInit();
       const codeOnly = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
-      const matches = codeOnly.match(/\binit\s*\(\s*\{/g) ?? [];
+      const matches = codeOnly.match(/\bcreateInstance\s*\(\s*\{/g) ?? [];
       expect(
         matches.length,
-        `lib/libcascade-init.ts must invoke init({...}) exactly once outside comments (got ${matches.length}). Code-only source:\n${codeOnly}`,
+        `lib/libcascade-init.ts must invoke createInstance({...}) exactly once outside comments (got ${matches.length}). Code-only source:\n${codeOnly}`,
       ).toBe(1);
     });
   });
