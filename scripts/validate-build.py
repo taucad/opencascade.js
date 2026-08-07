@@ -222,15 +222,26 @@ def merge_any_reasons(build_dir):
 
 
 def validate_runtime_helpers(config, output_dir):
-    """If the YAML asks for -sEXPORT_EXCEPTION_HANDLING_HELPERS, assert the
-    linked JS glue actually defines getExceptionMessage / refcount helpers.
+    """For native WASM EH, assert the linked JS glue exports its helpers.
 
-    Catches the regression where -fwasm-exceptions is present but the helpers
-    flag is missing, leaving the .d.ts over-promising relative to runtime.
+    Catches a missing explicit runtime-method export before the generated .d.ts
+    can over-promise relative to runtime.
     """
     main_flags = config["mainBuild"].get("emccFlags", [])
-    if not any('-sEXPORT_EXCEPTION_HANDLING_HELPERS' in f for f in main_flags):
+    if not any('-fwasm-exceptions' in flag for flag in main_flags):
         return {"required": False, "pass": True, "checked": [], "missing": []}
+
+    required = ["getExceptionMessage", "incrementExceptionRefcount", "decrementExceptionRefcount"]
+    runtime_flags = " ".join(flag for flag in main_flags if "EXPORTED_RUNTIME_METHODS" in flag)
+    missing = [name for name in required if name not in runtime_flags]
+    if missing:
+        return {
+            "required": True,
+            "pass": False,
+            "checked": required,
+            "missing": missing,
+            "error": "Missing from -sEXPORTED_RUNTIME_METHODS",
+        }
 
     js_path = os.path.join(output_dir, config["mainBuild"]["name"])
     if not os.path.exists(js_path):
@@ -245,7 +256,6 @@ def validate_runtime_helpers(config, output_dir):
     with open(js_path, encoding="utf-8") as f:
         glue = f.read()
 
-    required = ["getExceptionMessage", "incrementExceptionRefcount", "decrementExceptionRefcount"]
     missing = [name for name in required if f".{name}=" not in glue and f'"{name}"' not in glue]
     return {
         "required": True,

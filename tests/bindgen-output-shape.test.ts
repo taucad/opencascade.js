@@ -1,6 +1,6 @@
 /**
  * Regression guards over the generated embind C++ output of bindings.py
- * AND the generated `dist/opencascade_full.d.ts` TS declaration.
+ * AND the generated `dist/opencascade_single.d.ts` TS declaration.
  *
  * After input-passthrough RBV (Option B of the blueprint) the C++ side
  * expects:
@@ -30,10 +30,10 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 
 const BINDINGS_DIR = path.resolve(import.meta.dirname, '../build/bindings');
-const DIST_DTS_PATH = path.resolve(import.meta.dirname, '../dist/opencascade_full.d.ts');
+const DIST_DTS_PATH = path.resolve(import.meta.dirname, '../dist/opencascade_single.d.ts');
 const BUILD_CONFIGS_DTS_PATH = path.resolve(
   import.meta.dirname,
-  '../dist/opencascade_full.d.ts',
+  '../dist/opencascade_single.d.ts',
 );
 const DTS_PATH = fs.existsSync(DIST_DTS_PATH) ? DIST_DTS_PATH : BUILD_CONFIGS_DTS_PATH;
 

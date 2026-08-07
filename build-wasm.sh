@@ -53,7 +53,7 @@ Usage: ./build-wasm.sh <command> [options] [<yaml-config>]
 
 Commands:
   full <yaml>           Full pipeline: apply-patches + pch + generate + bindings + sources + bind-symbols + link
-  apply-patches         Apply OCCT source patches (idempotent — all 4 OCCT patches + libembind patch are hard requirements)
+  apply-patches         Apply OCCT source patches (idempotent — all 5 OCCT patches + libembind patch are hard requirements)
   link <yaml>           Link only (reuses compiled .o files, fastest)
   link-core <yaml>      Link into the internal cache-owned artifact directory
   materialize <yaml>    Copy cached artifacts to OCJS_OUTPUT_DIR
@@ -293,7 +293,16 @@ if name not in configs:
     sys.exit(0)
 cfg = configs[name]
 for key, val in cfg.items():
-    print(f'export {key}=\"{val}\"')
+    # An empty configuration value expresses 'no opinion', so it must not
+    # clobber a value the caller injected (\`docker run -e KEY=...\`): render it
+    # as \${KEY:-} instead of the unconditional assignment. BINARYEN_EXTRA_PASSES
+    # is declared empty in every named configuration, and the unconditional
+    # export silently discarded consumer-supplied binaryen passes. A
+    # configuration that declares a real value still pins it.
+    if val == '':
+        print(f'export {key}=\"\${{{key}:-}}\"')
+    else:
+        print(f'export {key}=\"{val}\"')
 ")"
   echo ""
 fi
@@ -683,7 +692,7 @@ step_materialize() {
 }
 
 step_apply_patches() {
-  # The four OCCT source patches below are HARD REQUIREMENTS for every
+  # The five OCCT source patches below are HARD REQUIREMENTS for every
   # supported build (single-threaded and multi-threaded alike). The legacy
   # OCJS_PATCH_DUMP / OCJS_PATCH_STEPCAF env-var toggles were removed —
   # making required behaviour optional was a footgun (a `OCJS_PATCH_DUMP=false`
@@ -705,6 +714,8 @@ step_apply_patches() {
   "$OCJS_PYTHON" src/patches/patch_noexcept_destructors.py
   echo "  Applying STEPCAFControl_Controller DynamicType patch..."
   "$OCJS_PYTHON" src/patches/patch_stepcaf_dyntype.py
+  echo "  Applying Geom2dGcc_Circ2dTanCenGeo uninitialised-Index patch..."
+  "$OCJS_PYTHON" src/patches/patch_geom2dgcc_tancengeo_index.py
   _ensure_standard_version_hxx
   echo "  All patches applied."
 
@@ -762,9 +773,9 @@ step_patch_embind() {
 
   local emsdk_version
   emsdk_version="$(tr -d '"[:space:]' 2>/dev/null < "$embind_dir/emscripten-version.txt")"
-  if [ "$emsdk_version" != "5.0.1" ]; then
-    echo "WARNING: libembind patch was created for emsdk 5.0.1 but found $emsdk_version" >&2
-    echo "         The patch may fail or produce incorrect results." >&2
+  if [ "$emsdk_version" != "6.0.5" ]; then
+    echo "ERROR: libembind patch requires emsdk 6.0.5 but found $emsdk_version" >&2
+    exit 1
   fi
 
   _sha256() {

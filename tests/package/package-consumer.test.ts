@@ -29,15 +29,18 @@ beforeAll(() => {
   packageDir = path.join(workDir, 'node_modules/libcascade');
   consumerPath = path.join(workDir, 'consumer.mjs');
   fs.writeFileSync(consumerPath, `
-import * as single from 'libcascade';
+import * as root from 'libcascade';
+import * as single from 'libcascade/single';
 import * as multi from 'libcascade/multi';
 
 const results = [];
-for (const [name, module, threaded] of [
+for (const [name, module, eager] of [
+  ['root', root, true],
   ['single', single, false],
-  ['multi', multi, true],
+  ['multi', multi, false],
 ]) {
-  const oc = await module.default();
+  const oc = eager ? module.default : await module.default();
+  const threaded = oc.wasmMemory.buffer instanceof SharedArrayBuffer;
   const box = new oc.BRepPrimAPI_MakeBox(1, 2, 3);
   const shape = box.Shape();
   oc.FS.writeFile('/owned.bin', new Uint8Array([3, 1, 4, 1, 5]));
@@ -47,7 +50,8 @@ for (const [name, module, threaded] of [
   const pool = threaded ? oc.OSD_ThreadPool.DefaultPool(-1) : undefined;
   results.push({
     name,
-    moduleKeys: Object.keys(module).sort(),
+    defaultIsFactory: typeof module.default === 'function',
+    hasNamedBox: typeof module.BRepPrimAPI_MakeBox === 'function',
     threaded,
     memory: oc.wasmMemory.buffer.constructor.name,
     shapeIsNull: shape.IsNull(),
@@ -68,7 +72,7 @@ console.log(JSON.stringify(results));
 afterAll(() => fs.rmSync(workDir, { recursive: true, force: true }));
 
 describe('installed npm candidate', () => {
-  it('contains exactly the public 19-file contract', () => {
+  it('contains exactly the public 25-file contract', () => {
     validateExactFiles(walk(packageDir), PACKAGE_FILES, 'installed package');
   });
 
@@ -76,7 +80,17 @@ describe('installed npm candidate', () => {
     const manifest = JSON.parse(fs.readFileSync(path.join(packageDir, 'package.json'), 'utf8'));
     expect(manifest.name).toBe('libcascade');
     expect(Object.keys(manifest.exports).sort()).toEqual([
-      '.', './api-reference.json', './multi', './multi/wasm', './package.json', './wasm',
+      '.',
+      './api-reference.json',
+      './init',
+      './multi',
+      './multi/init',
+      './multi/wasm',
+      './package.json',
+      './single',
+      './single/init',
+      './single/wasm',
+      './wasm',
     ]);
     const reference = JSON.parse(
       fs.readFileSync(path.join(packageDir, 'dist', 'api-reference.json'), 'utf8'),
@@ -88,7 +102,7 @@ describe('installed npm candidate', () => {
     expect(reference.source.commit).toMatch(/^[0-9a-f]{40}$/);
   });
 
-  it('boots both public entry points without options and preserves owned file bytes', () => {
+  it('boots the adaptive root and both raw variants without options and preserves owned file bytes', () => {
     const stdout = execFileSync(process.execPath, [consumerPath], {
       cwd: workDir,
       encoding: 'utf8',
@@ -97,9 +111,22 @@ describe('installed npm candidate', () => {
     const results = JSON.parse(stdout.trim().split('\n').at(-1) ?? '[]');
 
     expect(results).toEqual([
+      expect.objectContaining({
+        name: 'root',
+        defaultIsFactory: false,
+        hasNamedBox: true,
+        threaded: true,
+        memory: 'SharedArrayBuffer',
+        shapeIsNull: false,
+        exceptionHelper: 'function',
+        independentBuffer: true,
+        bytesAfterUnlink: [3, 1, 4, 1, 5],
+        threads: expect.any(Number),
+      }),
       {
         name: 'single',
-        moduleKeys: ['default'],
+        defaultIsFactory: true,
+        hasNamedBox: false,
         threaded: false,
         memory: 'ArrayBuffer',
         shapeIsNull: false,
@@ -110,7 +137,8 @@ describe('installed npm candidate', () => {
       },
       expect.objectContaining({
         name: 'multi',
-        moduleKeys: ['default'],
+        defaultIsFactory: true,
+        hasNamedBox: false,
         threaded: true,
         memory: 'SharedArrayBuffer',
         shapeIsNull: false,
@@ -120,9 +148,10 @@ describe('installed npm candidate', () => {
         threads: expect.any(Number),
       }),
     ]);
-    expect(results[1].threads).toBeGreaterThan(1);
+    expect(results[0].threads).toBeGreaterThan(1);
+    expect(results[2].threads).toBeGreaterThan(1);
 
-    for (const wasm of ['opencascade_full.wasm', 'opencascade_full_multi.wasm']) {
+    for (const wasm of ['opencascade_single.wasm', 'opencascade_multi.wasm']) {
       expect(fs.statSync(path.join(packageDir, 'dist', wasm)).size).toBeGreaterThan(1_000_000);
     }
   });

@@ -40,7 +40,7 @@
  *
  * Harness note (pthread context): Node hosts emscripten pthread workers
  * directly (SharedArrayBuffer is available without cross-origin isolation),
- * which is why `dist/opencascade_full_multi.*` boots and `OSD_ThreadPool`
+ * which is why `dist/opencascade_multi.*` boots and `OSD_ThreadPool`
  * reports > 1 worker under vitest. The strongest assertion the harness
  * supports is therefore: (1) the MULTI module initializes (runtime embind
  * registration of every folded class succeeds on the main module and the

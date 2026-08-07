@@ -113,8 +113,8 @@ describe('content self-containment', () => {
         pattern: /\boc\.TopoDS_(?:Edge|Face|Wire|Vertex|Shell|Solid|CompSolid|Compound)\s*\(/,
       },
       {
-        label: 'Wrong build-flags path — `dist/opencascade_full.build-flags.json` is not shipped; use `build/build-flags.json` (in-repo) or `dist/opencascade_full.provenance.json` (tarball).',
-        pattern: /dist\/opencascade_full\.build-flags\.json/,
+        label: 'Wrong build-flags path — `dist/opencascade_single.build-flags.json` is not shipped; use `build/build-flags.json` (in-repo) or `dist/opencascade_single.provenance.json` (tarball).',
+        pattern: /dist\/opencascade_single\.build-flags\.json/,
       },
       {
         label: 'Enum `.value` access — `oc.SomeEnum.Member.value` does not exist; the member IS the string.',

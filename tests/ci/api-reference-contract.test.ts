@@ -12,7 +12,7 @@ describe('API-reference input identity', () => {
   beforeAll(() => {
     directory = mkdtempSync(join(tmpdir(), 'ocjs-api-reference-'));
     binding = join(directory, 'Class.d.ts.json');
-    symbols = join(directory, 'opencascade_full.js.symbols');
+    symbols = join(directory, 'opencascade_single.js.symbols');
     writeFileSync(binding, '{"kind":"class",".d.ts":"export class A {}"}');
     writeFileSync(symbols, 'first');
   });

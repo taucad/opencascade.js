@@ -18,26 +18,26 @@ pnpm add libcascade three
 pnpm add -D @types/three typescript
 ```
 
-## 2. Initialise OCCT once
+## 2. Import the instance
 
-```typescript title="src/libcascade-init.ts"
-import init from 'libcascade';
-
-let ocPromise: ReturnType<typeof init> | undefined;
-export const getOc = () => (ocPromise ??= init());
+```typescript title="src/build-shape.ts"
+import oc from 'libcascade';
 ```
 
-The memoised Promise guarantees one wasm fetch and one C++ runtime init per page
-load. Re-calling `getOc()` from anywhere in your app resolves immediately after
-the first warm-up.
+The root entry probes the host, picks the variant it supports, and initialises
+the WASM module with a top-level `await`. Module evaluation happens once per
+realm, so there is nothing to memoise — every importer shares one C++ heap.
+
+Need to control *when* that happens, or pass `locateFile` for a relocated
+binary? Import `createInstance` from `libcascade/init` instead; see
+[Entry points](../reference/libcascade-api/init-function).
 
 ## 3. Build a shape
 
 ```typescript title="src/build-shape.ts"
-import { getOc } from './libcascade-init';
+import oc from 'libcascade';
 
 export const buildFilletedBox = async () => {
-  const oc = await getOc();
   using box = new oc.BRepPrimAPI_MakeBox(60, 40, 20);
   using fillet = new oc.BRepFilletAPI_MakeFillet(box.Shape());
   using explorer = new oc.TopExp_Explorer(box.Shape(), oc.TopAbs_ShapeEnum.TopAbs_EDGE);
@@ -55,11 +55,9 @@ exit so the C++ heap doesn't leak.
 ## 4. Export to GLB
 
 ```typescript title="src/shape-to-glb.ts"
-import type { TopoDS_Shape } from 'libcascade';
-import { getOc } from './libcascade-init';
+import oc, { type TopoDS_Shape } from 'libcascade';
 
 export const shapeToGlb = async (shape: TopoDS_Shape): Promise<Uint8Array> => {
-  const oc = await getOc();
   using docName = new oc.TCollection_ExtendedString('doc', true);
   const doc = new oc.TDocStd_Document(docName);
   oc.XCAFDoc_DocumentTool.ShapeTool(doc.Main()).get().AddShape(shape, false, false);
@@ -105,7 +103,7 @@ renderer.setAnimationLoop(() => renderer.render(scene, camera));
 
 Visit `localhost:5173` and you'll see a filleted gray box you can orbit.
 
-> **Want threading?** For batch meshing and boolean workloads, import `libcascade/multi` instead of the default export. Browser deployments require COOP/COEP headers — see the [Multi-threaded build guide](../guides/multi-threading) and [Bundler & locateFile — Multi-threaded variant](../guides/bundler-locatefile#multi-threaded-variant).
+> **Want threading?** For batch meshing and boolean workloads, ask for the pthread variant with `createInstance({ variant: 'multi' })` from `libcascade/init`. Browser deployments require COOP/COEP headers — see the [Multi-threaded build guide](../guides/multi-threading) and [Bundler & locateFile — Multi-threaded variant](../guides/bundler-locatefile#multi-threaded-variant).
 
 ## Next steps
 

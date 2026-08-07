@@ -11,7 +11,7 @@ const median = (v) => { const s = [...v].sort((a, b) => a - b); const m = Math.f
 const round = (n, d = 4) => { const k = Math.pow(10, d); return Math.round(n * k) / k; };
 
 const buildDir = path.resolve(import.meta.dirname, '../../dist');
-const jsPath = path.join(buildDir, 'opencascade_full_multi.js');
+const jsPath = path.join(buildDir, 'opencascade_multi.js');
 
 const t0Load = performance.now();
 const { default: init } = await import(pathToFileURL(jsPath).href);

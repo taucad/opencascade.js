@@ -3,7 +3,7 @@
 This document is the single source of truth for **"what measurable difference
 does this fork make for me?"**. Every shipping change to the taucad
 `libcascade` — from suffix-free overloads in the libembind patch
-through the `opencascade_full_multi.wasm` build and the uniform return-by-value
+through the `opencascade_multi.wasm` build and the uniform return-by-value
 output convention — is quantified here against either the upstream lineage
 behaviour, native C++ OCCT, or pristine emscripten libembind.
 
@@ -24,7 +24,7 @@ directly from those committed JSON files unless otherwise noted.
 | Theme                              | Fork change                                                        | Headline result                                                                                            | Detail              |
 | ---------------------------------- | ------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------- | ------------------- |
 | [§1 Wall-clock CAD vs native](#1--wall-clock-cad-performance-vs-native-c-and-python)        | mimalloc default + `BRepAlgoAPI_BuilderAlgo` canonical pattern   | ~parity (0.99×) vs native LTO on the heaviest multi-tool fuse; 1.10–1.40× on real meshing/booleans/filling | [§1](#1--wall-clock-cad-performance-vs-native-c-and-python) |
-| [§2 Multi-threading](#2--multi-threading-opencascade_full_multiwasm)                       | `opencascade_full_multi.wasm` + parallel toggles                  | **1.24×** total / **1.81×** boolean cut-grid / **3.46×** loft / **1.33×** STEP+mesh; +39% init             | [§2](#2--multi-threading-opencascade_full_multiwasm) |
+| [§2 Multi-threading](#2--multi-threading-opencascade_multiwasm)                       | `opencascade_multi.wasm` + parallel toggles                  | **1.24×** total / **1.81×** boolean cut-grid / **3.46×** loft / **1.33×** STEP+mesh; +39% init             | [§2](#2--multi-threading-opencascade_multiwasm) |
 | [§3 Embind overload dispatch](#3--embind-overload-dispatch)                                 | suffix-free + val-dispatch + `Object.hasOwn` inheritance gates    | ~265 ns/same-arity call → ~5 µs/render (**0.003–0.011% of wall time**); +6,593 bytes glue                  | [§3](#3--embind-overload-dispatch) |
 | [§4 RBV output parameters](#4--return-by-value-output-parameters)                           | uniform class-RBV + EM_JS idempotent disposer                     | ~+6% vs OBR (within noise); disposer ~1.23 µs/call; pointer identity preserved across `using` scopes        | [§4](#4--return-by-value-output-parameters) |
 
@@ -73,7 +73,7 @@ Native binaries built with `-O3` (`native-lto.json` adds `-flto`).
 - **mimalloc vs default emscripten allocator** is the headline fork
   optimisation: the `wasm-allocators/` sub-PoC validated mimalloc as a
   consistent improvement on multi-allocation-heavy samples (loft, fillet,
-  surface filling). It is now the default for `opencascade_full.wasm` (see
+  surface filling). It is now the default for `opencascade_single.wasm` (see
   [`BUILD_SYSTEM.md`](BUILD_SYSTEM.md)). The "OCJS full (local)" column shows a
   representative non-mimalloc reference build for delta context.
 - **`BRepAlgoAPI_BuilderAlgo` canonical pattern** (the multi-tool boolean
@@ -91,17 +91,17 @@ native runners under `experiments/build123d-vs-ocjs/python/` and
 or `BUILD_SYSTEM.md` flags change. The four committed frontier JSONs are the
 pinned snapshot.
 
-## §2 — Multi-threading (`opencascade_full_multi.wasm`)
+## §2 — Multi-threading (`opencascade_multi.wasm`)
 
-**Question.** How does the multi-threaded build (`opencascade_full_multi.wasm`)
-compare to the single-threaded build (`opencascade_full.wasm`) on the same
+**Question.** How does the multi-threaded build (`opencascade_multi.wasm`)
+compare to the single-threaded build (`opencascade_single.wasm`) on the same
 workload mix, what's the per-sample shape of the speedup, and what does the
 binary itself cost when threading is *off*?
 
 **Methodology.** The [`multi-thread-bench/`](experiments/multi-thread-bench/)
 harness runs the same 11-sample CAD suite (primitives → STEP-import-and-mesh)
-against both shipped binaries: `dist/opencascade_full.js` and
-`dist/opencascade_full_multi.js`. For the MT run, four global activations are
+against both shipped binaries: `dist/opencascade_single.js` and
+`dist/opencascade_multi.js`. For the MT run, four global activations are
 made once at startup, then each parallel-aware sample receives
 `{ parallel: true }` so per-instance `SetRunParallel(true)` and
 `isInParallel=true` take effect. A third axis (MT binary with parallel OFF
@@ -111,7 +111,7 @@ for every sample) isolates the *pthread-binary tax* from the parallel gain.
 > pinned snapshot from the original `main` measurement run on 2026-05-21. A
 > re-run against the current `dist/` is blocked by two pre-existing
 > infrastructure issues that are tracked separately:
-> (a) `dist/opencascade_full.js` currently throws
+> (a) `dist/opencascade_single.js` currently throws
 > `BindingError: Cannot register type 'IMeshData_IPCurveHandle' twice` on
 > load — a duplicate-registration regression in the most recent ST relink, and
 > (b) sample 11 references `experiments/replicad-impact-poc/assets/main-assembly.step`

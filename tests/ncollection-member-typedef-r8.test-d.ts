@@ -9,7 +9,7 @@ import type {
   NCollection_Array1_BRepGraph_SolidRefId,
   NCollection_Array1_BRepGraph_WireRefId,
   NCollection_DynamicArray_BOPDS_Curve,
-} from '../dist/opencascade_full';
+} from '../dist/opencascade_single';
 
 describe('R8 — BRepGraph Array1 accessors return their concrete element type', () => {
   it('resolves OccurrenceRefId accessors', () => {

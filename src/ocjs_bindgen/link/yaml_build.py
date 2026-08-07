@@ -1142,21 +1142,27 @@ def main():
 
     main_flags = buildConfig["mainBuild"].get("emccFlags", [])
     uses_native_wasm_eh = any('-fwasm-exceptions' in f for f in main_flags)
-    exports_eh_helpers = any('-sEXPORT_EXCEPTION_HANDLING_HELPERS' in f for f in main_flags)
+    required_eh_methods = {
+      'getExceptionMessage',
+      'incrementExceptionRefcount',
+      'decrementExceptionRefcount',
+    }
+    missing_eh_methods = required_eh_methods.difference(runtime_methods)
 
-    if uses_native_wasm_eh and not exports_eh_helpers:
+    if uses_native_wasm_eh and missing_eh_methods:
       # Hard fail: native wasm EH without the runtime helpers is a footgun -- the
       # JS module will catch WebAssembly.Exception but consumers cannot decode it
       # (no getExceptionMessage). Force the YAML to make this explicit.
       raise ValueError(
-        "mainBuild.emccFlags contains '-fwasm-exceptions' but not "
-        "'-sEXPORT_EXCEPTION_HANDLING_HELPERS'. Add the helpers flag so JS "
-        "consumers can decode caught WebAssembly.Exception via getExceptionMessage(), "
-        "or remove '-fwasm-exceptions' if exception handling is intentionally "
-        "compiled-out."
+        "mainBuild.emccFlags contains '-fwasm-exceptions' but "
+        "-sEXPORTED_RUNTIME_METHODS is missing: "
+        f"{', '.join(sorted(missing_eh_methods))}. Export all three exception "
+        "helpers so JS consumers can decode and release caught "
+        "WebAssembly.Exception values, or remove '-fwasm-exceptions' if "
+        "exception handling is intentionally compiled out."
       )
 
-    if uses_native_wasm_eh and exports_eh_helpers:
+    if uses_native_wasm_eh:
       with open(os.path.join(declarations_dir, 'webassembly-exception.d.ts')) as f:
         typescriptDefinitionOutput += f.read() + "\n\n"
       typescriptDefinitionOutput += \

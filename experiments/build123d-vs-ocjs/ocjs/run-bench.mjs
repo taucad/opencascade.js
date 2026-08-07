@@ -35,8 +35,8 @@ const { warmup, iters, out, artifactDir, engine } = parseArgs(process.argv);
 const buildDir = path.resolve(
   artifactDir || path.join(import.meta.dirname, '../../..', 'build-configs'),
 );
-const wasmPath = path.join(buildDir, 'opencascade_full.wasm');
-const jsPath = path.join(buildDir, 'opencascade_full.js');
+const wasmPath = path.join(buildDir, 'opencascade_single.wasm');
+const jsPath = path.join(buildDir, 'opencascade_single.js');
 
 if (!fs.existsSync(wasmPath) || !fs.existsSync(jsPath)) {
   console.error('Missing OCJS artifacts in', buildDir);

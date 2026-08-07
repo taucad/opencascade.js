@@ -10,8 +10,8 @@ import {
   type OpenCascadeInstance,
   type gp_XY,
   type gp_XYZ,
-} from '../dist/opencascade_full';
-import type { OpenCascadeInstance as OpenCascadeInstanceMulti } from '../dist/opencascade_full_multi';
+} from '../dist/opencascade_single';
+import type { OpenCascadeInstance as OpenCascadeInstanceMulti } from '../dist/opencascade_multi';
 
 type DoubleVector = InstanceType<typeof math_VectorBase_double>;
 type IntVector = InstanceType<typeof math_VectorBase_int>;

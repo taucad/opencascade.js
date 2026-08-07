@@ -22,8 +22,8 @@ CONFIG_PATHS = (
   REPO_ROOT / "build-configs" / "full_multi_browser.yml",
 )
 DECLARATION_PATHS = (
-  REPO_ROOT / "dist" / "opencascade_full.d.ts",
-  REPO_ROOT / "dist" / "opencascade_full_multi.d.ts",
+  REPO_ROOT / "dist" / "opencascade_single.d.ts",
+  REPO_ROOT / "dist" / "opencascade_multi.d.ts",
 )
 SMOKE_PATHS = (
   REPO_ROOT / "tests" / "smoke" / "smoke-fluidcad-math-workflows.test.ts",

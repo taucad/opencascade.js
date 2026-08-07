@@ -1,6 +1,7 @@
 [
   { "source": "/docs/getting-started/hello-world", "destination": "/docs/package/getting-started/quick-start-npm", "permanent": true },
   { "source": "/docs/getting-started/configure-bundler", "destination": "/docs/package/guides/bundler-locatefile", "permanent": true },
+  { "source": "/docs/toolchain/getting-started/quick-start-docker", "destination": "/docs/toolchain/getting-started/quick-start", "permanent": true },
   { "source": "/docs/getting-started/file-size", "destination": "/docs/toolchain/guides/trim-symbols", "permanent": true },
   { "source": "/docs/app-dev-workflow/custom-builds", "destination": "/docs/toolchain/guides/trim-symbols", "permanent": true },
   { "source": "/docs/examples/ocjs-logo", "destination": "/docs/package/examples/boolean-logo", "permanent": true },

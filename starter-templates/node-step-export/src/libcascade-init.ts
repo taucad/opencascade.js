@@ -1,22 +1,25 @@
 import * as path from 'node:path';
-import init from 'libcascade';
+import { createInstance, type OpenCascadeInstance } from 'libcascade/init';
 
-let cached: ReturnType<typeof init> | null = null;
+let cached: Promise<OpenCascadeInstance> | null = null;
 
 /**
  * Canonical exactly-once libcascade init for Node ESM.
  *
- * We resolve `opencascade_full.wasm` via `import.meta.resolve` so the
+ * We resolve `opencascade_single.wasm` via `import.meta.resolve` so the
  * locator works regardless of how the consumer manages packages
  * (pnpm hoisting, npm linking, monorepo workspaces).
  */
-export function getLibcascade(): ReturnType<typeof init> {
+export function getLibcascade(): Promise<OpenCascadeInstance> {
   if (cached === null) {
     const wasmUrl = new URL(import.meta.resolve('libcascade/wasm'));
     const buildDir = path.dirname(wasmUrl.pathname);
-    cached = init({
+    const instance = createInstance({
+      variant: 'single',
       locateFile: (filename: string) => path.join(buildDir, filename),
     });
+    cached = instance;
+    return instance;
   }
   return cached;
 }

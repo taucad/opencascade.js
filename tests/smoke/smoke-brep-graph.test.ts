@@ -16,7 +16,7 @@ import * as path from 'node:path';
 import { describe, it, expect, beforeAll } from 'vitest';
 import { initOC, getOC, wasmExists, buildBoxGraph } from './helpers.js';
 
-const DTS_PATH = path.resolve(import.meta.dirname, '../../dist/opencascade_full.d.ts');
+const DTS_PATH = path.resolve(import.meta.dirname, '../../dist/opencascade_single.d.ts');
 
 let _dts: string | null = null;
 function readDts(): string {
@@ -411,7 +411,7 @@ describe.skipIf(!wasmExists)('Smoke: BRepGraph', () => {
 
   describe('Group C (unknown alias dedup) — BRepGraphInc_* declaration uniqueness', () => {
     // Audit Appendix A enumerates the BRepGraphInc_* family. Before alias dedup,
-    // each name appeared twice in `dist/opencascade_full.d.ts`: once as a
+    // each name appeared twice in `dist/opencascade_single.d.ts`: once as a
     // real `declare class …` lifted from the per-fragment, and once
     // as a leaked-from-other-fragments `type … = unknown;` shadow.
     // The `redundant_unknown_alias_dropper` deletes the unknown shadow at

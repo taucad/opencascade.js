@@ -24,7 +24,7 @@ import type {
   GeomAPI_ProjectPointOnSurf,
   BRepTools,
   XCAFDoc_ClippingPlaneTool,
-} from '../dist/opencascade_full';
+} from '../dist/opencascade_single';
 
 describe('Symbol.dispose — positive cases (envelope owns a Handle field)', () => {
   it('Geom2dAPI_InterCurveCurve.Segment envelope is disposable (Handle outputs)', () => {

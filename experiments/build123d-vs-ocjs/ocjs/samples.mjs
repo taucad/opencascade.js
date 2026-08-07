@@ -13,7 +13,7 @@
  * disposal, matching the convention in tests/smoke/*.test.ts.
  */
 
-/** @param {import('../../../build-configs/opencascade_full.js').OpenCascadeInstance} oc */
+/** @param {import('../../../build-configs/opencascade_single.js').OpenCascadeInstance} oc */
 
 export function sample01_primitiveBox(oc) {
   using box = new oc.BRepPrimAPI_MakeBox(10, 20, 30);

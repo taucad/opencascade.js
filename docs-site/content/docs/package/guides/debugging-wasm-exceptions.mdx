@@ -7,9 +7,7 @@ OCCT failures compiled with native WASM exception handling reach JavaScript as
 `WebAssembly.Exception` values. Decode them through the initialized runtime:
 
 ```typescript
-import init from 'libcascade';
-
-const oc = await init();
+import oc from 'libcascade';
 
 try {
   using fillet = new oc.BRepFilletAPI_MakeFillet(badShape);

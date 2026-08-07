@@ -5,8 +5,9 @@ description: Consume libcascade from npm — render, export, integrate.
 
 import { ApiClassCount } from '../../../components/api-class-count';
 
-Install `libcascade`, call `init()`, build shapes with the full OCCT surface,
-export STEP or GLB, and integrate into your bundler of choice.
+Install `libcascade`, import the initialised instance, build shapes with the
+full OCCT surface, export STEP or GLB, and integrate into your bundler of
+choice.
 
 <Cards>
   <Card title="Quickstart — npm" href="/docs/package/getting-started/quick-start-npm">
@@ -25,7 +26,7 @@ export STEP or GLB, and integrate into your bundler of choice.
 
 ## What's in V3
 
-- ESM-only single-file build — one wasm, one `init()` Promise, no CommonJS fallback.
+- ESM-only build — import the ready instance from the root, or `createInstance()` it yourself. No CommonJS fallback.
 - Suffix-free symbol generation — `gp_Pnt` (not `gp_Pnt_3`); overloads dispatched in C++.
 - `using` syntax for every disposable shape — RBV containers integrate `Symbol.dispose`.
 - Re-architected exception channel — catch JS errors instead of opaque `WebAssembly.Exception`.

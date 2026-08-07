@@ -24,8 +24,8 @@ EXPERIMENT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 ARTIFACT_DIR="$SCRIPT_DIR/dist-${ALLOCATOR}"
 RESULTS_DIR="$EXPERIMENT_ROOT/results"
 
-if [ ! -f "$ARTIFACT_DIR/opencascade_full.wasm" ]; then
-  echo "ERROR: $ARTIFACT_DIR/opencascade_full.wasm not found." >&2
+if [ ! -f "$ARTIFACT_DIR/opencascade_single.wasm" ]; then
+  echo "ERROR: $ARTIFACT_DIR/opencascade_single.wasm not found." >&2
   echo "       Run ./build-variant.sh ${ALLOCATOR} first." >&2
   exit 1
 fi
@@ -34,7 +34,7 @@ mkdir -p "$RESULTS_DIR"
 
 echo "[$(date +%T)] Benchmarking ${ALLOCATOR} variant"
 echo "  Artifact: $ARTIFACT_DIR"
-echo "  WASM size: $(du -h "$ARTIFACT_DIR/opencascade_full.wasm" | cut -f1)"
+echo "  WASM size: $(du -h "$ARTIFACT_DIR/opencascade_single.wasm" | cut -f1)"
 echo ""
 
 node "$EXPERIMENT_ROOT/ocjs/run-bench.mjs" \

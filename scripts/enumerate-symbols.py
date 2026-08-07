@@ -126,7 +126,7 @@ def generate_yaml(classes, enums, typedefs, handle_classes: set[str]) -> str:
 
     lines = [
         "mainBuild:",
-        "  name: opencascade_full.js",
+        "  name: opencascade_single.js",
         "  bindings:",
     ]
 
@@ -152,14 +152,13 @@ def generate_yaml(classes, enums, typedefs, handle_classes: set[str]) -> str:
         # these the link emits a wasm whose runtime imports a `Tag` that the
         # generated loader never sets up, so every Module() invocation fails
         # with `LinkError: tag import requires a WebAssembly.Tag`. The
-        # EXPORT_EXCEPTION_HANDLING_HELPERS flag is also enforced by
-        # buildFromYaml.py (raises if missing alongside -fwasm-exceptions).
+        # The explicit runtime-method exports are enforced by yaml_build.py
+        # (raises if any helper is missing alongside -fwasm-exceptions).
         "  - -fwasm-exceptions",
-        "  - -sEXPORT_EXCEPTION_HANDLING_HELPERS",
         "  - -sEXPORT_ES6=1",
         "  - -sMODULARIZE",
         "  - -sALLOW_MEMORY_GROWTH=1",
-        '  - -sEXPORTED_RUNTIME_METHODS=["FS","wasmMemory"]',
+        '  - -sEXPORTED_RUNTIME_METHODS=["FS","wasmMemory","getExceptionMessage","incrementExceptionRefcount","decrementExceptionRefcount"]',
         "  - -sINITIAL_MEMORY=128MB",
         "  - -sMAXIMUM_MEMORY=4GB",
         "  - -sUSE_FREETYPE=1",

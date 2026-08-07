@@ -10,7 +10,7 @@
 # is the point of the PoC).
 
 mainBuild:
-  name: opencascade_full.js
+  name: opencascade_single.js
   bindings:
     - symbol: gp_Pnt
     - symbol: gp_Dir
@@ -62,13 +62,12 @@ mainBuild:
     - symbol: BRepMesh_IncrementalMesh
   emccFlags:
     - -fwasm-exceptions
-    - -sEXPORT_EXCEPTION_HANDLING_HELPERS
     - -sEXPORT_ES6=1
     - -sMODULARIZE
     - -sALLOW_MEMORY_GROWTH=1
     - -sINITIAL_MEMORY=100MB
     - -sMAXIMUM_MEMORY=4GB
-    - -sEXPORTED_RUNTIME_METHODS=["FS"]
+    - -sEXPORTED_RUNTIME_METHODS=["FS","getExceptionMessage","incrementExceptionRefcount","decrementExceptionRefcount"]
     - --no-entry
     - --emit-symbol-map
     - -sERROR_ON_UNDEFINED_SYMBOLS=0

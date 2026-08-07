@@ -1,7 +1,14 @@
 ---
-title: build-wasm.sh CLI
-description: Every subcommand of build-wasm.sh — validate, bindings, link, pch, clean, plus exit codes and tips.
+title: build-wasm.sh (internals)
+description: Maintainer reference for the in-image build orchestrator — validate, bindings, link, pch, clean, exit codes.
 ---
+
+<Callout type="info">
+  **Internals.** Custom builds are driven by the `libcascade` CLI — see
+  [CLI reference](./cli). `build-wasm.sh` is the orchestrator **inside** the
+  container image and in a from-source checkout; it is what the container's
+  entrypoint dispatches to. Read this when you are building the image itself.
+</Callout>
 
 `build-wasm.sh` is the orchestration entry point for the libcascade build pipeline.
 Each subcommand maps to a stage of the bindgen → compile → link sequence.
@@ -97,6 +104,7 @@ sha256sum dist/my-config.wasm
 
 ## Related
 
+- [CLI reference](./cli) — the `libcascade` bin, which is what custom builds use.
 - [Bindgen pipeline](../concepts/bindgen-pipeline) — stage diagram and artifact layout.
-- [Environment variables](./env-vars) — env var catalogue.
-- [YAML schema](./yaml-schema) — the YAML the CLI consumes.
+- [Driver environment](./env-vars) — the `OCJS_*` catalogue this script reads.
+- [Container yml contract](./yaml-schema) — the yml this script consumes.

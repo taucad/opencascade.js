@@ -4,8 +4,8 @@ description: Override Message_ProgressIndicator virtual methods through a file-b
 ---
 
 OCCT progress callbacks require a derived `Message_ProgressIndicator` class.
-That needs Embind's `allow_subclass`, so it is an advanced
-`additionalBindFiles` use case rather than a generated binding.
+That needs Embind's `allow_subclass`, so it is a `customBindings` entry with
+`scope: 'main'` — raw Embind — rather than a generated binding.
 
 ## 1. Add one self-contained binding file
 
@@ -53,32 +53,45 @@ EMSCRIPTEN_BINDINGS(progress_indicator_js) {
 The repository's executable Docker fixture contains the complete production
 registration, including inherited methods needed by its runtime test.
 
-## 2. Link the file
+## 2. Declare the file
 
-```yaml title="build-configs/with-progress-callback.yml"
-mainBuild:
-  name: progress-callback
-  bindings:
-    - symbol: Message_ProgressIndicator
-    - symbol: Message_ProgressScope
-    - symbol: Message_ProgressRange
-    - symbol: BRepAlgoAPI_Fuse
-    - symbol: BRepPrimAPI_MakeBox
-    - symbol: gp_Pnt
-  additionalBindFiles:
-    - bindings/progress-indicator.cpp
+```typescript title="libcascade.config.ts"
+import { defineBuild } from '@libcascade/toolchain';
+
+export default defineBuild({
+  name: 'progress-callback',
+  bindings: [
+    'BRepAlgoAPI_Fuse',
+    'BRepPrimAPI_MakeBox',
+    'Message_ProgressIndicator',
+    'Message_ProgressRange',
+    'Message_ProgressScope',
+    'Message_ProgressIndicator_JS',
+    'gp_Pnt',
+  ],
+  customBindings: [
+    {
+      file: 'bindings/progress-indicator.cpp',
+      symbols: ['Message_ProgressIndicator_JS'],
+      scope: 'main',
+    },
+  ],
+  variants: [{ name: 'single' }],
+});
 ```
 
-Build with the [Docker quickstart](../getting-started/quick-start-docker).
-Raw Embind files skip bindgen, so add a project-local TypeScript declaration
-for `Message_ProgressIndicator_JS` if the consumer is TypeScript.
+The registration name goes in `symbols`, which is what admits it to `bindings`
+without it being an `OcctSymbol`. Build with `npx libcascade build` — see the
+[Quickstart](../getting-started/quick-start). Raw Embind files skip the
+bindgen, so add a project-local TypeScript declaration for
+`Message_ProgressIndicator_JS` if the consumer is TypeScript.
 
 ## 3. Derive in JavaScript
 
-```javascript
-import init from './progress-callback.js';
+```javascript notypecheck
+import { createInstance } from './dist/init.js';
 
-const oc = await init();
+const oc = await createInstance();
 const Progress = oc.Message_ProgressIndicator_JS.extend('Progress', {
   Show(position) {
     console.log('progress', position);

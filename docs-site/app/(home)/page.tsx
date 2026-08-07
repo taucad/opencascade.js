@@ -18,10 +18,10 @@ const personaCards = [
     primary: true,
   },
   {
-    title: 'Docker consumer',
-    description: 'Pull a GHCR image, link a YAML, build a trimmed wasm. 2 minutes.',
-    href: '/docs/toolchain/getting-started/quick-start-docker',
-    cta: 'Start with Docker',
+    title: 'Custom build',
+    description: 'Write `libcascade.config.ts`, run `libcascade build`, ship a trimmed wasm.',
+    href: '/docs/toolchain/getting-started/quick-start',
+    cta: 'Start with the toolchain',
     icon: 'lib:docker',
     iconKind: 'brand',
     primary: false,
@@ -49,7 +49,7 @@ const personaCards = [
 const v3Highlights = [
   {
     title: 'ESM-only build',
-    description: 'One wasm, one `init()` Promise. No CommonJS.',
+    description: 'Import the instance, or `createInstance()` it yourself. No CommonJS.',
     icon: 'lucide:zap text-amber-500',
   },
   {

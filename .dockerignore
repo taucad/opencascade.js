@@ -29,11 +29,11 @@ tools/
 # Prebuilt host-side artifacts left next to YAML configs
 # (the docker build re-creates these inside the image; shipping them as
 # build context bloats the build-configs/ COPY layer by ~63 MB).
-build-configs/opencascade_full.js
-build-configs/opencascade_full.d.ts
-build-configs/opencascade_full.wasm
-build-configs/opencascade_full.js.symbols
-build-configs/opencascade_full.provenance.json
+build-configs/opencascade_single.js
+build-configs/opencascade_single.d.ts
+build-configs/opencascade_single.wasm
+build-configs/opencascade_single.js.symbols
+build-configs/opencascade_single.provenance.json
 build-configs/provenance.json
 
 # Pre-V8 source checkout (excluded so the build context stays minimal)

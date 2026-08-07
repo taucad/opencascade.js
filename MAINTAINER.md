@@ -41,7 +41,7 @@ tail -f build.log
 
 > **Tip:** Full builds take 10-30+ minutes (longer with cold caches). Using `nohup` ensures the build continues if your terminal session disconnects. For link-only rebuilds (~1-2 min), `nohup` is optional.
 
-Output files appear alongside the YAML config: `opencascade_full.wasm`, `opencascade_full.js`, `opencascade_full.d.ts`.
+Output files appear alongside the YAML config: `opencascade_single.wasm`, `opencascade_single.js`, `opencascade_single.d.ts`.
 
 ## Build Configuration
 
@@ -76,12 +76,12 @@ Add your own entry to `configurations.json` to define a new configuration. See [
 
 The published npm tarball ships **both** build outputs:
 
-| Artifact prefix            | Config                              | Subpath export                                                       |
-| -------------------------- | ----------------------------------- | -------------------------------------------------------------------- |
-| `opencascade_full.*`       | `single-threaded` + `full.yml`      | `libcascade` / `libcascade/wasm`             |
-| `opencascade_full_multi.*` | `multi-threaded` + `full_multi.yml` | `libcascade/multi` / `libcascade/multi/wasm` |
+| Artifact prefix        | Config                              | Subpath export                               |
+| ---------------------- | ----------------------------------- | -------------------------------------------- |
+| `opencascade_single.*` | `single-threaded` + `full.yml`      | `libcascade` / `libcascade/wasm`             |
+| `opencascade_multi.*`  | `multi-threaded` + `full_multi.yml` | `libcascade/multi` / `libcascade/multi/wasm` |
 
-Each six-file set includes a matching `*.provenance.json` sidecar (`dist/opencascade_full.provenance.json` and `dist/opencascade_full_multi.provenance.json`).
+Each six-file set includes a matching `*.provenance.json` sidecar (`dist/opencascade_single.provenance.json` and `dist/opencascade_multi.provenance.json`).
 
 ### Environment Variables
 
@@ -133,14 +133,14 @@ publishing runs queue and are never canceled.
 
 ### Publication Channels
 
-| Event | npm | GHCR | Vercel |
+| Event | npm packages | GHCR | Vercel |
 | --- | --- | --- | --- |
 | Pull request targeting `main` | none | validation only | same-repository PR preview after `CI gate` |
 | Feature-branch push without a PR | no workflow | no workflow | no workflow |
-| Manual branch dispatch | `X.Y.Z-canary.<sha8>` under `canary` | signed `canary-<sha8>-<stage>` manifests | none |
+| Manual branch dispatch | `libcascade` + `@libcascade/toolchain` `X.Y.Z-canary.<sha8>` under `canary` | signed `X.Y.Z-canary.<sha8>-<stage>` manifests | none |
 | Ordinary `main` push | none | signed `main`/full-SHA manifests | production from the exact candidate |
-| Merged `chore(release): ocjs vX.Y.Z-beta.N` | exact version under `beta` | signed version manifests | production from the exact candidate |
-| Merged `chore(release): ocjs vX.Y.Z` | exact version under `latest` | signed version manifests and moving stable aliases | production from the exact candidate |
+| Merged `chore(release): ocjs vX.Y.Z-beta.N` | both packages at the exact version under `beta` | signed version manifests | production from the exact candidate |
+| Merged `chore(release): ocjs vX.Y.Z` | both packages at the exact version under `latest` | signed version manifests and moving stable aliases | production from the exact candidate |
 
 Canary identities use only the planned stable core and the source SHA. They
 contain no date, are immutable across retries, and are not Git tags or GitHub
@@ -149,7 +149,8 @@ deploy exact versions.
 
 ### npm Trusted Publishing
 
-Configure the `libcascade` npm package once under **Settings → Trusted publishing**:
+Configure both `libcascade` and `@libcascade/toolchain` once under
+**Settings → Trusted publishing**:
 
 - provider: GitHub Actions
 - organization/user: `taucad`
@@ -170,19 +171,24 @@ There are two complementary provenance layers:
 - `dist/*.provenance.json` records the OCJS/OCCT/toolchain recipe embedded beside each WASM file.
 - npm/Sigstore provenance cryptographically ties the published tarball to `taucad/opencascade.js`, `.github/workflows/docker.yml`, and the full source commit.
 
-The registry gate requires both layers to agree, verifies tarball integrity
-and signatures, installs the exact published version, boots ST and MT, and
-verifies all three promoted GHCR signatures. If the exact npm version already
-exists, the publish job compares the registry tarball with the candidate. It
-succeeds only for identical bytes and provenance; changed bytes under an
-existing version fail without moving tags or creating a release.
+The registry gates require both layers to agree, verify both tarballs' integrity
+and signatures, install both exact published versions, boot ST and MT, resolve
+the toolchain's root, driver, and CLI exports, and verify all three promoted
+GHCR signatures. If either exact npm version already exists, its publish job
+compares the registry tarball with the candidate. It succeeds only for
+identical bytes and provenance; changed bytes under an existing version fail
+without moving tags or creating a release.
 
 Release publication is deliberately ordered: all candidate and consumer gates,
-then release reproducibility, npm under the intended `beta` or `latest` tag,
-immutable version/SHA GHCR manifests, registry verification, stable moving
-GHCR aliases, and finally the annotated Git tag and GitHub Release. Untagged
-candidate image digests may exist before the gates because they are
-content-addressed and cannot be selected by a release tag.
+then release reproducibility, `libcascade` under the intended `beta` or
+`latest` tag, immutable version/SHA GHCR manifests, registry verification,
+release-matched `@libcascade/toolchain` metadata and publication, stable moving
+GHCR aliases, and finally the annotated Git tag and GitHub Release. Both npm
+packages use Trusted Publishing with provenance from `docker.yml`; the release
+cannot finalize until their exact registry bytes, signatures, exports, and
+source identity verify. Untagged candidate image digests may exist before the
+gates because they are content-addressed and cannot be selected by a release
+tag.
 
 ### Cutting a Release
 
@@ -197,9 +203,9 @@ Publish a canary from a branch only when an external consumer needs it:
 gh workflow run docker.yml --repo taucad/opencascade.js --ref <branch>
 ```
 
-The run summary reports the exact `npm install` command and immutable
-single-threaded, multi-threaded, and bindgen-base GHCR pull commands. It does
-not deploy Vercel.
+The run summary reports the exact `libcascade` and `@libcascade/toolchain`
+install commands and immutable single-threaded, multi-threaded, and
+bindgen-base GHCR pull commands. It does not deploy Vercel.
 
 Use the project skill to inspect or prepare a release:
 
@@ -225,11 +231,11 @@ version; only the stable release consumes them. A beta PR contains exactly
 deletes the consumed Version Plan files. Its single commit subject is exactly
 `chore(release): ocjs v<version>`.
 
-After that PR is merged, CI publishes and verifies the exact candidate, then
-creates/verifies the annotated `v<version>` tag and GitHub Release. No release
-PR comments are required: the CI summary, npm provenance, annotated tag, and
-GitHub Release are the durable record. Never create the tag before registry
-verification.
+After that PR is merged, CI publishes and verifies the exact `libcascade` and
+`@libcascade/toolchain` candidates, then creates/verifies the annotated
+`v<version>` tag and GitHub Release. No release PR comments are required: the
+CI summary, npm provenance, annotated tag, and GitHub Release are the durable
+record. Never create the tag before both npm packages verify.
 
 If a release run stops after publication begins, resume that same semantic
 version from its exact release commit:
@@ -307,7 +313,7 @@ npm exec nx -- run ocjs:docker-e2e
 To validate existing images directly, pass the stage, matching YAML, platform, and source identity explicitly:
 
 ```bash
-OCJS_E2E_IMAGE=ghcr.io/taucad/opencascade.js:canary-<sha8>-single-threaded \
+OCJS_E2E_IMAGE=ghcr.io/taucad/opencascade.js:3.0.0-canary.<sha8>-single-threaded \
 OCJS_E2E_STAGE=final-single \
 OCJS_E2E_BUILD_CONFIG=build-configs/full.yml \
 OCJS_DOCKER_PLATFORM=linux/amd64 \
@@ -315,7 +321,7 @@ OCJS_EXPECTED_SHA=<full-commit-sha> \
 SOURCE_DATE_EPOCH=<commit-epoch> \
 ./scripts/docker-e2e-validate.sh
 
-OCJS_E2E_IMAGE=ghcr.io/taucad/opencascade.js:canary-<sha8>-multi-threaded \
+OCJS_E2E_IMAGE=ghcr.io/taucad/opencascade.js:3.0.0-canary.<sha8>-multi-threaded \
 OCJS_E2E_STAGE=final-multi \
 OCJS_E2E_BUILD_CONFIG=build-configs/full_multi.yml \
 OCJS_DOCKER_PLATFORM=linux/arm64 \
@@ -323,7 +329,7 @@ OCJS_EXPECTED_SHA=<full-commit-sha> \
 SOURCE_DATE_EPOCH=<commit-epoch> \
 ./scripts/docker-e2e-validate.sh
 
-OCJS_E2E_IMAGE=ghcr.io/taucad/opencascade.js:canary-<sha8>-bindgen-base \
+OCJS_E2E_IMAGE=ghcr.io/taucad/opencascade.js:3.0.0-canary.<sha8>-bindgen-base \
 OCJS_E2E_STAGE=bindgen-base \
 OCJS_DOCKER_PLATFORM=linux/amd64 \
 OCJS_EXPECTED_SHA=<full-commit-sha> \
@@ -349,4 +355,5 @@ until it passes. Each cold job uses GitHub's native four-hour job timeout.
 - [Trim symbols](https://opencascade-js.vercel.app/docs/toolchain/guides/trim-symbols) — trim from `full.yml` to a consumer-sized build
 - [Extend with C++](https://opencascade-js.vercel.app/docs/toolchain/guides/extend-with-cpp) — generated C++ and raw Embind files
 - [Reproducible CI](https://opencascade-js.vercel.app/docs/toolchain/guides/reproducible-ci) — pin-by-SHA, provenance, SBOM, and lockfile discipline
+- [docs/upstream/](docs/upstream/) — dependency fixes staged for upstream submission, each paired with the local patch that carries it until upstream ships
 - [TODO.md](TODO.md) — contributor backlog

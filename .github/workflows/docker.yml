@@ -620,16 +620,6 @@ jobs:
           name: npm-dist-multi-${{ github.run_id }}
           path: ${{ runner.temp }}/multi
 
-      - name: Assemble exact same-run dist
-        env:
-          OCJS_EXPECTED_SHA: ${{ needs.preflight.outputs.full_sha }}
-        run: |
-          rm -rf dist
-          mkdir dist
-          cp "${{ runner.temp }}/single/"* dist/
-          cp "${{ runner.temp }}/multi/"* dist/
-          node scripts/package-candidate.mjs dist
-
       - name: Set up Node
         uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
@@ -641,6 +631,19 @@ jobs:
 
       - name: Install locked test tools
         run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Assemble exact same-run dist
+        env:
+          OCJS_EXPECTED_SHA: ${{ needs.preflight.outputs.full_sha }}
+        run: |
+          rm -rf dist
+          mkdir dist
+          cp "${{ runner.temp }}/single/"* dist/
+          cp "${{ runner.temp }}/multi/"* dist/
+          npm run build:toolchain
+          node packages/toolchain/bin/libcascade.mjs assemble --write-exports
+          git diff --exit-code -- package.json
+          node scripts/package-candidate.mjs dist
 
       - name: Full runtime, regression, and declaration gates
         run: |
@@ -961,8 +964,8 @@ jobs:
             existing="$(find existing -name '*.tgz' -type f -print -quit)"
             test "$(sha256sum "$existing" | cut -d' ' -f1)" = "$(cat candidate.sha256)"
             for provenance in \
-              package/dist/opencascade_full.provenance.json \
-              package/dist/opencascade_full_multi.provenance.json; do
+              package/dist/opencascade_single.provenance.json \
+              package/dist/opencascade_multi.provenance.json; do
               test "$(tar -xOf "$existing" "$provenance" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>process.stdout.write(JSON.parse(s).source.opencascadejsCommit))")" = "$FULL_SHA"
             done
             export ATTESTATION_URL
@@ -1094,11 +1097,13 @@ jobs:
           import fs from 'node:fs';
           import path from 'node:path';
           import { fileURLToPath } from 'node:url';
-          import init from 'libcascade';
-          import initMulti from 'libcascade/multi';
+          // The package root is the *eager* entry since `libcascade assemble`:
+          // it top-level-awaits its own instance and exports OCCT names as
+          // values, so it is not a factory. `./init` is the factory surface.
+          import { createInstance } from 'libcascade/init';
           const root = path.dirname(fileURLToPath(import.meta.resolve('libcascade/wasm')));
-          for (const load of [init, initMulti]) {
-            const oc = await load({ locateFile: file => path.join(root, file) });
+          for (const variant of ['single', 'multi']) {
+            const oc = await createInstance({ variant, locateFile: file => path.join(root, file) });
             const box = new oc.BRepPrimAPI_MakeBox(1, 2, 3);
             const shape = box.Shape();
             try {
@@ -1109,7 +1114,7 @@ jobs:
               oc.PThread?.terminateAllThreads?.();
             }
           }
-          for (const name of ['opencascade_full.provenance.json', 'opencascade_full_multi.provenance.json']) {
+          for (const name of ['opencascade_single.provenance.json', 'opencascade_multi.provenance.json']) {
             const p = JSON.parse(fs.readFileSync(path.join(root, name)));
             if (p.source.opencascadejsCommit !== process.env.FULL_SHA) process.exit(1);
           }
@@ -1143,8 +1148,7 @@ jobs:
               bindgen-base) prefix=bindgen-base ;;
             esac
             case "$KIND" in
-              stable-release|beta-release) tag="$VERSION-$prefix" ;;
-              manual-canary) tag="canary-${FULL_SHA:0:8}-$prefix" ;;
+              stable-release|beta-release|manual-canary) tag="$VERSION-$prefix" ;;
               *) echo "Unsupported registry verification kind: $KIND" >&2; exit 1 ;;
             esac
 
@@ -1209,24 +1213,349 @@ jobs:
             echo '```'
             echo
             echo '```sh'
-            if [ "$KIND" = manual-canary ]; then
-              cat <<EOF
-          docker pull "$REGISTRY_IMAGE:canary-${FULL_SHA:0:8}-single-threaded"
-          docker pull "$REGISTRY_IMAGE:canary-${FULL_SHA:0:8}-multi-threaded"
-          docker pull "$REGISTRY_IMAGE:canary-${FULL_SHA:0:8}-bindgen-base"
-          EOF
-            else
-              cat <<EOF
+            cat <<EOF
           docker pull "$REGISTRY_IMAGE:$VERSION-single-threaded"
           docker pull "$REGISTRY_IMAGE:$VERSION-multi-threaded"
           docker pull "$REGISTRY_IMAGE:$VERSION-bindgen-base"
           EOF
-            fi
             echo '```'
             echo
             echo "- Source: \`$FULL_SHA\`"
             echo "- npm provenance: \`.github/workflows/docker.yml\`"
             echo "- GHCR signatures: verified for all three promoted stages"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  toolchain-metadata:
+    name: toolchain · release metadata
+    if: >-
+      always() &&
+      needs.preflight.outputs.npm_publish == 'true' &&
+      needs.preflight.result == 'success' &&
+      needs.package-assemble.result == 'success' &&
+      needs.registry-verify.result == 'success'
+    needs: [preflight, package-assemble, registry-verify]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ needs.preflight.outputs.full_sha }}
+      - name: Download verified libcascade candidate
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: ${{ needs.package-assemble.outputs.artifact }}
+          path: ${{ runner.temp }}/candidate
+      - name: Set up Node
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version-file: '.nvmrc'
+          cache: npm
+      - name: Install locked Node tools
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Free disk space for the pinned image
+        uses: jlumbroso/free-disk-space@54081f138730dfa15788a46383842cd2f914a1be # v1
+        with:
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: false
+          docker-images: false
+          swap-storage: false
+          tool-cache: false
+      - name: Regenerate and validate exact release metadata
+        env:
+          FULL_SHA: ${{ needs.preflight.outputs.full_sha }}
+          VERSION: ${{ needs.preflight.outputs.version }}
+        run: |
+          set -euo pipefail
+          node packages/toolchain/scripts/validate-release.mjs environment
+          mkdir -p "$RUNNER_TEMP/libcascade"
+          tar -xzf "$RUNNER_TEMP/candidate/candidate.tgz" \
+            --strip-components=1 -C "$RUNNER_TEMP/libcascade"
+          rm -rf dist
+          cp -R "$RUNNER_TEMP/libcascade/dist" dist
+          npm version "$VERSION" --workspace=@libcascade/toolchain \
+            --no-git-tag-version --allow-same-version --ignore-scripts
+          npm run generate:toolchain -- "$VERSION"
+          node packages/toolchain/scripts/validate-release.mjs metadata \
+            --version="$VERSION" --full-sha="$FULL_SHA" --dist=dist
+          npm run build:toolchain
+      - name: Upload verified toolchain metadata
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: toolchain-metadata-${{ github.run_id }}
+          path: |
+            packages/toolchain/generated/*
+            packages/toolchain/package.json
+            packages/toolchain/dist
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 7
+
+  toolchain-package:
+    name: toolchain · package
+    if: >-
+      always() &&
+      needs.preflight.outputs.npm_publish == 'true' &&
+      needs.preflight.result == 'success' &&
+      needs.toolchain-metadata.result == 'success'
+    needs: [preflight, toolchain-metadata]
+    runs-on: ubuntu-latest
+    outputs:
+      artifact: toolchain-candidate-${{ github.run_id }}
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ needs.preflight.outputs.full_sha }}
+      - name: Download verified toolchain build
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: toolchain-metadata-${{ github.run_id }}
+          path: packages/toolchain
+      - name: Set up Node
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: '24.10.0'
+          registry-url: https://registry.npmjs.org
+      - name: Pin npm pack implementation
+        run: npm install --global npm@11.5.1
+      - name: Pack and verify exact exports
+        env:
+          CHANNEL: ${{ needs.preflight.outputs.channel }}
+          FULL_SHA: ${{ needs.preflight.outputs.full_sha }}
+          SOURCE_DATE_EPOCH: ${{ needs.preflight.outputs.source_date_epoch }}
+          VERSION: ${{ needs.preflight.outputs.version }}
+        working-directory: packages/toolchain
+        run: |
+          set -euo pipefail
+          npm pack --ignore-scripts --json --pack-destination "$RUNNER_TEMP" > "$RUNNER_TEMP/toolchain-pack.json"
+          filename="$(node -p "JSON.parse(require('fs').readFileSync(process.env.RUNNER_TEMP + '/toolchain-pack.json'))[0].filename")"
+          mv "$RUNNER_TEMP/$filename" "$RUNNER_TEMP/toolchain-candidate.tgz"
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const [pack] = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + '/toolchain-pack.json'));
+          const files = new Set(pack.files.map(({ path }) => path));
+          const manifest = JSON.parse(fs.readFileSync('package.json'));
+          if (manifest.name !== '@libcascade/toolchain') throw new Error(`unexpected package: ${manifest.name}`);
+          if (manifest.version !== process.env.VERSION) {
+            throw new Error(`toolchain version ${manifest.version} does not match ${process.env.VERSION}`);
+          }
+          const targets = [
+            ...Object.values(manifest.bin),
+            ...Object.values(manifest.exports).flatMap((entry) =>
+              typeof entry === 'string' ? [entry] : Object.values(entry),
+            ),
+          ].map((target) => target.replace(/^\.\//, ''));
+          const missing = targets.filter((target) => !files.has(target));
+          if (missing.length > 0) throw new Error(`packed exports are missing: ${missing.join(', ')}`);
+          fs.writeFileSync(process.env.RUNNER_TEMP + '/toolchain-candidate.json', JSON.stringify({
+            channel: process.env.CHANNEL,
+            fullSha: process.env.FULL_SHA,
+            name: manifest.name,
+            runId: process.env.GITHUB_RUN_ID,
+            sourceDateEpoch: process.env.SOURCE_DATE_EPOCH,
+            version: manifest.version,
+          }, null, 2) + '\n');
+          NODE
+          sha256sum "$RUNNER_TEMP/toolchain-candidate.tgz" | cut -d' ' -f1 > "$RUNNER_TEMP/toolchain-candidate.sha256"
+          printf 'sha512-' > "$RUNNER_TEMP/toolchain-candidate.sha512"
+          openssl dgst -sha512 -binary "$RUNNER_TEMP/toolchain-candidate.tgz" | base64 -w0 >> "$RUNNER_TEMP/toolchain-candidate.sha512"
+          printf '\n' >> "$RUNNER_TEMP/toolchain-candidate.sha512"
+      - name: Upload immutable toolchain candidate
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: toolchain-candidate-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/toolchain-candidate.tgz
+            ${{ runner.temp }}/toolchain-candidate.sha256
+            ${{ runner.temp }}/toolchain-candidate.sha512
+            ${{ runner.temp }}/toolchain-candidate.json
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 7
+
+  toolchain-publish:
+    name: toolchain · npm publish
+    if: >-
+      always() &&
+      needs.preflight.outputs.npm_publish == 'true' &&
+      needs.preflight.result == 'success' &&
+      needs.toolchain-package.result == 'success'
+    needs: [preflight, toolchain-package]
+    runs-on: ubuntu-latest
+    concurrency:
+      group: npm-${{ needs.preflight.outputs.channel }}
+      queue: max
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Download tested toolchain tarball only
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: ${{ needs.toolchain-package.outputs.artifact }}
+          path: ${{ runner.temp }}/candidate
+      - name: Set up Node
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: '24.10.0'
+          registry-url: https://registry.npmjs.org
+      - name: Use OIDC-capable npm
+        run: npm install --global npm@11.5.1
+      - name: Verify artifact digest
+        working-directory: ${{ runner.temp }}/candidate
+        run: echo "$(cat toolchain-candidate.sha256)  toolchain-candidate.tgz" | sha256sum --check
+      - name: Publish or prove idempotency
+        env:
+          CHANNEL: ${{ needs.preflight.outputs.channel }}
+          FULL_SHA: ${{ needs.preflight.outputs.full_sha }}
+          SOURCE_DATE_EPOCH: ${{ needs.preflight.outputs.source_date_epoch }}
+          VERSION: ${{ needs.preflight.outputs.version }}
+        working-directory: ${{ runner.temp }}/candidate
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const candidate = JSON.parse(fs.readFileSync('toolchain-candidate.json'));
+          const expected = {
+            channel: process.env.CHANNEL,
+            fullSha: process.env.FULL_SHA,
+            name: '@libcascade/toolchain',
+            runId: process.env.GITHUB_RUN_ID,
+            sourceDateEpoch: process.env.SOURCE_DATE_EPOCH,
+            version: process.env.VERSION,
+          };
+          for (const [key, value] of Object.entries(expected)) {
+            if (candidate[key] !== value) {
+              throw new Error(`candidate ${key} is ${candidate[key]}, expected ${value}`);
+            }
+          }
+          NODE
+          if npm view "@libcascade/toolchain@$VERSION" version >/dev/null 2>&1; then
+            mkdir -p existing
+            npm pack "@libcascade/toolchain@$VERSION" --ignore-scripts --pack-destination existing >/dev/null
+            existing="$(find existing -name '*.tgz' -type f -print -quit)"
+            test "$(sha256sum "$existing" | cut -d' ' -f1)" = "$(cat toolchain-candidate.sha256)"
+            test "$(npm view "@libcascade/toolchain@$VERSION" dist.integrity)" = "$(cat toolchain-candidate.sha512)"
+            export ATTESTATION_URL
+            ATTESTATION_URL="$(npm view "@libcascade/toolchain@$VERSION" dist.attestations.url)"
+            node --input-type=module <<'NODE'
+          const response = await fetch(process.env.ATTESTATION_URL);
+          if (!response.ok) throw new Error(`npm attestation endpoint returned ${response.status}`);
+          const { attestations = [] } = await response.json();
+          const statements = attestations.map(({ bundle }) =>
+            JSON.parse(Buffer.from(bundle.dsseEnvelope.payload, 'base64url')),
+          );
+          const slsa = statements.find(({ predicateType }) =>
+            predicateType === 'https://slsa.dev/provenance/v1',
+          );
+          if (!slsa) throw new Error('published version has no SLSA provenance statement');
+          const workflow = slsa.predicate.buildDefinition.externalParameters.workflow;
+          if (workflow.repository !== 'https://github.com/taucad/opencascade.js') {
+            throw new Error(`unexpected provenance repository: ${workflow.repository}`);
+          }
+          if (workflow.path !== '.github/workflows/docker.yml') {
+            throw new Error(`unexpected provenance workflow: ${workflow.path}`);
+          }
+          const source = slsa.predicate.buildDefinition.resolvedDependencies.find(
+            ({ digest }) => digest?.gitCommit,
+          );
+          if (source?.digest.gitCommit !== process.env.FULL_SHA) {
+            throw new Error(`unexpected provenance commit: ${source?.digest.gitCommit}`);
+          }
+          NODE
+            test "$(npm view "@libcascade/toolchain" dist-tags --json | jq -r --arg channel "$CHANNEL" '.[$channel]')" = "$VERSION"
+            echo "Exact toolchain version already exists with matching bytes and source identity"
+          else
+            npm publish ./toolchain-candidate.tgz --ignore-scripts --access public --tag "$CHANNEL" --provenance
+          fi
+
+  toolchain-registry-verify:
+    name: toolchain · registry
+    if: >-
+      always() &&
+      needs.preflight.outputs.npm_publish == 'true' &&
+      needs.preflight.result == 'success' &&
+      needs.toolchain-package.result == 'success' &&
+      needs.toolchain-publish.result == 'success'
+    needs: [preflight, toolchain-package, toolchain-publish]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Download tested toolchain candidate
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: ${{ needs.toolchain-package.outputs.artifact }}
+          path: ${{ runner.temp }}/candidate
+      - name: Set up Node
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: '24.10.0'
+          registry-url: https://registry.npmjs.org
+      - name: Use the publication npm version
+        run: npm install --global npm@11.5.1
+      - name: Verify exact registry bytes, provenance, signatures, and exports
+        env:
+          CHANNEL: ${{ needs.preflight.outputs.channel }}
+          FULL_SHA: ${{ needs.preflight.outputs.full_sha }}
+          VERSION: ${{ needs.preflight.outputs.version }}
+        working-directory: ${{ runner.temp }}/candidate
+        run: |
+          set -euo pipefail
+          for _ in $(seq 1 30); do
+            npm view "@libcascade/toolchain@$VERSION" version >/dev/null 2>&1 && break
+            sleep 10
+          done
+          test "$(npm view "@libcascade/toolchain@$VERSION" dist.integrity)" = "$(cat toolchain-candidate.sha512)"
+          test "$(npm view "@libcascade/toolchain" dist-tags --json | jq -r --arg channel "$CHANNEL" '.[$channel]')" = "$VERSION"
+          export ATTESTATION_URL
+          ATTESTATION_URL="$(npm view "@libcascade/toolchain@$VERSION" dist.attestations.url)"
+          node --input-type=module <<'NODE'
+          const response = await fetch(process.env.ATTESTATION_URL);
+          if (!response.ok) throw new Error(`npm attestation endpoint returned ${response.status}`);
+          const { attestations = [] } = await response.json();
+          const statements = attestations.map(({ bundle }) =>
+            JSON.parse(Buffer.from(bundle.dsseEnvelope.payload, 'base64url')),
+          );
+          const slsa = statements.find(({ predicateType }) =>
+            predicateType === 'https://slsa.dev/provenance/v1',
+          );
+          if (!slsa) throw new Error('published version has no SLSA provenance statement');
+          const workflow = slsa.predicate.buildDefinition.externalParameters.workflow;
+          if (workflow.repository !== 'https://github.com/taucad/opencascade.js') {
+            throw new Error(`unexpected provenance repository: ${workflow.repository}`);
+          }
+          if (workflow.path !== '.github/workflows/docker.yml') {
+            throw new Error(`unexpected provenance workflow: ${workflow.path}`);
+          }
+          const source = slsa.predicate.buildDefinition.resolvedDependencies.find(
+            ({ digest }) => digest?.gitCommit,
+          );
+          if (source?.digest.gitCommit !== process.env.FULL_SHA) {
+            throw new Error(`unexpected provenance commit: ${source?.digest.gitCommit}`);
+          }
+          NODE
+          mkdir install
+          cd install
+          npm init --yes >/dev/null
+          npm install --ignore-scripts --no-audit --no-fund "@libcascade/toolchain@$VERSION"
+          npm audit signatures
+          node --input-type=module <<'NODE'
+          const toolchain = await import('@libcascade/toolchain');
+          const driver = await import('@libcascade/toolchain/driver');
+          if (typeof toolchain.defineBuild !== 'function') throw new Error('root export did not resolve');
+          if (typeof driver.createContainerDriver !== 'function') throw new Error('driver export did not resolve');
+          NODE
+          ./node_modules/.bin/libcascade --help >/dev/null
+          {
+            echo "## Published toolchain"
+            echo
+            echo "- Install: \`npm install --save-dev @libcascade/toolchain@$VERSION\`"
+            echo "- Source: \`$FULL_SHA\`"
+            echo "- npm provenance: \`.github/workflows/docker.yml\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
   release-finalize:
@@ -1235,8 +1564,9 @@ jobs:
       always() &&
       needs.preflight.outputs.is_release == 'true' &&
       needs.preflight.result == 'success' &&
-      needs.registry-verify.result == 'success'
-    needs: [preflight, registry-verify]
+      needs.registry-verify.result == 'success' &&
+      needs.toolchain-registry-verify.result == 'success'
+    needs: [preflight, registry-verify, toolchain-registry-verify]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -1301,7 +1631,7 @@ jobs:
   ci-gate:
     name: CI gate
     if: always()
-    needs: [preflight, quality, docs-prose, candidate-gate, package-gate, registry-verify, release-finalize]
+    needs: [preflight, quality, docs-prose, candidate-gate, package-gate, registry-verify, toolchain-metadata, toolchain-package, toolchain-publish, toolchain-registry-verify, release-finalize]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -1316,6 +1646,10 @@ jobs:
           QUALITY: ${{ needs.quality.result }}
           REGISTRY: ${{ needs.registry-verify.result }}
           RELEASE: ${{ needs.release-finalize.result }}
+          TOOLCHAIN_METADATA: ${{ needs.toolchain-metadata.result }}
+          TOOLCHAIN_PACKAGE: ${{ needs.toolchain-package.result }}
+          TOOLCHAIN_PUBLISH: ${{ needs.toolchain-publish.result }}
+          TOOLCHAIN_REGISTRY: ${{ needs.toolchain-registry-verify.result }}
           IS_RELEASE: ${{ needs.preflight.outputs.is_release }}
         run: |
           test "$PREFLIGHT" = success
@@ -1325,8 +1659,16 @@ jobs:
           test "$PACKAGE" = success
           if [ "$PUBLISH" = true ]; then
             test "$REGISTRY" = success
+            test "$TOOLCHAIN_METADATA" = success
+            test "$TOOLCHAIN_PACKAGE" = success
+            test "$TOOLCHAIN_PUBLISH" = success
+            test "$TOOLCHAIN_REGISTRY" = success
           else
             test "$REGISTRY" = skipped
+            test "$TOOLCHAIN_METADATA" = skipped
+            test "$TOOLCHAIN_PACKAGE" = skipped
+            test "$TOOLCHAIN_PUBLISH" = skipped
+            test "$TOOLCHAIN_REGISTRY" = skipped
           fi
           if [ "$IS_RELEASE" = true ]; then
             test "$RELEASE" = success

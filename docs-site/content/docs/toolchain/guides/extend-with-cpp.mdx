@@ -1,28 +1,46 @@
 ---
 title: Extend with C++
-description: Add file-backed C++ implementations or raw Embind registrations to a custom build.
+description: Declare your own C++ files with customBindings — generated bindings via scope 'all', raw Embind via scope 'main'.
 ---
 
-Custom builds accept two file-backed extension mechanisms. Paths are relative
-to the YAML file, read as UTF-8, and concatenated in declaration order. Missing
-or unreadable files fail validation before compilation.
+A custom build can compile your own C++ alongside OCCT. You declare each file
+and the symbols it provides in `customBindings`:
 
-## `additionalCppFiles` — generated bindings
-
-Use `additionalCppFiles` for C++ classes that libcascade's bindgen should
-inspect and expose with generated JavaScript and TypeScript bindings:
-
-```yaml title="build-configs/custom.yml"
-additionalCppFiles:
-  - wrappers/fair-curve.cpp
-
-mainBuild:
-  name: custom
-  bindings:
-    - symbol: FairCurve
+```typescript title="libcascade.config.ts" notypecheck
+customBindings: [
+  { file: 'wrappers/fair-curve.cpp', symbols: ['FairCurve'] },
+  { file: 'bindings/helpers.cpp', symbols: ['addReals'], scope: 'main' },
+],
 ```
 
-```cpp title="build-configs/wrappers/fair-curve.cpp"
+Paths resolve relative to the config file's directory and are checked for
+existence when the config loads, so a moved or misspelled file fails
+immediately with the resolved absolute path — not twenty minutes into a build.
+
+## Why the symbols are declared
+
+`bindings` is type-checked against the generated `OcctSymbol` union. Your
+classes are not in it. Declaring them in `customBindings[].symbols` is what
+admits them:
+
+```typescript notypecheck
+bindings: ['gp_Pnt', 'FairCurve'],
+customBindings: [{ file: 'wrappers/fair-curve.cpp', symbols: ['FairCurve'] }],
+```
+
+The custom-symbol union is inferred **only** from `customBindings`, never from
+`bindings`. A typo'd OCCT name therefore cannot widen the union and type itself
+as valid.
+
+Declaring them also keeps [`detect` and `check`](./detect-and-check) from
+reporting your own classes as unknown symbols.
+
+## `scope: 'all'` — generated bindings
+
+The default. The file is inspected by the bindgen, which generates JavaScript
+and TypeScript bindings for the classes it finds.
+
+```cpp title="wrappers/fair-curve.cpp"
 #include <TopoDS_Shape.hxx>
 
 class FairCurve {
@@ -31,26 +49,23 @@ public:
 };
 ```
 
-The generator discovers classes, constructors, methods, enums, referenced
-OCCT types, and `Handle<T>`/NCollection aliases from these files. Generated
-declarations become part of the build's `.d.ts`.
-
-## `additionalBindFiles` — raw Embind
-
-Use per-build `additionalBindFiles` when you need Embind features the
-generator does not emit, such as free functions, `value_object`, collection
-registrations, or `allow_subclass`:
-
-```yaml title="build-configs/custom.yml"
-mainBuild:
-  name: custom
-  bindings:
-    - symbol: gp_Pnt
-  additionalBindFiles:
-    - bindings/helpers.cpp
+```typescript title="libcascade.config.ts" notypecheck
+bindings: ['FairCurve'],
+customBindings: [{ file: 'wrappers/fair-curve.cpp', symbols: ['FairCurve'] }],
 ```
 
-```cpp title="build-configs/bindings/helpers.cpp"
+The generator discovers classes, constructors, methods, enums, referenced OCCT
+types, and `Handle<T>` / NCollection aliases from these files, and their
+declarations become part of the build's `.d.ts` — and therefore of the shared
+`types.d.ts` that `libcascade assemble` writes.
+
+## `scope: 'main'` — raw Embind
+
+Use `scope: 'main'` when you need Embind constructs the generator does not
+emit: free functions, `value_object`, collection registrations, or
+`allow_subclass`.
+
+```cpp title="bindings/helpers.cpp"
 #include <Standard_Real.hxx>
 #include <emscripten/bind.h>
 
@@ -61,44 +76,52 @@ EMSCRIPTEN_BINDINGS(custom_helpers) {
 }
 ```
 
-An `additionalBindFiles` source may contain both its helper implementation and
-its `EMSCRIPTEN_BINDINGS(...)` block, as above. It compiles directly and skips
-bindgen, so consumers own any TypeScript declaration for raw exports.
+```typescript title="libcascade.config.ts" notypecheck
+customBindings: [{ file: 'bindings/helpers.cpp', symbols: ['addReals'], scope: 'main' }],
+```
 
-For example, keep the generated module contract and add only the manual
-surface your application registered:
+A `scope: 'main'` file may contain both its helper implementation and its
+`EMSCRIPTEN_BINDINGS(...)` block. It compiles directly and skips the bindgen,
+so you own any TypeScript declaration for what it registers:
 
-```typescript
-import init, { type OpenCascadeInstance } from './custom.js';
+```typescript notypecheck
+import { createInstance } from './dist/init.js';
+import type { OpenCascadeInstance } from './dist/types.js';
 
 type CustomInstance = OpenCascadeInstance & {
   addReals(a: number, b: number): number;
 };
 
-const oc = (await init()) as CustomInstance;
+const oc = (await createInstance()) as CustomInstance;
 console.log(oc.addReals(1.5, 2.25));
 ```
 
-`additionalBindFiles` belongs to `mainBuild` or an `extraBuilds` entry because
-its registrations can differ by output. `additionalCppFiles` is top-level and
-shared by every output in the YAML.
-
 ## Which one?
 
-- Prefer `additionalCppFiles` for ordinary classes and generated types.
-- Use `additionalBindFiles` only for a binding construct bindgen cannot emit.
-- Do not list the same source under both keys.
+- Prefer `scope: 'all'` for ordinary classes and generated types.
+- Use `scope: 'main'` only for a binding construct the bindgen cannot emit.
+- Do not declare the same file twice.
 
-Both file lists and their SHA-256 digests are recorded in the build manifest
-and provenance sidecar, making file changes part of artifact identity.
+Both scopes record the file path and its SHA-256 digest in the build manifest
+and the provenance sidecar, so a change to your C++ is part of the artifact's
+identity.
 
-## Validate and build
+The two scopes map onto the container yml's `additionalCppFiles` (top level,
+shared by every output) and `mainBuild.additionalBindFiles` (per output). You
+never write that yml — see [Container yml contract](../reference/yaml-schema)
+if you want to read what gets rendered.
+
+## Build
 
 ```bash
-./build-wasm.sh validate build-configs/custom.yml
-./build-wasm.sh link build-configs/custom.yml
+npx libcascade build --render-only   # check the rendered yml first
+npx libcascade build
 ```
 
-See [YAML schema](../reference/yaml-schema) for the full contract and
-[Derive a C++ class in JavaScript](./derive-cpp-class-in-js) for an
-`allow_subclass` example.
+## Related
+
+- [Config reference](../reference/config) — the `customBindings` field.
+- [Derive a C++ class in JavaScript](./derive-cpp-class-in-js) — an
+  `allow_subclass` example under `scope: 'main'`.
+- [Variants and assemble](../concepts/variants-and-assemble) — how your
+  generated declarations reach the shared `types.d.ts`.

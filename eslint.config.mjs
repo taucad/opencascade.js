@@ -20,6 +20,7 @@ export default tseslint.config(
       'build/**',
       'build-configs/*.d.ts',
       'dist/**',
+      'packages/toolchain/dist/**',
       'deps/**',
       'node_modules/**',
       // Per-test Docker build-flow artifacts (gitignored): the custom `link`
@@ -27,6 +28,12 @@ export default tseslint.config(
       // tsconfig project and must not be type-aware linted.
       'tests/docker/.work/**',
       'tests/docker/.trial/**',
+      // Scratch directory the `libcascade` CLI renders ymls into.
+      'packages/toolchain/test/fixture/.libcascade/**',
+      // Compile-failure gate: deliberately-invalid configs in their own tsconfig
+      // project, so type-aware linting against packages/toolchain/tsconfig.json
+      // cannot see them.
+      'packages/toolchain/test/fixtures/**',
     ],
   },
   {
@@ -54,6 +61,26 @@ export default tseslint.config(
       // suppress the bookkeeping noise so we can focus on the real
       // leak diagnostics.
       reportUnusedDisableDirectives: 'off',
+    },
+    rules: {
+      'ocjs-lint/require-using-on-disposable': 'error',
+    },
+  },
+  {
+    // `@libcascade/toolchain` — pure Node/TS, no embind handles, so the
+    // disposable checker has nothing to say here. Type-aware parsing still runs
+    // so the package is covered by the same `npm run lint` invocation.
+    files: ['packages/toolchain/**/*.ts'],
+    languageOptions: {
+      parser: tseslint.parser,
+      parserOptions: {
+        project: './packages/toolchain/tsconfig.json',
+        tsconfigRootDir: import.meta.dirname,
+      },
+    },
+    plugins: {
+      'ocjs-lint': ocjsLintPlugin,
+      '@typescript-eslint': tseslint.plugin,
     },
     rules: {
       'ocjs-lint/require-using-on-disposable': 'error',

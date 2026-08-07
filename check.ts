@@ -1,4 +1,4 @@
-import type { OpenCascadeInstance } from './build-configs/opencascade_full.js';
+import type { OpenCascadeInstance } from './dist/opencascade_single.js';
 declare const oc: OpenCascadeInstance;
 declare const face: any;
 declare const loc: any;

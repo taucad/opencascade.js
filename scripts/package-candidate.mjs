@@ -6,18 +6,31 @@ import crypto from 'node:crypto';
 
 export const DIST_FILES = [
   'api-reference.json',
-  'opencascade_full.build-manifest.json',
-  'opencascade_full.d.ts',
-  'opencascade_full.js',
-  'opencascade_full.js.symbols',
-  'opencascade_full.provenance.json',
-  'opencascade_full.wasm',
-  'opencascade_full_multi.build-manifest.json',
-  'opencascade_full_multi.d.ts',
-  'opencascade_full_multi.js',
-  'opencascade_full_multi.js.symbols',
-  'opencascade_full_multi.provenance.json',
-  'opencascade_full_multi.wasm',
+  'index.d.ts',
+  'index.js',
+  'init.d.ts',
+  'init.js',
+  'init.multi.js',
+  'init.single.js',
+  'opencascade_single.build-manifest.json',
+  'opencascade_single.js',
+  'opencascade_single.js.symbols',
+  'opencascade_single.provenance.json',
+  'opencascade_single.wasm',
+  'opencascade_multi.build-manifest.json',
+  'opencascade_multi.js',
+  'opencascade_multi.js.symbols',
+  'opencascade_multi.provenance.json',
+  'opencascade_multi.wasm',
+  'types.d.ts',
+  'variant.d.ts',
+].sort();
+
+export const ASSEMBLED_DIST_FILES = [
+  ...DIST_FILES,
+  'exports.json',
+  'opencascade_multi.d.ts',
+  'opencascade_single.d.ts',
 ].sort();
 
 export const PACKAGE_FILES = [
@@ -81,14 +94,14 @@ export const requireSinglePackResult = (packed) => {
 
 export const validateDist = (directory) => {
   const files = fs.readdirSync(directory).sort();
-  validateExactFiles(files, DIST_FILES, 'dist');
-  for (const file of DIST_FILES) {
+  validateExactFiles(files, ASSEMBLED_DIST_FILES, 'assembled dist');
+  for (const file of ASSEMBLED_DIST_FILES) {
     if (fs.statSync(path.join(directory, file)).size === 0) throw new Error(`empty dist file: ${file}`);
   }
 };
 
 export const validateProvenance = (directory, fullSha) => {
-  for (const name of ['opencascade_full.provenance.json', 'opencascade_full_multi.provenance.json']) {
+  for (const name of ['opencascade_single.provenance.json', 'opencascade_multi.provenance.json']) {
     const provenance = JSON.parse(fs.readFileSync(path.join(directory, name), 'utf8'));
     if (provenance.source?.opencascadejsCommit !== fullSha) {
       throw new Error(`${name} source SHA does not match ${fullSha}`);
@@ -116,13 +129,13 @@ if (process.argv[1] === new URL(import.meta.url).pathname) {
       const packed = JSON.parse(fs.readFileSync(process.argv[packJson + 1], 'utf8'));
       const candidate = requireSinglePackResult(packed);
       validateExactFiles(candidate.files.map(({ path: file }) => file), PACKAGE_FILES, 'npm tarball');
-      console.log('npm tarball contains exactly 19 files');
+      console.log(`npm tarball contains exactly ${PACKAGE_FILES.length} files`);
       process.exit(0);
     }
     const directory = path.resolve(process.argv[2] ?? 'dist');
     validateDist(directory);
     if (process.env.OCJS_EXPECTED_SHA) validateProvenance(directory, process.env.OCJS_EXPECTED_SHA);
-    console.log('candidate dist contains exactly 13 non-empty files');
+    console.log(`assembled dist contains exactly ${ASSEMBLED_DIST_FILES.length} non-empty files`);
   } catch (error) {
     console.error(error.message);
     process.exit(1);

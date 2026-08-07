@@ -86,7 +86,7 @@ static NCollection_Array1_Stub<Pnt3> makeSamplePoints(int n) {
 // =====================================================================
 //
 // This is exactly the pattern that produced 613 NCollection_* class
-// registrations in dist/opencascade_full.d.ts. Each permutation gets its
+// registrations in dist/opencascade_single.d.ts. Each permutation gets its
 // own class_<> — no generics, no marshalling, member typedef `reference`
 // returns end up as `unknown` (or `Pnt3` if the audit V2 R8 path is
 // applied).

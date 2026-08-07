@@ -6,6 +6,15 @@ description: GHCR image tags, multi-arch matrix, OCI labels, cosign signatures, 
 The maintainer-distributed Docker image lets consumers run custom-trimmed
 wasm builds without setting up emsdk, libclang, and Python locally.
 
+<Callout type="info">
+  **You do not pull or run this image by hand.** `libcascade build` resolves
+  the digest its toolchain version pinned, pulls it, verifies the digest, and
+  runs it with the right mounts and UID mapping for your platform. This page
+  documents the image itself — its tags, labels, and stages — for auditing and
+  for building it from source. See [CLI reference](./cli) and
+  [Driver environment](./env-vars) for the consumer path.
+</Callout>
+
 ## Pulling
 
 <TagBadge tag='ghcr.io/taucad/opencascade.js:single-threaded' />
@@ -23,7 +32,7 @@ docker pull ghcr.io/taucad/opencascade.js:single-threaded
 | `:bindgen-base`                                                  | Latest release, post-PCH/generate but pre-compile (custom-bindings starting point)   |
 | `:{{version}}-single-threaded`<br/>`:{{version}}-multi-threaded` | Pinned release (e.g. `:3.0.0-single-threaded`); manifest list of `linux/amd64+arm64` |
 | `:{{version}}-bindgen-base`                                      | Pinned release, bindgen-base                                                         |
-| `:canary-<sha8>-<stage>`                                        | Immutable manually dispatched canary, retained for seven days                        |
+| `:{{version}}-<stage>` when `{{version}}` is a canary           | Immutable manually dispatched canary (e.g. `:3.0.0-canary.a1b2c3d4-single-threaded`), retained for seven days |
 | `:branch-main[-<full-sha>]`                                     | Current or immutable `main`, single-threaded                                         |
 | `:multi-threaded-branch-main[-<full-sha>]`                      | Current or immutable `main`, multi-threaded                                          |
 | `:bindgen-base-branch-main[-<full-sha>]`                        | Current or immutable `main`, bindgen-base                                            |
@@ -31,8 +40,9 @@ docker pull ghcr.io/taucad/opencascade.js:single-threaded
 
 **Pin by digest in production.** The bare-name tags (`:single-threaded`,
 `:multi-threaded`, `:bindgen-base`) are mutable and roll forward with every
-release. See [Reproducible CI](../guides/reproducible-ci) for the pinning
-workflow.
+release. The toolchain does this for you: each published version embeds the
+resolved digests in `generated/images.json` and verifies them after pulling.
+See [Reproducible CI](../guides/reproducible-ci).
 
 The legacy `:beta`, `:rolling`, and `:latest` tags are **not published** by
 this project. Use a version-pinned tag (e.g. `:3.0.0-single-threaded`) or the
@@ -40,11 +50,17 @@ manifest-list digest for explicit version control.
 
 ## Entrypoint
 
+The driver invokes the image as `<engine> run … <image> link <yml>`, with the
+config directory mounted at `/src` and a scratch directory mounted at `/out`
+via `OCJS_OUTPUT_DIR`. The invocation below is what it constructs — reproduce
+it by hand only when debugging the image itself:
+
 ```bash
 docker run --rm \
   -v "$(pwd):/src" \
-  -u "$(id -u):$(id -g)" \
-  ghcr.io/taucad/opencascade.js:single-threaded \
+  -v "$(pwd)/out:/out" \
+  -e OCJS_OUTPUT_DIR=/out \
+  ghcr.io/taucad/opencascade.js@sha256:<digest> \
   link mybuild.yml
 ```
 

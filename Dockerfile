@@ -82,7 +82,7 @@
 # OS toolchain + dependency clones, with LLVM 17 trim and cache purge folded
 # into the clone-deps RUN so all of those bytes are gone from the layer.
 # ═════════════════════════════════════════════════════════════════════════════
-FROM emscripten/emsdk:5.0.1@sha256:c89732ef63a56de5a96395c5a8c1c7904f7420131a045406e6fedc4cbe1cc198 AS deps-base
+FROM emscripten/emsdk:6.0.5@sha256:76a44fff907397784decc435115d07fcb9587a4f1504977f39f3745e538e3a1e AS deps-base
 
 LABEL org.opencontainers.image.title="libcascade (deps-base)" \
       org.opencontainers.image.description="OS toolchain + dependency clones (emsdk, Node 24, uv, Python 3.14, OCCT, rapidjson, freetype, LLVM 17 — header-trimmed)"
@@ -103,11 +103,12 @@ RUN --mount=type=cache,target=/var/cache/apt,id=ocjs-apt,sharing=locked \
     build-essential \
     ca-certificates \
     curl \
-    doxygen \
+    doxygen=1.9.8+ds-2ubuntu0.1 \
     git \
     gnupg \
     jq \
     libc6-dev \
+    openjdk-21-jre-headless \
     unzip \
     xz-utils
 
@@ -280,7 +281,8 @@ ENV RAPIDJSON_ROOT=/rapidjson
 ENV FREETYPE_ROOT=/freetype
 ENV EMSDK=/emsdk
 # OCCT source patches (using-statement, Standard_Dump stub, noexcept dtors,
-# STEPCAF DynamicType) are HARD REQUIREMENTS for every supported build —
+# STEPCAF DynamicType, Geom2dGcc_Circ2dTanCenGeo uninitialised Index) are HARD
+# REQUIREMENTS for every supported build —
 # they're applied unconditionally by build-wasm.sh::step_apply_patches.
 # The legacy OCJS_PATCH_DUMP / OCJS_PATCH_STEPCAF env-var toggles were
 # removed because making required behaviour optional is a footgun.
@@ -356,7 +358,13 @@ FROM bindgen-content AS bindgen-base
 
 # ── OCI metadata for the published :bindgen-base image ──────────────────────
 ARG REVISION
-ARG OCJS_SOURCE_DATE_EPOCH
+# Default 0 so a bare `docker build` (no --build-arg) bakes a *valid* epoch.
+# An empty ARG bakes `ENV SOURCE_DATE_EPOCH=""`, and clang hard-fails
+# invocation creation on a set-but-empty SOURCE_DATE_EPOCH — every
+# consumer-side bind-symbols run then dies with an opaque
+# TranslationUnitLoadError. CI always passes a real epoch, so byte
+# reproducibility is unaffected by this default.
+ARG OCJS_SOURCE_DATE_EPOCH=0
 ARG VERSION
 ARG SOURCE_URL=https://github.com/taucad/opencascade.js
 ENV OCJS_SOURCE_COMMIT="${REVISION}" \
@@ -444,7 +452,13 @@ FROM compiled-single-threaded AS final-single
 # rebuilds. Labels follow the opencontainers.org spec so `docker inspect` and
 # GHCR's UI surface provenance, licensing, and source links automatically.
 ARG REVISION
-ARG OCJS_SOURCE_DATE_EPOCH
+# Default 0 so a bare `docker build` (no --build-arg) bakes a *valid* epoch.
+# An empty ARG bakes `ENV SOURCE_DATE_EPOCH=""`, and clang hard-fails
+# invocation creation on a set-but-empty SOURCE_DATE_EPOCH — every
+# consumer-side bind-symbols run then dies with an opaque
+# TranslationUnitLoadError. CI always passes a real epoch, so byte
+# reproducibility is unaffected by this default.
+ARG OCJS_SOURCE_DATE_EPOCH=0
 ARG VERSION
 ARG SOURCE_URL=https://github.com/taucad/opencascade.js
 ENV OCJS_SOURCE_COMMIT="${REVISION}" \
@@ -478,7 +492,13 @@ CMD ["--help"]
 FROM compiled-multi-threaded AS final-multi
 
 ARG REVISION
-ARG OCJS_SOURCE_DATE_EPOCH
+# Default 0 so a bare `docker build` (no --build-arg) bakes a *valid* epoch.
+# An empty ARG bakes `ENV SOURCE_DATE_EPOCH=""`, and clang hard-fails
+# invocation creation on a set-but-empty SOURCE_DATE_EPOCH — every
+# consumer-side bind-symbols run then dies with an opaque
+# TranslationUnitLoadError. CI always passes a real epoch, so byte
+# reproducibility is unaffected by this default.
+ARG OCJS_SOURCE_DATE_EPOCH=0
 ARG VERSION
 ARG SOURCE_URL=https://github.com/taucad/opencascade.js
 ENV OCJS_SOURCE_COMMIT="${REVISION}" \

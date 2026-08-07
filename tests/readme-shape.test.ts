@@ -30,7 +30,10 @@ const MAINTAINER_REQUIRED_SECTIONS = [
 const README_REQUIRED_SECTIONS = [
   '## Choose Your Path',
   '## Quickstart (npm)',
-  '## Quickstart (Docker)',
+  // Renamed from "Quickstart (Docker)" in the W6 docs overhaul: the custom-build
+  // path is `@libcascade/toolchain` + `libcascade.config.ts`, and the CLI drives
+  // the (still digest-pinned) images itself. The README must not teach `docker run`.
+  '## Quickstart (custom build)',
   '## Tags',
   "## What's New in v3",
   '## Documentation',

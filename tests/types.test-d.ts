@@ -1,7 +1,7 @@
 import { expectTypeOf, it } from 'vitest';
-import initRuntime from '../dist/opencascade_full';
-import { BRepPrimAPI_MakeBox as BRepPrimAPI_MakeBoxValue } from '../dist/opencascade_full';
-import type init from '../dist/opencascade_full';
+import initRuntime from '../dist/opencascade_single';
+import { BRepPrimAPI_MakeBox as BRepPrimAPI_MakeBoxValue } from '../dist/opencascade_single';
+import type init from '../dist/opencascade_single';
 import type {
   gp_Pnt,
   gp_Vec,
@@ -10,7 +10,7 @@ import type {
   TopAbs_ShapeEnum,
   InitOpenCascadeOptions,
   OpenCascadeInstance,
-} from '../dist/opencascade_full';
+} from '../dist/opencascade_single';
 
 void initRuntime;
 // @ts-expect-error OCCT values are properties of OpenCascadeInstance, not named ESM exports.

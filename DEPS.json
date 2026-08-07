@@ -22,9 +22,10 @@
     },
     "emscripten": {
       "repository": "https://github.com/emscripten-core/emsdk.git",
-      "docker_image": "emscripten/emsdk:5.0.1",
-      "docker_digest": "sha256:c89732ef63a56de5a96395c5a8c1c7904f7420131a045406e6fedc4cbe1cc198",
-      "emsdk_version": "5.0.1",
+      "commit": "dfb9d1a46c3bb8f52e1e6324be23123b9d73c190",
+      "docker_image": "emscripten/emsdk:6.0.5",
+      "docker_digest": "sha256:76a44fff907397784decc435115d07fcb9587a4f1504977f39f3745e538e3a1e",
+      "emsdk_version": "6.0.5",
       "description": "Emscripten SDK for compiling C++ to WebAssembly"
     },
     "llvm17": {

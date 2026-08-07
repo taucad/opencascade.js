@@ -22,9 +22,9 @@ const REPLICAD_BUILD_CONFIG = path.resolve(
 
 const FULL_BUILD_CONFIG = path.resolve(import.meta.dirname, '../build-configs');
 const DIST = path.resolve(import.meta.dirname, '../dist');
-const FULL_DTS = path.join(DIST, 'opencascade_full.d.ts');
-const FULL_JS = path.join(DIST, 'opencascade_full.js');
-const FULL_BUILD_MANIFEST = path.join(DIST, 'opencascade_full.build-manifest.json');
+const FULL_DTS = path.join(DIST, 'opencascade_single.d.ts');
+const FULL_JS = path.join(DIST, 'opencascade_single.js');
+const FULL_BUILD_MANIFEST = path.join(DIST, 'opencascade_single.build-manifest.json');
 // `./build-wasm.sh dts <yaml>` writes the .d.ts next to the YAML it consumes;
 // for replicad-single this is the build-config directory in the replicad fork.
 // `dist/` only receives artifacts from a full WASM link (`./build-wasm.sh full`).
@@ -701,7 +701,7 @@ const TS_RESERVED_WORDS = new Set([
 ]);
 
 const SEMANTIC_GAP_TARGETS: { label: string; dtsPath: string }[] = [
-  { label: 'opencascade_full', dtsPath: FULL_DTS },
+  { label: 'opencascade_single', dtsPath: FULL_DTS },
   { label: 'replicad_single', dtsPath: REPLICAD_SINGLE_DTS },
 ];
 
