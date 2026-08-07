@@ -1,5 +1,5 @@
 mainBuild:
-  name: opencascade_full_multi.js
+  name: opencascade_multi.js
   bindings:
   - symbol: APIHeaderSection_EditHeader
   - symbol: APIHeaderSection_MakeHeader
@@ -4520,8 +4520,11 @@ mainBuild:
   # Recipe: docs-site/content/docs/package/guides/multi-threading.mdx (published /multi subpath).
   # -sEVAL_CTORS=2 (present in full.yml) is DROPPED -- ctor evaluation
   # order is non-deterministic under pthread workers.
+  # emcc maps -pthread to both PTHREADS=1 and USE_PTHREADS=1, and -sUSE_PTHREADS=1
+  # back to the same internal setting, so the pair said one thing twice. The
+  # config states it once as `compilerFlags: { threads: true }`; dropping the
+  # alias was proven byte-neutral on replicad's identical change.
   - -pthread
-  - -sUSE_PTHREADS=1
   # Pre-spawn one worker per logical CPU on the host. The expression is evaluated by the
   # generated JS glue at module-instantiation time, so a single binary adapts to whatever
   # hardware loads it. See BENCHMARKS.md — Impact of R1 (PTHREAD_POOL_SIZE bump).

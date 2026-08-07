@@ -281,7 +281,8 @@ ENV RAPIDJSON_ROOT=/rapidjson
 ENV FREETYPE_ROOT=/freetype
 ENV EMSDK=/emsdk
 # OCCT source patches (using-statement, Standard_Dump stub, noexcept dtors,
-# STEPCAF DynamicType) are HARD REQUIREMENTS for every supported build —
+# STEPCAF DynamicType, Geom2dGcc_Circ2dTanCenGeo uninitialised Index) are HARD
+# REQUIREMENTS for every supported build —
 # they're applied unconditionally by build-wasm.sh::step_apply_patches.
 # The legacy OCJS_PATCH_DUMP / OCJS_PATCH_STEPCAF env-var toggles were
 # removed because making required behaviour optional is a footgun.
@@ -357,7 +358,13 @@ FROM bindgen-content AS bindgen-base
 
 # ── OCI metadata for the published :bindgen-base image ──────────────────────
 ARG REVISION
-ARG OCJS_SOURCE_DATE_EPOCH
+# Default 0 so a bare `docker build` (no --build-arg) bakes a *valid* epoch.
+# An empty ARG bakes `ENV SOURCE_DATE_EPOCH=""`, and clang hard-fails
+# invocation creation on a set-but-empty SOURCE_DATE_EPOCH — every
+# consumer-side bind-symbols run then dies with an opaque
+# TranslationUnitLoadError. CI always passes a real epoch, so byte
+# reproducibility is unaffected by this default.
+ARG OCJS_SOURCE_DATE_EPOCH=0
 ARG VERSION
 ARG SOURCE_URL=https://github.com/taucad/opencascade.js
 ENV OCJS_SOURCE_COMMIT="${REVISION}" \
@@ -445,7 +452,13 @@ FROM compiled-single-threaded AS final-single
 # rebuilds. Labels follow the opencontainers.org spec so `docker inspect` and
 # GHCR's UI surface provenance, licensing, and source links automatically.
 ARG REVISION
-ARG OCJS_SOURCE_DATE_EPOCH
+# Default 0 so a bare `docker build` (no --build-arg) bakes a *valid* epoch.
+# An empty ARG bakes `ENV SOURCE_DATE_EPOCH=""`, and clang hard-fails
+# invocation creation on a set-but-empty SOURCE_DATE_EPOCH — every
+# consumer-side bind-symbols run then dies with an opaque
+# TranslationUnitLoadError. CI always passes a real epoch, so byte
+# reproducibility is unaffected by this default.
+ARG OCJS_SOURCE_DATE_EPOCH=0
 ARG VERSION
 ARG SOURCE_URL=https://github.com/taucad/opencascade.js
 ENV OCJS_SOURCE_COMMIT="${REVISION}" \
@@ -479,7 +492,13 @@ CMD ["--help"]
 FROM compiled-multi-threaded AS final-multi
 
 ARG REVISION
-ARG OCJS_SOURCE_DATE_EPOCH
+# Default 0 so a bare `docker build` (no --build-arg) bakes a *valid* epoch.
+# An empty ARG bakes `ENV SOURCE_DATE_EPOCH=""`, and clang hard-fails
+# invocation creation on a set-but-empty SOURCE_DATE_EPOCH — every
+# consumer-side bind-symbols run then dies with an opaque
+# TranslationUnitLoadError. CI always passes a real epoch, so byte
+# reproducibility is unaffected by this default.
+ARG OCJS_SOURCE_DATE_EPOCH=0
 ARG VERSION
 ARG SOURCE_URL=https://github.com/taucad/opencascade.js
 ENV OCJS_SOURCE_COMMIT="${REVISION}" \
