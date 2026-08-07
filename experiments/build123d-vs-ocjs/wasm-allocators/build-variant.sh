@@ -64,4 +64,4 @@ END=$(date +%s)
 echo ""
 echo "[$(date +%T)] ${ALLOCATOR} link complete in $((END - START))s"
 echo "Artifacts:"
-ls -la "$OUT_DIR"/opencascade_full.{js,wasm,wasm-symbols.json} 2>/dev/null || ls -la "$OUT_DIR"
+ls -la "$OUT_DIR"/opencascade_single.{js,wasm,wasm-symbols.json} 2>/dev/null || ls -la "$OUT_DIR"

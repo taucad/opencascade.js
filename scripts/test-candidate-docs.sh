@@ -20,9 +20,6 @@ tar \
   --exclude='./data/api-search-index.json' \
   --exclude='./data/api-tree.json' \
   --exclude='./data/api-type-index.json' \
-  --exclude='./public/opencascade_full.d.ts' \
-  --exclude='./public/opencascade_full.js' \
-  --exclude='./public/opencascade_full.wasm' \
   -C "$ROOT/docs-site" -cf - . | tar -C "$WORK/docs-site" -xf -
 cp "$ROOT/Dockerfile" "$ROOT/project.json" "$WORK/"
 mkdir -p "$WORK/scripts/lib"

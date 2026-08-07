@@ -1,8 +1,8 @@
 // Single-threaded vs multi-threaded OCJS benchmark harness.
 //
 // Drives the same 11-sample suite (`samples.mjs`) against two binaries:
-//   - `dist/opencascade_full.{js,wasm}`         (single-threaded, baseline)
-//   - `dist/opencascade_full_multi.{js,wasm}`   (multi-threaded)
+//   - `dist/opencascade_single.{js,wasm}`         (single-threaded, baseline)
+//   - `dist/opencascade_multi.{js,wasm}`   (multi-threaded)
 //
 // For the multi-threaded run, `BOPAlgo_Options.SetParallelMode(true)` is set
 // once at startup AND each parallel-aware sample receives `{ parallel: true }`
@@ -218,10 +218,10 @@ const buildDir = path.resolve(
 const out_root = { warmup, iters, buildDir, generatedAt: new Date().toISOString(), runs: {} };
 
 if (binary === 'single' || binary === 'both') {
-  console.error('\n── Running single-threaded baseline (dist/opencascade_full) ──');
+  console.error('\n── Running single-threaded baseline (dist/opencascade_single) ──');
   const single = await runBinary({
     label: 'single-threaded',
-    binaryName: 'opencascade_full',
+    binaryName: 'opencascade_single',
     useParallel: false,
     warmup,
     iters,
@@ -232,10 +232,10 @@ if (binary === 'single' || binary === 'both') {
 }
 
 if (binary === 'multi' || binary === 'both') {
-  console.error('\n── Running multi-threaded (dist/opencascade_full_multi, parallel ON) ──');
+  console.error('\n── Running multi-threaded (dist/opencascade_multi, parallel ON) ──');
   const multi = await runBinary({
     label: 'multi-threaded',
-    binaryName: 'opencascade_full_multi',
+    binaryName: 'opencascade_multi',
     useParallel: true,
     warmup,
     iters,

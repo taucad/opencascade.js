@@ -6,18 +6,18 @@ import crypto from 'node:crypto';
 
 export const DIST_FILES = [
   'api-reference.json',
-  'opencascade_full.build-manifest.json',
-  'opencascade_full.d.ts',
-  'opencascade_full.js',
-  'opencascade_full.js.symbols',
-  'opencascade_full.provenance.json',
-  'opencascade_full.wasm',
-  'opencascade_full_multi.build-manifest.json',
-  'opencascade_full_multi.d.ts',
-  'opencascade_full_multi.js',
-  'opencascade_full_multi.js.symbols',
-  'opencascade_full_multi.provenance.json',
-  'opencascade_full_multi.wasm',
+  'opencascade_single.build-manifest.json',
+  'opencascade_single.d.ts',
+  'opencascade_single.js',
+  'opencascade_single.js.symbols',
+  'opencascade_single.provenance.json',
+  'opencascade_single.wasm',
+  'opencascade_multi.build-manifest.json',
+  'opencascade_multi.d.ts',
+  'opencascade_multi.js',
+  'opencascade_multi.js.symbols',
+  'opencascade_multi.provenance.json',
+  'opencascade_multi.wasm',
 ].sort();
 
 export const PACKAGE_FILES = [
@@ -88,7 +88,7 @@ export const validateDist = (directory) => {
 };
 
 export const validateProvenance = (directory, fullSha) => {
-  for (const name of ['opencascade_full.provenance.json', 'opencascade_full_multi.provenance.json']) {
+  for (const name of ['opencascade_single.provenance.json', 'opencascade_multi.provenance.json']) {
     const provenance = JSON.parse(fs.readFileSync(path.join(directory, name), 'utf8'));
     if (provenance.source?.opencascadejsCommit !== fullSha) {
       throw new Error(`${name} source SHA does not match ${fullSha}`);

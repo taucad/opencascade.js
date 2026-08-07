@@ -34,7 +34,7 @@ pnpm preview     # http://localhost:4173
 
 1. `pnpm install --frozen-lockfile` → ok
 2. `pnpm typecheck` → ok (strict `tsconfig.json` with `noUncheckedIndexedAccess`)
-3. `pnpm build` → ok; `dist/` contains the bundled `index.html`, a JS chunk that imports `opencascade_full.wasm` as a URL asset, and the unmodified `opencascade_full.wasm`
+3. `pnpm build` → ok; `dist/` contains the bundled `index.html`, a JS chunk that imports `opencascade_single.wasm` as a URL asset, and the unmodified `opencascade_single.wasm`
 4. `pnpm preview &` then `pnpm smoke` → exits 0:
    - canvas `#libcascade-canvas` mounts within 30s
    - the 16×16 centre sample contains more than one distinct colour (geometry painted)

@@ -13,7 +13,7 @@
 # patterns (25 000+ small objects per fuse iteration).
 
 mainBuild:
-  name: opencascade_full.js
+  name: opencascade_single.js
   bindings:
     - symbol: gp_Pnt
     - symbol: gp_Dir

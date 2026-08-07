@@ -9,8 +9,8 @@ import { validateBrowserRuntimeResult } from './lib/browser-runtime-result.mjs';
 
 const TIMEOUT_MS = 120_000;
 const VARIANTS = {
-  single: 'opencascade_full',
-  multi: 'opencascade_full_multi',
+  single: 'opencascade_single',
+  multi: 'opencascade_multi',
 };
 
 const html = (variant) => `<!doctype html>

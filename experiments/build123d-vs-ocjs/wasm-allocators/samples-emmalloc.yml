@@ -10,7 +10,7 @@
 # is the point of the PoC).
 
 mainBuild:
-  name: opencascade_full.js
+  name: opencascade_single.js
   bindings:
     - symbol: gp_Pnt
     - symbol: gp_Dir

@@ -21,7 +21,7 @@ import { initOC, getOC, wasmExists } from './helpers.js';
 import type {
   ExtremaPC_ExtremumResult,
   ExtremaPC_SearchMode,
-} from '../../dist/opencascade_full.js';
+} from '../../dist/opencascade_single.js';
 
 describe.skipIf(!wasmExists)('Smoke: ExtremaPC circle', () => {
   beforeAll(async () => {

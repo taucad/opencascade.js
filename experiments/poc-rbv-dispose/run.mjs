@@ -5,7 +5,7 @@
 // JS-side variable's underlying object.
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import init from '../../build-configs/opencascade_full.js';
+import init from '../../build-configs/opencascade_single.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const BUILD_DIR = path.resolve(__dirname, '../../build-configs');

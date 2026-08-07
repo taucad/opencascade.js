@@ -99,7 +99,7 @@ describe.skipIf(!wasmExists)('Smoke: value-typed trailing-default routing (rule 
    *
    * Source: `deps/OCCT/src/FoundationClasses/TKernel/Message/Message_Attribute.{hxx,cxx}`
    * d.ts:    `class Message_Attribute … constructor(theName?: TCollection_AsciiString)`
-   *          (`dist/opencascade_full.d.ts:963-988`)
+   *          (`dist/opencascade_single.d.ts:963-988`)
    * Binding: `build/bindings/FoundationClasses/TKernel/Message/Message_Attribute.hxx/Message_Attribute.cpp`
    *          emits the val_default lambda
    *          `([&]() -> TCollection_AsciiString { if (theName.isUndefined())

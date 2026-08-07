@@ -5,7 +5,7 @@ const nextConfig: NextConfig = {
   async headers() {
     // SharedArrayBuffer is gated behind cross-origin isolation. libcascade uses it
     // internally for parallel meshing in supported builds, so the headers
-    // are kept enabled even when the current `opencascade_full.wasm` build
+    // are kept enabled even when the current `opencascade_single.wasm` build
     // does not require them — flipping them on later is a no-op.
     return [
       {

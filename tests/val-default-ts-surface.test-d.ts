@@ -57,7 +57,7 @@ import type {
   IFSelect_Act,
   Message_ProgressRange,
   TopoDS_Shape,
-} from '../dist/opencascade_full';
+} from '../dist/opencascade_single';
 
 describe('Row 1 — single-overload trailing scalar default (BRepMesh_IncrementalMesh arity-5)', () => {
   it('exposes trailing scalars as optional markers (?: T)', () => {

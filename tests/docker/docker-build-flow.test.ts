@@ -82,7 +82,7 @@ describe.skipIf(!dockerTestsEnabled() || !['all', 'final-multi'].includes(STAGE)
             status: 0,
             workDir: CANDIDATE_OUTPUT_DIR,
             stderr: '',
-            base: 'opencascade_full_multi',
+            base: 'opencascade_multi',
           }
         : {
             ...runLink(MULTI_IMAGE, 'multi-threaded.yml', 'multi'),

@@ -60,7 +60,7 @@ node merge-allocator-results.mjs \
 
 | Path | Contents |
 | --- | --- |
-| `dist-<allocator>/opencascade_full.{js,wasm,wasm-symbols.json,provenance.json}` | The minimal samples-only WASM artifact for one allocator |
+| `dist-<allocator>/opencascade_single.{js,wasm,wasm-symbols.json,provenance.json}` | The minimal samples-only WASM artifact for one allocator |
 | `../results/wasm-alloc-<allocator>-latest.json` | Per-iteration timings for each of the 10 samples |
 | `../results/wasm-allocator-comparison.json` | Side-by-side merge with `emmalloc/dlmalloc`, `mimalloc/dlmalloc`, `mimalloc/emmalloc` ratios + per-sample winner + geometric-mean overall ratio + winner tally |
 

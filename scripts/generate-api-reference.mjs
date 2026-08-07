@@ -10,10 +10,10 @@ import { buildDate } from './lib/source-date-epoch.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const BINDINGS_DIR = path.join(ROOT, 'build', 'bindings');
-const MANIFEST_PATH = path.join(ROOT, 'dist', 'opencascade_full.build-manifest.json');
-const DTS_PATH = path.join(ROOT, 'dist', 'opencascade_full.d.ts');
-const SYMBOLS_PATH = path.join(ROOT, 'dist', 'opencascade_full.js.symbols');
-const PROVENANCE_PATH = path.join(ROOT, 'dist', 'opencascade_full.provenance.json');
+const MANIFEST_PATH = path.join(ROOT, 'dist', 'opencascade_single.build-manifest.json');
+const DTS_PATH = path.join(ROOT, 'dist', 'opencascade_single.d.ts');
+const SYMBOLS_PATH = path.join(ROOT, 'dist', 'opencascade_single.js.symbols');
+const PROVENANCE_PATH = path.join(ROOT, 'dist', 'opencascade_single.provenance.json');
 const OUTPUT_PATH = path.join(ROOT, 'dist', 'api-reference.json');
 const PACKAGE_PATH = path.join(ROOT, 'package.json');
 const PACKAGE_NAME = 'libcascade';

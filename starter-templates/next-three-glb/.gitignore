@@ -8,7 +8,7 @@ node_modules/
 out/
 
 # postinstall copies the WASM bundle here — never commit the 35MB binary
-public/opencascade_full.wasm
+public/opencascade_single.wasm
 
 # CI smoke artifacts
 smoke.png

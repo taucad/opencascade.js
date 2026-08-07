@@ -7,8 +7,8 @@ This folder contains **10 paired workloads** from simple primitives through heav
 ### opencascade.js (OCJS)
 
 - Built artifacts under `repos/opencascade.js/build-configs/`:
-  - `opencascade_full.js`
-  - `opencascade_full.wasm`
+  - `opencascade_single.js`
+  - `opencascade_single.wasm`
 - Node.js 20+ recommended.
 
 ### build123d (Python)

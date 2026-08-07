@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from 'vitest';
-import type { OpenCascadeInstance } from '../../dist/opencascade_full.js';
+import type { OpenCascadeInstance } from '../../dist/opencascade_single.js';
 import {
   getOC,
   getOCMulti,

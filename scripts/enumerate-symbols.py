@@ -126,7 +126,7 @@ def generate_yaml(classes, enums, typedefs, handle_classes: set[str]) -> str:
 
     lines = [
         "mainBuild:",
-        "  name: opencascade_full.js",
+        "  name: opencascade_single.js",
         "  bindings:",
     ]
 

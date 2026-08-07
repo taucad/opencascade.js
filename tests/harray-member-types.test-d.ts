@@ -11,7 +11,7 @@ import type {
   NCollection_Array1_gp_Pnt2d,
   NCollection_HArray1_gp_Pnt,
   NCollection_Array1_gp_Pnt,
-} from '../dist/opencascade_full';
+} from '../dist/opencascade_single';
 
 describe('NCollection_HArray1 member typedef resolution', () => {
   it('NCollection_HArray1_gp_Pnt2d.Array1() should return NCollection_Array1_gp_Pnt2d', () => {

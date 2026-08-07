@@ -17,7 +17,7 @@ import type {
   TopoDS_Edge,
   Poly_Triangulation,
   TopLoc_Location,
-} from '../../dist/opencascade_full.js';
+} from '../../dist/opencascade_single.js';
 import { initOC, getOC, wasmExists } from './helpers.js';
 
 describe.skipIf(!wasmExists)('Smoke: BRep_Tool overload dispatch (RBV arity collision)', () => {

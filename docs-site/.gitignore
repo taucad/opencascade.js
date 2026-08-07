@@ -12,7 +12,3 @@ content/docs/package/api/**
 
 playwright-report
 test-results
-
-public/opencascade_full.d.ts
-public/opencascade_full.js
-public/opencascade_full.wasm

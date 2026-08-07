@@ -122,7 +122,7 @@ describe('installed npm candidate', () => {
     ]);
     expect(results[1].threads).toBeGreaterThan(1);
 
-    for (const wasm of ['opencascade_full.wasm', 'opencascade_full_multi.wasm']) {
+    for (const wasm of ['opencascade_single.wasm', 'opencascade_multi.wasm']) {
       expect(fs.statSync(path.join(packageDir, 'dist', wasm)).size).toBeGreaterThan(1_000_000);
     }
   });

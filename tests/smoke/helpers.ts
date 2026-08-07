@@ -1,13 +1,13 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import type { OpenCascadeInstance } from '../../dist/opencascade_full.js';
-import type { OpenCascadeInstance as OpenCascadeInstanceMulti } from '../../dist/opencascade_full_multi.js';
-import init from '../../dist/opencascade_full.js';
-import initMulti from '../../dist/opencascade_full_multi.js';
+import type { OpenCascadeInstance } from '../../dist/opencascade_single.js';
+import type { OpenCascadeInstance as OpenCascadeInstanceMulti } from '../../dist/opencascade_multi.js';
+import init from '../../dist/opencascade_single.js';
+import initMulti from '../../dist/opencascade_multi.js';
 
 const DIST_DIR = path.resolve(import.meta.dirname, '../../dist');
-const WASM_PATH = path.join(DIST_DIR, 'opencascade_full.wasm');
-const WASM_MULTI_PATH = path.join(DIST_DIR, 'opencascade_full_multi.wasm');
+const WASM_PATH = path.join(DIST_DIR, 'opencascade_single.wasm');
+const WASM_MULTI_PATH = path.join(DIST_DIR, 'opencascade_multi.wasm');
 
 export const wasmExists = fs.existsSync(WASM_PATH);
 export const multiWasmExists = fs.existsSync(WASM_MULTI_PATH);
@@ -43,7 +43,7 @@ export function getOC(): OpenCascadeInstance {
 export async function initOCMulti(): Promise<OpenCascadeInstanceMulti> {
   if (!_ocMulti) {
     if (!multiWasmExists) {
-      throw new Error('dist/opencascade_full_multi.wasm not found — build the MT binary first');
+      throw new Error('dist/opencascade_multi.wasm not found — build the MT binary first');
     }
     _ocMulti = await initMulti({
       locateFile: (filename: string) => path.join(DIST_DIR, filename),

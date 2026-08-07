@@ -18,7 +18,7 @@ copy_source_tree() {
     --exclude='./.next' \
     --exclude='./.vercel' \
     --exclude='./tsconfig.tsbuildinfo' \
-    --exclude='./public/opencascade_full.wasm' \
+    --exclude='./public/opencascade_single.wasm' \
     -C "$source" -cf - . | tar -C "$destination" -xf -
 }
 

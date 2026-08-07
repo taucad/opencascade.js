@@ -26,7 +26,7 @@ import type {
   TopoDS_Shape,
   XCAFDoc_ClippingPlaneTool,
   XCAFDoc_ColorTool,
-} from '../dist/opencascade_full';
+} from '../dist/opencascade_single';
 
 describe('Shape S0 — direct value_object return (BRepGraph_ParentExplorer.GetConfig)', () => {
   it('returns the OCCT struct directly with named fields', () => {

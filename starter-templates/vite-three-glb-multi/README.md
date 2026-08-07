@@ -35,6 +35,6 @@ pnpm preview     # http://localhost:4173
 
 1. `pnpm install --frozen-lockfile` → ok
 2. `pnpm typecheck` → ok
-3. `pnpm build` → ok; `dist/` bundles `opencascade_full_multi.wasm`
+3. `pnpm build` → ok; `dist/` bundles `opencascade_multi.wasm`
 4. `pnpm preview &` then `pnpm smoke` → exits 0 (canvas paints geometry)
 5. Visual sanity: status line reports thread count > 1; box-with-hole rotates via OrbitControls
