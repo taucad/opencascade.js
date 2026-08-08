@@ -16,7 +16,9 @@
  *     --canvas '#three-canvas' \
  *     [--screenshot out.png] \
  *     [--timeout-ms 30000] \
- *     [--sample-size 16]
+ *     [--sample-size 16] \
+ *     [--require-request substring] \
+ *     [--forbid-request substring]
  *
  * Exit codes:
  *   0  ok
@@ -24,6 +26,7 @@
  *   2  canvas never mounted within timeout
  *   3  all sampled pixels share a colour (no geometry painted)
  *   4  OCCT/OpenCascade/emscripten console.error observed
+ *   5  required/forbidden network-request assertion failed
  */
 import { chromium } from 'playwright';
 import { PNG } from 'pngjs';
@@ -37,12 +40,16 @@ if (!args.url || !args.canvas) {
 const TIMEOUT_MS = Number(args['timeout-ms'] ?? 30000);
 const SAMPLE_SIZE = Number(args['sample-size'] ?? 16);
 const SCREENSHOT_PATH = args.screenshot ?? null;
+const REQUIRED_REQUEST = args['require-request'] ?? null;
+const FORBIDDEN_REQUEST = args['forbid-request'] ?? null;
 
 const browser = await chromium.launch();
 const context = await browser.newContext();
 const page = await context.newPage();
 
 const libcascadeErrors = [];
+const requests = [];
+page.on('request', (request) => requests.push(request.url()));
 page.on('console', (msg) => {
   if (msg.type() !== 'error') return;
   const text = msg.text();
@@ -97,6 +104,16 @@ if (unique.size <= 1) {
   process.exit(3);
 }
 
+if (REQUIRED_REQUEST && !requests.some((url) => url.includes(REQUIRED_REQUEST))) {
+  console.error(`smoke-render: no request contained '${REQUIRED_REQUEST}'`);
+  process.exit(5);
+}
+
+if (FORBIDDEN_REQUEST && requests.some((url) => url.includes(FORBIDDEN_REQUEST))) {
+  console.error(`smoke-render: a request unexpectedly contained '${FORBIDDEN_REQUEST}'`);
+  process.exit(5);
+}
+
 console.log(`smoke-render: ok (${unique.size} distinct colours in a ${SAMPLE_SIZE}x${SAMPLE_SIZE} grid)`);
 process.exit(0);
 
@@ -122,12 +139,12 @@ function parseArgs(argv) {
     if (!a.startsWith('--')) continue;
     const key = a.slice(2);
     const next = argv[i + 1];
-    if (next === undefined || next.startsWith('--')) {
-      out[key] = true;
-    } else {
-      out[key] = next;
-      i++;
+    if (!next || next.startsWith('--')) {
+      console.error(`smoke-render: --${key} requires a non-empty value`);
+      process.exit(1);
     }
+    out[key] = next;
+    i++;
   }
   return out;
 }

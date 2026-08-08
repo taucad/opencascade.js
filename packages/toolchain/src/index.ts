@@ -11,7 +11,6 @@ export {
   variantCapabilities,
   variantOutputName,
   variantRequiresThreads,
-  type AssembleOptions,
   type BuildConfig,
   type BuildVariant,
   type CompilerFlags,

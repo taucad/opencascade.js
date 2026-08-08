@@ -330,7 +330,7 @@ export const main = async (argv: readonly string[]): Promise<void> => {
         (result.exclusiveSymbols.size > 0
           ? `, ${result.exclusiveSymbols.size} variant-exclusive (typed optional)`
           : '') +
-        `; exports mode "${config.assemble?.exports ?? 'factory'}"\n`,
+        '; eager root + lazy init subpaths\n',
     );
     if (values['write-exports'] === true) {
       process.stdout.write(`${writePackageExports(configDirectory, result.exports, result.files)}\n`);

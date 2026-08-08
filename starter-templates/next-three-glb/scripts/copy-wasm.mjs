@@ -19,7 +19,7 @@ const PROJECT_ROOT = path.resolve(__dirname, '..');
 const PUBLIC_DIR = path.join(PROJECT_ROOT, 'public');
 const DEST = path.join(PUBLIC_DIR, 'opencascade_single.wasm');
 
-const SRC_URL = import.meta.resolve('libcascade/wasm');
+const SRC_URL = import.meta.resolve('libcascade/single/wasm');
 const SRC = fileURLToPath(SRC_URL);
 
 await fs.mkdir(PUBLIC_DIR, { recursive: true });

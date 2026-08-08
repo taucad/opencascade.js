@@ -1,6 +1,6 @@
 'use client';
 
-import { createInstance, type OpenCascadeInstance } from 'libcascade/init';
+import { createInstance, type OpenCascadeInstance } from 'libcascade/single/init';
 
 let cached: Promise<OpenCascadeInstance> | null = null;
 
@@ -14,7 +14,6 @@ let cached: Promise<OpenCascadeInstance> | null = null;
 export function getLibcascade(): Promise<OpenCascadeInstance> {
   if (cached === null) {
     const instance = createInstance({
-      variant: 'single',
       locateFile: () => '/opencascade_single.wasm',
     });
     cached = instance;

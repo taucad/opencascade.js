@@ -52,7 +52,10 @@ const oc = await initOpenCascade({ mainJS: opencascade });
 import oc from 'libcascade';
 ```
 
-**Action**: drop any `mainJS` wiring. Use the eager package root, or call `createInstance` from `libcascade/init` when you need options or an explicit variant.
+**Action**: drop any `mainJS` wiring. Use the eager package root, use
+`libcascade/init` for lazy host selection, or import the fixed
+`libcascade/single/init` / `libcascade/multi/init` entry for an explicit
+variant.
 
 ### A2 — ESM-only with zero-configuration initialization
 
@@ -61,9 +64,14 @@ root and `createInstance` resolve the selected variant's adjacent WASM
 automatically. Provide `locateFile` only when a bundler or deployment relocates
 that asset.
 
-The wasm binaries are exposed via subpath exports — `libcascade/wasm` for the single-threaded binary and `libcascade/multi/wasm` for the pthread-enabled binary — which are the only supported ways to reach them from consumer code. The same identifiers work under Vite's `?url` suffix, Node's `import.meta.resolve`, Bun, and Deno.
+The wasm binaries are exposed via matching subpath exports —
+`libcascade/single/wasm` for the single-threaded binary and
+`libcascade/multi/wasm` for the pthread-enabled binary — which are the only
+supported ways to reach them from consumer code. `libcascade/wasm` remains a
+single-threaded alias. The same identifiers work under Vite's `?url` suffix,
+Node's `import.meta.resolve`, Bun, and Deno.
 
-For the multi-threaded variant, call `createInstance({ variant: 'multi' })`. Browser deployments require cross-origin isolation headers; see the [multi-threaded build guide](https://opencascade-js.vercel.app/docs/package/guides/multi-threading).
+For the multi-threaded variant, import `createInstance` from `libcascade/multi/init`. Browser deployments require cross-origin isolation headers; see the [multi-threaded build guide](https://opencascade-js.vercel.app/docs/package/guides/multi-threading).
 
 For Node ESM consumers:
 
@@ -76,19 +84,19 @@ using box = new oc.BRepPrimAPI_MakeBox(10, 10, 10);
 For a Vite / browser app, resolve the WASM URL through your bundler:
 
 ```ts
-import { createInstance } from 'libcascade/init';
-import wasmUrl from 'libcascade/wasm?url';
+import { createInstance } from 'libcascade/single/init';
+import wasmUrl from 'libcascade/single/wasm?url';
 
-const oc = await createInstance({ variant: 'single', locateFile: () => wasmUrl });
+const oc = await createInstance({ locateFile: () => wasmUrl });
 ```
 
 For the multi-threaded build (COOP/COEP-isolated deployments only):
 
 ```ts
-import { createInstance } from 'libcascade/init';
+import { createInstance } from 'libcascade/multi/init';
 import wasmUrl from 'libcascade/multi/wasm?url';
 
-const oc = await createInstance({ variant: 'multi', locateFile: () => wasmUrl });
+const oc = await createInstance({ locateFile: () => wasmUrl });
 ```
 
 **Action**: remove CommonJS `require()`. Import the eager root for zero-config
@@ -112,11 +120,13 @@ single-threaded build is `opencascade_single` and the multi-threaded build is
 | `dist/opencascade_full.provenance.json` | `dist/opencascade_single.provenance.json` |
 | `dist/opencascade_full_multi.*` | `dist/opencascade_multi.*` |
 
-**This does not move the supported interface.** `libcascade`, `libcascade/init`,
+**The supported subpath names remain stable, but initialization is now
+explicit.** `libcascade` eagerly initializes the default variant;
+`libcascade/init` preserves lazy, consumer-controlled initialization. The fixed
+`libcascade/single/init` and `libcascade/multi/init` initializers and the
 `libcascade/wasm`, `libcascade/single`, `libcascade/single/wasm`,
-`libcascade/multi` and `libcascade/multi/wasm` all resolve exactly as before —
-the subpath exports are the stable contract, and they are the only supported way
-to reach a binary. If you import through them, nothing changes.
+`libcascade/multi`, and `libcascade/multi/wasm` binary subpaths keep their
+supported roles. These exports are the only supported way to reach a binary.
 
 You are affected only if you bypassed them:
 
@@ -131,16 +141,16 @@ const oc = await init({ locateFile: () => '/opencascade_full.wasm' });
 **After**
 
 ```ts
-import { createInstance } from 'libcascade/init';
-import wasmUrl from 'libcascade/wasm?url';
+import { createInstance } from 'libcascade/single/init';
+import wasmUrl from 'libcascade/single/wasm?url';
 
-const oc = await createInstance({ variant: 'single', locateFile: () => wasmUrl });
+const oc = await createInstance({ locateFile: () => wasmUrl });
 ```
 
 **Action**: if you copy the binary into a static directory yourself (a Next.js
 `public/` copy step, a CDN upload, a `locateFile` returning a hard-coded path),
 rename the copied file and the string that points at it. Resolve the source
-through `libcascade/wasm` or `libcascade/multi/wasm` rather than a `dist/`
+through `libcascade/single/wasm` or `libcascade/multi/wasm` rather than a `dist/`
 path, and the filename stops being your problem.
 
 ---

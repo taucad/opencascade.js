@@ -1,5 +1,5 @@
 import * as path from 'node:path';
-import { createInstance, type OpenCascadeInstance } from 'libcascade/init';
+import { createInstance, type OpenCascadeInstance } from 'libcascade/single/init';
 
 let cached: Promise<OpenCascadeInstance> | null = null;
 
@@ -12,10 +12,9 @@ let cached: Promise<OpenCascadeInstance> | null = null;
  */
 export function getLibcascade(): Promise<OpenCascadeInstance> {
   if (cached === null) {
-    const wasmUrl = new URL(import.meta.resolve('libcascade/wasm'));
+    const wasmUrl = new URL(import.meta.resolve('libcascade/single/wasm'));
     const buildDir = path.dirname(wasmUrl.pathname);
     const instance = createInstance({
-      variant: 'single',
       locateFile: (filename: string) => path.join(buildDir, filename),
     });
     cached = instance;

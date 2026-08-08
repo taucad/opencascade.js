@@ -6,19 +6,18 @@ Vite 6 + TS + three.js 0.180+ + `libcascade`. Builds a box-with-hole compound sh
 
 - Vite 6 (`pnpm dev` → http://localhost:5173)
 - three.js 0.180+ (GLTFLoader + OrbitControls from `three/examples/jsm`)
-- `libcascade` loaded once via a memoized `Promise` in `src/libcascade-init.ts`
+- The ready `libcascade` root, with automatic variant and hashed-WASM selection
 
 ## Files
 
 | File                   | Role                                                                  |
 | ---------------------- | --------------------------------------------------------------------- |
 | `src/main.ts`          | Boots the viewer, runs the pipeline, surfaces decoded errors          |
-| `src/libcascade-init.ts`     | Memoized initializer with Vite's content-hashed WASM URL              |
 | `src/build-shape.ts`   | Constructs the demo compound (`BRepPrimAPI_MakeBox` + `MakeCylinder` + `BRepAlgoAPI_Cut`) |
 | `src/shape-to-glb.ts`  | Meshes (`BRepMesh_IncrementalMesh`) and writes GLB (`RWGltf_CafWriter`) |
 | `src/three-viewer.ts`  | three.js scene + camera + lights + `OrbitControls`; exposes `.load(glb)` |
 | `index.html`           | Single-canvas shell                                                   |
-| `vite.config.ts`       | Sets `optimizeDeps.exclude` for the libcascade package and COOP/COEP headers |
+| `vite.config.ts`       | Keeps libcascade out of dependency pre-bundling                         |
 
 ## Run
 
@@ -34,10 +33,11 @@ pnpm preview     # http://localhost:4173
 
 1. `pnpm install --frozen-lockfile` → ok
 2. `pnpm typecheck` → ok (strict `tsconfig.json` with `noUncheckedIndexedAccess`)
-3. `pnpm build` → ok; `dist/` contains the bundled `index.html`, a JS chunk that imports `opencascade_single.wasm` as a URL asset, and the unmodified `opencascade_single.wasm`
+3. `pnpm build` → ok; `dist/` contains hashed single- and multi-variant assets named by the convenience root
 4. `pnpm preview &` then `pnpm smoke` → exits 0:
    - canvas `#libcascade-canvas` mounts within 30s
    - the 16×16 centre sample contains more than one distinct colour (geometry painted)
+   - Chromium requests the selected single-threaded WASM and never requests the multi-threaded WASM
    - no `console.error` matching `/OCCT|OpenCascade|emscripten/` observed
 5. Visual sanity: a box with a circular hole rotates with the mouse via `OrbitControls`
 

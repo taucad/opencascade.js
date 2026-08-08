@@ -1,4 +1,4 @@
-import { getLibcascade } from './libcascade-init';
+import oc from 'libcascade';
 import { buildShape } from './build-shape';
 import { shapeToGlb } from './shape-to-glb';
 import { createViewer } from './three-viewer';
@@ -11,8 +11,6 @@ const viewer = createViewer(canvas);
 
 try {
   status.textContent = 'loading OCCT WASM…';
-  const oc = await getLibcascade();
-
   status.textContent = 'building shape…';
   using shape = buildShape(oc);
 
@@ -35,7 +33,6 @@ try {
  */
 async function decodeOcctError(err: unknown): Promise<string> {
   if (typeof WebAssembly !== 'undefined' && err instanceof WebAssembly.Exception) {
-    const oc = await getLibcascade();
     const [, message] = oc.getExceptionMessage(err);
     return message;
   }

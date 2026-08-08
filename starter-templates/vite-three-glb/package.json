@@ -9,7 +9,7 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --port 4173 --host 127.0.0.1",
     "typecheck": "tsc --noEmit",
-    "smoke": "node ../_shared/smoke-render.mjs --url http://localhost:4173 --canvas '#libcascade-canvas' --screenshot smoke.png"
+    "smoke": "node ../_shared/smoke-render.mjs --url http://localhost:4173 --canvas '#libcascade-canvas' --screenshot smoke.png --require-request opencascade_single --forbid-request opencascade_multi"
   },
   "dependencies": {
     "libcascade": "file:../..",

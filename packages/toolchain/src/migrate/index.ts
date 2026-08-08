@@ -14,9 +14,8 @@
  *    flag produces a build that differs from the original in a way nobody
  *    notices until runtime.
  * 2. **What is derived says so.** The yml declares wrapper file *paths* but not
- *    which symbols each provides, and has no equivalent of `assemble.exports`.
- *    Those are read out of the `.cpp` / defaulted, and the emitted header names
- *    them as the human's review list.
+ *    which symbols each provides. Those are read out of the `.cpp`, and the
+ *    emitted header names them as the human's review list.
  * 3. **N ymls in, one config out.** The v2 shape for variants was N sibling
  *    ymls differing in a few flags; that is one config with N variants, so the
  *    migrator derives the base as the common subset and each variant as its
@@ -710,19 +709,16 @@ export const migrate = ({ sources, outputDirectory, date }: MigrateOptions): Mig
     ` * 1. \`customBindings[].symbols\` — read out of each .cpp (top-level class/struct`,
     ' *    definitions and Embind `class_<T>("Name")` registrations). The yml recorded',
     ' *    only the file paths.',
-    ` * 2. \`assemble.exports: 'factory'\` — the yml has no equivalent concept. 'factory'`,
-    " *    exposes only the variant-selecting `createInstance`; switch to 'eager' if",
-    ' *    consumers import OCCT names off the package root.',
-    ` * 3. Variant names — split from the artifact names (${builds.map((build) => build.base).join(', ')}).`,
+    ` * 2. Variant names — split from the artifact names (${builds.map((build) => build.base).join(', ')}).`,
     ...(modernizations.length > 0
-      ? [' * 4. Modernizations applied, each commented at its site:', ...modernizations.map((note) => ` *    - ${note.replace('Modernization: ', '')}`)]
-      : [' * 4. No modernization was needed.']),
+      ? [' * 3. Modernizations applied, each commented at its site:', ...modernizations.map((note) => ` *    - ${note.replace('Modernization: ', '')}`)]
+      : [' * 3. No modernization was needed.']),
     ...(rawFlagsUsed.length > 0
       ? [
-          ' * 5. `rawFlags` — passed to emcc verbatim because no typed member models them:',
+          ' * 4. `rawFlags` — passed to emcc verbatim because no typed member models them:',
           ...rawFlagsUsed.map((flag) => ` *    - ${flag}`),
         ]
-      : [' * 5. No flag needed `rawFlags`.']),
+      : [' * 4. No flag needed `rawFlags`.']),
     ...(unclaimed.length > 0
       ? [
           ' *',
@@ -782,7 +778,6 @@ export const migrate = ({ sources, outputDirectory, date }: MigrateOptions): Mig
     }),
     '  ],',
     ...(reference.generateTypescriptDefinitions ? [] : ['  generateTypescriptDefinitions: false,']),
-    "  assemble: { exports: 'factory' },",
     '});',
     '',
   ].join('\n');

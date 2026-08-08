@@ -1,16 +1,17 @@
 ---
 title: Entry points
-description: The eager root export, the ./init factory, createInstance options, and the raw per-variant subpaths.
+description: The eager root, shared and fixed-variant initializers, createInstance options, and raw glue subpaths.
 ---
 
-`libcascade` exposes three entry points. Which one you want depends on whether
-you need to control *when* the WASM module is instantiated.
+`libcascade` exposes four entry shapes. Choose by lifecycle first, then by
+whether the host or the import path selects the variant.
 
 | Entry | Import | Gives you |
 | --- | --- | --- |
 | Root | `libcascade` | An already-initialised instance, plus every bound symbol as a named value export. |
-| Factory | `libcascade/init` | `createInstance(options)` — nothing is instantiated until you call it. |
-| Variant | `libcascade/single`, `libcascade/multi` | The raw Emscripten glue for one binary. Advanced. |
+| Shared initializer | `libcascade/init` | Lazy `createInstance(options)` with runtime variant selection. |
+| Fixed initializer | `libcascade/single/init`, `libcascade/multi/init` | Lazy `createInstance(options)` for exactly the imported variant. |
+| Raw glue | `libcascade/single`, `libcascade/multi` | The Emscripten module factory for one binary. Advanced. |
 
 ## Root — the initialised instance
 
@@ -42,7 +43,7 @@ import oc, { type OpenCascadeInstance, type TopoDS_Shape } from 'libcascade';
 Because the module instantiates at import time, there is nothing to memoise —
 ES module evaluation happens once per realm.
 
-## `libcascade/init` — the factory
+## `libcascade/init` — shared lazy selection
 
 Use this entry when you need options, a specific variant, or control over when
 the WASM comes up. Importing it never evaluates the eager root.
@@ -87,6 +88,23 @@ qualifies). To force a choice before anything is imported:
 globalThis[Symbol.for('libcascade.select')] = 'single';
 ```
 
+## Fixed-variant initializers
+
+When the variant is already a product decision, put it in the import path:
+
+```typescript
+import { createInstance as createSingle } from 'libcascade/single/init';
+import { createInstance as createMulti } from 'libcascade/multi/init';
+
+const single = await createSingle();
+const multi = await createMulti({ threadCount: 4 });
+```
+
+These modules export no selector and ignore the shared override symbol. Their
+types reject `variant`; the single-threaded entry also rejects `threadCount`.
+Passing `variant` from untyped JavaScript fails before any glue is loaded. Each
+entry names one glue asset, so bundlers can exclude the other variant.
+
 ## Return type
 
 The resolved object exposes every bound class and namespace as instance
@@ -110,7 +128,7 @@ const oc = await init();
 
 This bypasses `createInstance`, so **you** own the pthread plumbing —
 including the `mainScriptUrlOrBlob` self-reference workers need. Prefer
-`createInstance({ variant: 'multi' })` unless you have a reason not to. The
+`createInstance()` from `libcascade/multi/init` unless you have a reason not to. The
 matching binaries are exported as `libcascade/single/wasm` and
 `libcascade/multi/wasm`.
 

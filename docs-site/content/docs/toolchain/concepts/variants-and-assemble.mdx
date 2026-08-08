@@ -1,6 +1,6 @@
 ---
 title: Variants and assemble
-description: One bindings list, N binaries, one types.d.ts — the shared surface, createInstance, eager vs factory roots, and the exports fragment.
+description: One bindings list, N binaries, one types.d.ts — the eager root, shared selector, fixed-variant initializers, and exports fragment.
 ---
 
 A custom build usually ships more than one binary from the same symbol set: a
@@ -70,8 +70,8 @@ npx libcascade assemble
 | --- | --- |
 | `types.d.ts` | One d.ts unioning every variant's surface. Symbols only some variants bind are typed optional. |
 | `init.js` / `init.d.ts` | The `./init` subpath — `createInstance`, the selector, and the override symbol. |
-| `init.<variant>.js` | The `./<variant>/init` subpath — the same entry pinned to one variant. Multi-variant packages only. |
-| `index.js` / `index.d.ts` | The root entry, in `eager` or `factory` mode. |
+| `init.<variant>.js` / `init.<variant>.d.ts` | The `./<variant>/init` subpath — a fixed-variant runtime and type contract. Multi-variant packages only. |
+| `index.js` / `index.d.ts` | The eager root — one selected, initialized instance with self-located WASM and named OCCT values. |
 | `variant.d.ts` | Types for the raw per-variant glue subpaths (`./single`, `./multi`, …). |
 | `exports.json` | The `exports` fragment to merge into `package.json`. |
 
@@ -123,8 +123,12 @@ import { createInstance } from 'my-occt-package/single/init';
 const oc = await createInstance(); // always the single variant
 ```
 
-It exports the same `createInstance` and owns the same plumbing. The one thing
-it does differently is name exactly one glue file.
+It exports `createInstance` and owns the same loading plumbing, but it has no
+selector surface: the import path fixes the variant. It rejects a `variant`
+option, ignores the shared override symbol, and names exactly one glue file.
+Its declarations follow the same contract: the single-threaded entry omits
+both `variant` and `threadCount`; the threaded entry accepts `threadCount` but
+still omits `variant`.
 
 That matters because of how bundlers treat asset URLs. The shared `./init` must
 be able to *reach* every variant — the choice is made at runtime — so it
@@ -145,7 +149,8 @@ both entries and is pinned by a Vite host-app test in the toolchain suite.
 | Variant | selected at load time | fixed at import time |
 | Glue assets in the bundle | one per declared variant | one |
 | Capability probe + actionable error | yes | yes |
-| `Symbol.for('<pkg>.select')` override | picks the variant | must name this entry's variant, or the call throws |
+| `variant` option | accepted | rejected |
+| `Symbol.for('<pkg>.select')` override | picks the variant | ignored |
 
 Pick `./init` when the app should adapt to the host (a library, or a page that
 may or may not be cross-origin isolated). Pick `./<variant>/init` when the
@@ -155,36 +160,15 @@ deliberately serves the single-threaded build — and the bytes matter.
 Single-variant packages get no pinned entry: their `./init` already resolves
 exactly one glue.
 
-A pinned entry knows about one variant and nothing else, so both
-`createInstance({ variant: 'other' })` and a `Symbol.for('<pkg>.select')`
-override naming another variant fail with
-`Unknown variant "other". Declared: single.` — loudly, rather than by quietly
-handing back a variant you did not ask for.
+A pinned entry knows about one variant and nothing else. Passing any `variant`
+option is a type error and a runtime error. The shared override symbol has no
+effect because the module contains no selector.
 
-## Root modes
+## The root is always eager
 
-### `factory`
-
-```typescript notypecheck
-assemble: { exports: 'factory' }
-```
-
-The root re-exports `createInstance`. Nothing is instantiated until you ask.
-The factory entries re-export the shared surface with `export type *`, so
-`import type { TopoDS_Shape } from 'my-occt-package'` keeps working in type
-position without promising a runtime value the root does not export.
-
-Pick this when your package is a library whose consumers decide when — and
-whether — the WASM module comes up.
-
-### `eager`
-
-```typescript notypecheck
-assemble: { exports: 'eager' }
-```
-
-The root probes capabilities, selects a variant, initialises it with a
-top-level `await`, and re-exports every bound symbol as a named value:
+The root selects one capability-compatible variant, self-locates that
+variant's WASM asset, initialises it with top-level `await`, and re-exports
+every bound symbol as a named value:
 
 ```typescript notypecheck
 import oc, { BRepPrimAPI_MakeBox } from 'libcascade';
@@ -193,12 +177,11 @@ using box = new BRepPrimAPI_MakeBox(10, 10, 10);
 using also = new oc.BRepPrimAPI_MakeBox(10, 10, 10);
 ```
 
-That is the mode the `libcascade` package itself ships. Named value exports are
-what make `gp_Pnt` usable as a value in an external editor instead of failing
-with "cannot be used as a value".
+Named value exports are what make `gp_Pnt` usable as a value in an external
+editor instead of failing with "cannot be used as a value".
 
 Importing `./init` never evaluates the eager root, so a consumer who wants the
-factory never pays for an instantiation they did not ask for.
+lazy API never pays for an instantiation they did not ask for.
 
 ## Selection and the override symbol
 
@@ -225,21 +208,22 @@ npx libcascade assemble --write-exports
     ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" },
     "./init": { "types": "./dist/init.d.ts", "default": "./dist/init.js" },
     "./single": { "types": "./dist/variant.d.ts", "default": "./dist/myapp_single.js" },
-    "./single/init": { "types": "./dist/init.d.ts", "default": "./dist/init.single.js" },
+    "./single/init": { "types": "./dist/init.single.d.ts", "default": "./dist/init.single.js" },
     "./single/wasm": "./dist/myapp_single.wasm",
     "./multi": { "types": "./dist/variant.d.ts", "default": "./dist/myapp_multi.js" },
-    "./multi/init": { "types": "./dist/init.d.ts", "default": "./dist/init.multi.js" },
+    "./multi/init": { "types": "./dist/init.multi.d.ts", "default": "./dist/init.multi.js" },
     "./multi/wasm": "./dist/myapp_multi.wasm"
   }
 }
 ```
 
-The pinned entries reuse `init.d.ts` — they export the same surface, so there is
-no reason to generate N copies of the same declarations.
+Each pinned entry has a small declaration file that removes selectors and
+options the fixed variant cannot accept.
 
 The merge keeps every subpath you declared yourself — hand-written aliases such
-as `./wasm` or `./api-reference.json` keep resolving. It does not touch
-`files`; add the generated files to that list once.
+as `./wasm` or `./api-reference.json` keep resolving. It also replaces
+generated entries in `files` with the exact current surface while preserving
+hand-maintained files.
 
 ## What `dist/` holds, and what ships
 
@@ -248,7 +232,7 @@ in `package.json` is the authoritative statement of which ones ship**:
 
 | Class | Files | Ships |
 | --- | --- | --- |
-| Shipped surface | `types.d.ts`, `init.js` / `init.d.ts`, `init.<variant>.js`, `index.js` / `index.d.ts`, `variant.d.ts`, `<outputName>.js`, `<outputName>.wasm` | Yes — this is what `exports` points at |
+| Shipped surface | `types.d.ts`, `init.js` / `init.d.ts`, `init.<variant>.js` / `init.<variant>.d.ts`, `index.js` / `index.d.ts`, `variant.d.ts`, `<outputName>.js`, `<outputName>.wasm` | Yes — this is what `exports` points at |
 | Durable records | `<outputName>.build-manifest.json`, `<outputName>.provenance.json`, `<outputName>.js.symbols` | Your call — `libcascade` ships all three so consumers can audit the build |
 | In-repo build products | `<outputName>.d.ts` (one per variant), `exports.json` | No |
 
@@ -313,6 +297,6 @@ per-bundler recipes.
 
 ## Related
 
-- [Config reference](../reference/config) — the `variants` and `assemble` fields.
+- [Config reference](../reference/config) — variants and their build settings.
 - [CLI reference](../reference/cli) — `assemble` flags.
 - [Custom multi-threaded build](../guides/multi-threading) — the threads variant end to end.

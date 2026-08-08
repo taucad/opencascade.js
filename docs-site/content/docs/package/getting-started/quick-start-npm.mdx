@@ -103,7 +103,7 @@ renderer.setAnimationLoop(() => renderer.render(scene, camera));
 
 Visit `localhost:5173` and you'll see a filleted gray box you can orbit.
 
-> **Want threading?** For batch meshing and boolean workloads, ask for the pthread variant with `createInstance({ variant: 'multi' })` from `libcascade/init`. Browser deployments require COOP/COEP headers — see the [Multi-threaded build guide](../guides/multi-threading) and [Bundler & locateFile — Multi-threaded variant](../guides/bundler-locatefile#multi-threaded-variant).
+> **Want threading?** For batch meshing and boolean workloads, import `createInstance` from `libcascade/multi/init`. Browser deployments require COOP/COEP headers — see the [Multi-threaded build guide](../guides/multi-threading) and [Bundler & locateFile — Multi-threaded variant](../guides/bundler-locatefile#multi-threaded-variant).
 
 ## Next steps
 

@@ -164,7 +164,6 @@ export default defineBuild({
       },
     },
   ],
-  assemble: { exports: 'factory' },
 });
 ```
 
@@ -224,7 +223,6 @@ The header block `migrate` writes names everything else it decided for you:
 
 | Item | What to check |
 | --- | --- |
-| `assemble.exports: 'factory'` | The yml has no equivalent concept. `'factory'` exposes only the variant-selecting `createInstance`; switch to `'eager'` if consumers import OCCT names off the package root. |
 | Variant names | Split from the artifact names (`replicad_single` → `single`). A name that does not fit `<name>_<variant>` keeps its exact published filename through `variants[].outputName`. |
 | `rawFlags` | Every flag no typed member models, listed. Each is passed to emcc unchanged; the question is whether you still want it. |
 
@@ -268,21 +266,23 @@ function typed against the multi-threaded one. Downstream `as unknown as`
 erasure written to work around that incomparability can be deleted.
 
 `--write-exports` merges the generated subpaths (`.`, `./init`, `./single`,
-`./single/wasm`, `./multi`, `./multi/wasm`) into your `package.json` while
-preserving hand-written ones such as `./wasm`. Add the generated files to
-`files` once.
+`./single/init`, `./single/wasm`, `./multi`, `./multi/init`,
+`./multi/wasm`) into your `package.json` while preserving hand-written ones
+such as `./wasm`. It also replaces generated `files` entries with the exact
+current surface while preserving hand-maintained files.
 
 ## Step 5 — move consumers onto `createInstance`
 
 Whatever your package taught before — a hand-written `initOCSingle.js`, tests
 passing `mainScriptUrlOrBlob` themselves, per-variant loader modules in a
-downstream app — collapses into the generated `./init` entry:
+downstream app — collapses into the generated lazy entries:
 
 ```typescript notypecheck
-import { createInstance } from 'replicad-opencascadejs/init';
+import { createInstance as createBest } from 'replicad-opencascadejs/init';
+import { createInstance as createMulti } from 'replicad-opencascadejs/multi/init';
 
-const oc = await createInstance();                        // best available
-const mt = await createInstance({ variant: 'multi' });    // explicit
+const oc = await createBest();     // best available
+const mt = await createMulti();    // fixed by the import path
 ```
 
 See [Variants and assemble](../concepts/variants-and-assemble) for the selector,
