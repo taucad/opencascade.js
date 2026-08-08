@@ -47,6 +47,10 @@ Serialization rules for `settings`: `boolean` → `1`/`0`, numbers and strings v
 
 ## Build
 
+`libcascade build` requires Docker (or another supported container engine) to
+be installed and running. `--render-only`, `assemble`, `detect`, `check`, and
+using a package that has already been built do not need a container engine.
+
 ```bash
 npx libcascade build                     # every variant
 npx libcascade build --variant multi     # one variant
@@ -70,18 +74,20 @@ npx libcascade assemble --write-exports  # …and merge the exports map into pac
 | --- | --- |
 | `types.d.ts` | One d.ts unioning every variant's surface. Symbols only some variants bind are typed optional. Replaces the N near-identical per-variant d.ts files, so single and multi instances are structurally comparable. |
 | `init.js` / `init.d.ts` | The `./init` subpath: `createInstance({ variant, threadCount, wasmBinary, wasmMemory, locateFile })`. Owns variant selection, glue self-reference for pthread worker spawning, Node `file:` URL → path conversion, and OCCT thread-pool sizing. |
-| `init.<variant>.js` | The `./<variant>/init` subpath: the same entry, pinned to one variant and one glue asset. Emitted only for a multi-variant package. |
-| `index.js` / `index.d.ts` | The root entry, per `assemble.exports`. |
+| `init.<variant>.js` / `init.<variant>.d.ts` | The `./<variant>/init` subpath: a fixed-variant initializer that names one glue asset, accepts no selector, and exposes only that variant's valid options. Emitted only for a multi-variant package. |
+| `index.js` / `index.d.ts` | The eager root: it selects once, self-locates the matching WASM asset, initializes it, and exports the instance plus every bound value. |
 | `variant.d.ts` | Types for the raw per-variant glue subpaths (`./single`, `./multi`, …): the module factory plus the shared instance type. |
 | `exports.json` | The generated `exports` fragment, for review or manual merging. |
 
 The d.ts and the eager barrel are rendered from one symbol list, so they cannot drift apart.
 
-### Root modes
+### One root contract
 
-`assemble: { exports: 'factory' }` re-exports `createInstance` from the root — nothing is instantiated until the consumer asks. The factory entries re-export the shared surface with `export type *`, so `import { TopoDS_Shape } from '<pkg>'` keeps working in type position without promising a runtime value the factory root does not export.
-
-`assemble: { exports: 'eager' }` emits a capability-probed selector, a top-level-`await` init, and a named-export barrel (`export const gp_Pnt = oc.gp_Pnt;` …) plus a default export of the instance, so `import { gp_Pnt } from 'libcascade'` binds a real value. Importing `./init` never evaluates the eager root.
+The package root is always eager. It probes capabilities, selects one variant,
+self-locates that variant's WASM asset, initializes it with top-level `await`,
+and exports the instance plus a named-value barrel (`export const gp_Pnt =
+oc.gp_Pnt;` …). Import `./init` instead when initialization must remain under
+consumer control; importing that subpath never evaluates the root.
 
 Selection picks the most capable variant whose capabilities all probe true (configuration order breaks ties). A variant's capabilities are its declared `requires` **plus** whatever its build flags imply — `compilerFlags.threads`, a `-pthread` raw flag, or a truthy `USE_PTHREADS`/`SHARED_MEMORY` setting all infer `threads`, so it is normally not declared at all. `threads` probes `SharedArrayBuffer` present ∧ (`globalThis.crossOriginIsolated` ?? running under Node). Override before importing the root:
 
@@ -93,13 +99,20 @@ globalThis[Symbol.for('libcascade.select')] = 'single';
 
 | Subpath | Target | Reach for it when |
 | --- | --- | --- |
-| `.` | `index.js` | Default consumers — the root, per `assemble.exports`. |
+| `.` | `index.js` | Default consumers that want a ready instance and named OCCT values. |
 | `./init` | `init.js` | You want the most capable variant this host supports, picked at load time. |
-| `./<variant>/init` | `init.<variant>.js` | You already know which variant you want, and bundle size matters more than automatic selection. |
+| `./<variant>/init` | `init.<variant>.js` | You already know which variant you want; the import path fixes it and excludes every other glue asset. |
 | `./<variant>` | `<outputName>.js` | Escape hatch: the raw Emscripten module factory, no plumbing. |
 | `./<variant>/wasm` | `<outputName>.wasm` | A `locateFile` target. |
 
-`./init` and `./<variant>/init` export the same `createInstance`; they differ only in how many glue files they name. The shared `./init` has to be able to *reach* every variant, so it contains one `new URL('./<glue>.js', import.meta.url)` per variant — and Vite's `vite:asset-import-meta-url` transform emits an asset for each of them at transform time, **before** tree-shaking (the variant is a runtime argument, so no branch is ever statically dead). A single-variant app importing `./init` therefore ships the other variant's glue JS — 60–80 KB it will never fetch. `./<variant>/init` contains exactly one such URL, so nothing else is emitted.
+`./init` is the shared selector. `./<variant>/init` is a distinct, genuinely
+pinned API: it exports no selector, rejects a `variant` option, ignores the
+shared override symbol, and names exactly one glue file. The shared entry has
+to be able to *reach* every variant, so it contains one `new
+URL('./<glue>.js', import.meta.url)` per variant — and Vite's
+`vite:asset-import-meta-url` transform emits an asset for each at transform
+time, **before** tree-shaking. A fixed-variant consumer should therefore import
+the pinned subpath.
 
 The multi-megabyte `.wasm` is unaffected either way: the glue import is deliberately opaque to bundlers, so only a `.wasm` the consumer references itself — through `./<variant>/wasm` or `locateFile` — enters a build.
 
@@ -109,11 +122,18 @@ import { createInstance } from 'my-occt-package/multi/init'; // one glue, no sel
 
 A single-variant package gets no `./<variant>/init`: its `./init` already resolves exactly one glue, so the pinned entry would be a duplicate.
 
-A pinned entry knows about one variant and nothing else, so both `createInstance({ variant: 'other' })` and a `Symbol.for('<pkg>.select')` override naming another variant fail with `Unknown variant "other". Declared: single.` rather than quietly handing back something you did not ask for.
+A pinned entry knows about one variant and nothing else. Passing any `variant`
+option is a type error and a runtime error; a `Symbol.for('<pkg>.select')`
+override has no effect on it. A single-threaded pinned entry also omits
+`threadCount`, while a threaded pinned entry accepts it.
 
 ### Exports merge
 
-`--write-exports` merges the generated fragment into the package's own `package.json`: generated subpaths (`.`, `./init`, `./<variant>`, `./<variant>/init`, `./<variant>/wasm`) win, and every other subpath already declared is preserved in place — that is what keeps hand-written aliases such as `./wasm` and `./api-reference.json` resolving. The package's `files` list is not touched; add the generated files to it once.
+`--write-exports` merges the generated fragment into the package's own
+`package.json`: generated subpaths (`.`, `./init`, `./<variant>`,
+`./<variant>/init`, `./<variant>/wasm`) win, and every other subpath already
+declared is preserved in place. It also replaces generated entries in `files`
+with the exact current surface while preserving hand-maintained files.
 
 ### What `dist/` holds, and what ships
 
@@ -121,7 +141,7 @@ A pinned entry knows about one variant and nothing else, so both `createInstance
 
 | Class | Files | Ships? |
 | --- | --- | --- |
-| Shipped surface | `types.d.ts`, `init.js` / `init.d.ts`, `init.<variant>.js`, `index.js` / `index.d.ts`, `variant.d.ts`, `<outputName>.js`, `<outputName>.wasm` | Yes — this is what `exports` points at. |
+| Shipped surface | `types.d.ts`, `init.js` / `init.d.ts`, `init.<variant>.js` / `init.<variant>.d.ts`, `index.js` / `index.d.ts`, `variant.d.ts`, `<outputName>.js`, `<outputName>.wasm` | Yes — this is what `exports` points at. |
 | Durable records | `<outputName>.build-manifest.json`, `<outputName>.provenance.json`, `<outputName>.js.symbols` | Your call. They are build *records*, worth committing (build-parity gates diff them) and worth publishing if you want consumers to audit what went into the binary. `libcascade` itself ships all three. |
 | In-repo build products | `<outputName>.d.ts`, one per variant, plus `exports.json` | No. |
 

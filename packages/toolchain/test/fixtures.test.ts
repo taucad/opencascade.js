@@ -73,6 +73,7 @@ describe('compile-failure fixtures', () => {
 
   it('covers every documented wrong-config case', () => {
     expect(negatives).toStrictEqual([
+      'assemble-exports.ts',
       'bad-memory-grammar.ts',
       'string-for-array.ts',
       'typo-symbol-with-custom-bindings.ts',
@@ -105,6 +106,14 @@ describe('compile-failure fixtures', () => {
         (diagnostic) => diagnostic.code,
       ),
     ).toContain('TS2561');
+  });
+
+  it('reports the removed assemble mode as an unknown property', () => {
+    expect(
+      errorsIn(path.join(FIXTURES_DIRECTORY, 'negative/assemble-exports.ts')).map(
+        (diagnostic) => diagnostic.code,
+      ),
+    ).toContain('TS2353');
   });
 
   it('compiles the correct config with no diagnostics at all', () => {

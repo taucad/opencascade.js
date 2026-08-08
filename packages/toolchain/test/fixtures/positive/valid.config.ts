@@ -35,5 +35,4 @@ export default defineBuild({
       rawFlags: ['-pthread'],
     },
   ],
-  assemble: { exports: 'factory' },
 });

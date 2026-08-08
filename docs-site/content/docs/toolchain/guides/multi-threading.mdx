@@ -79,16 +79,17 @@ npx libcascade assemble
 ## Load it
 
 ```typescript notypecheck
-import { createInstance } from 'my-occt-package/init';
+import { createInstance as createBest } from 'my-occt-package/init';
+import { createInstance as createMulti } from 'my-occt-package/multi/init';
 
-const oc = await createInstance();                       // best variant this host supports
-const mt = await createInstance({ variant: 'multi' });    // explicit
-const capped = await createInstance({ variant: 'multi', threadCount: 4 });
+const oc = await createBest();                 // best variant this host supports
+const mt = await createMulti();                // fixed by the import path
+const capped = await createMulti({ threadCount: 4 });
 ```
 
 There is no `mainScriptUrlOrBlob` to pass, no `file:` URL to convert for Node
 workers, and no thread-pool call to remember: `createInstance` does all three.
-Asking for `'multi'` on a host without cross-origin isolation throws with the
+Importing `multi/init` on a host without cross-origin isolation throws with the
 remediation in the message rather than failing deep inside module
 instantiation.
 
@@ -117,7 +118,7 @@ reserves ~96 MB of stack on top of `INITIAL_MEMORY`. To cap it, either wrap the
 expression in the setting or pass `threadCount` at load:
 
 ```typescript notypecheck
-const oc = await createInstance({ variant: 'multi', threadCount: 8 });
+const oc = await createMulti({ threadCount: 8 });
 ```
 
 `threadCount` sizes OCCT's default pool and raises its launch cap to match. It

@@ -4554,5 +4554,4 @@ export default defineBuild({
       },
     },
   ],
-  assemble: { exports: 'eager' },
 });

@@ -64,10 +64,8 @@ describe(`starter-templates/${TEMPLATE_NAME} shape`, () => {
 
     it('imports createInstance and the multi wasm asset', () => {
       const src = readInit();
-      // The multi glue is selected by `createInstance({ variant: 'multi' })`;
-      // only the wasm asset needs an explicit bundler import.
-      expect(src).toContain("libcascade/init'");
-      expect(src).toContain("variant: 'multi'");
+      expect(src).toContain("libcascade/multi/init'");
+      expect(src).not.toContain("variant: 'multi'");
       expect(src).toContain('libcascade/multi/wasm?url');
     });
 

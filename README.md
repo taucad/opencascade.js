@@ -44,11 +44,11 @@ pnpm add libcascade
 ```
 
 The package is ESM-only. The root export is an initialised instance (every
-bound symbol is also a named value export); `libcascade/init` exposes
-`createInstance` for consumers who need options or a named variant. The WASM
-resolves automatically — use `locateFile` only when a bundler or deployment
-relocates the binary, through the supported `libcascade/wasm` subpath and no
-`dist/...` deep imports.
+bound symbol is also a named value export); `libcascade/init` exposes the
+shared selector, while `libcascade/single/init` and `libcascade/multi/init`
+expose fixed-variant initializers. The WASM resolves automatically — use
+`locateFile` only when a bundler or deployment relocates the binary, through
+the matching `libcascade/<variant>/wasm` subpath and no `dist/...` deep imports.
 
 Build-time tools can consume the deterministic API-reference feed through
 `libcascade/api-reference.json`. It includes the parsed class/member hierarchy, the
@@ -63,26 +63,26 @@ const shape = box.Shape();
 ```
 
 The root entry selects the variant this host supports and initialises it at
-import time. Use `libcascade/init` when you need options or a specific variant:
+import time. Use a fixed initializer when you need options for a known variant:
 
 ```ts
 // Vite / browser, with a relocated wasm asset
-import { createInstance } from 'libcascade/init';
-import wasmUrl from 'libcascade/wasm?url';
+import { createInstance } from 'libcascade/single/init';
+import wasmUrl from 'libcascade/single/wasm?url';
 
 const oc = await createInstance({ locateFile: () => wasmUrl });
 ```
 
-The published tarball ships `dist/opencascade_single.{wasm,js}` and `dist/opencascade_multi.{wasm,js}`, each with a `provenance.json` sidecar describing the exact toolchain and source commits used. Both variants share the assembled `types.d.ts`/`variant.d.ts` surface; their intermediate per-variant declarations are not published. The eager root selects the most capable variant the host supports; use `createInstance({ variant: 'single' | 'multi' })` to choose explicitly. npm releases are produced by GitHub OIDC Trusted Publishing and include Sigstore provenance; see the [maintainer release flow](MAINTAINER.md#ci-and-release-ownership).
+The published tarball ships `dist/opencascade_single.{wasm,js}` and `dist/opencascade_multi.{wasm,js}`, each with a `provenance.json` sidecar describing the exact toolchain and source commits used. Both variants share the assembled `types.d.ts`/`variant.d.ts` surface; their raw per-variant glue declarations remain build inputs and are not published, while the exact `init.single.d.ts` and `init.multi.d.ts` contracts do ship. The eager root selects the most capable variant the host supports; import `libcascade/single/init` or `libcascade/multi/init` when the variant is fixed. npm releases are produced by GitHub OIDC Trusted Publishing and include Sigstore provenance; see the [maintainer release flow](MAINTAINER.md#ci-and-release-ownership).
 
 ### Multi-threaded build
 
 For batch meshing, boolean grids, and STEP→glTF pipelines that benefit from OCCT's internal thread pool, request the pthread-enabled variant explicitly:
 
 ```ts
-import { createInstance } from 'libcascade/init';
+import { createInstance } from 'libcascade/multi/init';
 
-const oc = await createInstance({ variant: 'multi' });
+const oc = await createInstance();
 
 // Run once after init — flip OCCT global parallel defaults.
 oc.BOPAlgo_Options.SetParallelMode(true); // booleans fan out by default
@@ -100,7 +100,8 @@ Browsers require `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Emb
 Need a trimmed binary, your own C++ wrappers, or different Emscripten settings?
 `@libcascade/toolchain` is the dev-time package for that. It drives the
 published Docker images for you — digest-pinned, with the platform edges
-handled — so there is no `docker run` string to maintain.
+handled — so there is no `docker run` string to maintain. Docker (or another
+supported container engine) must be installed and running before `build`.
 
 ```bash
 npm install --save-dev @libcascade/toolchain
@@ -157,7 +158,7 @@ Docker resolves the right architecture from every published manifest list automa
 - **OCCT 8.0.1** — 1,085+ commits of improvements; 22-31% faster boolean operations
 - **Emscripten 6.0.5** — LLVM 24, modern WASM features
 - **Native WASM Exceptions** — `-fwasm-exceptions` replaces JS invoke trampolines; decodable end-to-end via `oc.getExceptionMessage`
-- **ESM-only distribution** — `"type": "module"`; the eager root selects a supported variant, while `libcascade/init` selects explicitly; raw single- and multi-threaded glue remains available under `libcascade/single` and `libcascade/multi`
+- **ESM-only distribution** — `"type": "module"`; the eager root selects a supported variant, `libcascade/init` is the shared lazy selector, and fixed lazy entries live at `libcascade/single/init` and `libcascade/multi/init`; raw glue remains available under `libcascade/single` and `libcascade/multi`
 - **Full TypeScript bindings** — Doxygen-derived JSDoc rendered correctly in Monaco IntelliSense
 - **Suffix-free overloads** — single symbol per class with val-based dispatcher, no more `_2`/`_3` subclasses (measured at ~264 ns/call, <0.011% of wall time on typical CAD models — see [BENCHMARKS.md](BENCHMARKS.md))
 - **Reproducible builds** — `DEPS.json` pins every dependency to an exact commit; per-build `provenance.json` sidecar

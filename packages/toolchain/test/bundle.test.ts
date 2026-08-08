@@ -7,14 +7,16 @@
  * package — stub glue and stub wasm, a few KB each, never the 22 MB artifacts —
  * so the whole file costs a couple of seconds and needs no container.
  *
- * Two host apps are built, and the difference between them is the point:
+ * Four host apps are built, and the difference between them is the point:
  *
  * | Host imports | Carries |
  * | --- | --- |
  * | `demo-pkg/single/init` | the single glue only |
+ * | `demo-pkg/multi/init` | the multi glue only |
  * | `demo-pkg/init` | **both** glues — the shared selector must be able to reach every variant, and `vite:asset-import-meta-url` emits an asset for every `new URL(…, import.meta.url)` at transform time, before tree-shaking |
+ * | `demo-pkg` | both selectable glue and WASM assets; runtime self-locates the selected WASM |
  *
- * The second row is documented behaviour (research Finding 1), not a defect; it
+ * The shared `/init` row is documented behaviour (research Finding 1), not a defect; it
  * is asserted so the test states the trade-off rather than only the win.
  */
 import * as fs from 'node:fs';
@@ -31,7 +33,6 @@ const CONFIG: BuildConfig = {
   name: 'demo',
   bindings: ['gp_Pnt'],
   variants: [{ name: 'single' }, { name: 'multi', compilerFlags: { threads: true } }],
-  assemble: { exports: 'factory' },
 };
 
 /**
@@ -143,23 +144,32 @@ const walk = (directory: string): string[] =>
  * Vite-build a one-module host app against the assembled package.
  *
  * @param packageRoot - The assembled package (linked in as `demo-pkg`).
- * @param entrySpecifier - Subpath the host imports its factory from.
+ * @param options - Entry and fixed/shared variant selection for the host.
  * @returns The emitted output, flattened.
  */
-const buildHost = async (packageRoot: string, entrySpecifier: string): Promise<BuiltHost> => {
+const buildHost = async (
+  packageRoot: string,
+  options: {
+    readonly entrySpecifier: string;
+    readonly wasmVariant?: 'single' | 'multi';
+    readonly requestedVariant?: 'single' | 'multi';
+    readonly eager?: boolean;
+  },
+): Promise<BuiltHost> => {
   const host = fs.mkdtempSync(path.join(os.tmpdir(), 'libcascade-bundle-host-'));
   roots.push(host);
   fs.mkdirSync(path.join(host, 'node_modules'), { recursive: true });
   fs.symlinkSync(packageRoot, path.join(host, 'node_modules', 'demo-pkg'), 'dir');
-  fs.writeFileSync(
-    path.join(host, 'main.js'),
-    `import { createInstance } from '${entrySpecifier}';\n` +
-      // The documented `locateFile` pattern: this is what pulls the *selected*
-      // variant's .wasm into the build, so "the other one is absent" is a real
-      // assertion rather than a vacuous one.
-      "import wasmUrl from 'demo-pkg/single/wasm?url';\n" +
-      'globalThis.boot = () => createInstance({ locateFile: () => wasmUrl });\n',
-  );
+  const source = options.eager === true
+    ? `import oc from '${options.entrySpecifier}';\nglobalThis.boot = () => oc;\n`
+    : `import { createInstance } from '${options.entrySpecifier}';\n` +
+      `import wasmUrl from 'demo-pkg/${options.wasmVariant ?? 'single'}/wasm?url';\n` +
+      `globalThis.boot = () => createInstance({${
+        options.requestedVariant === undefined
+          ? ''
+          : ` variant: '${options.requestedVariant}',`
+      } locateFile: () => wasmUrl });\n`;
+  fs.writeFileSync(path.join(host, 'main.js'), source);
 
   const outDir = path.join(host, 'out');
   await build({
@@ -192,7 +202,10 @@ describe('host bundles', () => {
   const packageRoot = makeAssembledPackage();
 
   it('ships only the imported variant when the host uses `./<variant>/init`', async () => {
-    const output = await buildHost(packageRoot, 'demo-pkg/single/init');
+    const output = await buildHost(packageRoot, {
+      entrySpecifier: 'demo-pkg/single/init',
+      wasmVariant: 'single',
+    });
 
     expect(output.contents).toContain(MARKERS.singleGlue);
     expect(output.contents).toContain(MARKERS.singleWasm);
@@ -201,9 +214,28 @@ describe('host bundles', () => {
     expect(output.bytes).toBeLessThan(PINNED_BUDGET_BYTES);
   });
 
+  it('ships only the multi variant when the host pins `./multi/init`', async () => {
+    const output = await buildHost(packageRoot, {
+      entrySpecifier: 'demo-pkg/multi/init',
+      wasmVariant: 'multi',
+    });
+
+    expect(output.contents).toContain(MARKERS.multiGlue);
+    expect(output.contents).toContain(MARKERS.multiWasm);
+    expect(output.contents).not.toContain(MARKERS.singleGlue);
+    expect(output.contents).not.toContain(MARKERS.singleWasm);
+  });
+
   it('carries every glue when the host uses the shared `./init` selector', async () => {
-    const pinned = await buildHost(packageRoot, 'demo-pkg/single/init');
-    const shared = await buildHost(packageRoot, 'demo-pkg/init');
+    const pinned = await buildHost(packageRoot, {
+      entrySpecifier: 'demo-pkg/single/init',
+      wasmVariant: 'single',
+    });
+    const shared = await buildHost(packageRoot, {
+      entrySpecifier: 'demo-pkg/init',
+      requestedVariant: 'single',
+      wasmVariant: 'single',
+    });
 
     // Documented, not a defect: the selector takes the variant at runtime, so
     // no branch is statically dead and every `new URL` becomes an asset.
@@ -214,5 +246,18 @@ describe('host bundles', () => {
     expect(shared.contents).not.toContain(MARKERS.multiWasm);
     // The pinned entry's whole reason to exist: one fewer glue on the wire.
     expect(shared.bytes - pinned.bytes).toBeGreaterThan(GLUE_PADDING.length * 0.9);
+  });
+
+  it('emits every selectable asset for the self-locating eager root', async () => {
+    const output = await buildHost(packageRoot, {
+      entrySpecifier: 'demo-pkg',
+      eager: true,
+    });
+
+    expect(output.contents).toContain(MARKERS.singleGlue);
+    expect(output.contents).toContain(MARKERS.multiGlue);
+    expect(output.contents).toContain(MARKERS.singleWasm);
+    expect(output.contents).toContain(MARKERS.multiWasm);
+    expect(output.contents).toMatch(/file\.endsWith\(["']\.wasm["']\)/);
   });
 });

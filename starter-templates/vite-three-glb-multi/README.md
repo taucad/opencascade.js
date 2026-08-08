@@ -5,7 +5,7 @@ Vite 6 + TS + three.js 0.180+ + the threaded `libcascade` variant. Same box-with
 ## Stack
 
 - Vite 6 (`pnpm dev` → http://localhost:3003)
-- `createInstance({ variant: 'multi' })` from `libcascade/init`
+- `createInstance()` from the fixed `libcascade/multi/init` entry
 - Pthread-enabled wasm at `libcascade/multi/wasm?url`
 - Cross-origin isolation headers in `vite.config.ts` (required for `SharedArrayBuffer`)
 - Global parallel activation in `src/libcascade-init.ts` per the [multi-threading guide](https://github.com/taucad/opencascade.js/blob/main/docs-site/content/docs/package/guides/multi-threading.mdx)

@@ -268,25 +268,6 @@ export type BuildVariant = {
 };
 
 /**
- * How `libcascade assemble` shapes the package's default export (wave W3).
- */
-export type AssembleOptions = {
-  /**
-   * `'factory'` — the package's root re-exports the variant-selecting
-   * `createInstance` factory and nothing else. The consumer awaits it and gets
-   * the instance; no OCCT symbol is reachable before that. This is the honest
-   * shape for a wasm module and what replicad uses.
-   *
-   * `'eager'` — the root additionally emits a named-export barrel over the
-   * shared type surface, so consumers can `import { gp_Pnt } from '…'` and get
-   * the binding of whichever variant was initialised. Convenient, at the cost
-   * of an import surface that is only populated after init has run. libcascade
-   * itself uses this for source compatibility with its pre-toolchain package.
-   */
-  readonly exports: 'factory' | 'eager';
-};
-
-/**
  * One binding set, built N ways.
  *
  * Everything above `variants` describes what to build and is shared by all of
@@ -358,8 +339,6 @@ export type BuildConfig = {
    * most-demanding loadable variant, and declaration order is the tiebreak.
    */
   readonly variants: readonly BuildVariant[];
-  /** How the assembled package exposes the build; see {@link AssembleOptions}. */
-  readonly assemble?: AssembleOptions;
   /**
    * Build against a different container image than the pinned one.
    *
