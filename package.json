@@ -57,11 +57,11 @@
     },
     "./single/wasm": "./dist/opencascade_single.wasm",
     "./single/init": {
-      "types": "./dist/init.d.ts",
+      "types": "./dist/init.single.d.ts",
       "default": "./dist/init.single.js"
     },
     "./multi/init": {
-      "types": "./dist/init.d.ts",
+      "types": "./dist/init.multi.d.ts",
       "default": "./dist/init.multi.js"
     }
   },
@@ -73,7 +73,9 @@
     "dist/index.js",
     "dist/index.d.ts",
     "dist/init.single.js",
+    "dist/init.single.d.ts",
     "dist/init.multi.js",
+    "dist/init.multi.d.ts",
     "dist/opencascade_single.js",
     "dist/opencascade_single.wasm",
     "dist/opencascade_single.js.symbols",

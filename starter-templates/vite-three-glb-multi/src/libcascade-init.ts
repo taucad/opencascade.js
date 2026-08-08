@@ -1,4 +1,4 @@
-import { createInstance, type OpenCascadeInstance } from 'libcascade/init';
+import { createInstance, type OpenCascadeInstance } from 'libcascade/multi/init';
 import wasmUrl from 'libcascade/multi/wasm?url';
 
 let cached: Promise<OpenCascadeInstance> | null = null;
@@ -13,7 +13,7 @@ let cached: Promise<OpenCascadeInstance> | null = null;
  */
 export function getLibcascade(): Promise<OpenCascadeInstance> {
   if (cached === null) {
-    const instance = createInstance({ variant: 'multi', locateFile: () => wasmUrl }).then((oc) => {
+    const instance = createInstance({ locateFile: () => wasmUrl }).then((oc) => {
       oc.BOPAlgo_Options.SetParallelMode(true);
       oc.BRepMesh_IncrementalMesh.SetParallelDefault(true);
       return oc;

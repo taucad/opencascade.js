@@ -19,7 +19,7 @@ Next 15 App Router + React 19 + `@react-three/fiber` + `@react-three/drei` + `li
 | `lib/libcascade-init.ts`                | Memoized-`Promise` singleton; `locateFile` returns `/opencascade_single.wasm` |
 | `lib/build-shape.ts`              | Box-with-hole compound shape                                               |
 | `lib/shape-to-glb.ts`             | Mesh + `RWGltf_CafWriter`                                                  |
-| `scripts/copy-wasm.mjs`           | `postinstall`: resolves `libcascade/wasm` and copies it into `public/` |
+| `scripts/copy-wasm.mjs`           | `postinstall`: resolves `libcascade/single/wasm` and copies it into `public/` |
 | `next.config.ts`                  | COOP/COEP headers; WASM resource rule                                      |
 
 ## Run
@@ -35,7 +35,7 @@ pnpm start
 
 ## Test plan
 
-1. `pnpm install --frozen-lockfile` → ok; `public/opencascade_single.wasm` exists and matches the byte size of the file resolved through the `libcascade/wasm` subpath export
+1. `pnpm install --frozen-lockfile` → ok; `public/opencascade_single.wasm` exists and matches the byte size of the file resolved through the `libcascade/single/wasm` subpath export
 2. `pnpm typecheck` → ok (strict tsconfig, React 19 types)
 3. `pnpm build` → ok; `.next/` includes a client chunk that fetches `/opencascade_single.wasm`
 4. `pnpm start &` then `pnpm smoke` → exits 0:

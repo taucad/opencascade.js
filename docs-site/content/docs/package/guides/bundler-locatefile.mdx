@@ -5,12 +5,13 @@ description: How to wire the OCCT wasm asset in Vite, Next.js, Bun, Deno, and pl
 
 Start with `import oc from 'libcascade'`. The package resolves its adjacent
 WASM asset without configuration in Node and compatible bundlers. Reach for
-`createInstance` from `libcascade/init` — the entry that accepts options — only
-when a bundler or deployment copies the binary to another URL.
+`createInstance` from `libcascade/single/init` or `libcascade/multi/init` only
+when a bundler or deployment copies a fixed variant's binary to another URL.
 
-The package exposes the binary through the `libcascade/wasm`
-subpath export. Every relocation recipe on this page resolves the wasm through that
-specifier; resolving it any other way (deep `node_modules` paths, direct
+The package exposes the binaries through the `libcascade/single/wasm` and
+`libcascade/multi/wasm` subpath exports (`libcascade/wasm` remains the
+single-threaded alias). Every relocation recipe on this page resolves the WASM
+through its matching variant specifier; resolving it any other way (deep `node_modules` paths, direct
 `dist/*` imports) bypasses the package's `exports` map and breaks under
 strict bundler resolution.
 
@@ -20,8 +21,8 @@ Vite's `?url` suffix turns any asset import into a content-hashed URL string.
 Use it when you want Vite to emit a content-hashed asset URL:
 
 ```typescript
-import { createInstance } from 'libcascade/init';
-import wasmUrl from 'libcascade/wasm?url';
+import { createInstance } from 'libcascade/single/init';
+import wasmUrl from 'libcascade/single/wasm?url';
 
 const oc = await createInstance({ locateFile: () => wasmUrl });
 ```
@@ -46,7 +47,7 @@ that resolves the subpath:
 import { copyFile, mkdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 
-const src = fileURLToPath(import.meta.resolve('libcascade/wasm'));
+const src = fileURLToPath(import.meta.resolve('libcascade/single/wasm'));
 await mkdir('public', { recursive: true });
 await copyFile(src, 'public/opencascade_single.wasm');
 ```
@@ -63,7 +64,7 @@ Then reference the public path:
 
 ```typescript title="lib/libcascade-init.ts"
 'use client';
-import { createInstance } from 'libcascade/init';
+import { createInstance } from 'libcascade/single/init';
 
 let ocPromise: ReturnType<typeof createInstance> | undefined;
 export const getOc = () =>
@@ -93,10 +94,10 @@ Use `import.meta.resolve` to find the wasm sibling to the loader:
 ```typescript
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { createInstance } from 'libcascade/init';
+import { createInstance } from 'libcascade/single/init';
 
 const WASM_DIR = dirname(
-  fileURLToPath(import.meta.resolve('libcascade/wasm')),
+  fileURLToPath(import.meta.resolve('libcascade/single/wasm')),
 );
 
 const oc = await createInstance({ locateFile: (file: string) => join(WASM_DIR, file) });
@@ -113,8 +114,8 @@ Webpack 5 handles wasm via `asset/resource` (preferred) or the legacy
 `file-loader`. Wire `locateFile` to the emitted URL:
 
 ```typescript title="src/libcascade-init.ts"
-import { createInstance } from 'libcascade/init';
-import wasmUrl from 'libcascade/wasm';
+import { createInstance } from 'libcascade/single/init';
+import wasmUrl from 'libcascade/single/wasm';
 
 const oc = await createInstance({
   locateFile: (file) => (file.endsWith('.wasm') ? wasmUrl : file),
@@ -166,8 +167,8 @@ V3 docs. Use Vite, current Next.js, Bun, Node, Deno, or Webpack 5 instead.
 
 ## Multi-threaded variant
 
-The pthread-enabled build is a variant of the same package: ask for it with
-`createInstance({ variant: 'multi' })`. That entry also owns the worker
+The pthread-enabled build is a variant of the same package: import its fixed
+initializer from `libcascade/multi/init`. That entry also owns the worker
 plumbing the raw `libcascade/multi` glue leaves to you. Its wasm is exported at
 `libcascade/multi/wasm`.
 
@@ -201,10 +202,10 @@ oc.BRepMesh_IncrementalMesh.SetParallelDefault(true);
 ### Vite 6+
 
 ```typescript
-import { createInstance } from 'libcascade/init';
+import { createInstance } from 'libcascade/multi/init';
 import wasmUrl from 'libcascade/multi/wasm?url';
 
-const oc = await createInstance({ variant: 'multi', locateFile: () => wasmUrl });
+const oc = await createInstance({ locateFile: () => wasmUrl });
 
 oc.BOPAlgo_Options.SetParallelMode(true);
 oc.BRepMesh_IncrementalMesh.SetParallelDefault(true);
@@ -225,12 +226,11 @@ await copyFile(src, 'public/opencascade_multi.wasm');
 
 ```typescript title="lib/libcascade-init-multi.ts"
 'use client';
-import { createInstance } from 'libcascade/init';
+import { createInstance } from 'libcascade/multi/init';
 
 let ocPromise: ReturnType<typeof createInstance> | undefined;
 export const getOcMulti = () =>
   (ocPromise ??= createInstance({
-    variant: 'multi',
     locateFile: () => '/opencascade_multi.wasm',
   }).then((oc) => {
     oc.BOPAlgo_Options.SetParallelMode(true);
@@ -244,14 +244,13 @@ export const getOcMulti = () =>
 ```typescript
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { createInstance } from 'libcascade/init';
+import { createInstance } from 'libcascade/multi/init';
 
 const WASM_DIR = dirname(
   fileURLToPath(import.meta.resolve('libcascade/multi/wasm')),
 );
 
 const oc = await createInstance({
-  variant: 'multi',
   locateFile: (file: string) => join(WASM_DIR, file),
 });
 

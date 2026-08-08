@@ -72,7 +72,7 @@ console.log(JSON.stringify(results));
 afterAll(() => fs.rmSync(workDir, { recursive: true, force: true }));
 
 describe('installed npm candidate', () => {
-  it('contains exactly the public 25-file contract', () => {
+  it('contains exactly the public package contract', () => {
     validateExactFiles(walk(packageDir), PACKAGE_FILES, 'installed package');
   });
 

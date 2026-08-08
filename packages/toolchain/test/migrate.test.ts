@@ -285,7 +285,7 @@ describe('libcascade migrate — two ymls become one config', () => {
     expect(emitted).toContain('custom_build_single.yml');
     expect(emitted).toContain('custom_build_multi.yml');
     expect(emitted).toContain('@libcascade/toolchain 3.0.0-beta.0');
-    expect(emitted).toContain("assemble.exports: 'factory'");
+    expect(emitted).not.toContain('assemble.exports');
     // Both modernizations, each commented at its site.
     expect(emitted).toContain('deprecated legacy alias of `-pthread`');
     expect(emitted).toContain('emsdk 6.0.5 hard-fails a `-fwasm-exceptions` link');

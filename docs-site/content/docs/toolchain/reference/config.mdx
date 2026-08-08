@@ -30,10 +30,9 @@ entire job is to attach types.
 | `bindings` | `(OcctSymbol \| CustomSymbol)[]` | **Required.** Symbols to expose to JavaScript. Rendered verbatim into the container's `bindings:` list. |
 | `customBindings` | `{ file, symbols, scope? }[]` | Your own C++ files and the symbols each provides. |
 | `settings` | `EmccSettings` | Emscripten `-s` settings. Generated type — see below. |
-| `compilerFlags` | `{ optimize?, simd?, exceptions?, lto?, noEntry? }` | The closed set of non-`-s` flags worth typing. |
+| `compilerFlags` | `{ optimize?, simd?, exceptions?, lto?, noEntry?, threads? }` | The closed set of non-`-s` flags worth typing. |
 | `rawFlags` | `string[]` | Escape hatch. Appended verbatim after every typed flag. |
-| `variants` | `{ name, outputName?, requires?, settings?, rawFlags? }[]` | **Required, non-empty.** One binary per entry. |
-| `assemble` | `{ exports: 'eager' \| 'factory' }` | Packaging mode for `libcascade assemble`. Defaults to `'factory'`. |
+| `variants` | `{ name, outputName?, requires?, settings?, compilerFlags?, rawFlags? }[]` | **Required, non-empty.** One binary per entry. |
 | `image` | `string` | Container image override. `$LIBCASCADE_IMAGE` wins over it; both skip digest verification. |
 | `generateTypescriptDefinitions` | `boolean` | Defaults to `true`. Set `false` only for fast throwaway iteration — `assemble` needs the `.d.ts`. |
 
@@ -119,13 +118,14 @@ Only the non-`-s` flags the reference builds actually use are modelled.
 | `exceptions: 'wasm' \| 'emscripten'` | `-fwasm-exceptions` / `-fexceptions` |
 | `lto: true` | `-flto` |
 | `noEntry: true` | `--no-entry` |
+| `threads: true` | `-pthread` |
 
 Anything else — `-mrelaxed-simd`, `-Wl,--allow-undefined`, `--emit-symbol-map`,
-`-pthread` — goes in `rawFlags`.
+and other unmodelled flags — goes in `rawFlags`.
 
 The rendered flag order is fixed: exceptions → `-s` settings → `-flto` →
-`--no-entry` → `-msimd128` → optimisation → base `rawFlags` → variant
-`rawFlags`. emcc treats distinct flags as order-insensitive.
+`--no-entry` → `-pthread` → `-msimd128` → optimisation → base `rawFlags` →
+variant `rawFlags`. emcc treats distinct flags as order-insensitive.
 
 ### `variants`
 
@@ -183,10 +183,10 @@ Two real configs ship in the open:
 
 - [`libcascade.config.ts`](https://github.com/taucad/opencascade.js/blob/main/libcascade.config.ts) —
   the full build itself: every OCCT symbol, one `scope: 'main'` wrapper file,
-  single + multi variants, `assemble: { exports: 'eager' }`.
+  and single + multi variants.
 - [`replicad-opencascadejs`](https://github.com/sgenoud/replicad) — a trimmed
-  custom build: 11 wrapper files declaring 17 custom symbols, single + multi,
-  `assemble: { exports: 'factory' }`.
+  custom build: 11 wrapper files declaring 17 custom symbols and single +
+  multi variants.
 
 ## Related
 

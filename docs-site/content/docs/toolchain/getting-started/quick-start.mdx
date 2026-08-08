@@ -11,13 +11,13 @@ different Emscripten link settings.
 <Callout type="info">
   **Pre-release.** `@libcascade/toolchain` ships lockstep-versioned with
   `libcascade` — the toolchain that built the binary you depend on is the one
-  whose types describe it. Both are at `3.0.0-beta.0` until the v3 release.
+  whose types describe it. The first public beta is `3.0.0-beta.1`.
 </Callout>
 
 ## Prerequisites
 
 - Node 22+.
-- A container engine: Docker Desktop, [colima](https://github.com/abiosoft/colima),
+- A container engine installed **and running**: Docker Desktop, [colima](https://github.com/abiosoft/colima),
   Rancher Desktop, OrbStack, or Podman. The toolchain drives the published image
   for you — you never write a `docker` command.
 - A working directory under your home folder on macOS/Windows. Docker Desktop
@@ -74,7 +74,6 @@ export default defineBuild({
   },
   compilerFlags: { optimize: 'O3', simd: true, exceptions: 'wasm', noEntry: true },
   variants: [{ name: 'single' }],
-  assemble: { exports: 'factory' },
 });
 ```
 
@@ -139,15 +138,24 @@ root entry, and an `exports.json` fragment. Add `--write-exports` to merge that
 fragment straight into your `package.json`.
 
 See [Variants and assemble](../concepts/variants-and-assemble) for what each
-generated file does and when to pick `exports: 'eager'` over `'factory'`.
+generated file does and which entry to import.
 
 ## 5. Consume the artifacts
 
-With `assemble: { exports: 'factory' }`, the root entry re-exports the factory
-and nothing is instantiated until you ask:
+The package root is the ready-to-use path: it selects a variant, self-locates
+its WASM, and initializes at import time.
 
 ```typescript title="src/oc.ts" notypecheck
-import { createInstance } from 'my-occt-package';
+import oc, { BRepPrimAPI_MakeBox } from 'my-occt-package';
+
+using box = new BRepPrimAPI_MakeBox(10, 10, 10);
+using also = new oc.BRepPrimAPI_MakeBox(10, 10, 10);
+```
+
+Import `./init` when your code must control when initialization happens:
+
+```typescript title="src/oc-lazy.ts" notypecheck
+import { createInstance } from 'my-occt-package/init';
 
 export const oc = await createInstance();
 ```

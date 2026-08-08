@@ -354,9 +354,9 @@ describe('CI contracts', () => {
   });
 
   it('should keep the package allowlists exact', () => {
-    expect(DIST_FILES).toHaveLength(19);
-    expect(ASSEMBLED_DIST_FILES).toHaveLength(22);
-    expect(PACKAGE_FILES).toHaveLength(25);
+    expect(DIST_FILES).toHaveLength(21);
+    expect(ASSEMBLED_DIST_FILES).toHaveLength(24);
+    expect(PACKAGE_FILES).toHaveLength(27);
     expect(DIST_FILES).toContain('api-reference.json');
     expect(DIST_FILES).toContain('types.d.ts');
     expect(DIST_FILES).not.toContain('opencascade_single.d.ts');
@@ -879,7 +879,7 @@ describe('CI contracts', () => {
     const source = fs.readFileSync(path.join(ROOT, '.github/workflows/docker.yml'), 'utf8');
     expect(source).toContain('npm view "libcascade@$VERSION"');
     expect(source).toContain('npm install --ignore-scripts --no-audit --no-fund "libcascade@$VERSION"');
-    // The publish smoke exercises the assembled factory surface, not the root:
+    // The publish smoke exercises the shared lazy surface, not the root:
     // since `libcascade assemble`, the root entry is eager (it top-level-awaits
     // its own instance), so `./init`'s `createInstance({ variant })` is the only
     // way the smoke can drive both variants from one import.

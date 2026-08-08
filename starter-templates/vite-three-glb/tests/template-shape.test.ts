@@ -6,8 +6,7 @@
  * vitest invocation — no per-template runner is wired). Assertions cover the
  * load-bearing surface a consumer first encounters: README presence, the
  * canonical `libcascade` npm dependency, the `libcascade-<name>` local package name,
- * the optional CI-gated lockfile, and the canonical memoized-Promise
- * singleton in `src/libcascade-init.ts`.
+ * the optional CI-gated lockfile, and the self-locating eager root.
  */
 import { describe, it, expect } from 'vitest';
 import * as fs from 'node:fs';
@@ -16,7 +15,7 @@ import * as path from 'node:path';
 const TEMPLATE_ROOT = path.resolve(__dirname, '..');
 const TEMPLATE_NAME = 'vite-three-glb';
 const EXPECTED_PACKAGE_NAME = 'libcascade-vite-three-glb';
-const INIT_PATH = path.join(TEMPLATE_ROOT, 'src', 'libcascade-init.ts');
+const MAIN_PATH = path.join(TEMPLATE_ROOT, 'src', 'main.ts');
 
 interface PackageJson {
   name?: string;
@@ -55,37 +54,15 @@ describe(`starter-templates/${TEMPLATE_NAME} shape`, () => {
     },
   );
 
-  describe('src/libcascade-init.ts canonical memoized-Promise singleton', () => {
-    const readInit = (): string => fs.readFileSync(INIT_PATH, 'utf8');
-
-    it('exists at the canonical path', () => {
-      expect(fs.existsSync(INIT_PATH)).toBe(true);
+  describe('self-locating eager root', () => {
+    it('imports the ready instance from the package root', () => {
+      const src = fs.readFileSync(MAIN_PATH, 'utf8');
+      expect(src).toContain("import oc from 'libcascade';");
+      expect(src).not.toContain('createInstance');
     });
 
-    it('declares the module-scoped `let cached` slot', () => {
-      const src = readInit();
-      expect(
-        /\blet\s+cached\b/.test(src),
-        `src/libcascade-init.ts must declare a module-scoped \`let cached\` slot. Got first 300 chars:\n${src.slice(0, 300)}`,
-      ).toBe(true);
-    });
-
-    it('gates the init call on `if (cached === null)`', () => {
-      const src = readInit();
-      expect(
-        /if\s*\(\s*cached\s*===\s*null\s*\)/.test(src),
-        `src/libcascade-init.ts must gate on \`if (cached === null)\`. Got first 300 chars:\n${src.slice(0, 300)}`,
-      ).toBe(true);
-    });
-
-    it('invokes createInstance({...}) exactly once', () => {
-      const src = readInit();
-      const codeOnly = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
-      const matches = codeOnly.match(/\bcreateInstance\s*\(\s*\{/g) ?? [];
-      expect(
-        matches.length,
-        `src/libcascade-init.ts must invoke createInstance({...}) exactly once outside comments (got ${matches.length}). Code-only source:\n${codeOnly}`,
-      ).toBe(1);
+    it('has no duplicate initializer wrapper', () => {
+      expect(fs.existsSync(path.join(TEMPLATE_ROOT, 'src', 'libcascade-init.ts'))).toBe(false);
     });
   });
 });

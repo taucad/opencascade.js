@@ -9,8 +9,8 @@
  * | --- | --- |
  * | `types.d.ts` | One d.ts unioning every variant's surface (replaces the N near-identical per-variant files) |
  * | `init.js` / `init.d.ts` | `createInstance({ variant, … })` — the `./init` subpath |
- * | `init.<variant>.js` | `./<variant>/init` — the same entry pinned to one glue (N>1 only) |
- * | `index.js` / `index.d.ts` | Root entry: `'eager'` selector + named barrel, or `'factory'` re-export of `./init` |
+ * | `init.<variant>.js` / `.d.ts` | `./<variant>/init` — an exact pinned factory (N>1 only) |
+ * | `index.js` / `index.d.ts` | Eager root: selected instance plus named bound values |
  * | `variant.d.ts` | Types for the raw per-variant glue subpaths (`./single`, `./multi`, …) |
  * | `exports.json` | The `exports` fragment to merge into package.json (`--write-exports`) |
  *
@@ -45,7 +45,7 @@ export type ExportsEntry = string | Record<string, string>;
 export type ExportsMap = Record<string, ExportsEntry>;
 
 export type AssembleOptions = {
-  /** Validated config (supplies variants, `assemble.exports`, output names). */
+  /** Validated config (supplies variants and output names). */
   readonly config: BuildConfig;
   /** Package root — the config's directory. */
   readonly configDirectory: string;
@@ -335,6 +335,9 @@ export const readVariantAssets = (
  */
 export const variantInitFile = (variant: string): string => `init.${variant}.js`;
 
+/** Declaration file for one glue-pinned entry. */
+export const variantInitTypesFile = (variant: string): string => `init.${variant}.d.ts`;
+
 /**
  * Doc paragraph explaining what a glue-pinned entry buys over `./init`.
  *
@@ -356,10 +359,8 @@ const pinnedNote = (pinned: string): string =>
  * Render an init entry: the `./init` selector, or a glue-pinned
  * `./<variant>/init`.
  *
- * The two differ only in the asset list they are given. Passing a single asset
- * yields an entry whose `glueUrl` switch has one case *by construction* — there
- * is no shared module holding a glue reference that could leak the others back
- * in, and the N=1 rendering (geospec's) is unchanged byte for byte.
+ * The shared entry owns runtime selection. Pinned entries use a separate
+ * renderer below so selector exports and overrides cannot leak into their API.
  *
  * @param assets - Per-variant packaging facts; one entry pins that variant.
  * @param packageName - Namespace for the `Symbol.for('<name>.select')` override.
@@ -369,7 +370,6 @@ const pinnedNote = (pinned: string): string =>
 export const renderInit = (
   assets: readonly VariantAsset[],
   packageName: string,
-  pinned?: string,
 ): string => {
   const anyThreadPool = assets.some((asset) => asset.hasThreadPool);
   const capabilities = [...new Set(assets.flatMap((asset) => asset.requires))].map((name) => ({
@@ -381,9 +381,9 @@ export const renderInit = (
 
   return `${GENERATED_BANNER('libcascade.config.ts + the per-variant build manifests')}
 /**
- * ${packageName} instance factory${pinned === undefined ? '' : `, pinned to the "${pinned}" variant`}.
+ * ${packageName} instance factory.
  *
-${pinned === undefined ? '' : pinnedNote(pinned)} * Owns the plumbing every consumer otherwise reimplements: variant selection,
+ * Owns the plumbing every consumer otherwise reimplements: variant selection,
  * glue self-reference for pthread worker spawning, Node \`file:\` URL → path
  * conversion, and OCCT thread-pool sizing.
  */
@@ -545,21 +545,126 @@ export default createInstance;
 `;
 };
 
+/** Render a factory whose import path fixes the only loadable variant. */
+const renderPinnedInit = (asset: VariantAsset, packageName: string): string => {
+  const capabilities = asset.requires.map((name) => ({
+    name,
+    ...(CAPABILITY_PROBES[name] ?? unknownCapability(name)),
+  }));
+  const supportsThreadPool = asset.requires.includes('threads') && asset.hasThreadPool;
+  const threadPool = supportsThreadPool
+    ? `
+const configureThreadPool = (instance, threadCount) => {
+  const pool = instance.OSD_ThreadPool?.DefaultPool?.(threadCount ?? -1);
+  if (pool === undefined) return;
+  pool.SetNbDefaultThreadsToLaunch(threadCount ?? pool.NbThreads());
+};
+`
+    : '';
+
+  return `${GENERATED_BANNER('libcascade.config.ts + the per-variant build manifests')}
+/**
+ * ${packageName} instance factory, pinned to the "${asset.name}" variant.
+ *
+${pinnedNote(asset.name)} * The import path is the variant selector. This module exports no runtime
+ * selector and rejects a contradictory \`variant\` option before loading glue.
+ */
+
+const IS_NODE = ${IS_NODE_SNIPPET};
+const CAPABILITIES = {${capabilities.map((capability) => `\n${capability.probe}`).join('')}
+};
+const CAPABILITY_HINTS = ${JSON.stringify(
+    Object.fromEntries(capabilities.map((capability) => [capability.name, capability.hint])),
+    undefined,
+    2,
+  )};
+const VARIANT = ${JSON.stringify(
+    { name: asset.name, requires: asset.requires },
+    undefined,
+    2,
+  )};
+const unsupported = () =>
+  VARIANT.requires.filter((capability) => !(CAPABILITIES[capability]?.() ?? false));
+const glueUrl = () => new URL('./${asset.outputName}.js', import.meta.url).href;
+
+const loadGlue = () =>
+  import(/* webpackIgnore: true */ /* @vite-ignore */ glueUrl());
+
+const workerScript = () => {
+  const href = glueUrl();
+  if (!IS_NODE || !href.startsWith('file:')) return href;
+  const filePath = decodeURIComponent(new URL(href).pathname);
+  return process.platform === 'win32' ? filePath.replace(/^\\/([A-Za-z]:)/, '$1') : filePath;
+};
+${threadPool}
+/** Create a fully initialised "${asset.name}" instance. */
+export const createInstance = async (options = {}) => {
+  if (Object.hasOwn(options, 'variant')) {
+    throw new Error(
+      'The "${asset.name}" variant is fixed by the "./${asset.name}/init" import; remove the variant option.',
+    );
+  }
+
+  const missing = unsupported();
+  if (missing.length > 0) {
+    throw new Error(
+      'The "${asset.name}" variant requires ' +
+        missing.join(', ') +
+        ', which this host does not provide. ' +
+        missing.map((capability) => CAPABILITY_HINTS[capability]).join(' '),
+    );
+  }
+
+  const { threadCount, ...moduleOptions } = options;
+  const { default: factory } = await loadGlue();
+  const instance = await factory({ mainScriptUrlOrBlob: workerScript(), ...moduleOptions });
+${supportsThreadPool ? '  configureThreadPool(instance, threadCount);\n' : ''}  return instance;
+};
+
+export default createInstance;
+`;
+};
+
 /**
  * Render the eager root: capability-probed init plus a named-export barrel.
  *
  * @param symbols - The unioned symbol lists (same input as the d.ts).
+ * @param assets - Per-variant glue and WASM asset metadata.
  * @returns The file contents.
  */
-export const renderEagerRoot = (symbols: CollectedSymbols): string =>
+export const renderEagerRoot = (
+  symbols: CollectedSymbols,
+  assets: readonly VariantAsset[],
+): string =>
   [
     GENERATED_BANNER('the shared symbol list'),
     '// Eager root: selects a variant, initialises it with top-level await, and',
     '// re-exports every bound symbol as a named value. Import `./init` instead to',
     '// control when (and whether) the WASM module is instantiated.',
-    "import { createInstance } from './init.js';",
+    "import { createInstance, selectVariant } from './init.js';",
     '',
-    'const oc = await createInstance();',
+    `const IS_NODE = ${IS_NODE_SNIPPET};`,
+    'const variant = selectVariant();',
+    'const wasmUrl = (() => {',
+    '  switch (variant) {',
+    ...assets.map(
+      (asset) =>
+        `    case '${asset.name}':\n      return new URL('./${asset.outputName}.wasm', import.meta.url).href;`,
+    ),
+    '    default:',
+    "      throw new Error(`Unknown selected variant \"${variant}\".`);",
+    '  }',
+    '})();',
+    "const wasmPath = !IS_NODE || !wasmUrl.startsWith('file:')",
+    '  ? wasmUrl',
+    '  : (() => {',
+    '      const filePath = decodeURIComponent(new URL(wasmUrl).pathname);',
+    "      return process.platform === 'win32' ? filePath.replace(/^\\/([A-Za-z]:)/, '$1') : filePath;",
+    '    })();',
+    'const oc = await createInstance({',
+    '  variant,',
+    "  locateFile: (file, prefix = '') => (file.endsWith('.wasm') ? wasmPath : `${prefix}${file}`),",
+    '});',
     '',
     'export default oc;',
     ...symbols.values.map((symbol) =>
@@ -574,11 +679,11 @@ export const renderEagerRoot = (symbols: CollectedSymbols): string =>
  * Re-export the whole shared surface as types.
  *
  * `types.d.ts` exports every bound symbol as a runtime *value* (the eager root
- * really does bind them). The factory entries do not, so they re-export the
+ * really does bind them). The lazy entries do not, so they re-export the
  * same names with `export type *`: `import { TopoDS_Shape } from '<pkg>'` keeps
  * working in type position — the surface the per-variant `export type { X }`
  * d.ts files gave before assemble unified them — without promising a value the
- * factory entries never export.
+ * lazy entries never export.
  */
 const TYPE_ONLY_REEXPORT = "export type * from './types.js';";
 
@@ -601,6 +706,30 @@ export declare const createInstance: (
 export default createInstance;
 `;
 
+const renderPinnedInitTypes = (asset: VariantAsset): string => {
+  const options = asset.requires.includes('threads')
+    ? `InitOpenCascadeOptions & {
+  /** Size of OCCT's default thread pool. */
+  threadCount?: number;
+}`
+    : 'InitOpenCascadeOptions';
+
+  return `${GENERATED_BANNER('the shared symbol list')}import type { InitOpenCascadeOptions, OpenCascadeInstance } from './types.js';
+
+${TYPE_ONLY_REEXPORT}
+
+/** Options accepted by this fixed-variant initializer. */
+export type CreateInstanceOptions = ${options};
+
+/** Create a fully initialised "${asset.name}" instance. */
+export declare const createInstance: (
+  options?: CreateInstanceOptions,
+) => Promise<OpenCascadeInstance>;
+
+export default createInstance;
+`;
+};
+
 const renderEagerRootTypes = (): string =>
   `${GENERATED_BANNER('the shared symbol list')}import type { OpenCascadeInstance } from './types.js';
 
@@ -609,16 +738,6 @@ export * from './types.js';
 /** The instance this entry initialised at import time. */
 declare const oc: OpenCascadeInstance;
 export default oc;
-`;
-
-const renderFactoryRoot = (): string =>
-  `${GENERATED_BANNER('the shared symbol list')}export * from './init.js';
-export { default } from './init.js';
-`;
-
-const renderFactoryRootTypes = (): string =>
-  `${GENERATED_BANNER('the shared symbol list')}export * from './init.js';
-export { default } from './init.js';
 `;
 
 const renderVariantTypes = (): string =>
@@ -637,8 +756,8 @@ export default init;
  *
  * `./<variant>/init` is emitted only for a multi-variant package: with one
  * variant the shared `./init` already resolves exactly one glue, so a pinned
- * entry would be a byte-for-byte duplicate of it. Its `types` condition reuses
- * `init.d.ts` — the pinned entry exports the same surface.
+ * entry would duplicate it. Multi-variant pinned entries receive exact
+ * declarations that omit the shared selector and `variant` option.
  *
  * @param assets - Per-variant packaging facts.
  * @param distName - Dist directory name relative to the package root.
@@ -660,7 +779,7 @@ export const renderExports = (
     };
     if (assets.length > 1) {
       map[`./${asset.name}/init`] = {
-        types: target(ASSEMBLE_OUTPUTS.initTypes),
+        types: target(variantInitTypesFile(asset.name)),
         default: target(variantInitFile(asset.name)),
       };
     }
@@ -743,7 +862,9 @@ const renderPackageFiles = (
     ASSEMBLE_OUTPUTS.variantTypes,
     ASSEMBLE_OUTPUTS.root,
     ASSEMBLE_OUTPUTS.rootTypes,
-    ...(assets.length > 1 ? assets.map((asset) => variantInitFile(asset.name)) : []),
+    ...(assets.length > 1
+      ? assets.flatMap((asset) => [variantInitFile(asset.name), variantInitTypesFile(asset.name)])
+      : []),
   ];
   const artifacts = assets.flatMap((asset) => [
     `${asset.outputName}.js`,
@@ -780,8 +901,6 @@ export const assemble = (options: AssembleOptions): AssembleResult => {
   const parsed = readVariantDts(config, distDirectory);
   const assets = readVariantAssets(config, distDirectory);
   const symbols = collectSymbols(parsed);
-  const eager = config.assemble?.exports === 'eager';
-
   const files: Record<string, string> = {
     [ASSEMBLE_OUTPUTS.types]: renderSharedTypes(
       parsed,
@@ -791,15 +910,16 @@ export const assemble = (options: AssembleOptions): AssembleResult => {
     [ASSEMBLE_OUTPUTS.init]: renderInit(assets, packageName),
     [ASSEMBLE_OUTPUTS.initTypes]: renderInitTypes(),
     [ASSEMBLE_OUTPUTS.variantTypes]: renderVariantTypes(),
-    [ASSEMBLE_OUTPUTS.root]: eager ? renderEagerRoot(symbols) : renderFactoryRoot(),
-    [ASSEMBLE_OUTPUTS.rootTypes]: eager ? renderEagerRootTypes() : renderFactoryRootTypes(),
+    [ASSEMBLE_OUTPUTS.root]: renderEagerRoot(symbols, assets),
+    [ASSEMBLE_OUTPUTS.rootTypes]: renderEagerRootTypes(),
   };
 
   // One glue-pinned entry per variant, for consumers that know which variant
   // they want. Skipped at N=1, where `./init` is already exactly this file.
   if (assets.length > 1) {
     for (const asset of assets) {
-      files[variantInitFile(asset.name)] = renderInit([asset], packageName, asset.name);
+      files[variantInitFile(asset.name)] = renderPinnedInit(asset, packageName);
+      files[variantInitTypesFile(asset.name)] = renderPinnedInitTypes(asset);
     }
   }
 

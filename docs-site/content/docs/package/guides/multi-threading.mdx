@@ -13,16 +13,16 @@ The npm package ships **two** pre-built variants of one binding set:
 Ask for the threaded one by name:
 
 ```typescript
-import { createInstance } from 'libcascade/init';
+import { createInstance } from 'libcascade/multi/init';
 
-const oc = await createInstance({ variant: 'multi' });
+const oc = await createInstance();
 ```
 
 `createInstance` owns the worker plumbing — the glue self-reference Emscripten
 spawns pthread workers from, Node `file:` URL → path conversion, and OCCT
-thread-pool sizing. Omit `variant` and it selects the most capable variant this
-host supports, which is `multi` wherever the capability probe passes. Pass
-`threadCount` to cap OCCT's default pool.
+thread-pool sizing. The import path fixes the variant and excludes the
+single-threaded glue from the bundle. Pass `threadCount` to cap OCCT's default
+pool.
 
 Both variants share one `OpenCascadeInstance` type, so a shape from either is
 assignable wherever the other is expected. See
@@ -78,7 +78,7 @@ The cleanest option: flip the OCCT-wide defaults once, then any subsequent
 call to a parallel-aware API inherits the toggle without an extra argument.
 
 ```typescript
-// Run once after `await createInstance({ variant: 'multi' })`.
+// Run once after `await createInstance()` from `libcascade/multi/init`.
 oc.BOPAlgo_Options.SetParallelMode(true);                 // booleans
 oc.BRepMesh_IncrementalMesh.SetParallelDefault(true);     // meshing
 
@@ -217,11 +217,13 @@ JS↔WASM boundary is on the hot path.
 - Your target users include Safari ≤16 — older Safari refused
   `SharedArrayBuffer` in cross-origin-isolated contexts.
 
-For most consumers the single-threaded variant wins on simplicity. Force it
-with `createInstance({ variant: 'single' })`, or globally before any import:
+For most consumers the single-threaded variant wins on simplicity. Import its
+fixed initializer:
 
-```javascript
-globalThis[Symbol.for('libcascade.select')] = 'single';
+```typescript
+import { createInstance } from 'libcascade/single/init';
+
+const oc = await createInstance();
 ```
 
 ## Custom builds

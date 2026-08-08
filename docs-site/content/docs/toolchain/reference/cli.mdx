@@ -79,13 +79,15 @@ declared variant and writes, next to them:
 | --- | --- |
 | `types.d.ts` | One d.ts unioning every variant's surface. Symbols only some variants bind are typed optional. |
 | `init.js` / `init.d.ts` | The `./init` subpath: `createInstance({ variant, threadCount, wasmBinary, wasmMemory, locateFile })`. |
-| `index.js` / `index.d.ts` | The root entry, per `assemble.exports`. |
+| `init.<variant>.js` / `init.<variant>.d.ts` | A fixed-variant initializer with no selector or `variant` option. Multi-variant packages only. |
+| `index.js` / `index.d.ts` | The eager root: a selected, initialized instance with self-located WASM and named OCCT values. |
 | `variant.d.ts` | Types for the raw per-variant glue subpaths (`./single`, `./multi`, …). |
 | `exports.json` | The generated `exports` fragment. |
 
 `--write-exports` merges that fragment into the package's own `package.json`:
 generated subpaths win, every other subpath you declared is preserved in place.
-The `files` list is not touched — add the generated files to it once.
+It also replaces generated `files` entries with the exact current surface while
+preserving hand-maintained files.
 
 `assemble` fails with a pointer at `libcascade build --variant <name>` when a
 variant's `.d.ts` is missing. It packages artifacts; it never builds them.
@@ -194,8 +196,8 @@ flags that cause it. See [Config reference](./config).
 
 ### What it cannot know
 
-Two things the yml format never recorded, both named in the emitted header as
-your review list:
+One thing the yml format never recorded is named in the emitted header as your
+review list:
 
 - **`customBindings[].symbols`.** The yml lists wrapper file *paths*; which
   symbols each provides is what the typed config needs. `migrate` reads them out
@@ -204,9 +206,6 @@ your review list:
   `TODO(libcascade migrate)` marker plus the candidate names (the `bindings`
   entries that are not OCCT symbols and that no wrapper claims). It never
   guesses, and the config will not build until you fill the marker in.
-- **`assemble.exports`.** No yml equivalent exists. It defaults to `'factory'`;
-  switch to `'eager'` if consumers import OCCT names off the package root.
-
 The full walkthrough, with the hand-mapping tables and the review checklist, is
 [Migrate from a yml build](../getting-started/migrate-from-yaml).
 
