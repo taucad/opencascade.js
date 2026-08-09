@@ -73,7 +73,7 @@ npx libcascade assemble --write-exports  # …and merge the exports map into pac
 | File | Contents |
 | --- | --- |
 | `types.d.ts` | One d.ts unioning every variant's surface. Symbols only some variants bind are typed optional. Replaces the N near-identical per-variant d.ts files, so single and multi instances are structurally comparable. |
-| `init.js` / `init.d.ts` | The `./init` subpath: `createInstance({ variant, threadCount, wasmBinary, wasmMemory, locateFile })`. Owns variant selection, glue self-reference for pthread worker spawning, Node `file:` URL → path conversion, and OCCT thread-pool sizing. |
+| `init.js` / `init.d.ts` | The `./init` subpath: `createInstance({ variant, threadCount, wasmBinary, wasmMemory, locateFile })`. Owns variant selection, pthread worker loading, Node `file:` URL → path conversion, and OCCT thread-pool sizing. |
 | `init.<variant>.js` / `init.<variant>.d.ts` | The `./<variant>/init` subpath: a fixed-variant initializer that names one glue asset, accepts no selector, and exposes only that variant's valid options. Emitted only for a multi-variant package. |
 | `index.js` / `index.d.ts` | The eager root: it selects once, self-locates the matching WASM asset, initializes it, and exports the instance plus every bound value. |
 | `variant.d.ts` | Types for the raw per-variant glue subpaths (`./single`, `./multi`, …): the module factory plus the shared instance type. |
@@ -149,7 +149,11 @@ The per-variant `<outputName>.d.ts` is **not** stale output. It is the container
 
 `exports.json` is a review aid for `--write-exports` and never ships.
 
-Consumer note for the pthread variant under Vite: Emscripten spawns its workers as ES modules with top-level await, so the consuming app needs `worker: { format: 'es' }` (Vite's default `iife` cannot emit them).
+For pthread builds, `assemble` replaces Emscripten 6's build-time glue-file
+self-reference with `import.meta.url`. This keeps worker loading valid when a
+bundler hashes the glue asset. Under Vite, the consumer also needs `worker: {
+format: 'es' }` because Emscripten's worker is an ES module with top-level
+await (Vite's default `iife` cannot emit it).
 
 ## Detect and check
 

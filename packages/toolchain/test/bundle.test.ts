@@ -108,7 +108,11 @@ const makeAssembledPackage = (): string => {
     // and the import is opaque), so it only has to be findable by its marker.
     fs.writeFileSync(
       path.join(dist, `demo_${variant}.js`),
-      `// ${marker}\nconst PAD = '${GLUE_PADDING}';\nexport default async () => ({ PAD });\n`,
+      `// ${marker}\nconst PAD = '${GLUE_PADDING}';\n${
+        variant === 'multi'
+          ? 'const spawnWorker = () => new Worker(new URL("demo_multi.js",import.meta.url),{type:"module"});\n'
+          : ''
+      }export default async () => ({ PAD });\n`,
     );
     fs.writeFileSync(path.join(dist, `demo_${variant}.wasm`), `${wasmMarker}\n`);
   }
@@ -224,6 +228,8 @@ describe('host bundles', () => {
     expect(output.contents).toContain(MARKERS.multiWasm);
     expect(output.contents).not.toContain(MARKERS.singleGlue);
     expect(output.contents).not.toContain(MARKERS.singleWasm);
+    expect(output.contents).toContain('new Worker(new URL(import.meta.url),{type:"module"})');
+    expect(output.contents).not.toContain('new URL("demo_multi.js",import.meta.url)');
   });
 
   it('carries every glue when the host uses the shared `./init` selector', async () => {

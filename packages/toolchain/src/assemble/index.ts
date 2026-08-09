@@ -326,6 +326,36 @@ export const readVariantAssets = (
   });
 
 /**
+ * Make Emscripten 6 pthread glue spawn workers from the glue asset actually
+ * loaded by the host. Bundlers may hash that asset, so its build-time file name
+ * is no longer a valid sibling URL at runtime.
+ */
+const normalizeThreadedGlue = (
+  assets: readonly VariantAsset[],
+  distDirectory: string,
+): readonly string[] =>
+  assets.flatMap((asset) => {
+    if (!asset.requires.includes('threads')) return [];
+
+    const gluePath = path.join(distDirectory, `${asset.outputName}.js`);
+    const source = fs.readFileSync(gluePath, 'utf8');
+    const original = `new Worker(new URL("${asset.outputName}.js",import.meta.url),`;
+    const normalized = 'new Worker(new URL(import.meta.url),';
+    const originalCount = source.split(original).length - 1;
+    const normalizedCount = source.split(normalized).length - 1;
+
+    if (originalCount === 0 && normalizedCount === 1) return [];
+    if (originalCount !== 1 || normalizedCount !== 0) {
+      throw new Error(
+        `Expected exactly one Emscripten pthread worker self-reference in ${gluePath}.`,
+      );
+    }
+
+    fs.writeFileSync(gluePath, source.replace(original, normalized));
+    return [gluePath];
+  });
+
+/**
  * File name of the glue-pinned entry for one variant — the `./<variant>/init`
  * subpath. Flat in `dist/`, so it keeps the same `./<glue>.js` relative
  * resolution (and the same `./runtime`-free module graph) as `init.js`.
@@ -900,6 +930,7 @@ export const assemble = (options: AssembleOptions): AssembleResult => {
 
   const parsed = readVariantDts(config, distDirectory);
   const assets = readVariantAssets(config, distDirectory);
+  const normalizedGlue = normalizeThreadedGlue(assets, distDirectory);
   const symbols = collectSymbols(parsed);
   const files: Record<string, string> = {
     [ASSEMBLE_OUTPUTS.types]: renderSharedTypes(
@@ -929,11 +960,12 @@ export const assemble = (options: AssembleOptions): AssembleResult => {
   files[ASSEMBLE_OUTPUTS.exports] = `${JSON.stringify({ exports: exportsMap }, undefined, 2)}\n`;
 
   fs.mkdirSync(distDirectory, { recursive: true });
-  const written = Object.entries(files).map(([name, contents]) => {
+  const generated = Object.entries(files).map(([name, contents]) => {
     const filePath = path.join(distDirectory, name);
     fs.writeFileSync(filePath, contents);
     return filePath;
   });
+  const written = [...normalizedGlue, ...generated];
 
   return {
     written,
