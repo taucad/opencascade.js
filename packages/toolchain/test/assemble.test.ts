@@ -107,7 +107,11 @@ const makePackage = (multiSymbols: readonly string[] = ['gp_Pnt', 'BRepPrimAPI_M
     );
     fs.writeFileSync(
       path.join(root, 'dist', `demo_${variant}.js`),
-      `export default async (options) => ({ variant: '${variant}', options });\n`,
+      `${
+        variant === 'multi'
+          ? 'const spawnWorker = () => new Worker(new URL("demo_multi.js",import.meta.url),{type:"module"});\n'
+          : ''
+      }export default async (options) => ({ variant: '${variant}', options });\n`,
     );
   };
   write('single', ['gp_Pnt', 'BRepPrimAPI_MakeBox']);
@@ -217,6 +221,19 @@ describe('assemble', () => {
     expect(init).toContain('import(/* webpackIgnore: true */ /* @vite-ignore */ href)');
     expect(init).not.toContain("import('./demo_multi.js')");
     expect(init).not.toContain("import('./demo_single.js')");
+  });
+
+  it('keeps threaded glue self-references valid after bundlers hash the asset', () => {
+    const root = makePackage();
+    const gluePath = path.join(root, 'dist', 'demo_multi.js');
+
+    assemble({ config: CONFIG, configDirectory: root });
+    const once = fs.readFileSync(gluePath, 'utf8');
+    expect(once).toContain('new Worker(new URL(import.meta.url),{type:"module"})');
+    expect(once).not.toContain('new URL("demo_multi.js",import.meta.url)');
+
+    assemble({ config: CONFIG, configDirectory: root });
+    expect(fs.readFileSync(gluePath, 'utf8')).toBe(once);
   });
 
   it('keeps lazy and raw entries type-only while the eager root exports values', () => {
