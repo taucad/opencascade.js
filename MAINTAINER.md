@@ -252,10 +252,11 @@ gh workflow run docker.yml \
 
 The resume operation accepts only a release commit already contained in
 protected `main`, validates its subject, package version, changelog, changed
-files, and Version Plan lifecycle, and rebuilds that exact source through the
-same gates. An absent immutable object is created, an exact object is reused,
-and any mismatch stops the run. It never republishes an existing npm version,
-mutates an npm dist-tag separately, or overwrites an immutable GHCR tag. A
+files, and Version Plan lifecycle using the current policy from protected
+`main`, then rebuilds the exact release source through the same gates. An absent
+immutable object is created, an exact object is reused, and any mismatch stops
+the run. It never republishes an existing npm version, mutates an npm dist-tag
+separately, or overwrites an immutable GHCR tag. A
 failure before npm publication does not consume the version: restore the
 development metadata, fix the workflow through a protected PR, and prepare the
 same version again. Once npm has published a version, only exact-source resume
