@@ -479,13 +479,20 @@ describe('mergePackageExports', () => {
   it('replaces generated dist files and preserves hand-maintained entries', () => {
     expect(
       mergePackageFiles(
-        ['dist/old.js', 'dist/old.d.ts', 'dist/api-reference.json', 'README.md'],
+        [
+          'dist/old.js',
+          'dist/old.d.ts',
+          'dist/demo.provenance.json',
+          'dist/api-reference.json',
+          'README.md',
+        ],
         ['dist/index.js', 'dist/index.d.ts'],
         'dist',
       ),
     ).toStrictEqual([
       'dist/index.js',
       'dist/index.d.ts',
+      'dist/demo.provenance.json',
       'dist/api-reference.json',
       'README.md',
     ]);
@@ -508,9 +515,11 @@ describe('mergePackageExports', () => {
     });
     expect(packageJson.files).toContain('dist/init.single.js');
     expect(packageJson.files).toContain('dist/init.multi.js');
-    expect(packageJson.files).toContain('dist/demo_single.provenance.json');
     expect(packageJson.files).toContain('dist/api-reference.json');
     expect(packageJson.files).toContain('README.md');
+    expect(packageJson.files).not.toContain('dist/demo_single.js.symbols');
+    expect(packageJson.files).not.toContain('dist/demo_single.build-manifest.json');
+    expect(packageJson.files).not.toContain('dist/demo_single.provenance.json');
     expect(packageJson.files).not.toContain('dist/demo_single.d.ts');
     expect(packageJson.files).not.toContain('dist/init.stale.js');
   });
