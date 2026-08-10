@@ -18,7 +18,7 @@ on:
         required: false
         type: string
       release_sha:
-        description: Full release commit SHA for resume-release
+        description: Exact current main SHA for resume-release
         required: false
         type: string
 
@@ -69,6 +69,10 @@ jobs:
           if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ] && [ "$OPERATION" = resume-release ]; then
             [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]
             test -n "$REQUESTED_VERSION"
+            test "$RELEASE_SHA" = "$GITHUB_SHA" || {
+              echo "release_sha must equal the dispatch GITHUB_SHA; historical resumes cannot produce truthful npm provenance" >&2
+              exit 1
+            }
             git cat-file -e "$RELEASE_SHA^{commit}"
             git fetch origin main
             git merge-base --is-ancestor "$RELEASE_SHA" origin/main
