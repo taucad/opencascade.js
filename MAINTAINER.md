@@ -228,8 +228,9 @@ match the planned SemVer. Both generate their changelog entry. Beta releases
 retain the pending plans so later betas and the stable release resolve the same
 version; only the stable release consumes them. A beta PR contains exactly
 `package.json`, `package-lock.json`, and `CHANGELOG.md`. A stable PR also
-deletes the consumed Version Plan files. Its single commit subject is exactly
-`chore(release): ocjs v<version>`.
+deletes the consumed Version Plan files. The subject is
+`chore(release): ocjs v<version>` with an optional terminal `(#<PR>)` suffix
+preceded by one space on a squash-merge commit.
 
 After that PR is merged, CI publishes and verifies the exact `libcascade` and
 `@libcascade/toolchain` candidates, then creates/verifies the annotated

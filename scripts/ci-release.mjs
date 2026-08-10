@@ -5,7 +5,7 @@ import fs from 'node:fs';
 const SHA = /^[0-9a-f]{40}$/;
 const SEMVER =
   /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/;
-const RELEASE_SUBJECT = /^chore\(release\): ocjs v(.+)$/;
+const RELEASE_SUBJECT = /^chore\(release\): ocjs v(.+?)(?: \(#\d+\))?$/;
 const RELEASE_FILES = new Set(['CHANGELOG.md', 'package-lock.json', 'package.json']);
 
 const assert = (condition, message) => {
