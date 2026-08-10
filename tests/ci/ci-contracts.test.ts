@@ -126,7 +126,7 @@ describe('CI contracts', () => {
       commitEpoch: EPOCH,
       packageVersion: '3.0.0-beta.1',
       requestedVersion: '3.0.0-beta.1',
-      commitSubject: 'chore(release): ocjs v3.0.0-beta.1',
+      commitSubject: 'chore(release): ocjs v3.0.0-beta.1 (#20)',
       changedFiles: ['CHANGELOG.md', 'package-lock.json', 'package.json'],
       changelog: '## 3.0.0-beta.1 (2026-08-04)',
     });
