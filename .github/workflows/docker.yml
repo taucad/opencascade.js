@@ -54,6 +54,9 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Preserve protected release policy
+        run: install -m 0755 scripts/ci-release.mjs "$RUNNER_TEMP/ci-release.mjs"
+
       - name: Select exact source
         id: source
         env:
@@ -111,7 +114,7 @@ jobs:
           else
             git diff-tree --root --no-commit-id --name-only -r "$SHA" > "$RUNNER_TEMP/changed-files.txt"
           fi
-          node scripts/ci-release.mjs \
+          node "$RUNNER_TEMP/ci-release.mjs" \
             --event "$EVENT" \
             --operation "$OPERATION" \
             --ref "$REF" \

@@ -916,10 +916,18 @@ describe('CI contracts', () => {
 
   it('should build every dispatched release resume from the validated source SHA', () => {
     const ci = workflow('docker.yml');
+    const preservePolicy = ci.jobs.preflight.steps.find(
+      ({ name }: { name?: string }) => name === 'Preserve protected release policy',
+    );
+    expect(preservePolicy.run).toContain('scripts/ci-release.mjs "$RUNNER_TEMP/ci-release.mjs"');
     const selectSource = ci.jobs.preflight.steps.find(({ name }: { name?: string }) => name === 'Select exact source');
     expect(selectSource.run).toContain('[[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]');
     expect(selectSource.run).toContain('git merge-base --is-ancestor "$RELEASE_SHA" origin/main');
     expect(selectSource.run).toContain('git checkout --detach "$selected_sha"');
+    const release = ci.jobs.preflight.steps.find(
+      ({ name }: { name?: string }) => name === 'Validate event and derive immutable release metadata',
+    );
+    expect(release.run).toContain('node "$RUNNER_TEMP/ci-release.mjs"');
     const jobs = ci.jobs as Record<
       string,
       {
