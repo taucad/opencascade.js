@@ -482,6 +482,8 @@ describe('mergePackageExports', () => {
         [
           'dist/old.js',
           'dist/old.d.ts',
+          'dist/demo.js.symbols',
+          'dist/demo.build-manifest.json',
           'dist/demo.provenance.json',
           'dist/api-reference.json',
           'README.md',
@@ -492,6 +494,8 @@ describe('mergePackageExports', () => {
     ).toStrictEqual([
       'dist/index.js',
       'dist/index.d.ts',
+      'dist/demo.js.symbols',
+      'dist/demo.build-manifest.json',
       'dist/demo.provenance.json',
       'dist/api-reference.json',
       'README.md',
