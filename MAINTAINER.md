@@ -238,8 +238,8 @@ After that PR is merged, CI publishes and verifies the exact `libcascade` and
 CI summary, npm provenance, annotated tag, and GitHub Release are the durable
 record. Never create the tag before both npm packages verify.
 
-If a release run stops after publication begins, resume that same semantic
-version from its exact release commit:
+If a release run stops after publication begins while its release commit is
+still the current `main` head, resume that same semantic version:
 
 ```bash
 gh workflow run docker.yml \
@@ -250,17 +250,19 @@ gh workflow run docker.yml \
   -f release_sha=<full-40-character-release-sha>
 ```
 
-The resume operation accepts only a release commit already contained in
-protected `main`, validates its subject, package version, changelog, changed
-files, and Version Plan lifecycle using the current policy from protected
-`main`, then rebuilds the exact release source through the same gates. An absent
+The resume operation requires `release_sha` to equal the dispatch's
+`GITHUB_SHA`. npm provenance records that workflow source identity, not a later
+detached checkout, so historical-main resumes would publish a false source
+claim and are rejected before any build starts. The operation validates the
+release subject, package version, changelog, changed files, and Version Plan
+lifecycle, then rebuilds the exact source through the same gates. An absent
 immutable object is created, an exact object is reused, and any mismatch stops
 the run. It never republishes an existing npm version, mutates an npm dist-tag
-separately, or overwrites an immutable GHCR tag. A
-failure before npm publication does not consume the version: restore the
-development metadata, fix the workflow through a protected PR, and prepare the
-same version again. Once npm has published a version, only exact-source resume
-may complete it; changed artifacts require a new authorized version.
+separately, or overwrites an immutable GHCR tag. If `main` has advanced, rerun
+the original failed job when possible. A failure before npm publication does
+not consume the version: fix the workflow through a protected PR and prepare
+the same version again. Once npm has published a version, changed artifacts or
+source identity require a new authorized version.
 
 ### Local documentation from CI artifacts
 

@@ -922,6 +922,7 @@ describe('CI contracts', () => {
     expect(preservePolicy.run).toContain('scripts/ci-release.mjs "$RUNNER_TEMP/ci-release.mjs"');
     const selectSource = ci.jobs.preflight.steps.find(({ name }: { name?: string }) => name === 'Select exact source');
     expect(selectSource.run).toContain('[[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]');
+    expect(selectSource.run).toContain('test "$RELEASE_SHA" = "$GITHUB_SHA"');
     expect(selectSource.run).toContain('git merge-base --is-ancestor "$RELEASE_SHA" origin/main');
     expect(selectSource.run).toContain('git checkout --detach "$selected_sha"');
     const release = ci.jobs.preflight.steps.find(

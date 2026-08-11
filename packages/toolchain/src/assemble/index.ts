@@ -853,7 +853,7 @@ const isGeneratedPackageFile = (file: string, distName: string): boolean => {
   return (
     Object.values(ASSEMBLE_OUTPUTS).includes(name as (typeof ASSEMBLE_OUTPUTS)[keyof typeof ASSEMBLE_OUTPUTS]) ||
     /^init\..+\.js$/.test(name) ||
-    /(?:\.js|\.wasm|\.d\.ts|\.js\.symbols|\.build-manifest\.json|\.provenance\.json)$/.test(name)
+    /(?:\.js|\.wasm|\.d\.ts)$/.test(name)
   );
 };
 
@@ -899,9 +899,6 @@ const renderPackageFiles = (
   const artifacts = assets.flatMap((asset) => [
     `${asset.outputName}.js`,
     `${asset.outputName}.wasm`,
-    `${asset.outputName}.js.symbols`,
-    `${asset.outputName}.build-manifest.json`,
-    `${asset.outputName}.provenance.json`,
   ]);
   return [...outputs, ...artifacts].map(target);
 };

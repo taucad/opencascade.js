@@ -149,6 +149,10 @@ The per-variant `<outputName>.d.ts` is **not** stale output. It is the container
 
 `exports.json` is a review aid for `--write-exports` and never ships.
 
+`assemble --write-exports` keeps custom packages slim by default: it does not
+add durable records to `files`. List any records you intentionally publish in
+your package's existing `files`; the merge preserves those explicit entries.
+
 For pthread builds, `assemble` replaces Emscripten 6's build-time glue-file
 self-reference with `import.meta.url`. This keeps worker loading valid when a
 bundler hashes the glue asset. Under Vite, the consumer also needs `worker: {
