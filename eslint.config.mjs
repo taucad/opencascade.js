@@ -6,12 +6,7 @@
  */
 
 import tseslint from 'typescript-eslint';
-import { createRequire } from 'node:module';
 import ocjsLintPlugin from './tools/eslint-plugin/index.js';
-
-const requireFromDocs = createRequire(new URL('./docs-site/package.json', import.meta.url));
-const nextPlugin = requireFromDocs('@next/eslint-plugin-next');
-const reactHooksPlugin = requireFromDocs('eslint-plugin-react-hooks');
 
 export default tseslint.config(
   {
@@ -44,8 +39,6 @@ export default tseslint.config(
     },
     plugins: {
       'ocjs-lint': ocjsLintPlugin,
-      '@next/next': nextPlugin,
-      'react-hooks': reactHooksPlugin,
     },
     rules: {
       'ocjs-lint/jsdoc-quality': 'error',
@@ -54,8 +47,10 @@ export default tseslint.config(
   {
     files: ['docs-site/**/*.{js,mjs,cjs,jsx,ts,tsx,mts,cts}'],
     linterOptions: {
-      // These directives are active under the docs site's Next.js config.
-      reportUnusedDisableDirectives: 'off',
+      // Next.js and React directives belong to the docs site's own lint config.
+      // Ignoring all inline config here also prevents suppressing the repository
+      // JSDoc contract from docs-site sources.
+      noInlineConfig: true,
     },
   },
   {
