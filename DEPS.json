@@ -12,7 +12,7 @@
           "binary_sha256": "8db11704dc296f096216db4db65d86cd7f0ebfdf4c38453a1da276b137b88388"
         },
         "linux-amd64": {
-          "filename": "actionlint_1.7.12_linux_x86_64.tar.gz",
+          "filename": "actionlint_1.7.12_linux_amd64.tar.gz",
           "sha256": "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8",
           "binary_sha256": "c872d6db8c6bf83a8eaa704fc93999f027d55dffbc63b8a6abdccb47df5f4cd4"
         },
