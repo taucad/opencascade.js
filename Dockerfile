@@ -92,7 +92,13 @@ LABEL org.opencontainers.image.title="libcascade (deps-base)" \
 # builds its zlib dependency on first use. Bake both into the published image's
 # sysroot so consumer links never depend on that late network fetch. Compile
 # stages use separate BuildKit cache mounts; their contents are not image data.
-RUN embuilder build freetype
+# Emscripten's port downloader has no retry policy, so bound retries here where
+# a transient archive failure costs seconds rather than hours of compilation.
+RUN for attempt in 1 2 3 4 5; do \
+      embuilder build freetype && break; \
+      [ "$attempt" -lt 5 ] || exit 1; \
+      sleep "$((attempt * 5))"; \
+    done
 
 # ── System packages ─────────────────────────────────────────────────────────
 # Notes on what is intentionally NOT installed:
