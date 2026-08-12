@@ -8,6 +8,9 @@
 import tseslint from 'typescript-eslint';
 import ocjsLintPlugin from './tools/eslint-plugin/index.js';
 
+// Root lint owns JSDoc only; docs-site lint evaluates the real Next/React rules.
+const directiveOnlyRule = { create: () => ({}) };
+
 export default tseslint.config(
   {
     ignores: [
@@ -39,6 +42,8 @@ export default tseslint.config(
     },
     plugins: {
       'ocjs-lint': ocjsLintPlugin,
+      '@next/next': { rules: { 'no-img-element': directiveOnlyRule } },
+      'react-hooks': { rules: { 'set-state-in-effect': directiveOnlyRule } },
     },
     rules: {
       'ocjs-lint/jsdoc-quality': 'error',
@@ -47,10 +52,8 @@ export default tseslint.config(
   {
     files: ['docs-site/**/*.{js,mjs,cjs,jsx,ts,tsx,mts,cts}'],
     linterOptions: {
-      // Next.js and React directives belong to the docs site's own lint config.
-      // Ignoring all inline config here also prevents suppressing the repository
-      // JSDoc contract from docs-site sources.
-      noInlineConfig: true,
+      // These directives are active under the docs site's Next.js config.
+      reportUnusedDisableDirectives: 'off',
     },
   },
   {

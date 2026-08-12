@@ -1,6 +1,6 @@
 /**
- * Verifies `BRepGProp_Face` return-by-value methods mutate caller-provided point and vector
- * outputs. Coverage includes `Normal`, `Bounds`, and the boundary-curve method `D12d`.
+ * Verifies `BRepGProp_Face` returns UV bounds and mutates caller-provided point and vector
+ * outputs through `Normal` and the boundary-curve method `D12d`.
  */
 import { describe, it, expect, beforeAll } from 'vitest';
 import { initOC, getOC, wasmExists } from './helpers.js';

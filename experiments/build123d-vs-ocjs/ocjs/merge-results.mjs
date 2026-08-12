@@ -1,7 +1,7 @@
 /**
  * Merge build123d, WebAssembly, and native OCCT benchmark JSON files into a
- * side-by-side table with pairwise runtime ratios. Input samples must provide
- * `medianMs`; engine identifiers are normalized to stable column names.
+ * side-by-side table with pairwise runtime ratios. Missing samples or `medianMs`
+ * values become `null`; engine identifiers are normalized to stable column names.
  */
 import * as fs from 'node:fs';
 import * as path from 'node:path';

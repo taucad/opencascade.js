@@ -1,5 +1,5 @@
 /**
- * Exercises repeated value-class default calls for heap stability and verifies handle reference
+ * Exercises repeated value-class calls for heap stability and verifies handle reference
  * counts remain observable. Optional-handle coverage is gated because no constructible binding
  * exposes that parameter shape.
  */

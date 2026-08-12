@@ -8,7 +8,7 @@ flagged by the rule 2 sibling-aliasing detector. This sentinel asserts:
   ``.test.ts`` file on disk;
 * the manifest file is present and lists every emitted pin;
 * the regression-pin template anchors are present (so a future
-  template edit that drops the discriminating assertion fails CI).
+  template edit that drops the identity assertion fails CI).
 
 The ``.test.ts`` files themselves run inside the Vitest smoke
 harness against the built WASM artefact in ``dist/``; this
@@ -85,10 +85,9 @@ def test_manifest_is_present_and_lists_every_pin():
     )
 
 
-def test_each_pin_contains_distinguishing_assertion():
-    """The ``expect(smaller).not.toBe(larger)`` assertion is the
-    dispatch-correctness contract — a pin that drops it does NOT
-    catch sub-2b regression. The diagnostic label
+def test_each_pin_contains_identity_assertion():
+    """The ``expect(smaller).not.toBe(larger)`` assertion verifies
+    that the two call shapes return separate objects. The diagnostic label
     ``Sub-2b regression pin:`` must also appear in the describe block
     so failures are immediately attributable to this guard."""
     gen = _load_generator()
@@ -106,6 +105,6 @@ def test_each_pin_contains_distinguishing_assertion():
             bad.append(f"{entry.class_name}:missing-diagnostic")
     assert not bad, (
         f"pin template regressed for: {bad}. The "
-        f"``expect(smaller).not.toBe(larger)`` distinguishing assertion "
+        f"``expect(smaller).not.toBe(larger)`` identity assertion "
         f"is the load-bearing check; do NOT remove."
     )

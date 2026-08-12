@@ -137,6 +137,17 @@ describe('ocjs-lint/jsdoc-quality', () => {
     expect(messages).toEqual([]);
   });
 
+  it('excludes JSDoc type syntax from prose checks', () => {
+    const messages = verify(`
+      /**
+       * @param {Flexible} value - The input value.
+       * @returns {Planned} The output value.
+       */
+      const read = (value) => value;
+    `);
+    expect(messages).toEqual([]);
+  });
+
   it('excludes fenced example code from the prose limit', () => {
     const code = Array.from({ length: 130 }, (_, index) => `const value${index} = ${index};`).join('\n');
     const messages = verify(`
@@ -159,7 +170,10 @@ describe('ocjs-lint/jsdoc-quality', () => {
       /** This currently follows R1 from the blueprint. */
       const generatedSetting = 1;
       /* eslint-enable ocjs-lint/jsdoc-quality */
+      /** Implements R1. */
+      const authoredSetting = 2;
     `);
-    expect(messages).toEqual([]);
+    expect(messages).toHaveLength(1);
+    expect(messages[0]?.messageId).toBe('internalReference');
   });
 });
