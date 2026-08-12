@@ -263,17 +263,19 @@ describe('libcascade migrate — two ymls become one config', () => {
       (typeof config.variants)[number],
       (typeof config.variants)[number],
     ];
-    // The two ymls differ in exactly these: single has EVAL_CTORS=2, multi has
-    // the pthread trio instead.
+    // The two ymls differ in exactly these: single has EVAL_CTORS=2, while
+    // multi has the pthread settings and its guarded worker-count expression.
     expect(single.settings).toBeUndefined();
     expect(single.compilerFlags).toBeUndefined();
     expect(single.rawFlags).toBeUndefined();
     expect(multi.settings).toStrictEqual({
       EVAL_CTORS: null,
-      PTHREAD_POOL_SIZE: 'navigator.hardwareConcurrency',
       SHARED_MEMORY: true,
     });
     expect(multi.compilerFlags).toStrictEqual({ threads: true });
+    expect(multi.rawFlags).toStrictEqual([
+      '-sPTHREAD_POOL_SIZE=globalThis.navigator?.hardwareConcurrency??4',
+    ]);
     expect(config.settings?.EVAL_CTORS).toBe(2);
   });
 
@@ -303,7 +305,7 @@ describe('libcascade migrate — two ymls become one config', () => {
     expect(symbols).toHaveLength(18);
     // Every non-OCCT binding is accounted for — this is what makes the emitted
     // config compile.
-    expect(symbols).toContain('OCJS_ShapeHasher');
+    expect(symbols).toContain('ReplicadShapeHasher');
     expect(symbols).toContain('ReplicadBooleanBatch');
     expect(config.customBindings?.every((binding) => binding.scope === undefined)).toBe(true);
   });

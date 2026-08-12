@@ -196,7 +196,7 @@ describe('replicad libcascade.config.ts', () => {
     );
     const bound = new Set(replicadConfig.bindings);
     expect([...declared].filter((symbol) => !bound.has(symbol))).toStrictEqual([]);
-    // The 18 `Replicad*` / `OCJS_ShapeHasher` / `*Wrapper` classes the 11
+    // The 18 `Replicad*` / `*Wrapper` classes the 11
     // wrapper files bind (the blueprint's "17" undercounted by one).
     expect(declared.size).toBe(18);
   });
