@@ -88,14 +88,15 @@ FROM emscripten/emsdk:6.0.5@sha256:76a44fff907397784decc435115d07fcb9587a4f15049
 LABEL org.opencontainers.image.title="libcascade (deps-base)" \
       org.opencontainers.image.description="OS toolchain + dependency clones (emsdk, Node 24, uv, Python 3.14, OCCT, rapidjson, freetype, LLVM 17 — header-trimmed)"
 
-# The default full build links Emscripten's FreeType port, which downloads and
-# builds its zlib dependency on first use. Bake both into the published image's
-# sysroot so consumer links never depend on that late network fetch. Compile
-# stages use separate BuildKit cache mounts; their contents are not image data.
+# The supported links use Emscripten's standard and legacy-SjLj FreeType ports,
+# which download and build their shared zlib dependency on first use. Bake both
+# variants into the published image's sysroot so consumer links never depend on
+# that late network fetch. Compile stages use separate BuildKit cache mounts;
+# their contents are not image data.
 # Emscripten's port downloader has no retry policy, so bound retries here where
 # a transient archive failure costs seconds rather than hours of compilation.
 RUN for attempt in 1 2 3 4 5; do \
-      embuilder build freetype && break; \
+      embuilder build freetype freetype-legacysjlj && break; \
       [ "$attempt" -lt 5 ] || exit 1; \
       sleep "$((attempt * 5))"; \
     done
