@@ -1,38 +1,9 @@
 /**
- * Renderer parity: the two real `libcascade.config.ts` files must render ymls
- * that are semantically identical to the hand-maintained / ytt-generated ones
- * they replace.
- *
- * Deviation from strict sequence equality — `emccFlags`:
- *   The reference ymls interleave typed and raw flags in hand-chosen positions
- *   (`--no-entry` sits between two `-s` settings; libcascade's
- *   `-Wl,--allow-undefined` and `--emit-symbol-map` sit between
- *   `ERROR_ON_UNDEFINED_SYMBOLS` and `STACK_SIZE`). The blueprint fixes
- *   `rawFlags` as "passed through verbatim AFTER typed flags", so no canonical
- *   render order can reproduce both files positionally. emcc treats distinct
- *   flags as order-insensitive, so parity is asserted as a **multiset** for
- *   `emccFlags` and as an exact **sequence** for everything else (bindings,
- *   additionalBindFiles, additionalCppFiles). The exact rendered sequence is
- *   separately pinned by `config.test.ts`.
- *
- * Deviation — the pthread spelling (replicad's multi variant only):
- *   The reference ymls request pthreads twice, as `-pthread` *and* as
- *   `-sUSE_PTHREADS=1`. emcc documents the latter purely as a legacy alias of
- *   the former (`tools/settings.py` LEGACY_SETTINGS, which is why the generated
- *   type carries it `@deprecated`), so the pair is one request written two ways.
- *   C1 moved replicad's config to the typed `compilerFlags: { threads: true }`,
- *   which renders the flag and drops the alias; parity for that variant is
- *   therefore asserted modulo removing the alias from the reference. libcascade's
- *   config is untouched and its references are compared with no such rewrite.
- *
- * Deviation — bare `-sNAME`:
- *   The references write `-sMODULARIZE` / `-sWASM_BIGINT` /
- *   `-sEXPORT_EXCEPTION_HANDLING_HELPERS` with no value; the typed `settings`
- *   surface renders booleans as `=1`/`=0`. emcc defines bare `-sNAME` as
- *   `-sNAME=1`, so the comparison normalises bare settings before matching.
- *
- * The three rewrites live in `./reference-deltas.ts` because `migrate.test.ts`
- * asserts its round-trip modulo exactly the same ones.
+ * Compare rendered configs with the hand-maintained and ytt references.
+ * Bindings and C++ file lists retain exact order. `emccFlags` compare as a
+ * multiset after normalizing bare boolean settings, redundant pthread aliases,
+ * and exception-helper exports through `reference-deltas.ts`. Exact rendered
+ * flag order is covered by `config.test.ts`.
  */
 import * as fs from 'node:fs';
 import * as path from 'node:path';
@@ -57,12 +28,7 @@ const REPLICAD_ROOT = path.resolve(
   '../../../../replicad/packages/replicad-opencascadejs',
 );
 
-/**
- * Wave W4 deleted replicad's ytt sources and the `build-config/custom_build_*.yml`
- * they generated. The last generated copies are committed here verbatim so the
- * parity assertions keep proving the renderer reproduces the machinery it
- * replaced — they are frozen references, not live build inputs.
- */
+/** Frozen ytt outputs used only as renderer parity references. */
 const REPLICAD_REFERENCE_DIRECTORY = path.join(import.meta.dirname, 'fixtures/reference/replicad');
 
 type ReferenceYaml = {

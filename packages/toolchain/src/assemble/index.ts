@@ -1,21 +1,8 @@
 /**
- * `libcascade assemble` — pure-Node packaging generation.
- *
- * Consumes the per-variant artifacts `libcascade build` left in `dist/`
- * (`<outputName>.d.ts` + `<outputName>.build-manifest.json`) and emits the
- * npm-publishable surface next to them:
- *
- * | File | Purpose |
- * | --- | --- |
- * | `types.d.ts` | One d.ts unioning every variant's surface (replaces the N near-identical per-variant files) |
- * | `init.js` / `init.d.ts` | `createInstance({ variant, … })` — the `./init` subpath |
- * | `init.<variant>.js` / `.d.ts` | `./<variant>/init` — an exact pinned factory (N>1 only) |
- * | `index.js` / `index.d.ts` | Eager root: selected instance plus named bound values |
- * | `variant.d.ts` | Types for the raw per-variant glue subpaths (`./single`, `./multi`, …) |
- * | `exports.json` | The `exports` fragment to merge into package.json (`--write-exports`) |
- *
- * The d.ts and the eager barrel are rendered from one symbol list computed once
- * ({@link collectSymbols}), so the two render targets cannot diverge.
+ * Generate a package surface from built variant declarations and manifests.
+ * Outputs shared types, init factories, the eager root, raw variant types, and
+ * an exports fragment. {@link collectSymbols} supplies both JavaScript and
+ * declaration renderers from one symbol list.
  */
 import * as fs from 'node:fs';
 import * as path from 'node:path';

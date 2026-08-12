@@ -1,20 +1,7 @@
 /**
- * Type-level tests for class-scoped using-alias resolution.
- *
- * Class member using-aliases like XSAlgo_ShapeProcessor::ParameterMap
- * canonicalize to template types (e.g., NCollection_DataMap<...>).
- * Fix 2's AST-based template arg resolution handles these automatically.
- *
- * Behaviour after audit R8.1's regen pass:
- * - ParameterMap resolves to
- *   NCollection_DataMap_TCollection_AsciiString_TCollection_AsciiString. The
- *   underlying class is now auto-discovered AND bound (the alias was upgraded
- *   from a structural fallback to a real Embind class during R5 + R8.1 work),
- *   so accessors return the concrete class rather than `unknown`. The original
- *   assertions targeted the pre-binding `unknown` shape; they have been
- *   tightened to assert the concrete class now that it is exported.
- * - OperationsFlags resolves to std::bitset<18> which has no STL mapping and
- *   stays as `any` until a dedicated STL handler is added.
+ * Verifies class-scoped aliases resolve to their exported TypeScript forms.
+ * `ParameterMap` resolves to its concrete `NCollection_DataMap` class, while the
+ * unsupported `std::bitset<18>` backing `OperationsFlags` resolves to `any`.
  */
 import { expectTypeOf, it, describe } from 'vitest';
 import type {

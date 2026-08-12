@@ -1,9 +1,4 @@
-/**
- * Config → yml renderer.
- *
- * The yml is the container-side contract consumed by `docker run … link <yml>`
- * (`src/customBuildSchema.py`). Wave W1 renders it; it does not change it.
- */
+/** Render typed build configs into the yml consumed by the container `link` command. */
 import * as path from 'node:path';
 
 import { stringify } from 'yaml';
@@ -24,7 +19,7 @@ import settingsMeta from '../../generated/emcc-settings.meta.json' with { type: 
  *
  * Generated: `scripts/generate-emcc-settings.mjs` buckets a list-valued setting
  * as a comma list when its elements are a closed literal union read out of
- * settings.js (today only `ENVIRONMENT`), and as a bracketed list otherwise.
+ * `settings.js`, and as a bracketed list otherwise.
  */
 const COMMA_LIST_SETTINGS = new Set<string>(settingsMeta.commaLists);
 
@@ -86,37 +81,13 @@ export const mergeSettings = (
 };
 
 /**
- * Render one variant's full `emccFlags` list.
- *
- * Canonical order, in eight groups:
- *
- * 1. exceptions — `-fwasm-exceptions` / `-fexceptions`
- * 2. `-s` settings, base-merged, in {@link mergeSettings} order
- * 3. `-flto`
- * 4. `--no-entry`
- * 5. `-pthread`
- * 6. `-msimd128`
- * 7. optimisation — `-O3` and friends
- * 8. base `rawFlags`, then variant `rawFlags`
- *
- * The shape of that order: exception mode first because it is the one flag the
- * `-s` settings themselves have to agree with (the exception helpers in
- * `EXPORTED_RUNTIME_METHODS`); settings next as the bulk of the line; then the
- * link-shaping and target-feature flags, with `-pthread` placed beside
- * `-msimd128` because the two are the same kind of thing — target features that
- * change what the produced wasm demands of its host; then the optimisation
- * level, last of the typed flags so it is easy to find; then the escape hatch.
- *
- * `rawFlags` last is a contract, not a leftover: it is what lets a raw flag
- * override a typed one, since emcc takes the last occurrence of a repeated flag.
- *
- * The hand-maintained reference ymls interleave raw and typed flags in an
- * arbitrary order, so the rendered sequence is a permutation of theirs. emcc
- * treats distinct flags as order-insensitive, so this is semantics-preserving.
+ * Render one variant's `emccFlags`. Order is exceptions, merged settings, LTO,
+ * no-entry, threads, SIMD, optimization, base raw flags, then variant raw
+ * flags. Raw flags are last so repeated flags override typed values.
  *
  * @param config - The build configuration.
  * @param variant - The variant being rendered.
- * @returns The flag list, ready for `mainBuild.emccFlags`.
+ * @returns The flag list for `mainBuild.emccFlags`.
  */
 export const renderEmccFlags = (config: BuildConfig, variant: BuildVariant): string[] => {
   const compilerFlags = mergeCompilerFlags(config, variant);

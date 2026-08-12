@@ -1,33 +1,6 @@
 /**
- * Smoke test: TR-MO (multi-overload trailing-default gate).
- *
- * Pins the defect catalogued at
- * `docs/research/ocjs-bindgen-libembind-outstanding-issues-catalog.md`
- * Finding 1 row TR-MO. Concrete target identified by Phase 0 pre-scan
- * cross-referencing OCCT source for trailing-default methods on
- * multi-overload classes:
- * `BRepOffsetAPI_MakeFilling::Add(Edge, GeomAbs_Shape, IsBound = true)`
- * (`repos/opencascade.js/deps/OCCT/src/ModelingAlgorithms/TKOffset/BRepOffsetAPI/BRepOffsetAPI_MakeFilling.hxx:168-170`).
- *
- * `BRepOffsetAPI_MakeFilling::Add` has five overloads; two carry a
- * trailing `IsBound = true` default. Because `numOverloads == 5`, the
- * gate at `src/ocjs_bindgen/codegen/bindings.py:1722` skips the
- * truncation-lambda fan-out, so the compiled binding at
- * `build/bindings/.../BRepOffsetAPI_MakeFilling.cpp:5571` emits only
- * the full-arity `select_overload<int(const TopoDS_Edge&, const GeomAbs_Shape, const bool)>`
- * form. JS callers that pass 2-arg `Add(edge, GeomAbs_C0)` therefore
- * receive a `BindingError` today even though the underlying C++
- * default would make the call meaningful.
- *
- * Counterfactual (3-arg `Add(edge, GeomAbs_C0, true)`) is the exact
- * pattern used by the existing `smoke-sweep-loft.test.ts` so we know
- * the binding is sound when called at full arity.
- *
- * Expected outcome today: the 2-arg call throws. Expected outcome
- * after the bindgen TR-MO fix lands: the 2-arg call succeeds (treats
- * `IsBound` as `true`). This test is a regression pin against the
- * current defect and will flip from failing to passing when the fix
- * is shipped.
+ * Verifies `BRepOffsetAPI_MakeFilling.Add(edge, order, isBound = true)` accepts the explicit
+ * full-arity call and the trailing-default two-argument call.
  */
 import { describe, it, expect, beforeAll } from 'vitest';
 import { initOC, getOC, wasmExists } from './helpers.js';

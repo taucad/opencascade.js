@@ -53,13 +53,11 @@ export const applyEmsdk605ExceptionDelta = (flags: readonly string[]): string[] 
     );
 
 /**
- * pthread modernization delta (blueprint R4): drop `-sUSE_PTHREADS=1`, emcc's
- * deprecated legacy alias for the `-pthread` the reference already carries
- * alongside it. Applied to the reference so the comparison is against the one
- * request the config now expresses once.
+ * Remove `-sUSE_PTHREADS=1` when the reference also carries its `-pthread`
+ * equivalent.
  *
  * @param flags - The reference yml's `emccFlags`.
- * @returns The same flags with the legacy alias removed.
+ * @returns Flags without the redundant legacy alias.
  */
 export const dropDeprecatedUsePthreads = (flags: readonly string[]): string[] =>
   flags.filter((flag) => normalizeFlag(flag) !== '-sUSE_PTHREADS=1');

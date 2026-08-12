@@ -5,23 +5,22 @@
  * `libcascade` self-contained — the published source repository must not
  * carry a hard reference to a sibling `libs/oxlint/` checkout.
  *
- * Today the only rule we ship is `require-using-on-disposable`, the
- * type-aware guard that forces every embind-managed handle and RBV
- * container to be captured by a `using` declaration (see the rule's own
- * header for the full ownership model).
+ * The plugin contains repository-specific ownership and documentation guards.
  *
  * @typedef {import('eslint').ESLint.Plugin} Plugin
  */
 
+import { jsdocQualityRule } from './jsdoc-quality.js';
 import { requireUsingOnDisposableRule } from './require-using-on-disposable.js';
 
 /** @type {Plugin} */
 const plugin = {
   meta: {
     name: 'ocjs-lint',
-    version: '1.0.0',
+    version: '1.1.0',
   },
   rules: {
+    'jsdoc-quality': jsdocQualityRule,
     'require-using-on-disposable': requireUsingOnDisposableRule,
   },
 };

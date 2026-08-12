@@ -1,30 +1,7 @@
 /**
- * Focused parser for the OCJS-generated `.d.ts` declaration shape.
- *
- * Every OCCT class produced by `src/bindings.py::TypescriptBindings` follows
- * the same template:
- *
- *   /** <class doxygen> *\/
- *   [export] declare class <Name> [extends <Bases>] {
- *     /** <jsdoc> *\/
- *     constructor(...)                             // 0-N overloads
- *     /** <jsdoc> *\/
- *     static <Name>(<params>): <Return>            // 0-N overloads
- *     /** <jsdoc> *\/
- *     <Name>(<params>): <Return>                   // 0-N overloads
- *     <propName>: <Type>;                          // 0-N properties
- *     /** Releases the C++ object. ... *\/
- *     delete(): void;
- *     [Symbol.dispose](): void;
- *   }
- *
- * The parser converts this into a structured object the viewer renders as
- * method cards. It does NOT attempt to handle arbitrary TypeScript — the
- * shape is generated and uniform, so a focused regex + tokenizer is faster
- * and more maintainable than pulling in the TS compiler API for a 12 MB feed.
- *
- * The parser is forgiving: anything it cannot classify is preserved as a
- * "raw" entry on the parsed class so it stays visible in the viewer.
+ * Parse generated OCCT class declarations into the records used by API cards.
+ * The parser targets the fixed `TypescriptBindings` output shape rather than
+ * arbitrary TypeScript. Unclassified members remain as raw entries.
  */
 
 const TOPLEVEL_CLASS_RE = /(?:export\s+)?declare\s+class\s+([A-Za-z_][\w$]*)(?:\s+extends\s+([^\{]+?))?\s*\{/;

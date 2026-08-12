@@ -149,6 +149,13 @@ describe('emcc-settings', () => {
     );
   });
 
+  it('limits JSDoc suppressions to the two copied Emscripten field regions', () => {
+    const declaration = readGenerated('emcc-settings.d.ts');
+    expect(declaration.match(/eslint-disable ocjs-lint\/jsdoc-quality/g)).toHaveLength(2);
+    expect(declaration.match(/eslint-enable ocjs-lint\/jsdoc-quality/g)).toHaveLength(2);
+    expect(declaration.match(/copied verbatim from pinned Emscripten settings\.js/g)).toHaveLength(2);
+  });
+
   it('records the emsdk version the settings came from', () => {
     expect(settingsMeta.emsdkVersion).toMatch(/^\d+\.\d+\.\d+$/);
     expect(readGenerated('emcc-settings.d.ts')).toContain(`emsdk ${settingsMeta.emsdkVersion}`);

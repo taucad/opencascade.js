@@ -111,8 +111,8 @@
     "test:toolchain": "npm test --workspace=@libcascade/toolchain",
     "typecheck": "tsc --project tests/tsconfig.json",
     "typecheck:toolchain": "tsc --project packages/toolchain/tsconfig.json",
-    "lint": "eslint --config eslint.config.mjs tests packages/toolchain",
-    "lint:fix": "eslint --config eslint.config.mjs --fix tests packages/toolchain"
+    "lint": "eslint --config eslint.config.mjs .",
+    "lint:fix": "eslint --config eslint.config.mjs --fix ."
   },
   "devDependencies": {
     "@gltf-transform/core": "^4.3.0",

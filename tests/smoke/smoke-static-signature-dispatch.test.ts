@@ -1,26 +1,6 @@
 /**
- * Smoke tests: Static method signature dispatch under input-passthrough RBV.
- *
- * Validates that static methods with same-arity overloads dispatch correctly
- * via the JS signature table. A bug in _embind_register_class_class_function
- * fails to set .signature on the first-registered static method, causing
- * ensureOverloadSignatureTable to store it under key "undefined" instead of
- * the raw signature string. This prevents whenDependentTypesAreResolved from
- * properly cleaning up the stale entry and may block overload resolution.
- *
- * Regression target: BRep_Tool.PolygonOnTriangulation has a 3-arg
- * select_overload (Edge, Triangulation, Location) returning a Handle, plus a
- * 2-arg Approach G Handle-elision overload (Edge, Location) returning a
- * `{P, T, L}` container. Under Approach G the non-const `Handle<T>&` output
- * positions are elided from the JS-facing arg list (the C++ lambda declares
- * stack-local null Handles instead). The dispatch must
- * route to the correct overload based on argument count and types.
- *
- * Patterns tested:
- * - BRep_Tool.PolygonOnTriangulation dispatch across the 3-arg non-RBV
- *   handle-returning overload and the 2-arg Approach G Handle-elision overload
- * - BRep_Tool.Curve static method with input-passthrough RBV
- * - BRep_Tool.Triangulation input-passthrough RBV container unwrapping
+ * Verifies static same-arity overloads preserve their JavaScript signature metadata and dispatch
+ * correctly across handle-returning and return-by-value `BRep_Tool` methods.
  */
 import { describe, it, expect, beforeAll } from 'vitest';
 import { initOC, getOC, wasmExists } from './helpers.js';

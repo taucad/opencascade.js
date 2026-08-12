@@ -1,36 +1,10 @@
 /**
- * Type-aware ESLint rule: every expression whose inferred type carries a
- * `[Symbol.dispose](): void` (or `[Symbol.asyncDispose](): PromiseLike<void>`)
- * member must be bound to a `using` / `await using` declaration (or be
- * explicitly forwarded via `return` / `throw` / a `DisposableStack.use(...)`
- * sink) so the resource is released at scope exit.
- *
- * Without `using` the dispose method is never invoked and the resource
- * leaks (e.g. Embind-managed WASM handles in OCJS — every `gp_Pnt`,
- * `TopoDS_Shape`, RBV container).
- *
- * Auto-fix (single case):
- *   - `const x = expr;`  →  `using x = expr;`
- *
- * Reported without auto-fix (human must introduce a `using` binding with a
- * sensible name and rewire the expression):
- *   - `let x = expr;` — `using` is const-equivalent; reassignment would break.
- *   - destructuring (`const { a } = expr`) — capture container in `using`, then destructure.
- *   - inline temporaries (`foo(new X())`) — hoist `using name = <expr>;` above the statement.
- *
- * Standard-library disposables (`IterableIterator`, `AsyncIterator`,
- * `Array.values()`, etc. that became Disposable in TS 5.2+) are exempt:
- * their dispose implementations are no-ops and flagging them generates
- * noise. The exemption keys off the declaration file path
- * (`/lib/lib.*.d.ts`).
- *
- * **Return-flow escape (intra-procedural):** `const x = <disposable>(); … return …`
- * where the expression tree of `return`’s argument contains a read of `x`
- * is treated as ownership forwarded to the caller (mirrors
- * `@typescript-eslint/no-floating-promises` accepting `const p = f(); return p;`).
- * The rule does not analyze closure captures (`{ cleanup: () => x.delete() }`),
- * aliases through outer `let`, or cross-function callers — use `using`, refactor,
- * or a targeted `eslint-disable` with rationale.
+ * Require disposable expressions to be bound by `using` or `await using`,
+ * returned, thrown, or passed to `DisposableStack.use`. The rule fixes simple
+ * `const` declarations to `using`; reassignment, destructuring, and inline
+ * temporaries require manual ownership. Standard-library iterator disposables
+ * are exempt. Return-flow analysis is intra-procedural and does not follow
+ * closure captures or outer aliases.
  *
  * @typedef {import('eslint').Rule.RuleModule} RuleModule
  * @typedef {import('eslint').Rule.RuleContext} RuleContext

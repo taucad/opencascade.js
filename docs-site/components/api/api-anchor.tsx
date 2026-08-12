@@ -12,18 +12,9 @@ export type ApiAnchorProps = {
 };
 
 /**
- * Hover-revealed "copy link" affordance shown to the right of a class title
- * or member name. Clicking copies the absolute deep-link URL (`…#<anchorId>`)
- * to the clipboard, updates the address-bar hash, and flashes a tick on
- * success — reusing the tick-on-copy pattern from `tag-badge.tsx`.
- *
- * The icon stays hidden until the surrounding `group` element (the card
- * header / member row) is hovered or this button is keyboard-focused,
- * matching the standard docs "#"/link-icon affordance. Replacing the hash via
- * `history.replaceState` (rather than assigning `location.hash`) avoids both a
- * history entry and a native jump — the item is already in view — while the
- * manual `hashchange` dispatch lets `ApiHashHighlight` flash the linked target
- * so the user can confirm exactly what was copied.
+ * Copy a class or member deep link. The control appears on hover or keyboard
+ * focus, replaces the URL hash without scrolling, and dispatches `hashchange`
+ * so `ApiHashHighlight` confirms the target.
  */
 export const ApiAnchor = ({ anchorId, label }: ApiAnchorProps): ReactNode => {
   const [copied, setCopied] = useState(false);

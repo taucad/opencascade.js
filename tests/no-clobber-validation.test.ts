@@ -1,39 +1,7 @@
 /**
- * Static lint: no embind clobber in generated bindings.
- *
- * Embind keys its method tables on `(kind, name, arity)` — where `kind`
- * is `function` (instance method) or `class_function` (static method) —
- * and within a same-(kind, name, arity) bucket the OCJS-patched runtime
- * dispatcher distinguishes overloads via a `signaturesArray` lookup keyed
- * on the JS-effective type tuple. Two registrations sharing identical
- * `(kind, name, arity, jsEffectiveSig)` are TRUE clobbers: the runtime
- * has nothing to discriminate them and the last-registered variant
- * silently shadows the first. The failure manifests at runtime as a
- * `BindingError` when the JS caller passes an argument matching the
- * clobbered overload, or as silent return-shape divergence.
- *
- * The codegen path in `src/bindings.py:processMethodGroup` runs two
- * dedup passes — the original keys on `_classify_js_type` over ALL C++
- * args; the second (Path C, R3) keys on `_classify_js_type` over only
- * the JS-visible args after RBV elision. Together they guarantee no two
- * registrations share an identical JS-effective signature within a
- * (class, name) group. This lint is the static dual of the runtime
- * invariant: any future regression in either dedup pass is fatal here.
- *
- * Different JS-effective signatures at the same arity (e.g.
- * `(Edge, Surface, Location)` vs `(Edge, val, number)` for the
- * non-RBV / RBV variants of `BRep_Tool::PolygonOnSurface`) are correctly
- * routed by the runtime patched dispatcher and are NOT clobbers.
- * Different arities of the same name (e.g. `FindColor(label)` vs
- * `FindColor(color, autoAdd)`) are also independent — embind keeps them
- * in separate slots.
- *
- * ## Baseline
- *
- * `EXPECTED_PENDING_CLOBBERS` is intentionally empty. Every codegen
- * clobber on the FIX-A/B/C / R1+R3 surface area is now eliminated at
- * generation time (R3 Path C dedup) or correctly routed at dispatch
- * time (R1 runtime patch). New entries appearing here are regressions.
+ * Rejects duplicate generated bindings with the same class, method kind, name, arity, and
+ * JavaScript-visible type signature. Same-arity overloads with distinct signatures remain valid
+ * because the patched runtime dispatcher can distinguish them.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -42,12 +10,9 @@ import * as path from 'node:path';
 
 const BINDINGS_ROOT = path.resolve(import.meta.dirname, '../build/bindings');
 
-/** Empty — every prior baseline entry is now resolved either by R3
- *  (codegen JS-effective dedup in `src/bindings.py:processMethodGroup`)
- *  or by R1 (runtime `signatureArray` propagation in
- *  `src/patches/libembind-overloading.patch`). Any entry surfaced by the
- *  lint going forward is a regression — fix at the source rather than
- *  re-baselining. */
+/**
+ * Empty baseline. Any entry is a generator or dispatcher regression and must be fixed at source.
+ */
 const EXPECTED_PENDING_CLOBBERS: ReadonlySet<string> = new Set();
 
 type FunctionRegistration = {
@@ -60,14 +25,10 @@ type FunctionRegistration = {
   /** Arity of the JS-callable signature; -1 means the registration form
    *  could not be parsed (treated as a unique slot to avoid false positives). */
   arity: number;
-  /** JS-effective signature tuple — comma-joined normalized JS types of
-   *  the JS-visible args. Mirrors `_classify_js_type` over `_getJsVisibleArgs`
-   *  in `src/bindings.py:processMethodGroup`. Two registrations with the
-   *  same (kind, name, arity, jsEffectiveSignature) are TRUE clobbers because the
-   *  runtime patched dispatcher (`signaturesArray` lookup) cannot
-   *  disambiguate identical type tuples. Different sigs at the same arity
-   *  are correctly routed by the runtime dispatcher (post-R1). Empty
-   *  string means the registration form could not be parsed. */
+  /**
+   * Comma-joined normalized JavaScript types for visible arguments. Identical kind, name, arity,
+   * and signature tuples cannot be distinguished; an empty string marks an unparsed registration.
+   */
   jsEffectiveSignature: string;
   cppLine: number;
 };

@@ -1,15 +1,6 @@
 /**
- * Smoke tests: BRep_Tool overload dispatch under input-passthrough RBV.
- *
- * Validates that BRep_Tool static methods with same JS-visible arity dispatch
- * correctly via val-based runtime type checks. Specifically exercises:
- *
- * - PolygonOnTriangulation: 3-arg non-RBV (Edge, Triangulation, Location)
- *   vs 4-arg input-passthrough RBV (Edge, P, T, L) → {P, T, L}
- * - PolygonOnSurface: 2-arg non-RBV (Edge, Face) vs 3-arg non-RBV
- *   (Edge, Surface, Location) — the 4-arg RBV (Edge, C, S, L) requires a
- *   concrete `Handle<Geom_Surface>` placeholder which is not exercisable from
- *   JS today because `Geom_Surface` is abstract (no default constructor).
+ * Verifies `BRep_Tool` same-arity static overloads dispatch by JavaScript-visible argument
+ * types, including input-passthrough return-by-value variants.
  */
 import { describe, it, expect, beforeAll } from 'vitest';
 import type {

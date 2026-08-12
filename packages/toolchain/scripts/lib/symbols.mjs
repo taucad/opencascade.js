@@ -1,21 +1,7 @@
 /**
- * Shared reader for the two symbol generators.
- *
- * The bindable universe is what the container's `link` step accepts in
- * `bindings:`, which `resolve_requested_symbols` partitions three ways
- * (`src/ocjs_bindgen/link/manifest_registry.py`):
- *
- * 1. **compiled** — OCCT classes and enums; enumerated from the release's own
- *    `dist/api-reference.json` (schema `ocjs-api-reference-v1`).
- * 2. **typedef alias** — OCCT `typedef`s the validator downgrades from missing
- *    to alias-resolved via `build/ncollection-manifest.json::template_typedefs`
- *    (e.g. `TColgp_Array1OfPnt`, `IMeshData_VectorOfInteger`). Those names are
- *    bindable but never appear as classes in api-reference.json.
- * 3. **Embind builtin** — the `class_<…>("Name")` registrations in
- *    `src/ocjs_bindgen/embind_builtins.py` (e.g. `TopoDS`).
- *
- * (2) and (3) are read out of the image (`lib/image.mjs`) so the union is in
- * lockstep with the toolchain the config will actually build against.
+ * Read the bindable symbol universe for generated toolchain metadata. The
+ * universe combines compiled OCCT classes and enums from `api-reference.json`,
+ * typedef aliases from the image manifest, and unconditional Embind builtins.
  */
 import * as fs from 'node:fs';
 import * as path from 'node:path';

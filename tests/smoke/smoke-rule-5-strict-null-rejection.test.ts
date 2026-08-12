@@ -1,56 +1,6 @@
 /**
- * Smoke test: rule-5 strict-null rejection across val-default rows.
- *
- * Policy (`repos/opencascade.js/docs/policy/ocjs-trailing-default-emission-policy.md`):
- *   - **Rule 5 (strict-by-default null/undefined)**: every defaulted
- *     parameter position whose val-default lambda is NOT carved out by
- *     row 30 MUST throw `BindingError` carrying the structured message
- *     `"[rule 5 / strict null] null is not a valid value for this slot
- *     — pass undefined to use the default"` when the JS caller passes
- *     `null` explicitly.
- *
- * The exact substring is sourced verbatim from
- * `src/ocjs_bindgen/codegen/val_default.py::_val_unwrap_expr`. If the
- * lambda's error wording drifts in either direction (e.g. someone
- * removes the bracketed citation or changes the prose) this pin fires
- * to catch the silent contract break.
- *
- * Rows covered (one representative call per row — the mechanism is
- * identical and the per-row enumeration documents the matrix surface):
- *   - **Row 1** — BRepMesh_IncrementalMesh trailing scalar `isRelative`.
- *   - **Row 2** — BRepAlgoAPI_Fuse `Build(Message_ProgressRange = ...)`.
- *   - **Row 24** — BRepMesh_IncrementalMesh trailing scalar stack
- *     (multi-scalar policy flags; row 1 plus the angDef/parallel triple).
- *   - **Row 33** — IFSelect_Act.SetGroup cstring trailing default.
- *   - **Row 34** — BRepOffsetAPI_MakeFilling.Add multi-overload trailing
- *     bool slot.
- *   - **Row 36** — same mechanism as row 1 / 24 (defaulted trailing param
- *     with `= T{}`); covered representatively by the multi-scalar stack
- *     of BRepMesh.
- *
- * Pre-Phase-4 verdict:
- *   - Today the bindgen has NOT regenerated the published WASM with
- *     val_default emission for rows {1, 2, 24, 33, 34, 36}. The current
- *     dispatch behaviour for `null` at these slots is:
- *       * Row 1 / 24 / 36 — embind's primitive coercion throws
- *         `BindingError("Cannot pass null as a Standard_Boolean")` or
- *         similar; the message DOES NOT contain "null is not a valid
- *         value", so the regex pin FAILS today.
- *       * Row 2 — passing `null` for the progress-range handle slot
- *         throws `BindingError("Expected null or instance of
- *         Message_ProgressRange")` — does not match.
- *       * Row 33 — IFSelect_Act.SetGroup with `null` second arg throws
- *         a different generic BindingError today.
- *       * Row 34 — BRepOffsetAPI_MakeFilling.Add with `null` last arg
- *         throws BindingError but the regex does not match.
- *   - Every `it` in this file is therefore EXPECTED TO FAIL today and
- *     FLIP TO PASSING when the val_default lambdas land via Phase 4
- *     regeneration.
- *
- * Post-Phase-4 verdict:
- *   - Each `null` argument routes through the strict-null branch of the
- *     emitted lambda and throws `Error` with the exact prose pinned by
- *     the `RULE_5_NULL_ERROR_FRAGMENT` regex.
+ * Verifies explicit `null` raises the structured strict-null binding error for scalar,
+ * value-class, C-string, and multi-overload trailing defaults.
  */
 import { describe, it, expect, beforeAll } from 'vitest';
 import { initOC, getOC, wasmExists } from './helpers.js';

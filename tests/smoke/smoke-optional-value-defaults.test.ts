@@ -1,47 +1,6 @@
 /**
- * Smoke test: value-typed (primitive + class-value) trailing-default routing
- * with rule-5 strict-null contract.
- *
- * Policy (`repos/opencascade.js/docs/policy/ocjs-trailing-default-emission-policy.md`):
- *   - Matrix row 1  — single overload, trailing scalar default (val-default emission).
- *   - Matrix row 2  — single overload, trailing value-class default.
- *   - Matrix row 24 — multi-scalar trailing defaults (BRepMesh's
- *     `isRelative`, `angDef`, `isInParallel` triple).
- *   - **Rule 5 (strict-by-default null/undefined)**: this file pins that
- *     contract — `undefined` materialises the C++ default; `null` rejects
- *     with `BindingError` carrying the structured message emitted by
- *     `src/ocjs_bindgen/codegen/val_default.py::_val_unwrap_expr`.
- *
- * Targets:
- *   - `BRepMesh_IncrementalMesh(shape, linDef, isRel?, angDef?, isInParallel?)`
- *     — four trailing primitive defaults. The `linDef` is required input;
- *     the trailing three are val-default slots tagged `DEFAULT_ON_ABSENCE`
- *     with strict-null semantics (no row-30 carve-out — there is no
- *     handle-reporter slot in this signature).
- *
- *   - `BRepAlgoAPI_Fuse(s1, s2)` ctor — reserved for shape-3/4 anchor
- *     coverage once a non-RBV-blocked class-value default ships.
- *
- * Pre-Phase-4 verdict (today, against the pre-regeneration WASM):
- *   - `undefined` cases PASS by coincidence (existing fan-out + permissive
- *     silent coercion to 0/false).
- *   - `null` cases throw `BindingError("Cannot pass null as a Standard_Boolean")`
- *     or similar — NOT the rule-5 structured error. The expected message
- *     pin therefore FAILS today.
- *
- * Post-Phase-4 verdict (after big-bang regeneration with classifier-driven
- * val_default emission):
- *   - `undefined` resolves through the strict-null lambda's
- *     `isUndefined() → C++ default` branch, materialising the correct
- *     source-level default (e.g. `IsRelative = false`).
- *   - `null` resolves through the strict-null lambda's
- *     `isNull() → throw new Error(...)` branch, surfacing the structured
- *     rule-5 message verbatim.
- *
- * The expected error message is the EXACT string emitted by
- * `_val_unwrap_expr` (the `[rule 5 / strict null] ...` prose) so the test
- * pins the emitted lambda's error path and catches accidental drift in
- * the codegen wording.
+ * Verifies primitive and class-value trailing defaults. `undefined` selects the C++ default,
+ * explicit values pass through, and `null` raises the strict-null binding error.
  */
 import { describe, it, expect, beforeAll } from 'vitest';
 import { initOC, getOC, wasmExists } from './helpers.js';
@@ -90,33 +49,9 @@ describe.skipIf(!wasmExists)('Smoke: value-typed trailing-default routing (rule 
   });
 
   /**
-   * Class-value trailing default with JS-observable default recovery
-   * (matrix rows 2/36 — `T()` / static-value-returning default).
-   *
-   * Concrete production target (confirmed against the Phase-4 `dist/`):
-   *   `Message_Attribute(const TCollection_AsciiString& theName =
-   *    TCollection_AsciiString::EmptyString())`
-   *
-   * Source: `deps/OCCT/src/FoundationClasses/TKernel/Message/Message_Attribute.{hxx,cxx}`
-   * d.ts:    `class Message_Attribute … constructor(theName?: TCollection_AsciiString)`
-   *          (`dist/opencascade_single.d.ts:963-988`)
-   * Binding: `build/bindings/FoundationClasses/TKernel/Message/Message_Attribute.hxx/Message_Attribute.cpp`
-   *          emits the val_default lambda
-   *          `([&]() -> TCollection_AsciiString { if (theName.isUndefined())
-   *           return (TCollection_AsciiString::EmptyString()); if
-   *           (theName.isNull()) { …throw rule-5… } return
-   *           theName.as<const TCollection_AsciiString&>(); })()`.
-   *
-   * Why this is a non-RBV-blocked, OBSERVABLE class-value default:
-   *   - `theName` is a constructor input (no output param / RBV elision),
-   *     so the val_default emit site is not RBV-blocked.
-   *   - The recovered default is observable from JS: `GetMessageKey()`
-   *     returns `!myName.IsEmpty() ? myName.ToCString() : ""`, so an
-   *     omitted `theName` materialises `TCollection_AsciiString::EmptyString()`
-   *     and `GetMessageKey()` reads back `""` while `GetName().IsEmpty()`
-   *     reads back `true`. Supplying a real name reads that name back —
-   *     proving the `isUndefined() → default` branch is distinct from the
-   *     explicit-value branch (not a spurious always-empty result).
+   * `Message_Attribute` exposes an observable class-value default. Omission and
+   * `undefined` produce an empty name, an explicit name round-trips, and `null` raises
+   * the strict-null binding error.
    */
   // Activation gate: flipped true — `Message_Attribute`'s class-value
   // `= TCollection_AsciiString::EmptyString()` ctor default ships as a

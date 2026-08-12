@@ -1,33 +1,7 @@
 /**
- * Smoke test: handle-typed trailing-default routing (PoC R3 + R5 shape 2).
- *
- * Pins the four-call-shape contract for handle-typed defaults. Post-
- * Phase-4 / Rule-5 strict-null verdict:
- *
- *   (a) omitted        → arity-pad → default expression evaluated
- *   (b) explicit value → caller's value/handle reaches the OCCT call site
- *   (c) explicit null  → **THROWS rule-5 BindingError** (no permissive
- *                        collapse — passing `null` to a non-row-30 slot
- *                        is a contract violation per
- *                        `docs/policy/ocjs-trailing-default-emission-policy.md`
- *                        rule 5). Use `undefined` to request the default.
- *   (d) explicit undef → undefined collapses to default expression
- *
- * Rule 5 supersedes the earlier permissive-null PoC contract from
- * `experiments/poc-occt-integration/r3.test.mjs`: every defaulted
- * parameter position rejects explicit `null` with the structured
- * `[rule 5 / strict null] null is not a valid value for this slot —
- * pass undefined to use the default` message. The only carve-out is
- * matrix row 30 (handle-typed reporters where the C++ source treats
- * `Handle_T()` as a meaningful nullable sentinel — there `null` is
- * permissively coerced to the default Handle).
- *
- * Phase 4 routes single-overload const-ref-temp trailing defaults
- * (matrix row 4) through the same val-default emission path as rows
- * {1, 2, 36}, so the rule-5 error fires uniformly across the
- * trailing-default surface. The earlier "POST-MIGRATION permissive null"
- * verdict for (c) is rescinded; the test below pins the rule-5 throw
- * contract instead.
+ * Verifies value-class trailing defaults on inherited `Build` methods. Omitted and
+ * `undefined` arguments use the C++ default, explicit values pass through, and `null`
+ * raises the strict-null binding error.
  */
 import { describe, it, expect, beforeAll } from 'vitest';
 import { initOC, getOC, wasmExists } from './helpers.js';

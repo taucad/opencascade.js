@@ -184,7 +184,7 @@ Writing the initial `bindings` array is the scariest step of custom-build onboar
   ],
 ```
 
-The output is a **starting set, not a minimal one**, and it is not an audit of what you could drop: symbols your source does not reference today include roadmap-reserved capacity and anything your own C++ wrapper files call. Review the list; never diff it against an existing config and delete the difference.
+The output is a **starting set, not a minimal one**, and it is not an audit of what you can drop. The scan cannot see symbols reserved for external callers or referenced only by custom C++ files. Review every consumer; never delete the difference from an existing config automatically.
 
 ### `check` — the drift guard
 
@@ -249,4 +249,4 @@ See `generated/README.md` for the artifacts, their sources, and the release-vers
 
 ## Status
 
-Waves W1–W5 of `docs/research/libcascade-toolchain-npm-distribution.md`. `detect` / `check` are explicitly experimental.
+`detect` and `check` are experimental.

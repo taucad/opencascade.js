@@ -1,44 +1,6 @@
 /**
- * Smoke test: `std::initializer_list<T>` bulk-init constructors (matrix row 38).
- *
- * Policy (`repos/opencascade.js/docs/policy/ocjs-trailing-default-emission-policy.md`):
- *   - Matrix row 38 — constructor or method parameter typed
- *     `std::initializer_list<T>`. Best primitive: `emscripten::val` +
- *     JS-Array → element-wise `.as<T>()` iteration inside the lambda.
- *   - Per the surface audit (`docs/research/ocjs-occt-surface-audit.md`
- *     §Uncovered Shapes / Row 38) the production surface contains
- *     **61 binding emissions** of this shape, all
- *     `NCollection_List_*` / `NCollection_Sequence_*` /
- *     `NCollection_Array1_*` bulk-init ctors emitted by the
- *     NCollection auto-discovery generator. They COMPILE but are
- *     **registered-but-unreachable** from JS because embind has no
- *     built-in wire converter for `std::initializer_list<T>`.
- *
- * Target: `NCollection_List_handle_BOPDS_PaveBlock` — chosen because it
- * is one of the simplest concrete instances cited verbatim in the
- * audit and because the `BOPDS_PaveBlock` element type is a handle (the
- * audit's per-element-validation risk).
- *
- * Pre-Phase-4 verdict (with the row-38 fix NOT yet shipped):
- *   - Constructing `new oc.NCollection_List_handle_BOPDS_PaveBlock([])`
- *     THROWS `BindingError` (embind cannot lift a JS Array to a C++
- *     `std::initializer_list<T>`). The class itself IS exposed but the
- *     `std::initializer_list<T>` ctor branch is unreachable.
- *
- * Post-Phase-4 verdict (after the NCollection auto-discovery generator
- * is updated to emit the val-array adapter lambda per the audit's
- * recommendation):
- *   - `new oc.NCollection_List_handle_BOPDS_PaveBlock([])` constructs an
- *     empty list.
- *   - `new oc.NCollection_List_handle_BOPDS_PaveBlock([h1, h2, h3])`
- *     constructs a list populated with the three handles in order.
- *
- * Note: this test pins the row 38 gap; Phase 4 will require EITHER
- * implementing the val-array adapter at bindgen time OR filtering row 38
- * entirely (the auto-discovery generator emits a bulk-init ctor that
- * NCollection auto-discovery itself can drop if the `.Append` pattern
- * is the canonical user-facing API). The verdict will be decided in
- * Phase 4 review.
+ * Verifies NCollection initializer-list constructors accept empty and populated JavaScript arrays
+ * and preserve their element counts.
  */
 import { describe, it, expect, beforeAll } from 'vitest';
 import { initOC, getOC, wasmExists } from './helpers.js';

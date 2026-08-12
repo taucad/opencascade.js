@@ -1,29 +1,6 @@
 /**
- * Smoke tests: trailing-default arity fan-out under inheritance.
- *
- * Pins the cross-sibling overload-table mutation regression catalogued in
- * `docs/research/ocjs-trailing-default-arity-fan-out.md` and validated via
- * the libembind R1+R2 (Object.hasOwn) hardening in
- * `src/patches/libembind-overloading.patch`. The synthetic PoC at
- * `experiments/libembind-fan-out-poc/` reproduced the bug in 5s; this
- * file mirrors the same matrix against real OCCT classes so a future
- * regression in either the libembind patch or the bindgen
- * `_countTrailingDefaults` emit path lights up here.
- *
- * The classes exercised all share `BRepBuilderAPI_MakeShape::Build(
- *   const Message_ProgressRange& = Message_ProgressRange())` as the base
- * truncation site. The chain depths are:
- *
- *   BRepBuilderAPI_MakeShape  (base, declares virtual Build with default)
- *     └── BRepOffsetAPI_ThruSections          (explicit override + Init multi-arity defaults)
- *     └── BRepFeat_SplitShape                 (explicit override; production trigger)
- *     └── BRepFilletAPI_LocalOperation        (no override)
- *           └── BRepFilletAPI_MakeChamfer     (no override; production victim)
- *           └── BRepFilletAPI_MakeFillet      (no override)
- *
- * The corruption is registration-order-sensitive (proven in the PoC), so
- * tests deliberately invoke classes in different orders to ensure the
- * dispatch is order-independent.
+ * Verifies inherited `Build` methods retain their default argument dispatch on concrete
+ * builder classes and registration order does not change which implementation is invoked.
  */
 import { describe, it, expect, beforeAll } from 'vitest';
 import { initOC, getOC, wasmExists } from './helpers.js';
@@ -120,13 +97,8 @@ describe.skipIf(!wasmExists)('Smoke: inherited trailing-default arity fan-out', 
   });
 
   /**
-   * Test D — CROSS-SIBLING REGRESSION (production smoking gun). Invoke
-   * `BRepFeat_SplitShape.Build()` first, then `BRepFilletAPI_MakeChamfer.Build(progress)`
-   * AND `.Build()`. Without R1+R2 in libembind, the SplitShape registration
-   * mutated MakeShape's inherited overloadTable, causing chamfer dispatch
-   * to throw `BindingError: Expected null or instance of BRepFeat_SplitShape,
-   * got an instance of BRepBuilderAPI_Command`. With R1+R2, each class
-   * owns its own dispatch state and the chamfer call succeeds.
+   * Invokes SplitShape before Chamfer to verify sibling registrations keep independent inherited
+   * dispatch tables.
    */
   it('D. CROSS-SIBLING — SplitShape first, then MakeChamfer Build(progress) AND Build()', () => {
     const oc = getOC();
@@ -154,8 +126,7 @@ describe.skipIf(!wasmExists)('Smoke: inherited trailing-default arity fan-out', 
   });
 
   /**
-   * Test E — Reverse permutation: chamfer first, then splitter. Registration
-   * order independence is the architectural property R1+R2 guarantees.
+   * Repeats the sibling-dispatch check in reverse order to prove registration order is irrelevant.
    */
   it('E. CROSS-SIBLING reversed — Chamfer first, then SplitShape Build()', () => {
     const oc = getOC();

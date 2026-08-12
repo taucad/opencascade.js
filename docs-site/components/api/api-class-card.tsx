@@ -291,22 +291,10 @@ export type ApiClassCardProps = {
 };
 
 /**
- * Single OCCT class card. Composes signature/chip/prose components into
- * sections for constructors, static methods, instance methods, and
- * properties. Each member row now structures its JSDoc payload — the raw
- * comment is parsed (see `parse-comment.ts`) and laid out as a description
- * paragraph plus dedicated Parameters / Returns / Remarks / See-also
- * blocks, instead of dumping `@param ... @returns ...` text into a single
- * paragraph.
- *
- * Adjacent same-name members are flagged as connected overloads via dashed
- * borders. Anchor IDs are deterministic, human-readable
- * `<Class>-<MemberToken>` strings (with a 0-indexed ordinal on overloaded
- * tokens); see `buildClassAnchorMap` in `./types.ts`.
- *
- * Wrapped in `not-prose` so Tailwind Typography's `prose a` underline-all
- * rule doesn't bleed into the structured layout (member names, chips,
- * cross-reference links each have their own intentional styling).
+ * Render one OCCT class with constructor, method, and property sections.
+ * Parsed member documentation receives dedicated parameter, return, remark,
+ * and reference blocks. Overloads share visual grouping and deterministic
+ * anchors from `buildClassAnchorMap`.
  */
 export const ApiClassCard = ({ cls }: ApiClassCardProps): ReactNode => {
   const chain = collectChain(cls);

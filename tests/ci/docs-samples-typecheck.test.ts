@@ -1,30 +1,6 @@
 /**
- * Every TypeScript sample on the toolchain docs pages must compile against the
- * types the toolchain actually ships.
- *
- * The docs are the teaching surface for `defineBuild`, and its whole selling
- * point is that a wrong symbol name or a wrong `-s` setting is a *compile*
- * error. A documented sample that would not compile is therefore not a typo —
- * it is a counter-example to the feature. This gate extracts the fenced
- * `ts` / `typescript` blocks from `docs-site/content/docs/toolchain/**` and runs
- * one `tsc --noEmit` over all of them.
- *
- * ## Marking a fragment
- *
- * Not every block is a compilable module: some are object-literal excerpts of a
- * config, some import a `./dist/...` file that only exists after a build. Mark
- * those by adding `notypecheck` to the fence info string — the word is inert in
- * the MDX pipeline (fumadocs only parses `title="…"`-style attributes) and is
- * the single documented opt-out:
- *
- * ```text
- *     ```typescript notypecheck
- *     bindings: ['gp_Pnt'],
- *     ```
- * ```
- *
- * Adding the marker is a deliberate act: it says "this excerpt cannot stand
- * alone", never "this excerpt does not have to be correct".
+ * Extracts TypeScript fences from the toolchain documentation and typechecks them together.
+ * Fences marked `notypecheck` are standalone-incomplete excerpts and are excluded.
  */
 import { spawnSync } from 'node:child_process';
 import * as fs from 'node:fs';

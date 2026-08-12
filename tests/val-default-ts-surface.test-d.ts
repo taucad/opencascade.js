@@ -1,53 +1,6 @@
 /**
- * Type-level contract tests: val-default emission TS-surface fidelity.
- *
- * Policy (`repos/opencascade.js/docs/policy/ocjs-trailing-default-emission-policy.md`):
- *   - The TypeScript declaration emitter (`bindings.py` TS path) reads
- *     the C++ AST parameter type (`arg.type`), NOT the C++ binding
- *     lambda. So both the val-default emission path and the canonical
- *     `std::optional<T>` path MUST produce identical TS surface: every
- *     defaulted trailing slot lands as `name?: T`, never as
- *     `name: T | undefined`, `name: any`, or omitted entirely.
- *
- *   - Per the gap analysis in
- *     `docs/research/ocjs-replicad-post-migration-simplifications.md`,
- *     replicad call sites currently pass explicit trailing defaults
- *     because the pre-Phase-4 `numOverloads > 1` and `hasCStringArgs`
- *     gates suppressed trailing-default expansion at the TS layer
- *     too. Post-Phase-4 the TS surface exposes the optional markers
- *     uniformly and replicad's explicit-default arguments become
- *     droppable.
- *
- * Per-row pin matrix (one signature per row — the mechanism is
- * identical and the per-row enumeration documents the matrix surface):
- *   - **Row 1** — `BRepMesh_IncrementalMesh` arity-5 ctor with trailing
- *     `isRelative?`, `theAngDeflection?`, `isInParallel?` slots.
- *   - **Row 2** — `BRepAlgoAPI_Fuse` two-shape ctor with trailing
- *     `theRange?: Message_ProgressRange`.
- *   - **Row 33** — `IFSelect_Act.SetGroup(group, file?)` cstring
- *     trailing default.
- *   - **Row 34** — `BRepOffsetAPI_MakeFilling` arity-10 ctor whose all
- *     10 slots are trailing defaults.
- *   - **Row 36** — same mechanism as row 1; the multi-scalar
- *     `BRepMesh_IncrementalMesh` ctor covers it representatively.
- *
- * Pre-Phase-4 verdict:
- *   - Row 1, Row 36 — already pass at the TS level (the pre-Phase-3
- *     bindgen exposed trailing scalars as `?:` via the legacy
- *     fan-out lambda emit, and the TS emitter mirrors via
- *     `arg.type`).
- *   - Row 2 — passes; `theRange?: Message_ProgressRange` is already
- *     present.
- *   - Row 33 — FAILS today: `file: string` (no `?`) per the
- *     `hasCStringArgs` gate. Flips to `file?: string` post-Phase-4.
- *   - Row 34 — passes; all 10 slots already carry `?:` markers in
- *     the current `.d.ts`.
- *
- * Post-Phase-4 verdict: every signature listed below carries the
- * policy-mandated `name?: T` form. The `expectTypeOf(...).toBeCallableWith(...)`
- * assertions exercise the "omit trailing args" call shape directly so
- * the test catches any future emitter regression that strips the
- * optional marker.
+ * Verifies TypeScript declarations mark trailing C++ defaults as optional parameters with their
+ * concrete types. Coverage spans scalar, value-class, C-string, and multi-overload signatures.
  */
 import { expectTypeOf, it, describe } from 'vitest';
 import type {

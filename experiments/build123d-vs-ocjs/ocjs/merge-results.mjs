@@ -1,25 +1,7 @@
 /**
- * Merge N benchmark JSON files (any combination of build123d / ocjs / native-lto / native-nolto)
- * into a side-by-side comparison.
- *
- * Each input file is expected to have:
- *   { engine: string, samples: { <name>: { medianMs, ... }, ... }, ...meta }
- *
- * Engine name is auto-shortened for the output column key:
- *   build123d-python-ocp-native     -> "build123d"
- *   opencascade.js-node-wasm        -> "ocjs"
- *   native-cpp-occt-lto             -> "native-lto"
- *   native-cpp-occt-nolto           -> "native-nolto"
- *
- * Pairwise ratios in the output answer the F1/F2/F8 questions from the research doc:
- *   - native-nolto / native-lto  → pure LTO uplift (forensic finding F1, measured)
- *   - ocjs / native-nolto        → pure WASM penalty (allocator + SIMD + EH), LTO disparity removed
- *   - ocjs / native-lto          → total OCJS gap vs build123d's underlying engine
- *   - build123d / native-lto     → pybind11 wrapper overhead in isolation
- *   - ocjs / build123d           → original 2-engine ratio (reproduces previous comparison)
- *
- * Usage:
- *   node ocjs/merge-results.mjs <a.json> <b.json> [<c.json> ...] --out <comparison.json>
+ * Merge build123d, WebAssembly, and native OCCT benchmark JSON files into a
+ * side-by-side table with pairwise runtime ratios. Input samples must provide
+ * `medianMs`; engine identifiers are normalized to stable column names.
  */
 import * as fs from 'node:fs';
 import * as path from 'node:path';

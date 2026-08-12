@@ -1,20 +1,6 @@
 /**
- * Smoke: fuzzy boolean fuse via the `SetArguments` / `SetTools` /
- * `SetFuzzyValue` builder API.
- *
- * Modern port of the legacy `test/index.test.ts` "Correctly uses FuzzyValue
- * (if patch gets applied correctly)" case. Two unit boxes are placed with a
- * 0.01 gap along X; an exact (zero-tolerance) fuse would leave them as two
- * disjoint solids, but a fuzzy value of 0.1 ≥ the gap welds them into a
- * single solid. Counting the solids in the result is the observable proof
- * that the fuzzy tolerance was honoured.
- *
- * Why this pins the libembind overloading patch: the empty-constructor
- * `BRepAlgoAPI_Fuse()` followed by `SetArguments`/`SetTools` is the
- * algorithm-style entry point (as opposed to the two-shape convenience
- * ctor). It depends on the overload-dispatch machinery the
- * `src/patches/libembind-overloading.patch` enables — the original upstream
- * test framed this case precisely as a patch-application canary.
+ * Verifies a fuzzy fuse joins two boxes separated by 0.01 when the fuzzy tolerance is 0.1.
+ * A single resulting solid proves the tolerance reached the builder algorithm.
  */
 import { describe, it, expect, beforeAll } from 'vitest';
 import { initOC, getOC, wasmExists } from './helpers.js';

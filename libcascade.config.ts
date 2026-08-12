@@ -1,10 +1,6 @@
 /**
- * libcascade's own full build — single-threaded + multi-threaded variants.
- *
- * Mirrors `build-configs/full.yml` and `build-configs/full_multi.yml`, which
- * remain the checked-in container-side contract until wave W3 makes this config
- * the single source. `packages/toolchain/test/render-parity.test.ts` asserts the
- * two stay semantically identical.
+ * Full libcascade bindings with single- and multi-threaded variants.
+ * Render-parity tests keep this config aligned with the container yml files.
  */
 import { defineBuild } from '@libcascade/toolchain';
 

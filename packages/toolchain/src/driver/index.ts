@@ -1,9 +1,6 @@
 /**
- * Container driver — owns every platform edge that consumer `docker run` strings
- * currently copy-paste (engine discovery, UID mapping, mounts, output redirect).
- *
- * Exported under `@libcascade/toolchain/driver` as the advanced-orchestration
- * escape hatch (library-api-policy §10).
+ * Container driver for engine discovery, UID mapping, mounts, and output
+ * redirection. Exported as `@libcascade/toolchain/driver` for custom orchestration.
  */
 import { spawnSync } from 'node:child_process';
 import * as fs from 'node:fs';

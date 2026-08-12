@@ -1,24 +1,6 @@
 /**
- * Smoke tests: Local-properties (LProps) curvature analysis.
- *
- * Validates the F1 codegen fix in `src/generateBindings.py::processTemplate`
- * (relaxed `len(templateRefs) != 1` guard) by exercising the OCCT V8
- * template-typedef classes that were previously unreachable from JS:
- *   - GeomLProp_SLProps  -- surface local properties (curvature on Geom_Surface)
- *   - GeomLProp_CLProps  -- curve local properties (curvature on Geom_Curve)
- *   - BRepLProp_SLProps  -- surface local properties on BRepAdaptor_Surface
- *   - BRepLProp_CLProps  -- curve local properties on BRepAdaptor_Curve
- *   - HLRBRep_SLProps    -- surface local properties through HLRBRep_SurfacePtr
- *
- * These classes have no public-facade alternative — they ARE the OCCT
- * curvature API (restored by relaxing the single-template-ref guard in
- * `processTemplate`).
- *
- * Reference geometry checks:
- *   - Sphere of radius R -> MeanCurvature = 1/R, GaussianCurvature = 1/R^2
- *   - Cylinder of radius R -> MeanCurvature = 1/(2R), GaussianCurvature = 0
- *   - Plane -> MeanCurvature = 0, GaussianCurvature = 0
- *   - Circle of radius R -> Curvature = 1/R
+ * Verifies curvature calculations for curve and surface local-properties classes across sphere,
+ * cylinder, plane, and circle fixtures.
  */
 import { describe, it, expect, beforeAll } from 'vitest';
 import { initOC, getOC, wasmExists } from './helpers.js';

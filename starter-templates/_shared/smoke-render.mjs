@@ -1,32 +1,8 @@
 #!/usr/bin/env node
 /**
- * Playwright-driven render smoke for the v3 web starter templates.
- *
- * Loads a dev-server URL in a headless Chromium, waits for the canvas
- * element, samples a 16x16 grid from a compositor screenshot, and
- * fails non-zero if:
- *   - the canvas never appears
- *   - every sampled pixel collapses to a single colour (nothing was painted)
- *   - the page emits a console error mentioning OCCT, OpenCascade, or
- *     emscripten (loader / init / runtime failure that did not crash hard)
- *
- * Usage:
- *   node _shared/smoke-render.mjs \
- *     --url http://localhost:5173 \
- *     --canvas '#three-canvas' \
- *     [--screenshot out.png] \
- *     [--timeout-ms 30000] \
- *     [--sample-size 16] \
- *     [--require-request substring] \
- *     [--forbid-request substring]
- *
- * Exit codes:
- *   0  ok
- *   1  args / setup error
- *   2  canvas never mounted within timeout
- *   3  all sampled pixels share a colour (no geometry painted)
- *   4  OCCT/OpenCascade/emscripten console.error observed
- *   5  required/forbidden network-request assertion failed
+ * Render a starter template in headless Chromium and sample its canvas.
+ * Fails when the canvas is absent or monochrome, relevant console errors occur,
+ * or required and forbidden network-request assertions fail.
  */
 import { chromium } from 'playwright';
 import { PNG } from 'pngjs';

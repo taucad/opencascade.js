@@ -1,9 +1,8 @@
 #!/usr/bin/env node
 /**
- * Emit `generated/symbol-catalog.json` — the closure backbone for config
- * validation's nearest-match suggestions and for `libcascade detect`/`check`
- * (wave W5). Names, kinds, ancestor chains and member-referenced types only; no
- * prose (that stays in `libcascade/api-reference.json`).
+ * Generate the symbol catalog used by config validation and symbol detection.
+ * It contains names, kinds, ancestors, and member-referenced types; prose stays
+ * in `libcascade/api-reference.json`.
  */
 import { loadSymbolUniverse, referencedTypes, writeGenerated } from './lib/symbols.mjs';
 

@@ -1,23 +1,8 @@
 /**
- * Host-bundle gate for the generated entries.
- *
- * The property under test is the one waves W3/W4 measured in scratch probes and
- * never pinned: **a host app that loads one variant must not ship the other
- * variant's assets.** It runs a real Vite build over a synthetic two-variant
- * package — stub glue and stub wasm, a few KB each, never the 22 MB artifacts —
- * so the whole file costs a couple of seconds and needs no container.
- *
- * Four host apps are built, and the difference between them is the point:
- *
- * | Host imports | Carries |
- * | --- | --- |
- * | `demo-pkg/single/init` | the single glue only |
- * | `demo-pkg/multi/init` | the multi glue only |
- * | `demo-pkg/init` | **both** glues — the shared selector must be able to reach every variant, and `vite:asset-import-meta-url` emits an asset for every `new URL(…, import.meta.url)` at transform time, before tree-shaking |
- * | `demo-pkg` | both selectable glue and WASM assets; runtime self-locates the selected WASM |
- *
- * The shared `/init` row is documented behaviour (research Finding 1), not a defect; it
- * is asserted so the test states the trade-off rather than only the win.
+ * Build synthetic two-variant packages with Vite and inspect their assets.
+ * Variant-specific init imports contain one glue asset; shared init contains
+ * both glue assets; the eager root contains both glue and WASM assets. Small
+ * stubs keep the test independent of container artifacts.
  */
 import * as fs from 'node:fs';
 import * as os from 'node:os';

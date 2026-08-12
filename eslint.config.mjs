@@ -1,25 +1,27 @@
 /**
- * ESLint flat config for the OCJS tests.
+ * Repository ESLint config.
  *
- * Wires the type-aware `ocjs-lint/require-using-on-disposable` rule so
- * every embind-managed handle / RBV container in the test suite must be
- * captured by `using` (or forwarded via `return` / `stack.use(...)`).
- * Without this guard the bindings silently leak WASM memory.
- *
- * The rule is vendored locally under `tools/eslint-plugin/` so this
- * repository builds and lints without depending on the parent tau
- * workspace (`libs/oxlint`).
+ * Applies the JSDoc quality rule to JavaScript and TypeScript sources and the
+ * type-aware disposable rule to code that owns Embind handles.
  */
 
 import tseslint from 'typescript-eslint';
+import { createRequire } from 'node:module';
 import ocjsLintPlugin from './tools/eslint-plugin/index.js';
+
+const requireFromDocs = createRequire(new URL('./docs-site/package.json', import.meta.url));
+const nextPlugin = requireFromDocs('@next/eslint-plugin-next');
+const reactHooksPlugin = requireFromDocs('eslint-plugin-react-hooks');
 
 export default tseslint.config(
   {
     ignores: [
       'build/**',
+      '.nx/**',
       'build-configs/*.d.ts',
       'dist/**',
+      '**/dist/**',
+      '**/.next/**',
       'packages/toolchain/dist/**',
       'deps/**',
       'node_modules/**',
@@ -30,11 +32,31 @@ export default tseslint.config(
       'tests/docker/.trial/**',
       // Scratch directory the `libcascade` CLI renders ymls into.
       'packages/toolchain/test/fixture/.libcascade/**',
-      // Compile-failure gate: deliberately-invalid configs in their own tsconfig
-      // project, so type-aware linting against packages/toolchain/tsconfig.json
-      // cannot see them.
-      'packages/toolchain/test/fixtures/**',
+      // Verbatim libembind snapshots are third-party generator inputs.
+      'src/vendor/pristine-libembind.js',
+      'experiments/**/libembind*.js',
     ],
+  },
+  {
+    files: ['**/*.{js,mjs,cjs,jsx,ts,tsx,mts,cts}'],
+    languageOptions: {
+      parser: tseslint.parser,
+    },
+    plugins: {
+      'ocjs-lint': ocjsLintPlugin,
+      '@next/next': nextPlugin,
+      'react-hooks': reactHooksPlugin,
+    },
+    rules: {
+      'ocjs-lint/jsdoc-quality': 'error',
+    },
+  },
+  {
+    files: ['docs-site/**/*.{js,mjs,cjs,jsx,ts,tsx,mts,cts}'],
+    linterOptions: {
+      // These directives are active under the docs site's Next.js config.
+      reportUnusedDisableDirectives: 'off',
+    },
   },
   {
     files: ['tests/**/*.ts'],
@@ -46,7 +68,6 @@ export default tseslint.config(
       },
     },
     plugins: {
-      'ocjs-lint': ocjsLintPlugin,
       // Register `@typescript-eslint` so pre-existing
       // `/* eslint-disable @typescript-eslint/... */` directives in the
       // test sources resolve to real rule names (otherwise ESLint 9
@@ -71,6 +92,10 @@ export default tseslint.config(
     // disposable checker has nothing to say here. Type-aware parsing still runs
     // so the package is covered by the same `npm run lint` invocation.
     files: ['packages/toolchain/**/*.ts'],
+    // Compile-failure fixtures are intentionally outside the package's
+    // TypeScript project. The repository-wide syntax-only JSDoc rule still
+    // checks them through the earlier config layer.
+    ignores: ['packages/toolchain/test/fixtures/**'],
     languageOptions: {
       parser: tseslint.parser,
       parserOptions: {
@@ -79,7 +104,6 @@ export default tseslint.config(
       },
     },
     plugins: {
-      'ocjs-lint': ocjsLintPlugin,
       '@typescript-eslint': tseslint.plugin,
     },
     rules: {

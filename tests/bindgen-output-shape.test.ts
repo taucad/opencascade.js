@@ -1,29 +1,7 @@
 /**
- * Regression guards over the generated embind C++ output of bindings.py
- * AND the generated `dist/opencascade_single.d.ts` TS declaration.
- *
- * After input-passthrough RBV (Option B of the blueprint) the C++ side
- * expects:
- * - NO lambda body inside `optional_override([...]) -> *_Result { ... }` may
- *   contain `<type> <name> = 0;`, `<type> <name>{};`, or bare `Handle<T> <name>;`
- *   immediately before the underlying `self.<method>(...)` / `Class::method(...)`
- *   call — every output parameter is now a lambda input parameter forwarded
- *   into the C++ call.
- * - For methods that hold class/handle output fields, the lambda return type
- *   is `::emscripten::val` and the body invokes `::ocjs::getRbvDispose()` +
- *   `::ocjs::getSymbolDispose()` to attach Symbol.dispose to the container.
- * - The deprecated proxy-mutation pattern (raw `class_<...>.function("Name",
- *   &Klass::Method)` for methods with non-const class lvalue refs) is gone
- *   for any method the input-passthrough idiom now handles.
- *
- * After the input-passthrough RBV migration, the TS declaration expects:
- * - No method signature that returns the RBV value-object shape (`): { … };`)
- *   may declare its parameters with `?:`. The Embind runtime requires every
- *   slot; advertising optionality breaks arity at the wire and contradicts
- *   the Input-Passthrough RBV decision (callers supply the input value, the
- *   C++ method returns it back through the result container).
- *
- * The tests self-skip when their generated inputs are not present.
+ * Validates generated Embind C++ and TypeScript declarations for return-by-value output parameters.
+ * Generated lambdas accept caller-owned output values, forward them to C++, attach disposal to
+ * result containers, and keep all corresponding declaration parameters required.
  */
 import { describe, it, expect } from 'vitest';
 import * as fs from 'node:fs';

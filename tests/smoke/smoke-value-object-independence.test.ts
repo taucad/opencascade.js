@@ -1,24 +1,6 @@
 /**
- * Smoke tests: value_object registration independence across classes.
- *
- * Validates that value_object (RBV) return structs are self-contained per
- * translation unit. When cross-class deduplication assigns a canonical name
- * from class A to class B's result struct, the value_object registration
- * lives only in class A's TU. If class A is not linked, class B's methods
- * fail with "unbound types".
- *
- * On the full build, both classes are linked so the shared registration
- * works. These tests verify the functional contract: multiple classes
- * returning identically-shaped value_objects must each work independently.
- *
- * Regression target: BRepTools.UVBounds uses IntTools_Context_UVBounds_Result
- * struct name but the value_object registration is only in IntTools_Context.cpp.
- *
- * Patterns tested:
- * - BRepTools.UVBounds returns {UMin, UMax, VMin, VMax}
- * - IntTools_Context.UVBounds returns {UMin, UMax, VMin, VMax}
- * - Both return identical field structures
- * - BRep_Tool.Range returns {First, Last} (another cross-class candidate)
+ * Verifies identically shaped return-by-value objects remain usable across classes and translation
+ * units. Coverage includes UV bounds, edge ranges, and surface bounds.
  */
 import { describe, it, expect, beforeAll } from 'vitest';
 import { initOC, getOC, wasmExists } from './helpers.js';
