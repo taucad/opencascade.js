@@ -39,4 +39,12 @@ describe('Dockerfile multi-stage layout', () => {
     expect(dockerfile).toMatch(/^FROM\s+compiled-single-threaded\s+AS\s+final-single\b/m);
     expect(dockerfile).toMatch(/^FROM\s+compiled-multi-threaded\s+AS\s+final-multi\b/m);
   });
+
+  it('should bake the default FreeType port into deps-base', async () => {
+    const dockerfile = await fs.readFile(DOCKERFILE, 'utf8');
+    const portBuild = dockerfile.indexOf('RUN embuilder build freetype');
+    const bindgenStage = dockerfile.indexOf('FROM deps-base AS bindgen-content');
+    expect(portBuild).toBeGreaterThan(-1);
+    expect(portBuild).toBeLessThan(bindgenStage);
+  });
 });

@@ -36,7 +36,8 @@
 # Stage architecture (5 logical stages; final-{threading} are thin tag-bearing
 # stages over the matching compiled-{threading} stage):
 #
-#   deps-base                  OS toolchain (emsdk + apt + Node 24 + uv + Python 3.14)
+#   deps-base                  OS toolchain (emsdk + baked FreeType/zlib ports
+#                              + apt + Node 24 + uv + Python 3.14)
 #                              + clone-deps.sh (OCCT/rapidjson/freetype/LLVM 17 tarball)
 #                              + LLVM 17 trim (~5 GB pruned in-RUN to ~250 MB)
 #                              + apt/uv cache purge
@@ -86,6 +87,12 @@ FROM emscripten/emsdk:6.0.5@sha256:76a44fff907397784decc435115d07fcb9587a4f15049
 
 LABEL org.opencontainers.image.title="libcascade (deps-base)" \
       org.opencontainers.image.description="OS toolchain + dependency clones (emsdk, Node 24, uv, Python 3.14, OCCT, rapidjson, freetype, LLVM 17 — header-trimmed)"
+
+# The default full build links Emscripten's FreeType port, which downloads and
+# builds its zlib dependency on first use. Bake both into the published image's
+# sysroot so consumer links never depend on that late network fetch. Compile
+# stages use separate BuildKit cache mounts; their contents are not image data.
+RUN embuilder build freetype
 
 # ── System packages ─────────────────────────────────────────────────────────
 # Notes on what is intentionally NOT installed:
