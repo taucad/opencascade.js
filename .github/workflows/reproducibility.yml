@@ -52,7 +52,7 @@ jobs:
 
   cold-build:
     needs: prepare
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 240
     strategy:
       fail-fast: false
@@ -85,7 +85,7 @@ jobs:
         with:
           context: .
           target: final-single
-          platforms: linux/amd64
+          platforms: linux/arm64
           load: true
           no-cache: true
           tags: ocjs:repro-${{ matrix.copy }}

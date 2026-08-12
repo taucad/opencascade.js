@@ -13,6 +13,7 @@
 #   scripts/clone-deps.sh                      # default: clone into deps/
 #   scripts/clone-deps.sh --dest deps          # explicit equivalent
 #   scripts/clone-deps.sh --dest ..            # legacy sibling layout
+#   scripts/clone-deps.sh --python-profile test # runtime + pytest
 #
 # OCJS_STRICT_DEPS=1 fails fast if any cloned dep is not at its DEPS.json pin.
 
@@ -23,10 +24,12 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 DEPS_FILE="$REPO_ROOT/DEPS.json"
 
 DEST_REL="deps"
+PYTHON_PROFILE="${OCJS_PYTHON_PROFILE:-development}"
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --dest) DEST_REL="$2"; shift 2 ;;
+    --python-profile) PYTHON_PROFILE="$2"; shift 2 ;;
     -h|--help)
       sed -n '2,20p' "${BASH_SOURCE[0]}"
       exit 0
@@ -37,6 +40,11 @@ while [ "$#" -gt 0 ]; do
       ;;
   esac
 done
+
+case "$PYTHON_PROFILE" in
+  runtime|test|development) ;;
+  *) echo "ERROR: Python profile must be runtime, test, or development" >&2; exit 2 ;;
+esac
 
 if [ ! -f "$DEPS_FILE" ]; then
   echo "ERROR: DEPS.json not found at $DEPS_FILE" >&2
@@ -63,22 +71,51 @@ print(deps['$1'].get('$2', ''))
 "
 }
 
+retry_acquisition() {
+  local attempt
+  for attempt in 1 2 3 4 5; do
+    "$@" && return 0
+    [ "$attempt" -lt 5 ] || return 1
+    sleep "$((attempt * attempt * 2))"
+  done
+}
+
+retry_clone() {
+  local repo="$1"
+  local target="$2"
+  local attempt
+  for attempt in 1 2 3 4 5; do
+    rm -rf "$target"
+    git clone --quiet "$repo" "$target" && return 0
+    [ "$attempt" -lt 5 ] || return 1
+    sleep "$((attempt * attempt * 2))"
+  done
+}
+
 clone_or_checkout() {
   local name="$1"
   local repo="$2"
   local commit="$3"
   local target="$DEST_DIR/$name"
 
+  if [ -e "$target" ] && [ ! -d "$target/.git" ]; then
+    echo "Removing incomplete $name checkout at $target..."
+    rm -rf "$target"
+  fi
   if [ ! -d "$target/.git" ]; then
     echo "Cloning $name from $repo..."
-    git clone --quiet "$repo" "$target"
+    retry_clone "$repo" "$target" || {
+      rm -rf "$target"
+      echo "ERROR: failed to clone pinned dependency $name" >&2
+      exit 1
+    }
   fi
 
   local current
   current="$(git -C "$target" rev-parse HEAD)"
   if [ "$current" != "$commit" ]; then
     echo "Checking out $name at $commit..."
-    git -C "$target" fetch --quiet origin
+    retry_acquisition git -C "$target" fetch --quiet origin "$commit"
     git -C "$target" checkout --quiet "$commit"
   else
     echo "$name already at $commit"
@@ -102,18 +139,23 @@ EMSDK_DIR="$DEST_DIR/emsdk"
 # script but typically strips the .git directory for image-size reasons).
 if [ ! -x "$EMSDK_DIR/emsdk" ]; then
   echo "Cloning emsdk from $EMSDK_REPO..."
-  git clone --quiet "$EMSDK_REPO" "$EMSDK_DIR"
+  [ ! -e "$EMSDK_DIR" ] || rm -rf "$EMSDK_DIR"
+  retry_clone "$EMSDK_REPO" "$EMSDK_DIR" || {
+    rm -rf "$EMSDK_DIR"
+    echo "ERROR: failed to clone pinned dependency emsdk" >&2
+    exit 1
+  }
 fi
 
 if [ -d "$EMSDK_DIR/.git" ] && [ "$(git -C "$EMSDK_DIR" rev-parse HEAD)" != "$EMSDK_COMMIT" ]; then
   echo "Checking out emsdk at $EMSDK_COMMIT..."
-  git -C "$EMSDK_DIR" fetch --quiet origin
+  retry_acquisition git -C "$EMSDK_DIR" fetch --quiet origin "$EMSDK_COMMIT"
   git -C "$EMSDK_DIR" checkout --quiet "$EMSDK_COMMIT"
 fi
 
 if ! "$EMSDK_DIR/emsdk" list 2>/dev/null | grep -q "$EMSDK_VERSION.*INSTALLED"; then
   echo "Installing emsdk $EMSDK_VERSION..."
-  "$EMSDK_DIR/emsdk" install "$EMSDK_VERSION"
+  retry_acquisition "$EMSDK_DIR/emsdk" install "$EMSDK_VERSION"
 fi
 
 # emsdk activate is non-idempotent in an annoying way: it always rotates
@@ -148,19 +190,24 @@ if [ ! -x "$VENV_DIR/bin/python" ]; then
   uv venv --python "${REQUIRED_PYTHON_MINOR}" "$VENV_DIR"
 fi
 
-echo "Installing Python build requirements (libclang, cerberus, pyyaml)..."
-# Sentinel-based skip: the docker image's deps-base stage installs all Python
-# requirements during build (as root). At runtime, when the container runs
-# under `-u "$(id -u):$(id -g)"`, the non-root user has no $HOME and uv's
-# default cache dir (~/.cache/uv) fails with EACCES on `/.cache/uv`. Re-running
-# `uv sync` would also try to write into a root-owned .venv. Skipping
-# entirely when the sentinel `$VENV_DIR/.deps-ready` is present sidesteps both
-# issues with no behavioural change for already-prepared trees.
-if [ -f "$VENV_DIR/.deps-ready" ]; then
-  echo "Python deps already installed in $VENV_DIR (sentinel: .deps-ready), skipping pip install"
+echo "Installing Python requirements for the $PYTHON_PROFILE profile..."
+if command -v sha256sum >/dev/null 2>&1; then
+  PROFILE_HASH="$(printf '%s\0' "$PYTHON_PROFILE" | cat - "$REPO_ROOT/pyproject.toml" "$REPO_ROOT/uv.lock" "$0" | sha256sum | awk '{print $1}')"
 else
-  UV_PROJECT_ENVIRONMENT="$VENV_DIR" uv sync --frozen --all-groups
-  touch "$VENV_DIR/.deps-ready"
+  PROFILE_HASH="$(printf '%s\0' "$PYTHON_PROFILE" | cat - "$REPO_ROOT/pyproject.toml" "$REPO_ROOT/uv.lock" "$0" | shasum -a 256 | awk '{print $1}')"
+fi
+PROFILE_SENTINEL="$VENV_DIR/.deps-$PYTHON_PROFILE-$PROFILE_HASH.ready"
+
+if [ -f "$PROFILE_SENTINEL" ] && [ "${OCJS_FORCE_PYTHON_SYNC:-0}" != "1" ]; then
+  echo "Python $PYTHON_PROFILE profile already verified ($PROFILE_SENTINEL)"
+else
+  case "$PYTHON_PROFILE" in
+    runtime) UV_PROJECT_ENVIRONMENT="$VENV_DIR" uv sync --frozen --no-dev ;;
+    test) UV_PROJECT_ENVIRONMENT="$VENV_DIR" uv sync --frozen --no-dev --group test ;;
+    development) UV_PROJECT_ENVIRONMENT="$VENV_DIR" uv sync --frozen --all-groups ;;
+  esac
+  rm -f "$VENV_DIR"/.deps-*.ready
+  touch "$PROFILE_SENTINEL"
 fi
 
 # ── 4. Vendored LLVM 17 toolchain ───────────────────────────────────────────
@@ -208,7 +255,13 @@ print(deps['llvm17']['platforms']['$LLVM17_PLATFORM']['sha256'])
   trap 'rm -f "$LLVM17_TMP"' EXIT
 
   echo "Downloading LLVM $LLVM17_VERSION ($LLVM17_PLATFORM, $LLVM17_FILENAME)..."
-  if ! curl -fsSL --retry 3 -o "$LLVM17_TMP" "$LLVM17_URL"; then
+  if ! curl -sSL \
+    --retry 5 \
+    --retry-all-errors \
+    --retry-delay 0 \
+    --retry-max-time 300 \
+    --connect-timeout 30 \
+    -o "$LLVM17_TMP" "$LLVM17_URL"; then
     echo "ERROR: failed to download $LLVM17_URL" >&2
     exit 1
   fi
@@ -264,16 +317,21 @@ checks = [
     ('occt',     '$DEST_DIR/OCCT'),
     ('rapidjson', '$DEST_DIR/rapidjson'),
     ('freetype',  '$DEST_DIR/freetype'),
+    ('emscripten', '$EMSDK_DIR'),
 ]
 errors = []
 for name, path in checks:
     if not os.path.isdir(os.path.join(path, '.git')):
-        errors.append(f'  {name}: not a git repo at {path}')
+        if name != 'emscripten':
+            errors.append(f'  {name}: not a git repo at {path}')
         continue
     expected = deps[name]['commit']
     actual = subprocess.check_output(['git', '-C', path, 'rev-parse', 'HEAD'], text=True).strip()
     if actual != expected:
         errors.append(f'  {name}: expected {expected[:12]}, got {actual[:12]}')
+    dirty = subprocess.check_output(['git', '-C', path, 'status', '--porcelain'], text=True).strip()
+    if dirty:
+        errors.append(f'  {name}: checkout is dirty')
 if errors:
     print('ERROR: Dependency commit mismatch:', file=sys.stderr)
     for e in errors:

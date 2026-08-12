@@ -38,13 +38,17 @@ describe('Dockerfile multi-stage layout', () => {
     expect(dockerfile).toMatch(/^FROM\s+bindgen-content\s+AS\s+compiled-multi-threaded\b/m);
     expect(dockerfile).toMatch(/^FROM\s+compiled-single-threaded\s+AS\s+final-single\b/m);
     expect(dockerfile).toMatch(/^FROM\s+compiled-multi-threaded\s+AS\s+final-multi\b/m);
+    expect(dockerfile).toMatch(/^FROM\s+final-single\s+AS\s+validation-single\b/m);
   });
 
   it('should bake the supported FreeType variants into deps-base', async () => {
     const dockerfile = await fs.readFile(DOCKERFILE, 'utf8');
+    const depsBase = dockerfile.indexOf('AS deps-base');
     const portBuild = dockerfile.indexOf('embuilder build freetype freetype-legacysjlj');
     const bindgenStage = dockerfile.indexOf('FROM deps-base AS bindgen-content');
+    expect(depsBase).toBeGreaterThan(-1);
     expect(portBuild).toBeGreaterThan(-1);
+    expect(portBuild).toBeGreaterThan(depsBase);
     expect(portBuild).toBeLessThan(bindgenStage);
     expect(dockerfile).toContain('for attempt in 1 2 3 4 5');
     expect(dockerfile).toContain('[ "$attempt" -lt 5 ] || exit 1');
