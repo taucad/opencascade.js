@@ -1,38 +1,8 @@
 /**
- * Editor documentation on `settings` keys — base and variant alike.
- *
- * `VariantEmccSettings` used to be a homomorphic mapped type over
- * `EmccSettings` (`{ [K in keyof EmccSettings]?: … | null }`); R6 replaced it
- * with a concrete generated declaration carrying the same 312 fields and the
- * same settings.js doc comments, each value widened with `| null`.
- *
- * Mechanism — the same language service the editor uses.
- * `getQuickInfoAtPosition` returns exactly what a hover renders, so the
- * assertions are on the real thing rather than on a proxy for it (the shape of
- * the generated d.ts, say, which tells you nothing about what an editor does
- * with it).
- *
- * Two properties are pinned, for two different failure modes:
- *
- * 1. **Documentation parity** — the same settings.js prose in both positions.
- *    This is the guarantee R6 exists to provide; it breaks if the generator
- *    ever stops emitting doc comments onto the variant fields.
- * 2. **Declaring type** — a variant setting resolves to a property of
- *    `VariantEmccSettings` itself. This is what fails on a revert to the mapped
- *    type, which maps every property back to its `EmccSettings` origin.
- *
- * On (1) and the mapped type, honestly: the blueprint's Finding 5 reports an
- * editor showing no documentation at all on a variant setting. That does not
- * reproduce here — measured against the mapped type at TypeScript 5.4.5 and
- * 5.9.3, `getQuickInfoAtPosition`, `getCompletionEntryDetails`, and `tags` all
- * carry the prose through the mapped type. Whatever the reviewer hit, this
- * suite cannot currently see it, so (1) is written as a forward guarantee and
- * (2) is what actually detects the revert. Do not weaken (1) on the grounds
- * that it passes both ways — a concrete declaration is the only form that
- * *cannot* lose the prose to a compiler or editor version.
- *
- * The fixture is served from memory at a path that does not exist on disk, so
- * `npm run typecheck` and `npm run lint` never see it and it needs no cleanup.
+ * Query TypeScript's language service for base and variant setting hovers.
+ * Both positions must carry the same generated setting documentation, and a
+ * variant property must be declared by `VariantEmccSettings`. The fixture is
+ * served from memory.
  */
 import * as fs from 'node:fs';
 import * as path from 'node:path';

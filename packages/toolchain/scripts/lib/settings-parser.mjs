@@ -1,20 +1,8 @@
 /**
- * Parser for emsdk's `src/settings.js`.
- *
- * Grammar targeted (exactly, and nothing else — unknown shapes throw rather
- * than guess, per the blueprint's W2 note):
- *
- * ```js
- * // Free-form documentation, one or more `//` lines, blank-line separated
- * // from the previous setting.
- * // [link]
- * var NAME = <literal>;
- * ```
- *
- * `<literal>` is one of: `true` / `false`, a decimal or hex integer (optionally
- * negative, optionally a product of integer factors such as `96*1024*1024`), a
- * float, a single- or double-quoted string, or a single- or multi-line array of
- * quoted strings.
+ * Parse documented `var NAME = literal` declarations from emsdk's
+ * `src/settings.js`. Supported literals are booleans, decimal or hexadecimal
+ * numbers, integer products, strings, and arrays of strings. Unknown syntax is
+ * rejected instead of inferred.
  */
 
 const LITERAL_ARRAY_ITEM = /^(['"])(.*?)\1$/;

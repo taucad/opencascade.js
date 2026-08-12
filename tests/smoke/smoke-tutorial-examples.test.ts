@@ -1,19 +1,6 @@
 /**
- * Smoke: canonical libcascade getting-started examples, end-to-end.
- *
- * Modern port of the geometry-producing cases in the legacy
- * `test/index.test.ts` ("Hello, World!" box-minus-sphere cut and the
- * "Polygon" example). Each shape is exported to GLB through the same
- * XCAF + RWGltf_CafWriter pipeline the upstream `visualizeShapes` helper used,
- * then validated against its expected bounding box / mesh — so the assertions
- * are derived purely from the exported glTF, not from kernel metadata.
- *
- * The "Logo" (XCAF VisMaterial PBR colours) and "Bottle" (prism + fillet +
- * thick-solid + threading) examples are intentionally not duplicated here:
- * their behaviours are already pinned by `smoke-xcaf.test.ts` /
- * `smoke-enum-method-dispatch.test.ts` (colour tooling) and
- * `smoke-feature-modeling.test.ts` / `smoke-fillets-chamfers.test.ts` /
- * `smoke-sweep-loft.test.ts` (the modelling operations the Bottle chains).
+ * Runs the box-minus-sphere and polygon getting-started examples through GLB export, then verifies
+ * their meshes and bounding boxes from the exported geometry.
  */
 import { describe, it, expect, beforeAll } from 'vitest';
 import { initOC, getOC, wasmExists } from './helpers.js';

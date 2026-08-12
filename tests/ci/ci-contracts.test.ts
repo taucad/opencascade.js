@@ -374,6 +374,14 @@ describe('CI contracts', () => {
     expect(manifest.scripts['test:package']).toContain('vitest.package.config.ts');
   });
 
+  it('should lint every authored JavaScript and TypeScript source with the JSDoc gate', () => {
+    const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
+    const config = fs.readFileSync(path.join(ROOT, 'eslint.config.mjs'), 'utf8');
+    expect(manifest.scripts.lint).toBe('eslint --config eslint.config.mjs .');
+    expect(manifest.scripts['lint:fix']).toBe('eslint --config eslint.config.mjs --fix .');
+    expect(config).toContain("'ocjs-lint/jsdoc-quality': 'error'");
+  });
+
   it('should make provisioned Replicad compatibility a mandatory candidate gate', () => {
     const ci = workflow('docker.yml');
     const source = fs.readFileSync(path.join(ROOT, '.github/workflows/docker.yml'), 'utf8');
@@ -497,7 +505,12 @@ describe('CI contracts', () => {
   });
 
   it('should keep every ESLint relative import in clean checkouts', () => {
-    for (const relative of ['tools/eslint-plugin/index.js', 'tools/eslint-plugin/require-using-on-disposable.js']) {
+    for (const relative of [
+      'tools/eslint-plugin/index.js',
+      'tools/eslint-plugin/jsdoc-quality.js',
+      'tools/eslint-plugin/require-using-on-disposable.js',
+      'tests/ci/jsdoc-quality.test.ts',
+    ]) {
       expect(fs.existsSync(path.join(ROOT, relative)), relative).toBe(true);
       const ignored = spawnSync('git', ['check-ignore', '--no-index', '--quiet', relative], {
         cwd: ROOT,
@@ -815,6 +828,10 @@ describe('CI contracts', () => {
   it('should fail cheap quality checks before provisioning build dependencies', () => {
     const ci = workflow('docker.yml');
     const names = ci.jobs.quality.steps.map(({ name }: { name?: string }) => name ?? '');
+    const cheap = ci.jobs.quality.steps.find(
+      ({ name }: { name?: string }) => name === 'Cheap JavaScript and shell quality',
+    );
+    expect(cheap.run).toContain('npm run lint');
     expect(names.indexOf('Cheap JavaScript and shell quality')).toBeLessThan(names.indexOf('Install uv'));
     expect(names.indexOf('Workflow quality')).toBeLessThan(names.indexOf('Materialize pinned build dependencies'));
     expect(names.indexOf('Materialize pinned build dependencies')).toBeLessThan(

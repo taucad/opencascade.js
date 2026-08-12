@@ -1,8 +1,4 @@
-/**
- * Wave W5 gates: the seed-scan rules, the closure fixpoint, and `check`'s two
- * directions — pass on a fixture whose references are all bound, exit 1 with a
- * `file:line` and a paste-ready fix on one that drifts.
- */
+/** Verify seed scanning, dependency closure, and `check` diagnostics. */
 import { execFileSync } from 'node:child_process';
 import * as path from 'node:path';
 
@@ -192,6 +188,12 @@ describe('detect', () => {
     // Custom bindings surface as a note, never as a proposed OCCT binding.
     expect(rendered).toContain('DemoWrapper');
     expect(rendered).not.toContain("'DemoWrapper',");
+  });
+
+  it('keeps user-facing caveats independent of internal planning documents', () => {
+    const caveats = CAVEATS.join('\n');
+    expect(caveats).not.toContain('docs/research/');
+    expect(caveats).not.toContain('/Users/');
   });
 
   it('emits the same information as JSON', () => {

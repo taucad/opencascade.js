@@ -1,20 +1,7 @@
 /**
- * The C4 acceptance gate: migrate → load → render → **the yml you started with**.
- *
- * A migrator is only as good as the round trip, because the failure mode that
- * matters is silent: a dropped flag still produces a config that loads, builds,
- * and differs from the original in a way nobody notices until runtime. So every
- * reference yml in the repo — replicad's two frozen ytt outputs and
- * libcascade's own two 4,496-symbol builds — is migrated and rendered back, and
- * the result is compared against the source as a sequence for bindings and cpp
- * files and as a multiset for flags, modulo exactly the two modernizations
- * `reference-deltas.ts` documents for the renderer gate.
- *
- * The second half of the gate is that the emitted config **typechecks**: a
- * migrator that emits a typo'd symbol or an ill-formed setting value has failed
- * at the one job the typed config exists for. That runs the same way
- * `fixtures.test.ts` runs the compile-failure gate — a real `tsc` over a real
- * project, not an inline `@ts-expect-error`.
+ * Migrate every reference yml, load and render the emitted config, compare the
+ * result with the source modulo documented flag normalizations, and typecheck
+ * the emitted TypeScript.
  */
 import { spawnSync } from 'node:child_process';
 import * as fs from 'node:fs';
@@ -39,7 +26,7 @@ const REPLICAD_BUILD_CONFIG = path.resolve(
   OCJS_ROOT,
   '../replicad/packages/replicad-opencascadejs/build-config',
 );
-/** The frozen ytt output W4 retired; see `render-parity.test.ts`. */
+/** Frozen ytt output retained as a migration and render reference. */
 const REPLICAD_REFERENCE_DIRECTORY = path.join(import.meta.dirname, 'fixtures/reference/replicad');
 const TSC = path.join(OCJS_ROOT, 'node_modules/typescript/lib/tsc.js');
 
@@ -263,17 +250,19 @@ describe('libcascade migrate — two ymls become one config', () => {
       (typeof config.variants)[number],
       (typeof config.variants)[number],
     ];
-    // The two ymls differ in exactly these: single has EVAL_CTORS=2, multi has
-    // the pthread trio instead.
+    // The two ymls differ in exactly these: single has EVAL_CTORS=2, while
+    // multi has the pthread settings and its guarded worker-count expression.
     expect(single.settings).toBeUndefined();
     expect(single.compilerFlags).toBeUndefined();
     expect(single.rawFlags).toBeUndefined();
     expect(multi.settings).toStrictEqual({
       EVAL_CTORS: null,
-      PTHREAD_POOL_SIZE: 'navigator.hardwareConcurrency',
       SHARED_MEMORY: true,
     });
     expect(multi.compilerFlags).toStrictEqual({ threads: true });
+    expect(multi.rawFlags).toStrictEqual([
+      '-sPTHREAD_POOL_SIZE=globalThis.navigator?.hardwareConcurrency??4',
+    ]);
     expect(config.settings?.EVAL_CTORS).toBe(2);
   });
 
@@ -303,7 +292,7 @@ describe('libcascade migrate — two ymls become one config', () => {
     expect(symbols).toHaveLength(18);
     // Every non-OCCT binding is accounted for — this is what makes the emitted
     // config compile.
-    expect(symbols).toContain('OCJS_ShapeHasher');
+    expect(symbols).toContain('ReplicadShapeHasher');
     expect(symbols).toContain('ReplicadBooleanBatch');
     expect(config.customBindings?.every((binding) => binding.scope === undefined)).toBe(true);
   });

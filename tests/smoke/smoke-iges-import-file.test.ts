@@ -1,19 +1,6 @@
 /**
- * Smoke: import an IGES file from the Emscripten virtual filesystem.
- *
- * Modern port of the legacy `test/patches.test.ts` "can read .iges files
- * (make sure that getpwuid error is not thrown)" case. OCCT's IGES reader
- * resolves the current user via `getpwuid` while stamping transfer metadata;
- * under Emscripten that libc call can abort unless the OCCT source patches
- * are applied. Importing a real on-disk IGES fixture through `FS.createDataFile`
- * exercises that path end-to-end.
- *
- * The fixture (`data/cone.iges`) is the original upstream `test/data/cone.iges`
- * asset, restored from git history. Distinct from `smoke-iges.test.ts`, which
- * round-trips a box the test itself writes; this one parses an externally
- * authored IGES payload staged into the Emscripten FS via `FS.writeFile`
- * (the legacy `FS.createDataFile` helper is typed but not exported at runtime
- * by the full build's `EXPORTED_RUNTIME_METHODS` set).
+ * Imports an IGES file from Emscripten's virtual filesystem and verifies the resulting shape.
+ * The fixture also exercises the Node host shims used by the IGES reader.
  */
 import * as fs from 'node:fs';
 import * as path from 'node:path';

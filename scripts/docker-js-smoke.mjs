@@ -1,10 +1,7 @@
 #!/usr/bin/env node
 /**
- * JS smoke test for docker-e2e-validate.sh Phase 6.
- *
- * Loads Emscripten MODULARIZE + EXPORT_ES6 output via dynamic import()
- * (required for pthread builds — require() hits ERR_REQUIRE_ASYNC_MODULE).
- * Mirrors tests/docker/docker-helpers.ts loadModule().
+ * Load Emscripten `MODULARIZE` + `EXPORT_ES6` output for Docker smoke tests.
+ * Dynamic import supports pthread builds that reject synchronous `require()`.
  */
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';

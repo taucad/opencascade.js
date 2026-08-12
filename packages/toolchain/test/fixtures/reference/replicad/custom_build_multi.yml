@@ -243,7 +243,7 @@ mainBuild:
   - symbol: IFSelect_WorkSession
   - symbol: BRepToolsWrapper
   - symbol: GeomToolsWrapper
-  - symbol: OCJS_ShapeHasher
+  - symbol: ReplicadShapeHasher
   - symbol: ReplicadShapeCaster
   - symbol: ReplicadMeshData
   - symbol: ReplicadMeshExtractor
@@ -277,7 +277,7 @@ mainBuild:
   - -O3
   - -pthread
   - -sUSE_PTHREADS=1
-  - -sPTHREAD_POOL_SIZE=navigator.hardwareConcurrency
+  - -sPTHREAD_POOL_SIZE=globalThis.navigator?.hardwareConcurrency??4
   - -sSHARED_MEMORY=1
 additionalCppFiles:
 - wrappers/shape-hasher.cpp

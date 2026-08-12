@@ -1,20 +1,6 @@
 /**
- * Smoke: ExtremaPC_Circle Point-Curve extrema computation.
- *
- * Exercises `Perform()` end-to-end against the mechanically-bound
- * `ExtremaPC::Result` / `ExtremaPC::ExtremumResult` namespace-scoped types
- * (post-R7: namespace-aware codegen + nested-class-template specialization
- * support; see `src/TuInfo.py`, `src/bindings.py::getClassJsPublicName`),
- * and keeps `Value` / `IsBounded` as supplementary coverage.
- *
- * Result / ExtremumResult / SearchMode are now sourced directly from the
- * emitted `.d.ts` — the previously hand-rolled local interfaces drifted
- * (e.g. `Status: number` while the codegen emits the embind enum
- * `ExtremaPC_Status` as the string spelling), producing TS2352 narrowing
- * errors during `vitest --typecheck`. The bindgen-emitted
- * `NCollection_DynamicArray_ExtremaPC_ExtremumResult.Value()` still returns
- * `unknown` (NCollection template-arg resolution residual), so callsites
- * narrow that single result to `ExtremaPC_ExtremumResult` at the use site.
+ * Verifies point-curve extrema calculation with `ExtremaPC_Circle`, including namespaced
+ * result values, boundedness, and the generated dynamic-array result surface.
  */
 import { describe, it, expect, beforeAll } from 'vitest';
 import { initOC, getOC, wasmExists } from './helpers.js';

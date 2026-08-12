@@ -1,47 +1,6 @@
 /**
- * Smoke test: static-method (`.class_function`) dispatch with trailing-default
- * argument omission and explicit null/undefined (PoC T2).
- *
- * Pins the contract validated by
- * `repos/opencascade.js/experiments/poc-occt-integration/t1-t4.test.mjs`
- * for the `StaticOptProbe.probe` synthetic class. Static methods go through
- * the same `$ensureOverloadTable` machinery as instance methods, so the
- * libembind v2 arity-pad hunks must fire identically on `.class_function`
- * registrations.
- *
- * Target: `BRepLib::BuildCurve3d(Edge, Tolerance = 1e-5, Continuity = GeomAbs_C1,
- *   MaxDegree = 14, MaxSegment = 0)` — a static method with FOUR trailing
- * primitive defaults. Today's .d.ts renders all four as `?:` optionals, so
- * the smoke target is the runtime DISPATCH behaviour at each arity.
- *
- * Pre-migration state (fan-out + libembind v1):
- *   - (1-arg) `BuildCurve3d(edge)` PASSES via the existing fan-out (one
- *     truncation lambda registered per defaulted arity).
- *   - (5-arg) full-arity PASSES via the unchanged full-arity binding.
- *   - Intermediate arities (2/3/4-arg) PASS via fan-out truncations.
- *   - Passing `undefined` for a numeric default silently coerces to 0
- *     today (the PoC R5 / TR-RBV note: embind's optional_override is
- *     permissive about JS undefined for primitives), which means the
- *     1-arg test below may misbehave silently — the assertion is on
- *     return-value-non-throw, not on correctness of the result, so this
- *     test will flip cleanly post-migration even though the pre-migration
- *     1-arg call also "succeeds".
- *
- * Post-migration state (libembind v2 + bindgen `std::optional` emission):
- *   - One lambda taking `std::optional<double>` etc. for each default.
- *   - Omitted args resolve via arity-pad → nullopt → `.value_or(<C++ src
- *     default expression>)` inside the lambda body. The OCCT source
- *     defaults (Tolerance=1.e-5, MaxDegree=14, etc.) reach the OCCT call.
- *
- * This file is a regression pin against the libembind dispatcher's
- * handling of `.class_function` arity-pad. Today's pre-migration suite
- * SHOULD pass these assertions because the existing fan-out already
- * registers all 5 arities (1/2/3/4/5) as separate truncation lambdas.
- * Post-migration the suite still passes (single std::optional-wrapped
- * lambda, dispatched via arity-pad). The DIFFERENCE is observable only
- * in JS-glue bytes and in the libembind patch line count, not in this
- * test's behaviour — which is exactly the desired property: the
- * dispatcher swap must be transparent at the JS surface.
+ * Verifies `BRepLib.BuildCurve3d` accepts every trailing-default arity, including explicit
+ * `undefined` values, and returns a boolean for each form.
  */
 import { describe, it, expect, beforeAll } from 'vitest';
 import { initOC, getOC, wasmExists } from './helpers.js';

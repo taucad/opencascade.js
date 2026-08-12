@@ -1,45 +1,6 @@
 /**
- * Smoke: makeNonPlanarFace bug-fix canary (replicad post-migration).
- *
- * Policy (`repos/opencascade.js/docs/policy/ocjs-trailing-default-emission-policy.md`):
- *   - Matrix row 34 — multi-overload, one overload has trailing default
- *     that overlaps another's arity. Best primitive: `emscripten::val`
- *     discrimination at the trailing-default position INSIDE the
- *     existing same-name overload dispatcher.
- *
- * Replicad canary (per
- * `docs/research/ocjs-replicad-post-migration-simplifications.md`,
- * `makeNonPlanarFace` bug-fix finding): replicad currently calls
- * `new BRepOffsetAPI_MakeFilling(3, 15, 2, false, 1e-5, 1e-4, 1e-2, 0.1, 8, 9)`
- * — passing all 10 trailing defaults verbatim — because OCJS's
- * pre-Phase-3 `numOverloads > 1 && trailing defaults` gate excluded the
- * trailing-default expansion from emission. Phase 3 removes the gate
- * (per `docs/research/ocjs-phase-3-val-dispatch-completion.md` §Finding
- * 1) and routes the multi-overload trailing-default group through
- * `val_default.emit_method_with_val_default`; Phase 4 regeneration is
- * what materialises the change in the published WASM.
- *
- * Construction recipe (multi-edge wire + non-planar face):
- *   1. Build 4 non-coplanar gp_Pnt corners (e.g. lift the 4th point
- *      out of the plane defined by the first 3).
- *   2. Connect them via BRepBuilderAPI_MakeEdge into 4 edges.
- *   3. Sew the edges into a wire via BRepBuilderAPI_MakeWire.
- *   4. Feed the wire into BRepOffsetAPI_MakeFilling (default-arg ctor
- *      pre-Phase-4 requires all 10 args; post-Phase-4 the zero-arg
- *      form succeeds).
- *   5. Add the wire's edges to the filling builder, build, return the
- *      face.
- *
- * Pre-Phase-4 verdict: the zero-arg ctor `new BRepOffsetAPI_MakeFilling()`
- * MAY work today (the audit confirms the ctor exists at arity 0) but
- * the row-34 trailing-default `.Add(edge, order)` 2-arg call FAILS
- * (per `smoke-multioverload-trailing-defaults.test.ts` regression pin).
- * The 10-arg full-arity ctor pre-Phase-4 may or may not succeed
- * depending on the legacy fan-out emission.
- *
- * Post-Phase-4 verdict: zero-arg ctor + 2-arg `.Add(edge, order)` both
- * succeed via val-default emission; the constructed face is valid and
- * non-null.
+ * Verifies `BRepOffsetAPI_MakeFilling` builds a non-planar face through its zero-argument
+ * constructor and the two-argument `Add(edge, order)` trailing-default form.
  */
 import { describe, it, expect, beforeAll } from 'vitest';
 import { initOC, getOC, wasmExists } from './helpers.js';

@@ -1,24 +1,6 @@
 /**
- * Smoke tests: Symbol.dispose contract for input-passthrough RBV containers.
- *
- * Under the minimal-transformation contract, concrete class outputs are
- * mutated in place and dropped from the envelope, so methods like
- * `Geom_Curve.D1` no longer produce a disposable container. The Symbol.dispose
- * smoke evidence therefore targets a method whose envelope still owns
- * embind-managed (Handle) fields — `BRep_Tool.PolygonOnTriangulation` is the
- * canonical multi-Handle elision case.
- *
- * Validates the EM_JS-registered shared disposer wired by
- * `BUILTIN_BINDINGS_SOURCE`:
- *   - The container exposes a callable `[Symbol.dispose]` member.
- *   - Calling the disposer deletes every owned embind handle field.
- *   - The `using` declaration drives the disposer at scope exit.
- *   - `DisposableStack.use(...)` adopts the container as a single resource.
- *   - Idempotency: calling the disposer twice on a fresh container is safe
- *     (the second call no-ops on already-deleted fields).
- *
- * The shared disposer is authored via EM_JS and invoked through
- * `ocjs::getRbvDispose()` / `ocjs::getSymbolDispose()`.
+ * Verifies return-by-value containers that own handles implement idempotent `Symbol.dispose`
+ * and work with `using` declarations and `DisposableStack`.
  */
 import { describe, it, expect, beforeAll } from 'vitest';
 import { initOC, getOC, wasmExists } from './helpers.js';

@@ -149,6 +149,18 @@ describe('emcc-settings', () => {
     );
   });
 
+  it('limits JSDoc suppressions to the two copied Emscripten field regions', () => {
+    const declaration = readGenerated('emcc-settings.d.ts');
+    const disable =
+      '/* eslint-disable ocjs-lint/jsdoc-quality -- copied verbatim from pinned Emscripten settings.js */';
+    const enable = '/* eslint-enable ocjs-lint/jsdoc-quality */';
+    const directives = declaration
+      .split('\n')
+      .filter((line) => line.includes('eslint-') && line.includes('ocjs-lint/jsdoc-quality'));
+
+    expect(directives).toStrictEqual([disable, enable, disable, enable]);
+  });
+
   it('records the emsdk version the settings came from', () => {
     expect(settingsMeta.emsdkVersion).toMatch(/^\d+\.\d+\.\d+$/);
     expect(readGenerated('emcc-settings.d.ts')).toContain(`emsdk ${settingsMeta.emsdkVersion}`);

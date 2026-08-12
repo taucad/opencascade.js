@@ -2,15 +2,9 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import { initOC, getOC, wasmExists } from './helpers.js';
 
 /**
- * Tests for overloads that were previously ambiguous (int vs double at same arity).
- *
- * With Number.isInteger() dispatch:
- * - Passing an integer literal (e.g. 42) routes to the int overload
- * - Passing a non-integer float (e.g. 3.14) routes to the double overload
- * - Note: JS treats 10.0 as integer (Number.isInteger(10.0) === true)
- *
- * For SetCoord-style methods, integer args always route to the indexed overload.
- * The coordinate-pair overload requires at least one non-integer float (e.g. 10.5).
+ * Verifies same-arity integer and floating-point overloads dispatch through
+ * `Number.isInteger()`. Integer-valued numbers select integer overloads; other numbers select
+ * floating-point overloads.
  */
 describe.skipIf(!wasmExists)('Smoke: int/double dispatch (formerly ambiguous)', () => {
   beforeAll(async () => { await initOC(); });

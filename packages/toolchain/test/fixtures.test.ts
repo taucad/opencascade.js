@@ -1,18 +1,7 @@
 /**
- * The W2 acceptance gate: four wrong configs must be **compile** errors, and a
- * correct one must be clean.
- *
- * Mechanism — a tsc runner rather than inline `@ts-expect-error`. `@ts-expect-error`
- * only proves "an error happens somewhere on the next line"; it cannot assert
- * *which* diagnostic, and it suppresses the error so nothing can read it back.
- * Running tsc over the fixture project instead lets each fixture assert its own
- * diagnostic code on its own line, and — the part that cannot rot silently — the
- * positive fixture asserts **zero** diagnostics from the same invocation. A
- * harness that stopped type-checking would fail every negative case; a harness
- * that started reporting spurious errors would fail the positive case.
- *
- * Expected error lines are not hardcoded: each fixture marks its offending line
- * with a `// EXPECT-ERROR` comment on the line above.
+ * Run `tsc` over valid and invalid config fixtures. Invalid fixtures identify
+ * the expected diagnostic line with `// EXPECT-ERROR`; the valid fixture must
+ * produce no diagnostics.
  */
 import { spawnSync } from 'node:child_process';
 import * as fs from 'node:fs';

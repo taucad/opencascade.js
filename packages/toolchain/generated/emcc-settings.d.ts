@@ -39,10 +39,11 @@ export type MemorySize = number | `${number}KB` | `${number}MB` | `${number}GB`;
 export type EmccEnvironment = 'node' | 'shell' | 'web' | 'webview' | 'worker' | 'worklet';
 
 /**
- * Every emcc `-s` setting of the pinned emsdk, with the value grammar
- * settings.js declares. Unknown names are compile errors — that is the point.
+ * Every emcc `-s` setting and value grammar declared by the pinned emsdk.
+ * Unknown setting names fail typechecking.
  */
 export type EmccSettings = {
+/* eslint-disable ocjs-lint/jsdoc-quality -- copied verbatim from pinned Emscripten settings.js */
   /**
    * If 1, then when malloc would fail we abort(). This is nonstandard behavior,
    * but makes sense for the web since we have a fixed amount of memory that
@@ -2964,24 +2965,15 @@ export type EmccSettings = {
    * @deprecated
    */
   readonly WORKAROUND_OLD_WEBGL_UNIFORM_UPLOAD_IGNORED_OFFSET_BUG?: boolean | 0;
+/* eslint-enable ocjs-lint/jsdoc-quality */
 };
 
 /**
- * The same settings as {@link EmccSettings}, for a build variant's own
- * `settings` block: each value widened with `| null`.
- *
- * A variant value replaces the base value wholesale. `null` **unsets** the
- * inherited base key, so the setting reaches emcc for the other variants and
- * not for this one; unsetting a key the base never declared is a config error.
- *
- * Spelled out field by field rather than derived from {@link EmccSettings} as a
- * mapped type on purpose: TypeScript's quick-info does not carry property
- * documentation through a value-rewriting mapped type, so the mapped form left
- * every variant setting undocumented in the editor while the identical base
- * setting was fully documented. This file is generated, so parity costs nothing
- * but bytes.
+ * Variant settings. Values replace base settings; `null` removes an inherited key and is invalid
+ * when the base omitted that key. Fields are repeated so TypeScript quick info retains their docs.
  */
 export type VariantEmccSettings = {
+/* eslint-disable ocjs-lint/jsdoc-quality -- copied verbatim from pinned Emscripten settings.js */
   /**
    * If 1, then when malloc would fail we abort(). This is nonstandard behavior,
    * but makes sense for the web since we have a fixed amount of memory that
@@ -5903,4 +5895,5 @@ export type VariantEmccSettings = {
    * @deprecated
    */
   readonly WORKAROUND_OLD_WEBGL_UNIFORM_UPLOAD_IGNORED_OFFSET_BUG?: boolean | 0 | null;
+/* eslint-enable ocjs-lint/jsdoc-quality */
 };

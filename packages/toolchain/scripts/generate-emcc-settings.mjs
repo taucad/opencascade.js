@@ -1,35 +1,9 @@
 #!/usr/bin/env node
 /**
- * Emit `generated/emcc-settings.d.ts` (the `EmccSettings` and
- * `VariantEmccSettings` types) and `generated/emcc-settings.meta.json` (the
- * serialisation manifest the renderer consumes instead of a hand-maintained
- * allowlist), from the `settings.js` of the *image's* emsdk.
- *
- * The two emitted types carry the same field names and the same doc comments;
- * the variant one widens every value with `| null` (the unset marker). They are
- * emitted twice rather than related by a mapped type because a mapped type
- * erases per-property documentation in editor quick-info — see the doc comment
- * on `VariantEmccSettings` below, and `test/quick-info.test.ts` which pins it.
- *
- * Value-grammar rules (blueprint "Value-grammar typing"), applied in this order:
- *
- * | Rule | Applies to | Type |
- * | --- | --- | --- |
- * | memory size (by name) | `INITIAL_MEMORY`, `MAXIMUM_MEMORY`, `STACK_SIZE` and every legacy alias of them (`TOTAL_MEMORY`, `TOTAL_STACK`, `WASM_MEM_MAX`, `BINARYEN_MEM_MAX`) | `MemorySize` |
- * | environment list (by name) | `ENVIRONMENT` | `readonly EmccEnvironment[]`, values read from its own doc comment |
- * | thread pool (by name) | `PTHREAD_POOL_SIZE` | `number \| 'navigator.hardwareConcurrency'` |
- * | boolean default | `var X = true/false` | `boolean` |
- * | 0/1 integer default | `var X = 0` / `= 1` | `boolean \| number` |
- * | other numeric default | `var X = 85` | `number` |
- * | string default | `var X = 'quiet'` | `string` |
- * | array default | `var X = []` | `readonly string[]` |
- *
- * Bool-int detection rule: settings.js declares flags with boolean semantics
- * either as JS booleans or as ints defaulting to 0/1, and the two are not
- * distinguishable from the declaration alone (`EVAL_CTORS` defaults to 0 but
- * accepts 2). Rather than sniff prose, every 0/1-defaulted integer accepts
- * **both** `boolean` and `number`; the renderer serialises `true`/`false` to
- * `1`/`0`. No setting loses expressiveness and none is mistyped.
+ * Generate emcc setting declarations and serialisation metadata from the
+ * pinned image's `settings.js`. Base and variant fields are emitted separately
+ * so both retain editor quick-info; variant fields add the `null` unset marker.
+ * Numeric settings defaulting to 0 or 1 accept both `boolean` and `number`.
  */
 import { readImageFacts } from './lib/image.mjs';
 import { parseEnvironments, parseSettingsJs } from './lib/settings-parser.mjs';
@@ -47,7 +21,7 @@ const environments = parseEnvironments(
 );
 
 const deprecated = new Set(facts.deprecatedSettings);
-/** Serialisation buckets, consumed by `src/config/render.ts` and by W3's assemble step. */
+/** Serialisation buckets consumed by config rendering and package assembly. */
 const meta = { memorySizes: [], commaLists: [], bracketLists: [], boolInts: [] };
 
 /** @type {Map<string, {type: string, doc: string[]}>} */
@@ -174,40 +148,33 @@ export type MemorySize = number | \`\${number}KB\` | \`\${number}MB\` | \`\${num
 export type EmccEnvironment = ${environments.map((environment) => `'${environment}'`).join(' | ')};
 
 /**
- * Every emcc \`-s\` setting of the pinned emsdk, with the value grammar
- * settings.js declares. Unknown names are compile errors — that is the point.
+ * Every emcc \`-s\` setting and value grammar declared by the pinned emsdk.
+ * Unknown setting names fail typechecking.
  */
 export type EmccSettings = {
+/* eslint-disable ocjs-lint/jsdoc-quality -- copied verbatim from pinned Emscripten settings.js */
 ${names
   .map((name) => {
     const field = fields.get(name);
     return `${renderDoc(field.doc)}  readonly ${name}?: ${field.type};`;
   })
   .join('\n')}
+/* eslint-enable ocjs-lint/jsdoc-quality */
 };
 
 /**
- * The same settings as {@link EmccSettings}, for a build variant's own
- * \`settings\` block: each value widened with \`| null\`.
- *
- * A variant value replaces the base value wholesale. \`null\` **unsets** the
- * inherited base key, so the setting reaches emcc for the other variants and
- * not for this one; unsetting a key the base never declared is a config error.
- *
- * Spelled out field by field rather than derived from {@link EmccSettings} as a
- * mapped type on purpose: TypeScript's quick-info does not carry property
- * documentation through a value-rewriting mapped type, so the mapped form left
- * every variant setting undocumented in the editor while the identical base
- * setting was fully documented. This file is generated, so parity costs nothing
- * but bytes.
+ * Variant settings. Values replace base settings; \`null\` removes an inherited key and is invalid
+ * when the base omitted that key. Fields are repeated so TypeScript quick info retains their docs.
  */
 export type VariantEmccSettings = {
+/* eslint-disable ocjs-lint/jsdoc-quality -- copied verbatim from pinned Emscripten settings.js */
 ${names
   .map((name) => {
     const field = fields.get(name);
     return `${renderDoc(field.doc)}  readonly ${name}?: ${field.type} | null;`;
   })
   .join('\n')}
+/* eslint-enable ocjs-lint/jsdoc-quality */
 };
 `;
 

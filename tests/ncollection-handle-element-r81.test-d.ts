@@ -1,38 +1,6 @@
 /**
- * Type-level tests for Handle-aware substituted-typedef peel.
- *
- * The member-typedef peel correctly resolves accessor return types for
- * *plain* element classes (typed-ids like `BRepGraph_OccurrenceId`, simple
- * classes like `BOPDS_Curve`), but accessors on **Handle-wrapped** element
- * types collapsed to `unknown`.
- *
- * Root cause: after template-arg substitution rewrites
- *   `TheItemType` to `opencascade::handle<X>`, the resolver pipeline
- *   produced a substituted string that no downstream strategy recognised
- *   as a known TS export — neither the simple-name check (the string
- *   contains `<`) nor the qualified-member walker (no `opencascade`
- *   class in `tuInfo.classDict`) could map it back to `X`.
- *
- *   R8.1 closes the gap by regex-matching the three syntactic shapes
- *   OCCT emits — `opencascade::handle<X>`, `occ::handle<X>`, and the
- *   `DEFINE_STANDARD_HANDLE`-generated `Handle_X` typedef — at the
- *   string level inside `resolveWithCanonicalFallback`, and returning
- *   the inner `X` whenever it is a known TS export.
- *
- * What these tests prove:
- *   * For three V2 Appendix A handle-wrapped NCollection
- *     instantiations (`NCollection_Array1<Handle<Geom_Curve>>`,
- *     `NCollection_Sequence<Handle<TDF_Attribute>>`,
- *     `NCollection_Array1<Handle<StepBasic_Approval>>`), every accessor
- *     return type is now the inner Handle-wrapped class — never
- *     `unknown`.
- *   * The change is symmetric across `Array1` and `Sequence` carriers,
- *     proving R8.1 fires uniformly for every NCollection family rather
- *     than being container-specific.
- *
- * If R8.1 ever regresses, every `expectTypeOf` in this file fails at
- * `tsc --noEmit` time with a clear "Type X is not assignable to type Y"
- * message naming the impacted accessor.
+ * Verifies accessors on handle-wrapped NCollection elements return the inner exported class.
+ * Coverage spans Array1 and Sequence containers across geometry, document, and STEP types.
  */
 import { describe, expectTypeOf, it } from 'vitest';
 import type {

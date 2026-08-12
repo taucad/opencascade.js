@@ -1,28 +1,13 @@
 #!/usr/bin/env node
 /**
- * Generate the API reference data tree from the per-package data shards.
+ * Generate API navigation, type-link, and search indexes from package shards.
+ * Outputs JSON beside the input data and does not add MDX or TypeScript modules
+ * to the Next.js graph.
  *
- * Inputs (under <in>/):
- *   index.json                                          — hierarchy + manifest + searchIndex (from OCJS introspection)
- *   <Module>__<Toolkit>__<Package>.json (x275)          — per-package class records
- *
- * Outputs (under <in>/, alongside the shard JSONs):
- *   api-tree.json                                       — module → toolkit → package navigation tree
- *                                                          (drives the Fumadocs sidebar via a virtual source,
- *                                                          drives the /docs/package/api/[[...slug]] route via slug → shardKey)
- *   api-type-index.json                                 — `{ denylist, entries }` for ApiTypeLink cross-references
- *   api-search-index.json                               — `ApiSearchEntry[]` merged into the /api/search Orama index
- *
- * No MDX is emitted. No TS modules are emitted. Everything lives outside the
- * Next/Fumadocs module graph — see docs-site README and the plan file at
- * /Users/.../ocjs_docs_api_data_graph_*.plan.md for the architecture rationale.
- *
- * Usage:
- *   node scripts/generate-api-data.mjs \
- *     --in ./data \
- *     [--tree ./data/api-tree.json] \
- *     [--type-index ./data/api-type-index.json] \
- *     [--search-index ./data/api-search-index.json]
+ * @example
+ * ```sh
+ * node scripts/generate-api-data.mjs --in ./data
+ * ```
  */
 
 import { promises as fs } from 'node:fs';

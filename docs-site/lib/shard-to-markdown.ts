@@ -49,11 +49,7 @@ const renderClass = (cls: ApiClass): string => {
   return out.join('\n');
 };
 
-/**
- * Render a package shard as plain Markdown for the synthesised `.mdx` route
- * and for AI-consumer endpoints. Bypasses MDX/React entirely: this is just
- * a deterministic JSON → Markdown projection.
- */
+/** Render a package shard as deterministic Markdown without MDX or React. */
 export const shardToMarkdown = (shard: ApiShard, header: { title: string; url: string }): string => {
   const lines: string[] = [];
   lines.push(`# ${header.title}`);

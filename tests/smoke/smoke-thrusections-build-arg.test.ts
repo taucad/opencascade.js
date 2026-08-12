@@ -1,25 +1,6 @@
 /**
- * Smoke tests: BRepOffsetAPI_ThruSections.Build() argument handling.
- *
- * REGRESSION DOCUMENTATION — these tests pin down the smoking-gun behaviour
- * that consumed an entire LLM debugging session in
- * `Downloads/new_chat_2026-05-22T03-05.md`. The agent spent ~3000 transcript
- * lines chasing memory-management ghosts when the actual issue was that the
- * embind wrapper for `Build(theRange: Message_ProgressRange)` rejects a
- * missing argument with the cryptic minified error
- * `Cannot read properties of undefined (reading 'Zc')` — `Zc` is the
- * minified WASM export name for `__Znaj` (`operator new[](size_t)`), which
- * the embind type-coercion path tries to dereference through the undefined
- * argument.
- *
- * The first test in this file deliberately calls `loft.Build()` with no
- * argument and asserts a clean success — IT IS EXPECTED TO FAIL until the
- * binding is fixed (either accepts an optional/defaulted ProgressRange, or
- * throws a developer-facing diagnostic naming `Message_ProgressRange`).
- *
- * The remaining tests are positive controls confirming the workarounds.
- *
- * Cross-reference: `docs/research/ocjs-thrusections-build-arg-trap.md`.
+ * Verifies `BRepOffsetAPI_ThruSections.Build` accepts its omitted default progress range,
+ * accepts an explicit range, and produces valid loft shapes through explicit and implicit builds.
  */
 import { describe, it, expect, beforeAll } from 'vitest';
 import { initOC, getOC, wasmExists } from './helpers.js';

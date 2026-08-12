@@ -1,29 +1,8 @@
 /**
- * `libcascade detect` / `libcascade check` — the symbol-detection pair.
- *
- * Both commands share one scanner. Neither is a size tool: the measured ceiling
- * is **−0.9% brotli for −14% symbols** (5,359 embind registrations are GC roots,
- * so dropped bindings free glue, not kernel code), and `--gufa` is a measured
- * size *regression*. What detection is actually worth is the asymmetry — a
- * missing binding links fine and fails at **runtime** with `BindingError`:
- *
- * - `detect` produces the first `bindings` array for a new consumer, the
- *   scariest step of custom-build onboarding. Its output is a **starting set**,
- *   never a minimal one, and it never proposes removals.
- * - `check` is the inverse and the higher-value direction: it converts that
- *   runtime `BindingError` class into a build-time failure in CI.
- *
- * See `docs/research/libcascade-toolchain-npm-distribution.md` (Finding 6, wave
- * W5) for the measurements this framing is built on.
- *
- * ## Scanner limitations (regex/token, not AST — deliberate)
- *
- * The dependency set is `jiti` + `yaml`; the scanner adds no parser. It cannot
- * see dynamic access (`oc[name]`, `oc[`gp_${suffix}`]`), symbols reached only
- * through a variable holding a class handle, or names built by string
- * concatenation. `check` is therefore a *drift guard*, not a proof: it catches
- * the common statically-written reference, which is how ~all consumer code
- * reads OCCT classes.
+ * Scan JavaScript and TypeScript for statically written OCCT symbol references.
+ * `detect` produces a starting binding set; `check` reports referenced symbols
+ * missing from a config. Dynamic, computed, and indirect class access is not
+ * detected, so `check` is a drift guard rather than a completeness proof.
  */
 import * as fs from 'node:fs';
 import * as path from 'node:path';
@@ -150,23 +129,15 @@ const COMMENT_OR_STRING =
   /\/\*[\s\S]*?\*\/|\/\/[^\n]*|"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|`(?:[^`\\]|\\.)*`/g;
 
 /**
- * Blank out comments, preserving every newline so line numbers stay exact.
+ * Replace comment bodies with spaces while preserving newlines and string
+ * literals. Static bracket access in strings remains detectable; prose class
+ * names inside strings also count as references.
  *
- * Required, not cosmetic: replicad's `assemblyExporter.ts` carries a comment
- * naming `XCAFDoc_VisMaterial` as *deliberately omitted*. Without this, `check`
- * fails CI on a symbol whose only mention is the note explaining its absence.
- *
- * String literals are matched by the same alternation but left **in place**, so
- * a `//` inside one cannot blank the rest of its line and so bracket access
- * (`oc['gp_Pnt']`) still seeds the scan. The cost is symmetrical and accepted: a
- * class name written in prose inside a string counts as a reference.
- *
- * ponytail: regex tokenizer, not a parser. A regex literal containing `//`
- * (`/\/\//`) is mis-blanked; upgrade path is an AST scan, which costs a parser
- * dependency the package does not have.
+ * ponytail: regex tokenization can misread `//` inside regex literals; use an
+ * AST scanner if that case becomes material.
  *
  * @param source - File contents.
- * @returns The same text with comment bodies replaced by spaces.
+ * @returns Text with comment bodies replaced by spaces.
  */
 export const blankComments = (source: string): string =>
   source.replace(COMMENT_OR_STRING, (match) =>
@@ -388,7 +359,7 @@ export const CAVEATS: readonly string[] = [
   'This is a STARTING SET, not a minimal set. Review it; do not treat it as an answer.',
   'A successful build proves nothing about completeness — a missing binding links fine and fails at RUNTIME with `BindingError`. Only running the code exercises it.',
   'Not a size tool. Measured ceiling: −14% symbols bought −0.9% brotli (embind registrations are GC roots, so dropped bindings free glue, not kernel code); `--gufa` is a size regression.',
-  'Never auto-remove. `detect` proposes nothing for deletion: symbols unreferenced today include roadmap-reserved capacity and anything your own C++ wrappers call — cross-check that capacity (for replicad, `docs/research/replicad-vs-occt-wasm-gap-matrix.md`) before dropping anything.',
+  'Never auto-remove. `detect` cannot see symbols reserved for external callers or referenced only by custom C++; review every consumer before dropping bindings.',
   'Regex/token scan, not AST: dynamic access (`oc[name]`) and names built by concatenation are invisible to it.',
 ];
 

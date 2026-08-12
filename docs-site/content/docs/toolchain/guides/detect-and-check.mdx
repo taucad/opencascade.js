@@ -58,10 +58,10 @@ npx libcascade detect src lib
 
 `--json` emits the same result machine-readably.
 
-The output is a **starting set, not a minimal one**. Symbols your source does
-not reference today include roadmap-reserved capacity and anything your own C++
-wrapper files call. Review the list. Never diff it against an existing config
-and delete the difference.
+The output is a **starting set, not a minimal one**. The scan cannot see symbols
+reserved for external callers or referenced only by custom C++ files. Review
+every consumer. Never delete the difference from an existing config
+automatically.
 
 ## `check` — the drift guard
 

@@ -1,4 +1,4 @@
-/** `'100mb'` is a silent emcc misparse today; the `MemorySize` suffix is case-sensitive. */
+/** Proves `MemorySize` rejects lowercase suffixes that emcc does not parse as byte units. */
 import { defineBuild } from '@libcascade/toolchain';
 
 export default defineBuild({

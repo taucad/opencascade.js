@@ -1,8 +1,6 @@
 /**
- * `@libcascade/toolchain` — typed build configuration for custom libcascade
- * libcascade WASM builds.
- *
- * The container driver lives behind the `@libcascade/toolchain/driver` subpath.
+ * Typed build configuration, detection, migration, and package assembly for custom libcascade
+ * WASM builds. Container execution is exported from `@libcascade/toolchain/driver`.
  */
 export {
   defineBuild,

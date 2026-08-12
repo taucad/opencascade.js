@@ -1,25 +1,8 @@
 /**
- * `libcascade migrate` — v2 container yml → typed `libcascade.config.ts`.
- *
- * A one-shot onboarding tool, not a two-way sync: it reads the ymls a v2
- * consumer builds today (`src/customBuildSchema.py`) and emits the config that
- * renders back to them. There is no config→yml direction — `renderBuild` is
- * already that, and it is the round-trip test's oracle.
- *
- * Three properties matter more than convenience:
- *
- * 1. **Nothing is dropped silently.** Every yml key is either modelled, or an
- *    error; every flag is either typed, or passed through verbatim in
- *    `rawFlags` and listed in the emitted review block. A migrator that loses a
- *    flag produces a build that differs from the original in a way nobody
- *    notices until runtime.
- * 2. **What is derived says so.** The yml declares wrapper file *paths* but not
- *    which symbols each provides. Those are read out of the `.cpp`, and the
- *    emitted header names them as the human's review list.
- * 3. **N ymls in, one config out.** The v2 shape for variants was N sibling
- *    ymls differing in a few flags; that is one config with N variants, so the
- *    migrator derives the base as the common subset and each variant as its
- *    delta rather than emitting N degenerate configs.
+ * Convert one or more container yml files into a typed
+ * `libcascade.config.ts`. Unknown keys fail; untyped flags remain in
+ * `rawFlags`; custom symbols are derived from C++ files; common values become
+ * the base config and differences become variant overrides.
  */
 import * as fs from 'node:fs';
 import * as path from 'node:path';
@@ -49,7 +32,7 @@ export type MigrateOptions = {
    * resolves them against.
    */
   readonly outputDirectory: string;
-  /** Provenance date. @defaultValue today */
+  /** Provenance date. @defaultValue UTC date at migration time */
   readonly date?: string;
 };
 
@@ -369,16 +352,12 @@ const annotate = (annotations: Annotation[], annotation: Annotation): void => {
 };
 
 /**
- * The two modernizations the blueprint calls for, applied per build.
- *
- * Both are rewrites the reference ymls need and cannot be deferred: the pinned
- * image *hard-fails* a `-fwasm-exceptions` link without the three exception
- * helpers, and `USE_PTHREADS` is emcc's deprecated legacy alias of the
- * `-pthread` the config now spells typed. Each leaves a comment in the emitted
- * config saying what it did.
+ * Replace `USE_PTHREADS` with the typed thread flag and ensure wasm-exception
+ * runtime helpers are exported. Each rewrite is recorded in output annotations
+ * and migration notes.
  *
  * @param parsed - One build's classified flags, mutated in place.
- * @param annotations - Collector for the emitted explanations.
+ * @param annotations - Collector for emitted explanations.
  * @param notes - Collector for human-facing findings.
  */
 const modernize = (parsed: ParsedFlags, annotations: Annotation[], notes: string[]): void => {
@@ -439,21 +418,12 @@ const commonPrefix = (values: readonly string[]): string => {
 };
 
 /**
- * Split the artifact names into one config `name` plus one variant name each.
- *
- * The v2 convention the toolchain adopted is `<name>_<variant>`, so the split
- * point is the last `_` inside the names' common prefix: `replicad_single` +
- * `replicad_multi` → `replicad` / `single` / `multi`, and `opencascade_full` +
- * `opencascade_full_multi` → `opencascade` / `full` / `full_multi`.
- *
- * When the names do not fit that shape at all — no shared `_`-delimited prefix
- * — the variant is named after its yml and carries an explicit `outputName`.
- * That is exactly the escape hatch {@link BuildVariant.outputName} exists for:
- * published filenames that predate the convention must not change just because
- * the build system did.
+ * Split `<name>_<variant>` artifact names into a config name and variant names.
+ * Inputs without a shared delimited prefix use yml-derived variant names and
+ * retain their artifact names through `outputName`.
  *
  * @param builds - The builds, in declaration order.
- * @returns The config name and one variant name per build, positionally.
+ * @returns The config name and positional variant names.
  */
 const deriveNames = (
   builds: readonly Build[],
@@ -477,23 +447,14 @@ const deriveNames = (
 };
 
 /**
- * Symbols a custom `.cpp` provides.
+ * Extract top-level class, struct, and Embind registration names from a custom
+ * C++ file.
  *
- * The yml gives the file path and nothing else — which symbols it binds is the
- * one thing the typed config needs and the v2 format never recorded. Two
- * signals, both taken from the reference wrappers: a top-level `class` /
- * `struct` definition (replicad's eleven wrappers, which the bindgen auto-binds
- * from the symbol list), and an Embind `class_<T>("Name")` registration
- * (libcascade's `full-bindings.cpp`).
- *
- * ponytail: regex over comment-blanked source, not a C++ parse. Anything
- * indented is skipped, which is what keeps nested and locally-defined classes
- * out; the upgrade path is libclang, which is what the container itself uses
- * and is not a dependency this package will take.
+ * ponytail: regex over comment-free source excludes indented nested classes;
+ * use libclang if supported wrappers exceed this grammar.
  *
  * @param file - Absolute path to the `.cpp`.
- * @returns The symbol names in file order, or `undefined` when the file cannot
- *   be read.
+ * @returns Names in file order, or `undefined` when the file cannot be read.
  */
 export const extractSymbols = (file: string): readonly string[] | undefined => {
   let source: string;

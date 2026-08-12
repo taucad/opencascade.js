@@ -1,54 +1,7 @@
 /**
- * Smoke test: lifetime & refcount safety for std::optional-wrapped class- and
- * handle-typed parameters under repeated invocation (PoC U3 + U4).
- *
- * Pins the memory-safety contract validated by
- * `repos/opencascade.js/experiments/poc-occt-integration/u1-u3-u4.test.mjs`:
- *
- *   U3 — `std::optional<T>` for class-typed T (non-trivially-destructible):
- *     per-call ctor+copy+move count balances dtor count exactly. 1000x
- *     hammer must not leak heap. Omitted-arg path never enters T's wire
- *     (nullopt path bypasses constructor entirely).
- *
- *   U4 — `std::optional<opencascade::handle<T>>`: 500x mixed-call sweep
- *     (explicit handle / null / undefined / omitted) must leave the
- *     original handle's `GetRefCount()` at baseline. Otherwise long-lived
- *     JS handles passed through optional-typed params would leak OCCT
- *     heap on the C++ side.
- *
- * Target classes:
- *   - U3 hammer: `BRepAlgoAPI_Fuse.Build(progress)` with a fresh
- *     Message_ProgressRange each call. Message_ProgressRange is a
- *     small class-typed value passed by-reference; under the post-
- *     migration emission its `optional_override` lambda will copy the
- *     JS-side wrapper into a wire-side temporary, move into the
- *     `std::optional<Message_ProgressRange>` slot, then destroy both
- *     on lambda exit. We hammer 200x (smoke-grade; the PoC's 1000x
- *     hammer takes ~5s in the PoC, 200x keeps smoke runtime acceptable)
- *     and assert no measurable heap drift via `process.memoryUsage`.
- *     This test PASSES TODAY against the standard class-wire path; it
- *     is forward-looking — a post-migration regression in
- *     `EmValOptionalType.toWireType` would surface here as memory
- *     growth.
- *
- *   - U4 refcount: validates `std::optional<opencascade::handle<T>>`
- *     wire path correctness via `GetRefCount()`. STATUS: forward-
- *     looking placeholder — no current OCJS binding emits
- *     `std::optional<opencascade::handle<T>>` as a parameter type
- *     (today all handle parameters are bare `Handle<T>`). The plain
- *     `opencascade::handle<T>` wire path through e.g.
- *     `BRepBuilderAPI_MakeEdge(handle<Geom_Curve>)` does NOT return
- *     refcount to baseline because the resulting BRep topology
- *     retains references to the curve — that test would measure
- *     OCCT ownership, not the optional-wrapped wire path. The U4
- *     test activates once bindgen migrates a method with an
- *     `optional<handle<T>>` parameter shape — see
- *     `docs/research/ocjs-optional-overload-resolution-blueprint.md`
- *     "Migration Sequence" Steps 3-4.
- *
- * Pre-migration state: U3 hammer passes; U4 refcount skipped.
- * Post-migration state: both pass. Activation of U4 follows the first
- * optional-wrapped-handle param emission in bindgen.
+ * Exercises repeated value-class calls for heap stability and verifies handle reference
+ * counts remain observable. Optional-handle coverage is gated because no constructible binding
+ * exposes that parameter shape.
  */
 import { describe, it, expect, beforeAll } from 'vitest';
 import { initOC, getOC, wasmExists } from './helpers.js';
