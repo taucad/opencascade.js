@@ -14,6 +14,14 @@ jobs:
     steps:
       - name: Delete closed pull request caches
         env:
+          GH_REPO: ${{ github.repository }}
           GH_TOKEN: ${{ github.token }}
           MERGE_REF: refs/pull/${{ github.event.pull_request.number }}/merge
-        run: gh cache delete --all --ref "$MERGE_REF" --succeed-on-no-caches
+        run: |
+          gh api --paginate "repos/$GH_REPO/actions/caches?ref=$MERGE_REF&per_page=100" \
+            --jq '.actions_caches[].id' |
+          while read -r cache_id; do
+            output="$(gh api --method DELETE "repos/$GH_REPO/actions/caches/$cache_id" 2>&1)" || {
+              grep -q '(HTTP 404)' <<< "$output" || { printf '%s\n' "$output" >&2; exit 1; }
+            }
+          done

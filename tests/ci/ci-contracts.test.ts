@@ -926,7 +926,10 @@ describe('CI contracts', () => {
     expect(cleanup.on.pull_request.types).toEqual(['closed']);
     expect(Object.keys(cleanup.jobs)).toEqual(['cleanup']);
     expect(cleanup.jobs.cleanup.steps).toHaveLength(1);
-    expect(cleanup.jobs.cleanup.steps[0].run).toContain('gh cache delete --all --ref "$MERGE_REF"');
+    expect(cleanup.jobs.cleanup.steps[0].run).toContain('actions/caches?ref=$MERGE_REF&per_page=100');
+    expect(cleanup.jobs.cleanup.steps[0].run).toContain('actions/caches/$cache_id');
+    expect(cleanup.jobs.cleanup.steps[0].run).toContain("grep -q '(HTTP 404)'");
+    expect(cleanup.jobs.cleanup.steps[0].env.GH_REPO).toBe('${{ github.repository }}');
     expect(cleanup.jobs.cleanup.steps[0].env.MERGE_REF).toBe('refs/pull/${{ github.event.pull_request.number }}/merge');
   });
 
