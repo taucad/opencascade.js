@@ -124,9 +124,10 @@ The workflow builds every Docker stage natively on amd64 and arm64 for
 three stages natively on the standard ARM64 runner without publishing, after
 quality and prose checks pass. Each final image passes the same runtime
 contract on its native host. Pull requests read trusted stage-local registry
-caches and may write one `mode=min` cache scoped to their merge ref; that cache
-is deleted when the pull request closes. Published images contain runtime
-Python dependencies only. Pytest runs in a non-published child of the exact
+caches but do not export BuildKit state: GitHub's cache service can block an
+otherwise complete native build until the job timeout. Pull-request dependency
+caches are deleted when the pull request closes. Published images contain
+runtime Python dependencies only. Pytest runs in a non-published child of the exact
 single-threaded candidate, while actionlint, Ruff, and Vale remain CI tools.
 Native toolchains may produce different bytes, so the tested amd64 ST/MT
 outputs are the canonical npm inputs while both tested image digests are

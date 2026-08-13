@@ -552,7 +552,7 @@ describe('CI contracts', () => {
     const validationSource = validation.steps
       .filter(({ name }: { name?: string }) => name?.includes('candidate for validation'))
       .map(({ with: inputs }: { with: Record<string, unknown> }) => inputs.platforms);
-    expect(validationSource).toEqual(['linux/arm64', 'linux/arm64']);
+    expect(validationSource).toEqual(['linux/arm64']);
     const source = fs.readFileSync(path.join(ROOT, '.github/workflows/docker.yml'), 'utf8');
     expect(source).toContain("matrix.arch == 'arm64' && 'linux/arm64' || 'linux/amd64'");
     expect(source).toContain("matrix.stage == 'final-multi' && 'build-configs/full_multi.yml'");
@@ -698,7 +698,7 @@ describe('CI contracts', () => {
     expect(source).not.toContain('byte-identical amd64 and arm64');
   });
 
-  it('should isolate one pull-request cache writer while preserving trusted registry caches', () => {
+  it('should use trusted registry caches without exporting pull-request BuildKit state', () => {
     const ci = workflow('docker.yml');
     const validationSteps = ci.jobs['candidate-validation'].steps.filter(({ name }: { name?: string }) =>
       name?.includes('candidate for validation'),
@@ -707,19 +707,17 @@ describe('CI contracts', () => {
       ['Build candidate for e2e', 'Push tested candidate by digest'].includes(name ?? ''),
     );
     for (const step of validationSteps) {
-      expect(step.with['cache-from'].trim().split('\n')).toEqual([
+      expect(step.with['cache-from']).toBe(
         'type=registry,ref=${{ env.REGISTRY_IMAGE }}:buildcache-arm64-${{ matrix.stage }}',
-        'type=gha,scope=pr-${{ github.event.pull_request.number }}-arm64-final-multi',
-      ]);
+      );
+      expect(step.with['cache-to']).toBeUndefined();
     }
+    expect(validationSteps).toHaveLength(1);
     expect(
-      validationSteps.filter(({ with: inputs }: { with: Record<string, unknown> }) => inputs['cache-to']),
-    ).toHaveLength(1);
-    expect(
-      validationSteps.find(({ with: inputs }: { with: Record<string, unknown> }) => inputs['cache-to']).with[
-        'cache-to'
-      ],
-    ).toBe('type=gha,scope=pr-${{ github.event.pull_request.number }}-arm64-final-multi,mode=min');
+      ci.jobs['candidate-validation'].steps.find(
+        ({ name }: { name?: string }) => name === 'Build Python validation target',
+      ).with['cache-from'],
+    ).toBe('type=registry,ref=${{ env.REGISTRY_IMAGE }}:buildcache-arm64-final-single');
     expect(ci.jobs['candidate-validation'].permissions).toEqual({ contents: 'read' });
     for (const step of buildSteps) {
       expect(step.with['cache-from'].trim().split('\n')).toEqual([
