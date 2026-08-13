@@ -892,6 +892,7 @@ describe('CI contracts', () => {
     expect(dockerfile).toContain('ENV OCJS_PYTHON_PROFILE=test');
     expect(cloneDeps).toContain('runtime|test|development');
     expect(cloneDeps).toContain('.deps-$PYTHON_PROFILE-$PROFILE_HASH.ready');
+    expect(cloneDeps.match(/uv sync --project "\$REPO_ROOT"/g)).toHaveLength(3);
     for (const jobName of ['candidate-validation', 'candidate-build']) {
       const job = ci.jobs[jobName];
       expect(job.steps.some(({ name }: { name?: string }) => name === 'Build Python validation target')).toBe(true);

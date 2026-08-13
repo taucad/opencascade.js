@@ -202,9 +202,9 @@ if [ -f "$PROFILE_SENTINEL" ] && [ "${OCJS_FORCE_PYTHON_SYNC:-0}" != "1" ]; then
   echo "Python $PYTHON_PROFILE profile already verified ($PROFILE_SENTINEL)"
 else
   case "$PYTHON_PROFILE" in
-    runtime) UV_PROJECT_ENVIRONMENT="$VENV_DIR" uv sync --frozen --no-dev ;;
-    test) UV_PROJECT_ENVIRONMENT="$VENV_DIR" uv sync --frozen --no-dev --group test ;;
-    development) UV_PROJECT_ENVIRONMENT="$VENV_DIR" uv sync --frozen --all-groups ;;
+    runtime) UV_PROJECT_ENVIRONMENT="$VENV_DIR" uv sync --project "$REPO_ROOT" --frozen --no-dev ;;
+    test) UV_PROJECT_ENVIRONMENT="$VENV_DIR" uv sync --project "$REPO_ROOT" --frozen --no-dev --group test ;;
+    development) UV_PROJECT_ENVIRONMENT="$VENV_DIR" uv sync --project "$REPO_ROOT" --frozen --all-groups ;;
   esac
   rm -f "$VENV_DIR"/.deps-*.ready
   touch "$PROFILE_SENTINEL"
