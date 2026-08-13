@@ -552,7 +552,7 @@ describe('CI contracts', () => {
     const validationSource = validation.steps
       .filter(({ name }: { name?: string }) => name?.includes('candidate for validation'))
       .map(({ with: inputs }: { with: Record<string, unknown> }) => inputs.platforms);
-    expect(validationSource).toEqual(['linux/arm64', 'linux/arm64']);
+    expect(validationSource).toEqual(['linux/arm64']);
     const source = fs.readFileSync(path.join(ROOT, '.github/workflows/docker.yml'), 'utf8');
     expect(source).toContain("matrix.arch == 'arm64' && 'linux/arm64' || 'linux/amd64'");
     expect(source).toContain("matrix.stage == 'final-multi' && 'build-configs/full_multi.yml'");
@@ -698,7 +698,7 @@ describe('CI contracts', () => {
     expect(source).not.toContain('byte-identical amd64 and arm64');
   });
 
-  it('should isolate one pull-request cache writer while preserving trusted registry caches', () => {
+  it('should use trusted registry caches without exporting pull-request BuildKit state', () => {
     const ci = workflow('docker.yml');
     const validationSteps = ci.jobs['candidate-validation'].steps.filter(({ name }: { name?: string }) =>
       name?.includes('candidate for validation'),
@@ -707,19 +707,17 @@ describe('CI contracts', () => {
       ['Build candidate for e2e', 'Push tested candidate by digest'].includes(name ?? ''),
     );
     for (const step of validationSteps) {
-      expect(step.with['cache-from'].trim().split('\n')).toEqual([
+      expect(step.with['cache-from']).toBe(
         'type=registry,ref=${{ env.REGISTRY_IMAGE }}:buildcache-arm64-${{ matrix.stage }}',
-        'type=gha,scope=pr-${{ github.event.pull_request.number }}-arm64-final-multi',
-      ]);
+      );
+      expect(step.with['cache-to']).toBeUndefined();
     }
+    expect(validationSteps).toHaveLength(1);
     expect(
-      validationSteps.filter(({ with: inputs }: { with: Record<string, unknown> }) => inputs['cache-to']),
-    ).toHaveLength(1);
-    expect(
-      validationSteps.find(({ with: inputs }: { with: Record<string, unknown> }) => inputs['cache-to']).with[
-        'cache-to'
-      ],
-    ).toBe('type=gha,scope=pr-${{ github.event.pull_request.number }}-arm64-final-multi,mode=min');
+      ci.jobs['candidate-validation'].steps.find(
+        ({ name }: { name?: string }) => name === 'Build Python validation target',
+      ).with['cache-from'],
+    ).toBe('type=registry,ref=${{ env.REGISTRY_IMAGE }}:buildcache-arm64-final-single');
     expect(ci.jobs['candidate-validation'].permissions).toEqual({ contents: 'read' });
     for (const step of buildSteps) {
       expect(step.with['cache-from'].trim().split('\n')).toEqual([
@@ -926,8 +924,55 @@ describe('CI contracts', () => {
     expect(cleanup.on.pull_request.types).toEqual(['closed']);
     expect(Object.keys(cleanup.jobs)).toEqual(['cleanup']);
     expect(cleanup.jobs.cleanup.steps).toHaveLength(1);
-    expect(cleanup.jobs.cleanup.steps[0].run).toContain('gh cache delete --all --ref "$MERGE_REF"');
+    expect(cleanup.jobs.cleanup.steps[0].run).toContain('actions/caches?ref=$MERGE_REF&per_page=100');
+    expect(cleanup.jobs.cleanup.steps[0].run).toContain('actions/caches/$cache_id');
+    expect(cleanup.jobs.cleanup.steps[0].run).toContain("grep -q '(HTTP 404)'");
+    expect(cleanup.jobs.cleanup.steps[0].run).toContain('> "$cache_ids_file"');
+    expect(cleanup.jobs.cleanup.steps[0].run).toContain('done < "$cache_ids_file"');
+    expect(cleanup.jobs.cleanup.steps[0].env.GH_REPO).toBe('${{ github.repository }}');
     expect(cleanup.jobs.cleanup.steps[0].env.MERGE_REF).toBe('refs/pull/${{ github.event.pull_request.number }}/merge');
+  });
+
+  it('should materialize more than 100 cache IDs before deleting any', () => {
+    const cleanup = workflow('cache-cleanup.yml');
+    const scratch = fs.mkdtempSync(path.join(process.env.TMPDIR ?? '/tmp', 'ocjs-cache-cleanup-'));
+    const gh = path.join(scratch, 'gh');
+    const deleted = path.join(scratch, 'deleted');
+    fs.writeFileSync(
+      gh,
+      `#!/usr/bin/env bash
+set -euo pipefail
+if [[ " $* " == *" --method DELETE "* ]]; then
+  printf '%s\\n' "\${!#}" >> "$DELETED"
+  exit 0
+fi
+seq 1 100
+sleep 1
+[[ ! -s "$DELETED" ]] && printf '%s\\n' 101
+`,
+      { mode: 0o755 },
+    );
+    fs.writeFileSync(deleted, '');
+
+    try {
+      const result = spawnSync('bash', ['-euo', 'pipefail', '-c', cleanup.jobs.cleanup.steps[0].run], {
+        cwd: scratch,
+        env: {
+          ...process.env,
+          DELETED: deleted,
+          GH_REPO: 'taucad/opencascade.js',
+          GH_TOKEN: 'test',
+          MERGE_REF: 'refs/pull/27/merge',
+          PATH: `${scratch}:${process.env.PATH}`,
+        },
+        encoding: 'utf8',
+      });
+      expect(result.stderr).toBe('');
+      expect(result.status).toBe(0);
+      expect(fs.readFileSync(deleted, 'utf8').trim().split('\n')).toHaveLength(101);
+    } finally {
+      fs.rmSync(scratch, { recursive: true, force: true });
+    }
   });
 
   it('should lint the complete docs corpus without relying on the PR diff API', () => {
