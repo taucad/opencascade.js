@@ -929,8 +929,52 @@ describe('CI contracts', () => {
     expect(cleanup.jobs.cleanup.steps[0].run).toContain('actions/caches?ref=$MERGE_REF&per_page=100');
     expect(cleanup.jobs.cleanup.steps[0].run).toContain('actions/caches/$cache_id');
     expect(cleanup.jobs.cleanup.steps[0].run).toContain("grep -q '(HTTP 404)'");
+    expect(cleanup.jobs.cleanup.steps[0].run).toContain('> "$cache_ids_file"');
+    expect(cleanup.jobs.cleanup.steps[0].run).toContain('done < "$cache_ids_file"');
     expect(cleanup.jobs.cleanup.steps[0].env.GH_REPO).toBe('${{ github.repository }}');
     expect(cleanup.jobs.cleanup.steps[0].env.MERGE_REF).toBe('refs/pull/${{ github.event.pull_request.number }}/merge');
+  });
+
+  it('should materialize more than 100 cache IDs before deleting any', () => {
+    const cleanup = workflow('cache-cleanup.yml');
+    const scratch = fs.mkdtempSync(path.join(process.env.TMPDIR ?? '/tmp', 'ocjs-cache-cleanup-'));
+    const gh = path.join(scratch, 'gh');
+    const deleted = path.join(scratch, 'deleted');
+    fs.writeFileSync(
+      gh,
+      `#!/usr/bin/env bash
+set -euo pipefail
+if [[ " $* " == *" --method DELETE "* ]]; then
+  printf '%s\\n' "\${!#}" >> "$DELETED"
+  exit 0
+fi
+seq 1 100
+sleep 1
+[[ ! -s "$DELETED" ]] && printf '%s\\n' 101
+`,
+      { mode: 0o755 },
+    );
+    fs.writeFileSync(deleted, '');
+
+    try {
+      const result = spawnSync('bash', ['-euo', 'pipefail', '-c', cleanup.jobs.cleanup.steps[0].run], {
+        cwd: scratch,
+        env: {
+          ...process.env,
+          DELETED: deleted,
+          GH_REPO: 'taucad/opencascade.js',
+          GH_TOKEN: 'test',
+          MERGE_REF: 'refs/pull/27/merge',
+          PATH: `${scratch}:${process.env.PATH}`,
+        },
+        encoding: 'utf8',
+      });
+      expect(result.stderr).toBe('');
+      expect(result.status).toBe(0);
+      expect(fs.readFileSync(deleted, 'utf8').trim().split('\n')).toHaveLength(101);
+    } finally {
+      fs.rmSync(scratch, { recursive: true, force: true });
+    }
   });
 
   it('should lint the complete docs corpus without relying on the PR diff API', () => {
