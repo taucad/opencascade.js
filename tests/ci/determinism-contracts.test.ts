@@ -76,6 +76,8 @@ describe('deterministic artifact contracts', () => {
     expect(workflow).not.toContain('/actions/runs/');
     expect(reproducibility).toContain('max-parallel: 2');
     expect(reproducibility).toContain('no-cache: true');
+    expect(reproducibility).toContain('runs-on: ubuntu-24.04-arm');
+    expect(reproducibility).toContain('platforms: linux/arm64');
     expect(reproducibility).toContain('--compare-ledgers');
     expect(
       reproducibility.match(/ref: \$\{\{ needs\.prepare\.outputs\.full_sha \}\}/g),

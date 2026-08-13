@@ -36,7 +36,8 @@
 # Stage architecture (5 logical stages; final-{threading} are thin tag-bearing
 # stages over the matching compiled-{threading} stage):
 #
-#   deps-base                  OS toolchain (emsdk + apt + Node 24 + uv + Python 3.14)
+#   deps-base                  OS toolchain (emsdk + baked FreeType/zlib ports
+#                              + apt + Node 24 + uv + Python 3.14)
 #                              + clone-deps.sh (OCCT/rapidjson/freetype/LLVM 17 tarball)
 #                              + LLVM 17 trim (~5 GB pruned in-RUN to ~250 MB)
 #                              + apt/uv cache purge
@@ -86,6 +87,19 @@ FROM emscripten/emsdk:6.0.5@sha256:76a44fff907397784decc435115d07fcb9587a4f15049
 
 LABEL org.opencontainers.image.title="libcascade (deps-base)" \
       org.opencontainers.image.description="OS toolchain + dependency clones (emsdk, Node 24, uv, Python 3.14, OCCT, rapidjson, freetype, LLVM 17 — header-trimmed)"
+
+# The supported links use Emscripten's standard and legacy-SjLj FreeType ports,
+# which download and build their shared zlib dependency on first use. Bake both
+# variants into the published image's sysroot so consumer links never depend on
+# that late network fetch. Compile stages use separate BuildKit cache mounts;
+# their contents are not image data.
+# Emscripten's port downloader has no retry policy, so bound retries here where
+# a transient archive failure costs seconds rather than hours of compilation.
+RUN for attempt in 1 2 3 4 5; do \
+      embuilder build freetype freetype-legacysjlj && break; \
+      [ "$attempt" -lt 5 ] || exit 1; \
+      sleep "$((attempt * 5))"; \
+    done
 
 # ── System packages ─────────────────────────────────────────────────────────
 # Notes on what is intentionally NOT installed:
@@ -156,6 +170,7 @@ RUN curl -LsSf https://astral.sh/uv/install.sh | \
 # our project's `npx nx run …` / `npm ci` invocations, matching the host's
 # Node version (see .nvmrc and package.json:engines).
 ENV PATH="/opencascade.js/.venv/bin:/usr/local/bin:/usr/bin:/bin:${PATH}"
+ENV OCJS_PYTHON_PROFILE=runtime
 
 WORKDIR /opencascade.js/
 
@@ -169,7 +184,7 @@ RUN mkdir -p /opencascade.js/deps && \
     ln -s /emsdk /opencascade.js/deps/emsdk
 
 COPY DEPS.json pyproject.toml uv.lock /opencascade.js/
-COPY scripts/clone-deps.sh /opencascade.js/scripts/clone-deps.sh
+COPY scripts/clone-deps.sh scripts/prune-llvm.sh /opencascade.js/scripts/
 
 # ── Dependency fetch + LLVM 17 trim + cache purge (mega-RUN, R10) ───────────
 # clone-deps.sh §1-§4 fetches: OCCT/rapidjson/freetype git checkouts,
@@ -193,19 +208,7 @@ COPY scripts/clone-deps.sh /opencascade.js/scripts/clone-deps.sh
 # downloaded wheel cache (~150 MB) is dead weight in the image.
 RUN bash scripts/clone-deps.sh --dest /opencascade.js/deps && \
     echo "── Trimming LLVM 17 vendored tarball (R10) ────────────────────────" && \
-    find /opencascade.js/deps/llvm-17 -mindepth 1 -maxdepth 1 \
-      ! -name include \
-      ! -name lib \
-      -exec rm -rf {} + && \
-    find /opencascade.js/deps/llvm-17/lib -mindepth 1 -maxdepth 1 \
-      ! -name clang \
-      -exec rm -rf {} + && \
-    find /opencascade.js/deps/llvm-17/lib/clang -mindepth 1 -maxdepth 1 \
-      ! -name 17 \
-      -exec rm -rf {} + && \
-    find /opencascade.js/deps/llvm-17/lib/clang/17 -mindepth 1 -maxdepth 1 \
-      ! -name include \
-      -exec rm -rf {} + && \
+    bash scripts/prune-llvm.sh /opencascade.js/deps/llvm-17 && \
     echo "── LLVM 17 retained:" && \
     du -sh /opencascade.js/deps/llvm-17 && \
     echo "── Purging uv pip cache + apt lists ───────────────────────────────" && \
@@ -337,9 +340,6 @@ RUN npx nx run ocjs:generate && \
     chmod go+w /opencascade.js && \
     echo "── Allowing git on vendored OCCT/rapidjson/freetype for non-root runs ──" && \
     git config --system --add safe.directory '*' && \
-    echo "── Marking .venv/.deps-ready (skip uv pip install on non-root rerun) ──" && \
-    touch /opencascade.js/.venv/.deps-ready && \
-    chmod go+w /opencascade.js/.venv/.deps-ready && \
     echo "── Making emsdk libembind.js writable for non-root reset+repatch ──" && \
     chmod go+w /emsdk/upstream/emscripten/src/lib \
                /emsdk/upstream/emscripten/src/lib/libembind.js
@@ -485,6 +485,16 @@ WORKDIR /src
 
 ENTRYPOINT ["/opencascade.js/scripts/docker-entrypoint.sh"]
 CMD ["--help"]
+
+# Non-published test surface. It derives from the exact production candidate
+# and adds only pytest for CI integration and sentinel checks.
+FROM final-single AS validation-single
+ENV OCJS_PYTHON_PROFILE=test
+RUN bash /opencascade.js/scripts/clone-deps.sh \
+      --dest /opencascade.js/deps \
+      --python-profile test && \
+    uv cache clean && \
+    rm -rf /root/.cache /tmp/* /var/tmp/*
 
 # ═════════════════════════════════════════════════════════════════════════════
 # Stage 4b: final-multi  (published as ghcr.io/taucad/opencascade.js:multi-threaded)

@@ -395,6 +395,7 @@ describe('CI contracts', () => {
       const step = ci.jobs[jobName].steps.find(
         ({ name }: { name?: string }) => name === 'Python integration and sentinel checks',
       );
+      expect(step.env.TEST_IMAGE).toBe('ocjs:e2e-validation-single');
       expect(step.run).toContain('rm -rf build/bindings');
       expect(step.run).toContain('npx nx run ocjs:generate --skip-nx-cache');
       expect(step.run).toContain('npx vitest run tests/no-clobber-validation.test.ts');
@@ -519,7 +520,7 @@ describe('CI contracts', () => {
     }
   });
 
-  it('should expand push candidates to six complete native rows and validation to three amd64 rows', () => {
+  it('should keep six main rows and run the complete pull-request matrix natively on ARM64', () => {
     const ci = workflow('docker.yml');
     const build = ci.jobs['candidate-build'];
     const validation = ci.jobs['candidate-validation'];
@@ -532,6 +533,8 @@ describe('CI contracts', () => {
       stage: ['final-single', 'final-multi', 'bindgen-base'],
     });
     expect(validation.if).toBe("github.event_name == 'pull_request'");
+    expect(validation['runs-on']).toBe('ubuntu-24.04-arm');
+    expect(validation.needs).toEqual(['preflight', 'quality', 'docs-prose']);
     expect(build.if).toBe("github.event_name == 'push' || github.event_name == 'workflow_dispatch'");
 
     const rows = build.strategy.matrix.stage.flatMap((stage: string) =>
@@ -546,6 +549,10 @@ describe('CI contracts', () => {
       { stage: 'bindgen-base', arch: 'arm64' },
     ]);
     expect(build['runs-on']).toContain("matrix.arch == 'arm64'");
+    const validationSource = validation.steps
+      .filter(({ name }: { name?: string }) => name?.includes('candidate for validation'))
+      .map(({ with: inputs }: { with: Record<string, unknown> }) => inputs.platforms);
+    expect(validationSource).toEqual(['linux/arm64', 'linux/arm64']);
     const source = fs.readFileSync(path.join(ROOT, '.github/workflows/docker.yml'), 'utf8');
     expect(source).toContain("matrix.arch == 'arm64' && 'linux/arm64' || 'linux/amd64'");
     expect(source).toContain("matrix.stage == 'final-multi' && 'build-configs/full_multi.yml'");
@@ -691,17 +698,29 @@ describe('CI contracts', () => {
     expect(source).not.toContain('byte-identical amd64 and arm64');
   });
 
-  it('should use only stage-and-architecture-local Docker caches', () => {
+  it('should isolate one pull-request cache writer while preserving trusted registry caches', () => {
     const ci = workflow('docker.yml');
-    const validationStep = ci.jobs['candidate-validation'].steps.find(
-      ({ name }: { name?: string }) => name === 'Build candidate for validation',
+    const validationSteps = ci.jobs['candidate-validation'].steps.filter(({ name }: { name?: string }) =>
+      name?.includes('candidate for validation'),
     );
     const buildSteps = ci.jobs['candidate-build'].steps.filter(({ name }: { name?: string }) =>
       ['Build candidate for e2e', 'Push tested candidate by digest'].includes(name ?? ''),
     );
-    expect(validationStep.with['cache-from'].trim().split('\n')).toEqual([
-      'type=registry,ref=${{ env.REGISTRY_IMAGE }}:buildcache-amd64-${{ matrix.stage }}',
-    ]);
+    for (const step of validationSteps) {
+      expect(step.with['cache-from'].trim().split('\n')).toEqual([
+        'type=registry,ref=${{ env.REGISTRY_IMAGE }}:buildcache-arm64-${{ matrix.stage }}',
+        'type=gha,scope=pr-${{ github.event.pull_request.number }}-arm64-final-multi',
+      ]);
+    }
+    expect(
+      validationSteps.filter(({ with: inputs }: { with: Record<string, unknown> }) => inputs['cache-to']),
+    ).toHaveLength(1);
+    expect(
+      validationSteps.find(({ with: inputs }: { with: Record<string, unknown> }) => inputs['cache-to']).with[
+        'cache-to'
+      ],
+    ).toBe('type=gha,scope=pr-${{ github.event.pull_request.number }}-arm64-final-multi,mode=min');
+    expect(ci.jobs['candidate-validation'].permissions).toEqual({ contents: 'read' });
     for (const step of buildSteps) {
       expect(step.with['cache-from'].trim().split('\n')).toEqual([
         'type=registry,ref=${{ env.REGISTRY_IMAGE }}:buildcache-${{ matrix.arch }}-${{ matrix.stage }}',
@@ -839,12 +858,85 @@ describe('CI contracts', () => {
     );
   });
 
+  it('should cache inputs but always revalidate frozen dependency state', () => {
+    const ci = workflow('docker.yml');
+    const quality = ci.jobs.quality;
+    const restore = quality.steps.find(
+      ({ name }: { name?: string }) => name === 'Restore verified quality dependencies',
+    );
+    const materialize = quality.steps.find(
+      ({ name }: { name?: string }) => name === 'Materialize pinned build dependencies',
+    );
+    const save = quality.steps.find(({ name }: { name?: string }) => name === 'Save verified quality dependencies');
+    expect(restore.with.key).toContain('${{ runner.os }}-${{ runner.arch }}');
+    expect(restore.with.key).toContain("hashFiles('DEPS.json', 'pyproject.toml', 'uv.lock'");
+    expect(quality.env.UV_PYTHON_INSTALL_DIR).toBe('${{ github.workspace }}/.uv-python');
+    expect(restore.with.path).toContain('.uv-python');
+    expect(materialize.env.OCJS_FORCE_PYTHON_SYNC).toBe(1);
+    expect(materialize.env.OCJS_STRICT_DEPS).toBe(1);
+    expect(materialize.run).toContain('scripts/clone-deps.sh --dest deps --python-profile development');
+    expect(materialize.run).toContain('scripts/prune-llvm.sh deps/llvm-17');
+    expect(save.if).toBe("steps.quality-cache.outputs.cache-hit != 'true'");
+  });
+
+  it('should keep CI-only Python distributions out of published images', () => {
+    const ci = workflow('docker.yml');
+    const dockerfile = fs.readFileSync(path.join(ROOT, 'Dockerfile'), 'utf8');
+    const pyproject = fs.readFileSync(path.join(ROOT, 'pyproject.toml'), 'utf8');
+    const cloneDeps = fs.readFileSync(path.join(ROOT, 'scripts/clone-deps.sh'), 'utf8');
+    expect(pyproject).not.toContain('actionlint-py');
+    expect(pyproject).toContain('test = [');
+    expect(pyproject).toContain('quality = [');
+    expect(dockerfile).toContain('ENV OCJS_PYTHON_PROFILE=runtime');
+    expect(dockerfile).toMatch(/^FROM final-single AS validation-single$/m);
+    expect(dockerfile).toContain('ENV OCJS_PYTHON_PROFILE=test');
+    expect(cloneDeps).toContain('runtime|test|development');
+    expect(cloneDeps).toContain('.deps-$PYTHON_PROFILE-$PROFILE_HASH.ready');
+    expect(cloneDeps.match(/uv sync --project "\$REPO_ROOT"/g)).toHaveLength(3);
+    for (const jobName of ['candidate-validation', 'candidate-build']) {
+      const job = ci.jobs[jobName];
+      expect(job.steps.some(({ name }: { name?: string }) => name === 'Build Python validation target')).toBe(true);
+      expect(
+        job.steps.some(({ name }: { name?: string }) => name === 'Published image excludes CI-only Python tools'),
+      ).toBe(true);
+    }
+  });
+
+  it('should bound only pinned acquisition and strictly verify cached git trees', () => {
+    const deps = JSON.parse(fs.readFileSync(path.join(ROOT, 'DEPS.json'), 'utf8'));
+    const installer = fs.readFileSync(path.join(ROOT, 'scripts/install-ci-tool.sh'), 'utf8');
+    const cloneDeps = fs.readFileSync(path.join(ROOT, 'scripts/clone-deps.sh'), 'utf8');
+    for (const tool of ['actionlint', 'vale']) {
+      expect(deps.ci_tools[tool].version).toMatch(/^\d+\.\d+\.\d+$/);
+      for (const platform of Object.values(deps.ci_tools[tool].platforms) as Array<Record<string, string>>) {
+        expect(platform.sha256).toMatch(/^[a-f0-9]{64}$/);
+        expect(platform.binary_sha256).toMatch(/^[a-f0-9]{64}$/);
+      }
+    }
+    expect(installer).toContain('--retry-max-time 300');
+    expect(installer).toContain('actual_archive_sha');
+    expect(installer).toContain('actual_binary_sha');
+    expect(cloneDeps).toContain('retry_clone "$repo" "$target"');
+    expect(cloneDeps).toContain("['git', '-C', path, 'status', '--porcelain']");
+  });
+
+  it('should delete only closed pull-request caches with the narrow permission', () => {
+    const cleanup = workflow('cache-cleanup.yml');
+    expect(cleanup.permissions).toEqual({ contents: 'read', actions: 'write' });
+    expect(cleanup.on.pull_request.types).toEqual(['closed']);
+    expect(Object.keys(cleanup.jobs)).toEqual(['cleanup']);
+    expect(cleanup.jobs.cleanup.steps).toHaveLength(1);
+    expect(cleanup.jobs.cleanup.steps[0].run).toContain('gh cache delete --all --ref "$MERGE_REF"');
+    expect(cleanup.jobs.cleanup.steps[0].env.MERGE_REF).toBe('refs/pull/${{ github.event.pull_request.number }}/merge');
+  });
+
   it('should lint the complete docs corpus without relying on the PR diff API', () => {
     const ci = workflow('docker.yml');
     const vale = ci.jobs['docs-prose'].steps.find(({ name }: { name?: string }) => name === 'Vale');
-    expect(vale.with.filter_mode).toBe('nofilter');
-    expect(vale.with.fail_on_error).toBe(true);
-    expect(vale.with.reporter).toBe('local');
+    expect(vale.run).toBe('.ci-tools/bin/vale --config=docs-site/.vale.ini docs-site/content/docs');
+    expect(
+      ci.jobs['docs-prose'].steps.find(({ name }: { name?: string }) => name === 'Install pinned Vale').run,
+    ).toContain('scripts/install-ci-tool.sh --tool vale');
   });
 
   it('should keep Nx and build state readable and writable for non-root consumers', () => {
@@ -868,6 +960,8 @@ describe('CI contracts', () => {
     const ci = workflow('docker.yml');
     expect(ci.jobs.quality.needs).toBe('preflight');
     expect(ci.jobs['candidate-build'].needs).toBe('preflight');
+    expect(ci.jobs['candidate-validation'].needs).toEqual(['preflight', 'quality', 'docs-prose']);
+    expect(ci.jobs['release-reproducibility'].needs).toEqual(['preflight', 'quality', 'docs-prose']);
     expect(ci.jobs['package-assemble'].needs).toEqual(['preflight', 'quality', 'candidate-gate']);
     expect(ci.jobs['ghcr-promote'].needs).toContain('package-gate');
     expect(ci.jobs['ghcr-promote'].needs).toContain('release-reproducibility');

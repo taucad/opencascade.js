@@ -51,6 +51,8 @@ docs-site/data.backup-*/
 
 # Project-local Python (scripts/clone-deps.sh)
 /.venv/
+/.ci-tools/
+/.uv-python/
 
 # Self-contained dependencies (Phase 2)
 /deps/

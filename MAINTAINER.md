@@ -120,9 +120,14 @@ artifacts. Production deployment rechecks the remote `main` SHA immediately
 before promotion, so a completed older run cannot overwrite a newer main.
 
 The workflow builds every Docker stage natively on amd64 and arm64 for
-`main` pushes and explicitly dispatched canaries. Pull requests validate the
-three stages on amd64 without publishing. Each final image passes the same
-runtime contract on its native host.
+`main` pushes and explicitly dispatched canaries. Pull requests validate all
+three stages natively on the standard ARM64 runner without publishing, after
+quality and prose checks pass. Each final image passes the same runtime
+contract on its native host. Pull requests read trusted stage-local registry
+caches and may write one `mode=min` cache scoped to their merge ref; that cache
+is deleted when the pull request closes. Published images contain runtime
+Python dependencies only. Pytest runs in a non-published child of the exact
+single-threaded candidate, while actionlint, Ruff, and Vale remain CI tools.
 Native toolchains may produce different bytes, so the tested amd64 ST/MT
 outputs are the canonical npm inputs while both tested image digests are
 required for GHCR promotion. The workflow packs those outputs plus the
@@ -344,7 +349,7 @@ SOURCE_DATE_EPOCH=<commit-epoch> \
 The single `LINK_BUDGET_S` environment variable controls the full consumer-link ceiling. Timing remains in logs; distributable provenance and build-manifest sidecars contain reproducible build facts only.
 
 The weekly/manual `reproducibility.yml` workflow builds two isolated
-Linux/amd64 `final-single` images in parallel with cold caches, runs the
+Linux/arm64 `final-single` images in parallel on standard ARM64 runners with cold caches, runs the
 runtime smoke against both, and compares their exact artifact ledgers. Stable
 publication calls the same workflow for the release commit and cannot publish
 until it passes. Each cold job uses GitHub's native four-hour job timeout.

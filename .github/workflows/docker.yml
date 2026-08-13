@@ -146,6 +146,8 @@ jobs:
     name: quality
     needs: preflight
     runs-on: ubuntu-latest
+    env:
+      UV_PYTHON_INSTALL_DIR: ${{ github.workspace }}/.uv-python
     steps:
       - name: Checkout
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -195,17 +197,44 @@ jobs:
           python3 -m pip install --user uv==0.11.29
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
-      - name: Sync locked Python tools
-        run: uv sync --frozen --all-groups
+      - name: Restore verified quality dependencies
+        id: quality-cache
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: |
+            .ci-tools/bin/actionlint
+            .uv-python
+            .venv
+            deps
+          key: quality-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('DEPS.json', 'pyproject.toml', 'uv.lock', 'scripts/clone-deps.sh', 'scripts/install-ci-tool.sh', 'scripts/prune-llvm.sh') }}
+
+      - name: Install pinned actionlint
+        run: scripts/install-ci-tool.sh --tool actionlint --dest .ci-tools
 
       - name: Workflow quality
         run: |
-          .venv/bin/actionlint \
+          .ci-tools/bin/actionlint \
             -ignore 'unexpected key "queue" for "concurrency" section' \
             .github/workflows/*.yml
 
       - name: Materialize pinned build dependencies
-        run: scripts/clone-deps.sh --dest deps
+        env:
+          OCJS_FORCE_PYTHON_SYNC: 1
+          OCJS_STRICT_DEPS: 1
+        run: |
+          scripts/clone-deps.sh --dest deps --python-profile development
+          scripts/prune-llvm.sh deps/llvm-17
+
+      - name: Save verified quality dependencies
+        if: steps.quality-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: |
+            .ci-tools/bin/actionlint
+            .uv-python
+            .venv
+            deps
+          key: ${{ steps.quality-cache.outputs.cache-primary-key }}
 
       - name: Python quality and unit tests
         env:
@@ -227,22 +256,27 @@ jobs:
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           ref: ${{ needs.preflight.outputs.full_sha }}
-      - name: Vale
-        uses: vale-cli/vale-action@85f9f7f2c5f449ac0ae5b66662961bae3f77ca6a # v2.1.2
+
+      - name: Restore pinned Vale
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
-          version: 3.9.1
-          files: docs-site/content/docs
-          fail_on_error: true
-          filter_mode: nofilter
-          reporter: local
-          vale_flags: '--config=docs-site/.vale.ini'
+          path: .ci-tools/bin/vale
+          key: vale-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('DEPS.json', 'scripts/install-ci-tool.sh') }}
+
+      - name: Install pinned Vale
+        run: scripts/install-ci-tool.sh --tool vale --dest .ci-tools
+
+      - name: Vale
+        run: .ci-tools/bin/vale --config=docs-site/.vale.ini docs-site/content/docs
 
   candidate-validation:
-    name: candidate · ${{ matrix.stage }} · amd64
+    name: candidate · ${{ matrix.stage }} · arm64
     if: github.event_name == 'pull_request'
-    needs: preflight
-    runs-on: ubuntu-latest
+    needs: [preflight, quality, docs-prose]
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 240
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
@@ -277,11 +311,12 @@ jobs:
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
 
       - name: Build candidate for validation
+        if: matrix.stage != 'final-multi'
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
         with:
           context: .
           target: ${{ matrix.stage }}
-          platforms: linux/amd64
+          platforms: linux/arm64
           load: true
           tags: ocjs:e2e-${{ matrix.stage }}
           build-args: |
@@ -290,12 +325,55 @@ jobs:
             OCJS_SOURCE_DATE_EPOCH=${{ needs.preflight.outputs.source_date_epoch }}
             VERSION=${{ needs.preflight.outputs.version }}
           cache-from: |
-            type=registry,ref=${{ env.REGISTRY_IMAGE }}:buildcache-amd64-${{ matrix.stage }}
+            type=registry,ref=${{ env.REGISTRY_IMAGE }}:buildcache-arm64-${{ matrix.stage }}
+            type=gha,scope=pr-${{ github.event.pull_request.number }}-arm64-final-multi
+          provenance: false
+          sbom: false
+
+      - name: Build critical candidate for validation
+        if: matrix.stage == 'final-multi'
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
+        with:
+          context: .
+          target: ${{ matrix.stage }}
+          platforms: linux/arm64
+          load: true
+          tags: ocjs:e2e-${{ matrix.stage }}
+          build-args: |
+            SOURCE_DATE_EPOCH=0
+            REVISION=${{ needs.preflight.outputs.full_sha }}
+            OCJS_SOURCE_DATE_EPOCH=${{ needs.preflight.outputs.source_date_epoch }}
+            VERSION=${{ needs.preflight.outputs.version }}
+          cache-from: |
+            type=registry,ref=${{ env.REGISTRY_IMAGE }}:buildcache-arm64-${{ matrix.stage }}
+            type=gha,scope=pr-${{ github.event.pull_request.number }}-arm64-final-multi
+          cache-to: type=gha,scope=pr-${{ github.event.pull_request.number }}-arm64-final-multi,mode=min
+          provenance: false
+          sbom: false
+
+      - name: Build Python validation target
+        if: matrix.stage == 'final-single'
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
+        with:
+          context: .
+          target: validation-single
+          platforms: linux/arm64
+          load: true
+          tags: ocjs:e2e-validation-single
+          build-args: |
+            SOURCE_DATE_EPOCH=0
+            REVISION=${{ needs.preflight.outputs.full_sha }}
+            OCJS_SOURCE_DATE_EPOCH=${{ needs.preflight.outputs.source_date_epoch }}
+            VERSION=${{ needs.preflight.outputs.version }}
+          cache-from: |
+            type=registry,ref=${{ env.REGISTRY_IMAGE }}:buildcache-arm64-final-single
+            type=gha,scope=pr-${{ github.event.pull_request.number }}-arm64-final-multi
           provenance: false
           sbom: false
 
       - name: Candidate e2e
         env:
+          OCJS_DOCKER_PLATFORM: linux/arm64
           OCJS_E2E_IMAGE: ocjs:e2e-${{ matrix.stage }}
           OCJS_E2E_STAGE: ${{ matrix.stage }}
           OCJS_E2E_BUILD_CONFIG: ${{ matrix.stage == 'final-multi' && 'build-configs/full_multi.yml' || 'build-configs/full.yml' }}
@@ -303,6 +381,18 @@ jobs:
           OCJS_EXPECTED_SHA: ${{ needs.preflight.outputs.full_sha }}
           SOURCE_DATE_EPOCH: ${{ needs.preflight.outputs.source_date_epoch }}
         run: scripts/docker-e2e-validate.sh
+
+      - name: Published image excludes CI-only Python tools
+        env:
+          IMAGE: ocjs:e2e-${{ matrix.stage }}
+        run: |
+          docker run --rm --entrypoint bash "$IMAGE" -lc '
+            test ! -e /opencascade.js/.venv/bin/actionlint
+            test ! -e /opencascade.js/.venv/bin/pytest
+            test ! -e /opencascade.js/.venv/bin/ruff
+            /opencascade.js/.venv/bin/python -c \
+              "import importlib.util; assert importlib.util.find_spec(\"pytest\") is None; assert importlib.util.find_spec(\"ruff\") is None"
+          '
 
       - name: Docker consumer behavior
         env:
@@ -323,6 +413,7 @@ jobs:
         if: matrix.stage == 'final-single'
         env:
           IMAGE: ocjs:e2e-${{ matrix.stage }}
+          TEST_IMAGE: ocjs:e2e-validation-single
           DIST: ${{ runner.temp }}/e2e
           REPLICAD_DIST: ${{ runner.temp }}/replicad
           TEST_DIST: ${{ runner.temp }}/python-dist
@@ -339,7 +430,7 @@ jobs:
             --entrypoint bash \
             -v "$PWD:/host:ro" \
             -v "$TEST_DIST:/opencascade.js/dist:ro" \
-            "$IMAGE" -lc '
+            "$TEST_IMAGE" -lc '
               rm -rf /opencascade.js/tests
               rm -rf /opencascade.js/scripts
               cp -R /host/tests /opencascade.js/tests
@@ -465,6 +556,37 @@ jobs:
           SOURCE_DATE_EPOCH: ${{ needs.preflight.outputs.source_date_epoch }}
         run: scripts/docker-e2e-validate.sh
 
+      - name: Published image excludes CI-only Python tools
+        env:
+          IMAGE: ocjs:e2e-${{ matrix.stage }}
+        run: |
+          docker run --rm --entrypoint bash "$IMAGE" -lc '
+            test ! -e /opencascade.js/.venv/bin/actionlint
+            test ! -e /opencascade.js/.venv/bin/pytest
+            test ! -e /opencascade.js/.venv/bin/ruff
+            /opencascade.js/.venv/bin/python -c \
+              "import importlib.util; assert importlib.util.find_spec(\"pytest\") is None; assert importlib.util.find_spec(\"ruff\") is None"
+          '
+
+      - name: Build Python validation target
+        if: matrix.arch == 'amd64' && matrix.stage == 'final-single'
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
+        with:
+          context: .
+          target: validation-single
+          platforms: linux/amd64
+          load: true
+          tags: ocjs:e2e-validation-single
+          build-args: |
+            SOURCE_DATE_EPOCH=0
+            REVISION=${{ needs.preflight.outputs.full_sha }}
+            OCJS_SOURCE_DATE_EPOCH=${{ needs.preflight.outputs.source_date_epoch }}
+            VERSION=${{ needs.preflight.outputs.version }}
+          cache-from: |
+            type=registry,ref=${{ env.REGISTRY_IMAGE }}:buildcache-amd64-final-single
+          provenance: false
+          sbom: false
+
       - name: Docker consumer behavior
         if: matrix.arch == 'amd64'
         env:
@@ -485,6 +607,7 @@ jobs:
         if: matrix.arch == 'amd64' && matrix.stage == 'final-single'
         env:
           IMAGE: ocjs:e2e-${{ matrix.stage }}
+          TEST_IMAGE: ocjs:e2e-validation-single
           DIST: ${{ runner.temp }}/e2e
           REPLICAD_DIST: ${{ runner.temp }}/replicad
           TEST_DIST: ${{ runner.temp }}/python-dist
@@ -501,7 +624,7 @@ jobs:
             --entrypoint bash \
             -v "$PWD:/host:ro" \
             -v "$TEST_DIST:/opencascade.js/dist:ro" \
-            "$IMAGE" -lc '
+            "$TEST_IMAGE" -lc '
               rm -rf /opencascade.js/tests
               rm -rf /opencascade.js/scripts
               cp -R /host/tests /opencascade.js/tests
@@ -903,7 +1026,7 @@ jobs:
   release-reproducibility:
     name: release · reproducibility
     if: needs.preflight.outputs.reproducibility_required == 'true'
-    needs: preflight
+    needs: [preflight, quality, docs-prose]
     uses: ./.github/workflows/reproducibility.yml
     with:
       expected_sha: ${{ needs.preflight.outputs.full_sha }}
