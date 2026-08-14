@@ -96,7 +96,6 @@ export default defineBuild({
       'decrementExceptionRefcount',
     ],
     ENVIRONMENT: ['web', 'worker', 'node'],
-    ERROR_ON_UNDEFINED_SYMBOLS: false,
   },
   compilerFlags: { optimize: 'O3', simd: true, exceptions: 'wasm', noEntry: true },
   variants: [{ name: 'single', settings: { EVAL_CTORS: 2 } }],
@@ -108,8 +107,8 @@ Base classes and the `NCollection_*` members of a bound class are
 auto-discovered at codegen time.
 
 Every name is checked against the generated `OcctSymbol` union as you type, so
-the class of mistake that used to surface as a link failure ten minutes into a
-build is now a red squiggle.
+a mistake that would otherwise surface as a link failure ten minutes into a
+build is a red squiggle instead.
 
 ## 3. Build
 

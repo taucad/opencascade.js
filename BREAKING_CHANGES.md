@@ -71,7 +71,7 @@ supported ways to reach them from consumer code. `libcascade/wasm` remains a
 single-threaded alias. The same identifiers work under Vite's `?url` suffix,
 Node's `import.meta.resolve`, Bun, and Deno.
 
-For the multi-threaded variant, import `createInstance` from `libcascade/multi/init`. Browser deployments require cross-origin isolation headers; see the [multi-threaded build guide](https://opencascade-js.vercel.app/docs/package/guides/multi-threading).
+For the multi-threaded variant, import `createInstance` from `libcascade/multi/init`. Browser deployments require cross-origin isolation headers; see the [multi-threaded build guide](https://libcascade.xyz/docs/package/guides/multi-threading).
 
 For Node ESM consumers:
 

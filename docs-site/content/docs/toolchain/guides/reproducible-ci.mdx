@@ -12,15 +12,15 @@ to run it and what to assert afterwards.
 ```json title="package.json"
 {
   "devDependencies": {
-    "@libcascade/toolchain": "3.0.0",
-    "libcascade": "3.0.0"
+    "@libcascade/toolchain": "{{version}}",
+    "libcascade": "{{version}}"
   }
 }
 ```
 
 Commit your lockfile. The toolchain package ships `images.json`, in which each
 image tag was resolved to an immutable `ghcr.io/taucad/opencascade.js@sha256:…`
-digest at publish time. `@libcascade/toolchain@3.0.0` therefore names one
+digest at publish time. `@libcascade/toolchain@{{version}}` therefore names one
 reproducible build environment forever, and `npm ls` answers "which toolchain
 built this artifact".
 

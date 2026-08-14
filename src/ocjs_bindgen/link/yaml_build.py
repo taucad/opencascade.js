@@ -25,6 +25,7 @@ from ocjs_bindgen.config.flags import (
 )
 from ocjs_bindgen.config.paths import BUILD_DIR, OCJS_ROOT, PCH_FILE, getFlatIncludePaths
 from ocjs_bindgen.config.yaml_sources import resolve_source_files, source_file_manifest
+from ocjs_bindgen.link.libraries import immutable_cmake_libraries
 from ocjs_bindgen.link.manifest_registry import (
     builtin_binding_symbols as _builtin_binding_symbols,
 )
@@ -825,14 +826,8 @@ def runBuild(
   if os.path.isfile(cmake_lib_manifest):
     with open(cmake_lib_manifest) as stream:
       library_manifest = json.load(stream)
-    for entry in library_manifest.get("files", []):
-      item = entry["path"]
-      if os.path.dirname(item):
-        raise RuntimeError(f"CMake library inventory path must be flat: {item}")
-      toolkit_name = item.removeprefix("lib").removesuffix(".a")
-      if filterPackages(toolkit_name):
-        sourcesO.append(os.path.join(cmake_lib_dir, item))
-    print(f"Using {len(sourcesO)} immutable CMake libraries (filtered by filterPackages)", flush=True)
+    sourcesO.extend(immutable_cmake_libraries(cmake_lib_dir, library_manifest))
+    print(f"Using all {len(sourcesO)} immutable CMake libraries", flush=True)
   else:
     for dirpath, dirnames, filenames in os.walk(libraryBasePath + "/sources"):
       dirnames.sort()

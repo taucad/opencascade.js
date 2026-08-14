@@ -35,9 +35,8 @@ macOS and Windows the VM maps ownership itself and an explicit `-u` breaks the
 build, so the driver omits it. Mount paths are resolved absolute from the
 config file's directory.
 
-You do not configure any of this. It is the platform-edge handling that
-consumer `docker run` strings used to copy-paste, subtly differently, each
-time.
+You do not configure any of this. Each consumer's `docker run` string carries
+slightly different platform-edge handling.
 
 ### Platform
 

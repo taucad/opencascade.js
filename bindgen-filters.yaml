@@ -409,6 +409,7 @@ exclude:
     NCollection_Lerp: [Interpolate]
     Geom2dHatch_Hatcher: [IsDone]
     Geom2dAPI_Interpolate: [ClearTangents]
+    Law_Interpolate: [ClearTangents]
     Geom2dGcc_Lin2dTanObl: [IsParallel2]
     Geom2dInt_Geom2dCurveTool: [IsComposite]
     Geom2dInt_TheCurveLocatorOfTheProjPCurOfGInter: [Locate]

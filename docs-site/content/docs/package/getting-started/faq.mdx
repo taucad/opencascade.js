@@ -6,10 +6,11 @@ description: Project lineage, maintenance, and how to contribute to libcascade.
 ## What is the project lineage?
 
 libcascade was originally created by
-[Sebastian Alff (`donalffons`)](https://github.com/donalffons) as a port of
-[OpenCASCADE Technology (OCCT)](https://dev.opencascade.org/) to WebAssembly
-via Emscripten. The current project is developed and released from
-[`taucad/opencascade.js`](https://github.com/taucad/opencascade.js).
+[Sebastian Alff (`donalffons`)](https://github.com/donalffons) as `opencascade.js`,
+a port of [OpenCASCADE Technology (OCCT)](https://dev.opencascade.org/) to
+WebAssembly via Emscripten. libcascade succeeds it: development, releases, and
+support run from [`taucad/opencascade.js`](https://github.com/taucad/opencascade.js),
+and changes are not merged back to the original repository.
 
 libcascade does **not** modify the OCCT C++ source beyond a set of
 patches applied at build time. The pipeline downloads a tagged OCCT commit,
@@ -19,7 +20,7 @@ ships the wasm + TypeScript surface as an npm package.
 ## Who maintains it?
 
 The maintainers and contributors at
-[`taucad/opencascade.js`](https://github.com/taucad/opencascade.js) own current
+[`taucad/opencascade.js`](https://github.com/taucad/opencascade.js) own
 development, documentation, the GHCR image, and the `libcascade` npm package.
 Sebastian Alff is credited as the original author.
 

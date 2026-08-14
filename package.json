@@ -102,6 +102,8 @@
     "release:prepare": "node scripts/prepare-release.mjs",
     "build:toolchain": "npm run build --workspace=@libcascade/toolchain",
     "generate:toolchain": "node packages/toolchain/scripts/generate-toolchain.mjs",
+    "generate:brand": "node scripts/generate-logo.mjs && node scripts/generate-banner.mjs",
+    "generate:brand:check": "node scripts/generate-logo.mjs --check && node scripts/generate-banner.mjs --check",
     "test": "vitest run",
     "test:ci": "CI=true vitest run tests/ci tests/readme-shape.test.ts tests/docs-layout.test.ts starter-templates/*/tests",
     "test:smoke": "vitest run tests/smoke/",

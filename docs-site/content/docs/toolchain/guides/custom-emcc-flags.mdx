@@ -30,7 +30,6 @@ settings: {
     'decrementExceptionRefcount',
   ],
   ENVIRONMENT: ['web', 'worker', 'node'],
-  ERROR_ON_UNDEFINED_SYMBOLS: false,   // OSD_MemInfo references mallinfo
   EVAL_CTORS: 2,                       // static-init evaluation at build time
 },
 compilerFlags: { optimize: 'O3', simd: true, exceptions: 'wasm', noEntry: true },
@@ -49,7 +48,6 @@ compilerFlags: { optimize: 'O3', simd: true, exceptions: 'wasm', noEntry: true }
 | `ENVIRONMENT` | Strips dead environment detection. Without it the runtime probes for `process` / `window` / `importScripts`. |
 | `ALLOW_MEMORY_GROWTH` | Required for any non-trivial geometry. |
 | `MAXIMUM_MEMORY: '4GB'` | The wasm32 hard ceiling (2³² bytes). |
-| `ERROR_ON_UNDEFINED_SYMBOLS: false` | OCCT's `OSD_MemInfo` references `mallinfo`, which Emscripten does not provide. |
 
 Every setting name carries its upstream emsdk documentation as JSDoc, so
 hovering it in your editor shows what emcc says about it. There are 312 of
@@ -78,7 +76,7 @@ not a silently-ignored flag. Anything the typed surface cannot express goes
 here, verbatim, after every typed flag:
 
 ```typescript notypecheck
-rawFlags: ['-Wl,--allow-undefined', '--emit-symbol-map'],
+rawFlags: ['-mrelaxed-simd', '--emit-symbol-map'],
 variants: [
   { name: 'debug', rawFlags: ['-gsource-map'] },
 ],
@@ -88,7 +86,7 @@ Variant `rawFlags` are appended after the base ones.
 
 Reach for `compilerFlags` first. `-pthread`, `-msimd128`, `-O3`,
 `-fwasm-exceptions`, `-flto`, and `--no-entry` are all typed there, on the base
-config or per variant — a flag that lands in `rawFlags` today and turns out to
+config or per variant — a flag that lands in `rawFlags` and turns out to
 be common is a candidate for `compilerFlags` tomorrow, not a permanent resident.
 
 ## Trade-offs

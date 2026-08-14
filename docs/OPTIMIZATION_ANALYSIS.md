@@ -63,7 +63,6 @@ OCCT C++ sources (.cxx)
 | `--closure 1`                                          | Google Closure Compiler on JS glue                                  |
 | `--emit-symbol-map`                                    | Debug symbol map (no runtime cost)                                  |
 | `--no-entry`                                           | Library mode (no `main`)                                            |
-| `-sERROR_ON_UNDEFINED_SYMBOLS=0 -Wl,--allow-undefined` | Allow unresolved symbols (headless WASM limitations)                |
 
 
 **emcc auto-enabled passes** (at `-O3` link): `--strip-target-features`, `--post-emscripten`, `-O3`, `--low-memory-unused` (GLOBAL_BASE ≥ 1024), `--zero-filled-memory`, `--pass-arg=directize-initial-contents-immutable`, meta-DCE (OPT_LEVEL=3, no ASSERTIONS), StackIR optimization.

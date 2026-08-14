@@ -978,7 +978,9 @@ sleep 1
   it('should lint the complete docs corpus without relying on the PR diff API', () => {
     const ci = workflow('docker.yml');
     const vale = ci.jobs['docs-prose'].steps.find(({ name }: { name?: string }) => name === 'Vale');
-    expect(vale.run).toBe('.ci-tools/bin/vale --config=docs-site/.vale.ini docs-site/content/docs');
+    expect(vale.run).toBe(
+      '.ci-tools/bin/vale --config=docs-site/.vale.ini docs-site/content/docs README.md',
+    );
     expect(
       ci.jobs['docs-prose'].steps.find(({ name }: { name?: string }) => name === 'Install pinned Vale').run,
     ).toContain('scripts/install-ci-tool.sh --tool vale');

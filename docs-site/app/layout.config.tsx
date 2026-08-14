@@ -17,7 +17,7 @@ export const TauAttributionFooter = (): ReactNode => (
     <a href="https://tau.new" className="text-fd-primary hover:underline">
       Tau
     </a>{' '}
-    during the V3 / OCCT V8 release window — see the{' '}
+    — see the{' '}
     <Link href="/docs/package/getting-started/faq" className="text-fd-primary hover:underline">
       FAQ
     </Link>

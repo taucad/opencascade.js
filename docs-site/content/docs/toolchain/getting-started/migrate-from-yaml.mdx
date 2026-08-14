@@ -3,7 +3,7 @@ title: Migrate from a yml build
 description: Move a v2-style build — hand-written yml, ytt templating, docker run and mv scripts — onto libcascade.config.ts and the CLI.
 ---
 
-If your package builds a custom OCCT WASM today, it probably owns some
+If your package builds a custom OCCT WASM, it probably owns some
 combination of: a hand-written build yml, a templating layer to express
 variants, a `docker run … && mv …` script per variant, one `.d.ts` per variant,
 and a hand-maintained image tag. All five collapse into one config file and two
@@ -46,7 +46,7 @@ dist/replicad_multi.d.ts             # ~260k near-identical lines
     "assemble": "libcascade assemble --write-exports"
   },
   "devDependencies": {
-    "@libcascade/toolchain": "3.0.0"
+    "@libcascade/toolchain": "{{version}}"
   }
 }
 ```
@@ -146,7 +146,6 @@ export default defineBuild({
       'decrementExceptionRefcount',
     ],
     ENVIRONMENT: ['web', 'worker', 'node'],
-    ERROR_ON_UNDEFINED_SYMBOLS: false,
     STACK_SIZE: 8_388_608,
     WASM_BIGINT: true,
     EVAL_CTORS: 2,

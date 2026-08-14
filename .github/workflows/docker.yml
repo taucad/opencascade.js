@@ -267,7 +267,7 @@ jobs:
         run: scripts/install-ci-tool.sh --tool vale --dest .ci-tools
 
       - name: Vale
-        run: .ci-tools/bin/vale --config=docs-site/.vale.ini docs-site/content/docs
+        run: .ci-tools/bin/vale --config=docs-site/.vale.ini docs-site/content/docs README.md
 
   candidate-validation:
     name: candidate · ${{ matrix.stage }} · arm64

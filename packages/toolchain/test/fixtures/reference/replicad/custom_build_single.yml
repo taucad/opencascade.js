@@ -270,7 +270,6 @@ mainBuild:
   - -sEXPORTED_RUNTIME_METHODS=["FS","wasmMemory"]
   - -sENVIRONMENT=web,worker,node
   - --no-entry
-  - -sERROR_ON_UNDEFINED_SYMBOLS=0
   - -sSTACK_SIZE=8388608
   - -sWASM_BIGINT
   - -msimd128

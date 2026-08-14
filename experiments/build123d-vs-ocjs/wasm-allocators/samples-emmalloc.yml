@@ -70,8 +70,6 @@ mainBuild:
     - -sEXPORTED_RUNTIME_METHODS=["FS","getExceptionMessage","incrementExceptionRefcount","decrementExceptionRefcount"]
     - --no-entry
     - --emit-symbol-map
-    - -sERROR_ON_UNDEFINED_SYMBOLS=0
-    - -Wl,--allow-undefined
     - -sSTACK_SIZE=8388608
     - -sWASM_BIGINT
     - -sEVAL_CTORS=2

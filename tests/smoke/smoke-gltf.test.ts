@@ -26,7 +26,9 @@ describe.skipIf(!wasmExists)('Smoke: RWGltf_CafWriter GLB export', () => {
     );
     using tColStdIndexeddatamapofstringstring = new oc.TColStd_IndexedDataMapOfStringString();
     using messageProgressrange = new oc.Message_ProgressRange();
-    cafWriter.Perform(doc, tColStdIndexeddatamapofstringstring, messageProgressrange);
+    expect(
+      cafWriter.Perform(doc, tColStdIndexeddatamapofstringstring, messageProgressrange),
+    ).toBe(true);
 
     const stat = oc.FS.stat(glbPath);
     expect(stat.size).toBeGreaterThan(0);

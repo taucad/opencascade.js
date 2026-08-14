@@ -162,7 +162,6 @@ def generate_yaml(classes, enums, typedefs, handle_classes: set[str]) -> str:
         "  - -sINITIAL_MEMORY=128MB",
         "  - -sMAXIMUM_MEMORY=4GB",
         "  - -sUSE_FREETYPE=1",
-        "  - -sERROR_ON_UNDEFINED_SYMBOLS=0",
         "  - --no-entry",
         # NOTE: -sDISABLE_EXCEPTION_CATCHING / -sDISABLE_EXCEPTION_THROWING
         # MUST NOT be set when -fwasm-exceptions is on. Emcc will warn but
@@ -172,7 +171,6 @@ def generate_yaml(classes, enums, typedefs, handle_classes: set[str]) -> str:
         # a WebAssembly.Tag`. The two cannot coexist; native WASM EH owns
         # the runtime side end-to-end. (Pre-V8 builds carried these flags
         # because OCJS_EXCEPTIONS=0 was the default; they are stale now.)
-        "  - -Wl,--allow-undefined",
         # Symbol map for stack-trace demangling in browser devtools and the
         # validate-build.py post-link verifier. Without it the wasm symbol
         # table cannot be cross-referenced against the YAML manifest.

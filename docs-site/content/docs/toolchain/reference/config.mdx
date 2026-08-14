@@ -120,7 +120,7 @@ Only the non-`-s` flags the reference builds actually use are modelled.
 | `noEntry: true` | `--no-entry` |
 | `threads: true` | `-pthread` |
 
-Anything else — `-mrelaxed-simd`, `-Wl,--allow-undefined`, `--emit-symbol-map`,
+Anything else — `-mrelaxed-simd`, `--emit-symbol-map`,
 and other unmodelled flags — goes in `rawFlags`.
 
 The rendered flag order is fixed: exceptions → `-s` settings → `-flto` →

@@ -34,9 +34,7 @@ mainBuild:
     - -sEXPORTED_RUNTIME_METHODS=["FS","getExceptionMessage","incrementExceptionRefcount","decrementExceptionRefcount"]
     - -sINITIAL_MEMORY=64MB
     - -sMAXIMUM_MEMORY=2GB
-    - -sERROR_ON_UNDEFINED_SYMBOLS=0
     - --no-entry
-    - -Wl,--allow-undefined
     - -sSTACK_SIZE=8388608
     - -sWASM_BIGINT
     - -msimd128

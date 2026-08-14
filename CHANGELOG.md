@@ -41,7 +41,7 @@
   - **Native WASM exceptions as the baseline link mode** — replaces `-fexceptions` JS `invoke_*` trampolines with `-fwasm-exceptions`, cutting exception-build size overhead from ~80% to ~12% gzipped.
   - **`build-wasm.sh` unified entry point** (Docker `ENTRYPOINT` + host CLI parity) — explicit subcommands (`full`, `link`, `validate`, `generate`, `bindings`, `sources`, `pch`), `--help`, optional `--config <name>` from `configurations.json`, and build-summary output.
   - **Named compile configurations** in `configurations.json` — `single-threaded` (production default), `single-threaded-smallest` (size-tuned `-Os`), `multi-threaded` (SAB threading), `multi-threaded-browser` (resizable-buffer browsers), and `debug`. Link-only BigInt and eval-ctors settings live in each YAML's `emccFlags`.
-  - **Reference `full.yml` bundled inside the Docker image** at `/opencascade.js/build-configs/full.yml` — the complete symbol list the published tarball builds from. Extract it as a starting point using the [trim-symbols guide](https://opencascade-js.vercel.app/docs/toolchain/guides/trim-symbols).
+  - **Reference `full.yml` bundled inside the Docker image** at `/opencascade.js/build-configs/full.yml` — the complete symbol list the published tarball builds from. Extract it as a starting point using the [trim-symbols guide](https://libcascade.xyz/docs/toolchain/guides/trim-symbols).
   - **`DEPS.json` dependency pinning** — every external dependency (OCCT, rapidjson, freetype, Emscripten, LLVM 17) is pinned to an exact commit hash with version metadata. `clone-deps.sh` automates setup.
   - **Hermetic libclang parse environment** — `src/ocjs_bindgen/config/paths.py` is now the single source of truth for include resolution during the bindgen discover pass. It points libclang at the vendored LLVM 17 libc++ headers + clang resource directory (matching libclang 18's expectations under the N-1 policy) and at the OCCT flat-include symlink farm, so source generation is reproducible across hosts and immune to whatever system clang the developer happens to have. The same parse contract is validated on `darwin-arm64`, `linux-x86_64`, and `linux-aarch64` with `uv`-managed Python 3.14.4; native final-link bytes may differ by host toolchain.
   - **Build provenance** — every build emits a `provenance.json` sidecar capturing toolchain versions, source commits, compile / link flags, cache key, and output sizes. Shipped alongside the WASM in the published tarball.
@@ -62,8 +62,8 @@
   - New [BREAKING_CHANGES.md](BREAKING_CHANGES.md) — single comprehensive v2 → v3 consumer migration guide with Before / After code samples for every breaking change.
   - Rewritten [README.md](README.md) with quick start, Docker workflow, environment-variable reference, and customisation pointers.
   - [BUILD_SYSTEM.md](BUILD_SYSTEM.md) — full `OCJS_*` env-var matrix, configuration authoring guide, and the v2 → v3 build-system migration table.
-  - [Custom emcc flags](https://opencascade-js.vercel.app/docs/toolchain/guides/custom-emcc-flags) — size vs. speed, LTO, defines, and `wasm-opt`.
-  - [YAML schema](https://opencascade-js.vercel.app/docs/toolchain/reference/yaml-schema) — build configuration and customisation reference.
+  - [Custom emcc flags](https://libcascade.xyz/docs/toolchain/guides/custom-emcc-flags) — size vs. speed, LTO, defines, and `wasm-opt`.
+  - [YAML schema](https://libcascade.xyz/docs/toolchain/reference/yaml-schema) — build configuration and customisation reference.
 
   ### Source pinning (this release)
 
@@ -123,7 +123,7 @@
   - **Native WASM exceptions as the baseline link mode** — replaces `-fexceptions` JS `invoke_*` trampolines with `-fwasm-exceptions`, cutting exception-build size overhead from ~80% to ~12% gzipped.
   - **`build-wasm.sh` unified entry point** (Docker `ENTRYPOINT` + host CLI parity) — explicit subcommands (`full`, `link`, `validate`, `generate`, `bindings`, `sources`, `pch`), `--help`, optional `--config <name>` from `configurations.json`, and build-summary output.
   - **Named compile configurations** in `configurations.json` — `single-threaded` (production default), `single-threaded-smallest` (size-tuned `-Os`), `multi-threaded` (SAB threading), `multi-threaded-browser` (resizable-buffer browsers), and `debug`. Link-only BigInt and eval-ctors settings live in each YAML's `emccFlags`.
-  - **Reference `full.yml` bundled inside the Docker image** at `/opencascade.js/build-configs/full.yml` — the complete symbol list the published tarball builds from. Extract it as a starting point using the [trim-symbols guide](https://opencascade-js.vercel.app/docs/toolchain/guides/trim-symbols).
+  - **Reference `full.yml` bundled inside the Docker image** at `/opencascade.js/build-configs/full.yml` — the complete symbol list the published tarball builds from. Extract it as a starting point using the [trim-symbols guide](https://libcascade.xyz/docs/toolchain/guides/trim-symbols).
   - **`DEPS.json` dependency pinning** — every external dependency (OCCT, rapidjson, freetype, Emscripten, LLVM 17) is pinned to an exact commit hash with version metadata. `clone-deps.sh` automates setup.
   - **Hermetic libclang parse environment** — `src/ocjs_bindgen/config/paths.py` is now the single source of truth for include resolution during the bindgen discover pass. It points libclang at the vendored LLVM 17 libc++ headers + clang resource directory (matching libclang 18's expectations under the N-1 policy) and at the OCCT flat-include symlink farm, so source generation is reproducible across hosts and immune to whatever system clang the developer happens to have. The same parse contract is validated on `darwin-arm64`, `linux-x86_64`, and `linux-aarch64` with `uv`-managed Python 3.14.4; native final-link bytes may differ by host toolchain.
   - **Build provenance** — every build emits a `provenance.json` sidecar capturing toolchain versions, source commits, compile / link flags, cache key, and output sizes. Shipped alongside the WASM in the published tarball.
@@ -144,8 +144,8 @@
   - New [BREAKING_CHANGES.md](BREAKING_CHANGES.md) — single comprehensive v2 → v3 consumer migration guide with Before / After code samples for every breaking change.
   - Rewritten [README.md](README.md) with quick start, Docker workflow, environment-variable reference, and customisation pointers.
   - [BUILD_SYSTEM.md](BUILD_SYSTEM.md) — full `OCJS_*` env-var matrix, configuration authoring guide, and the v2 → v3 build-system migration table.
-  - [Custom emcc flags](https://opencascade-js.vercel.app/docs/toolchain/guides/custom-emcc-flags) — size vs. speed, LTO, defines, and `wasm-opt`.
-  - [YAML schema](https://opencascade-js.vercel.app/docs/toolchain/reference/yaml-schema) — build configuration and customisation reference.
+  - [Custom emcc flags](https://libcascade.xyz/docs/toolchain/guides/custom-emcc-flags) — size vs. speed, LTO, defines, and `wasm-opt`.
+  - [YAML schema](https://libcascade.xyz/docs/toolchain/reference/yaml-schema) — build configuration and customisation reference.
 
   ### Source pinning (this release)
 
@@ -205,7 +205,7 @@
   - **Native WASM exceptions as the baseline link mode** — replaces `-fexceptions` JS `invoke_*` trampolines with `-fwasm-exceptions`, cutting exception-build size overhead from ~80% to ~12% gzipped.
   - **`build-wasm.sh` unified entry point** (Docker `ENTRYPOINT` + host CLI parity) — explicit subcommands (`full`, `link`, `validate`, `generate`, `bindings`, `sources`, `pch`), `--help`, optional `--config <name>` from `configurations.json`, and build-summary output.
   - **Named compile configurations** in `configurations.json` — `single-threaded` (production default), `single-threaded-smallest` (size-tuned `-Os`), `multi-threaded` (SAB threading), `multi-threaded-browser` (resizable-buffer browsers), and `debug`. Link-only BigInt and eval-ctors settings live in each YAML's `emccFlags`.
-  - **Reference `full.yml` bundled inside the Docker image** at `/opencascade.js/build-configs/full.yml` — the complete symbol list the published tarball builds from. Extract it as a starting point using the [trim-symbols guide](https://opencascade-js.vercel.app/docs/toolchain/guides/trim-symbols).
+  - **Reference `full.yml` bundled inside the Docker image** at `/opencascade.js/build-configs/full.yml` — the complete symbol list the published tarball builds from. Extract it as a starting point using the [trim-symbols guide](https://libcascade.xyz/docs/toolchain/guides/trim-symbols).
   - **`DEPS.json` dependency pinning** — every external dependency (OCCT, rapidjson, freetype, Emscripten, LLVM 17) is pinned to an exact commit hash with version metadata. `clone-deps.sh` automates setup.
   - **Hermetic libclang parse environment** — `src/ocjs_bindgen/config/paths.py` is now the single source of truth for include resolution during the bindgen discover pass. It points libclang at the vendored LLVM 17 libc++ headers + clang resource directory (matching libclang 18's expectations under the N-1 policy) and at the OCCT flat-include symlink farm, so source generation is reproducible across hosts and immune to whatever system clang the developer happens to have. The same parse contract is validated on `darwin-arm64`, `linux-x86_64`, and `linux-aarch64` with `uv`-managed Python 3.14.4; native final-link bytes may differ by host toolchain.
   - **Build provenance** — every build emits a `provenance.json` sidecar capturing toolchain versions, source commits, compile / link flags, cache key, and output sizes. Shipped alongside the WASM in the published tarball.
@@ -226,8 +226,8 @@
   - New [BREAKING_CHANGES.md](BREAKING_CHANGES.md) — single comprehensive v2 → v3 consumer migration guide with Before / After code samples for every breaking change.
   - Rewritten [README.md](README.md) with quick start, Docker workflow, environment-variable reference, and customisation pointers.
   - [BUILD_SYSTEM.md](BUILD_SYSTEM.md) — full `OCJS_*` env-var matrix, configuration authoring guide, and the v2 → v3 build-system migration table.
-  - [Custom emcc flags](https://opencascade-js.vercel.app/docs/toolchain/guides/custom-emcc-flags) — size vs. speed, LTO, defines, and `wasm-opt`.
-  - [YAML schema](https://opencascade-js.vercel.app/docs/toolchain/reference/yaml-schema) — build configuration and customisation reference.
+  - [Custom emcc flags](https://libcascade.xyz/docs/toolchain/guides/custom-emcc-flags) — size vs. speed, LTO, defines, and `wasm-opt`.
+  - [YAML schema](https://libcascade.xyz/docs/toolchain/reference/yaml-schema) — build configuration and customisation reference.
 
   ### Source pinning (this release)
 
@@ -287,7 +287,7 @@
   - **Native WASM exceptions as the baseline link mode** — replaces `-fexceptions` JS `invoke_*` trampolines with `-fwasm-exceptions`, cutting exception-build size overhead from ~80% to ~12% gzipped.
   - **`build-wasm.sh` unified entry point** (Docker `ENTRYPOINT` + host CLI parity) — explicit subcommands (`full`, `link`, `validate`, `generate`, `bindings`, `sources`, `pch`), `--help`, optional `--config <name>` from `configurations.json`, and build-summary output.
   - **Named compile configurations** in `configurations.json` — `single-threaded` (production default), `single-threaded-smallest` (size-tuned `-Os`), `multi-threaded` (SAB threading), `multi-threaded-browser` (resizable-buffer browsers), and `debug`. Link-only BigInt and eval-ctors settings live in each YAML's `emccFlags`.
-  - **Reference `full.yml` bundled inside the Docker image** at `/opencascade.js/build-configs/full.yml` — the complete symbol list the published tarball builds from. Extract it as a starting point using the [trim-symbols guide](https://opencascade-js.vercel.app/docs/toolchain/guides/trim-symbols).
+  - **Reference `full.yml` bundled inside the Docker image** at `/opencascade.js/build-configs/full.yml` — the complete symbol list the published tarball builds from. Extract it as a starting point using the [trim-symbols guide](https://libcascade.xyz/docs/toolchain/guides/trim-symbols).
   - **`DEPS.json` dependency pinning** — every external dependency (OCCT, rapidjson, freetype, Emscripten, LLVM 17) is pinned to an exact commit hash with version metadata. `clone-deps.sh` automates setup.
   - **Hermetic libclang parse environment** — `src/ocjs_bindgen/config/paths.py` is now the single source of truth for include resolution during the bindgen discover pass. It points libclang at the vendored LLVM 17 libc++ headers + clang resource directory (matching libclang 18's expectations under the N-1 policy) and at the OCCT flat-include symlink farm, so source generation is reproducible across hosts and immune to whatever system clang the developer happens to have. The same parse contract is validated on `darwin-arm64`, `linux-x86_64`, and `linux-aarch64` with `uv`-managed Python 3.14.4; native final-link bytes may differ by host toolchain.
   - **Build provenance** — every build emits a `provenance.json` sidecar capturing toolchain versions, source commits, compile / link flags, cache key, and output sizes. Shipped alongside the WASM in the published tarball.
@@ -308,8 +308,8 @@
   - New [BREAKING_CHANGES.md](BREAKING_CHANGES.md) — single comprehensive v2 → v3 consumer migration guide with Before / After code samples for every breaking change.
   - Rewritten [README.md](README.md) with quick start, Docker workflow, environment-variable reference, and customisation pointers.
   - [BUILD_SYSTEM.md](BUILD_SYSTEM.md) — full `OCJS_*` env-var matrix, configuration authoring guide, and the v2 → v3 build-system migration table.
-  - [Custom emcc flags](https://opencascade-js.vercel.app/docs/toolchain/guides/custom-emcc-flags) — size vs. speed, LTO, defines, and `wasm-opt`.
-  - [YAML schema](https://opencascade-js.vercel.app/docs/toolchain/reference/yaml-schema) — build configuration and customisation reference.
+  - [Custom emcc flags](https://libcascade.xyz/docs/toolchain/guides/custom-emcc-flags) — size vs. speed, LTO, defines, and `wasm-opt`.
+  - [YAML schema](https://libcascade.xyz/docs/toolchain/reference/yaml-schema) — build configuration and customisation reference.
 
   ### Source pinning (this release)
 

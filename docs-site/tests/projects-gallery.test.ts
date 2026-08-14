@@ -12,7 +12,7 @@ const REQUIRED = [
   'BitByBit',
   'CascadeStudio',
   'Polygonjs',
-  'RepliCAD',
+  'Replicad',
   'Tau',
   'opencascade.js-examples',
 ] as const;
