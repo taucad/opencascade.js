@@ -51,7 +51,7 @@ YAML configs define which OCCT classes are bound to JavaScript:
 
 - `build-configs/full.yml` — all symbols, single-threaded, native WASM exceptions on by default with `getExceptionMessage` runtime helpers
 
-See the [YAML schema](https://opencascade-js.vercel.app/docs/toolchain/reference/yaml-schema) for the full contract, including `additionalCppFiles` and per-build `additionalBindFiles`.
+See the [YAML schema](https://libcascade.xyz/docs/toolchain/reference/yaml-schema) for the full contract, including `additionalCppFiles` and per-build `additionalBindFiles`.
 
 ### Configurations
 
@@ -90,7 +90,7 @@ Two layers of "default" matter here. The **bare default** is what `build-wasm.sh
 | Variable            | Bare default      | Shipped `full.yml` build | Description                                                                                                          |
 | ------------------- | ----------------- | ------------------------ | -------------------------------------------------------------------------------------------------------------------- |
 | `OCJS_OPT`          | `-O2`             | `-O3`                    | Compile optimization level                                                                                           |
-| `OCJS_LTO`          | `1`               | `0`                      | LTO at compile time. Empirically harmful for OCCT — see the [custom emcc flags guide](https://opencascade-js.vercel.app/docs/toolchain/guides/custom-emcc-flags). |
+| `OCJS_LTO`          | `1`               | `0`                      | LTO at compile time. Empirically harmful for OCCT — see the [custom emcc flags guide](https://libcascade.xyz/docs/toolchain/guides/custom-emcc-flags). |
 | `OCJS_EXCEPTIONS`   | `0`               | `1`                      | Native WASM exceptions. Shipped build forces this on for decodable C++ exceptions.                                   |
 | `OCJS_SIMD`         | `0`               | `1`                      | Baseline WASM SIMD (`-msimd128`). Universally supported.                                                             |
 | `OCJS_RELAXED_SIMD` | `0`               | `0`                      | Relaxed SIMD ops on top of `OCJS_SIMD`. Safari 26.x cannot parse these — leave off for cross-browser builds.         |
@@ -360,10 +360,10 @@ until it passes. Each cold job uses GitHub's native four-hour job timeout.
 - [BREAKING_CHANGES.md](BREAKING_CHANGES.md) — consumer migration guide
 - [CHANGELOG.md](CHANGELOG.md) — release notes
 - [BUILD_SYSTEM.md](BUILD_SYSTEM.md) — full `OCJS_*` env-var matrix and configuration authoring
-- [YAML schema](https://opencascade-js.vercel.app/docs/toolchain/reference/yaml-schema) — YAML schema reference
-- [Custom emcc flags](https://opencascade-js.vercel.app/docs/toolchain/guides/custom-emcc-flags) — tuning size, speed, and build time
-- [Trim symbols](https://opencascade-js.vercel.app/docs/toolchain/guides/trim-symbols) — trim from `full.yml` to a consumer-sized build
-- [Extend with C++](https://opencascade-js.vercel.app/docs/toolchain/guides/extend-with-cpp) — generated C++ and raw Embind files
-- [Reproducible CI](https://opencascade-js.vercel.app/docs/toolchain/guides/reproducible-ci) — pin-by-SHA, provenance, SBOM, and lockfile discipline
+- [YAML schema](https://libcascade.xyz/docs/toolchain/reference/yaml-schema) — YAML schema reference
+- [Custom emcc flags](https://libcascade.xyz/docs/toolchain/guides/custom-emcc-flags) — tuning size, speed, and build time
+- [Trim symbols](https://libcascade.xyz/docs/toolchain/guides/trim-symbols) — trim from `full.yml` to a consumer-sized build
+- [Extend with C++](https://libcascade.xyz/docs/toolchain/guides/extend-with-cpp) — generated C++ and raw Embind files
+- [Reproducible CI](https://libcascade.xyz/docs/toolchain/guides/reproducible-ci) — pin-by-SHA, provenance, SBOM, and lockfile discipline
 - [docs/upstream/](docs/upstream/) — dependency fixes staged for upstream submission, each paired with the local patch that carries it until upstream ships
 - [TODO.md](TODO.md) — contributor backlog

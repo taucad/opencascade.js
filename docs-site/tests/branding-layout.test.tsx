@@ -10,8 +10,13 @@ afterEach(cleanup);
 
 describe('branding layout metadata', () => {
   it('should configure favicon icons', () => {
+    // SVG first so modern browsers get the vector mark; the .ico stays behind
+    // it for anything that cannot take one.
     expect(metadata.icons).toEqual({
-      icon: '/favicon.ico',
+      icon: [
+        { url: '/favicon.svg', type: 'image/svg+xml' },
+        { url: '/favicon.ico', sizes: '32x32' },
+      ],
       apple: '/favicon.ico',
     });
   });

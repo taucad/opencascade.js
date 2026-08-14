@@ -25,14 +25,14 @@ quick links, and search indexes. Those are derived locally. In this repository,
 accepts an already-downloaded package directory or tarball:
 
 ```bash
-npm exec nx -- run ocjs:docs-sync -- --from ./libcascade-3.0.0-canary.5bf5e36c.tgz
+npm exec nx -- run ocjs:docs-sync -- --from ./libcascade-{{version}}.tgz
 ```
 
 For a complete local docs build from a downloaded CI or npm tarball, keep that
 source available to every automatic pre-script:
 
 ```bash
-OCJS_API_REFERENCE_SOURCE=../libcascade-3.0.0-canary.5bf5e36c.tgz \
+OCJS_API_REFERENCE_SOURCE=../libcascade-{{version}}.tgz \
   pnpm --dir docs-site build
 ```
 

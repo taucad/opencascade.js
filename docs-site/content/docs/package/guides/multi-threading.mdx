@@ -161,13 +161,9 @@ performance penalty. A typed-array view can become stale after
 already mitigate the worst of this:
 
 - **mimalloc** is wired into the WASM allocator so per-thread allocation
-  bypasses the global malloc contention point. The `mallinfo` undefined
-  symbol you'll see in custom-build link logs is mimalloc's debug-stats
-  reporter — `wasm-ld` emits a single `-Wjs-compiler` warning for it
-  (the link permits it via the broad `-Wl,--allow-undefined` entry in
-  the shipped build's `rawFlags`) and the symbol is dead-code-eliminated at
-  module load. The warning is informational; no runtime call ever
-  resolves to it.
+  bypasses the global malloc contention point. libcascade supplies OCCT's
+  optional `mallinfo` compatibility shim, so custom builds retain strict
+  undefined-symbol checking with either mimalloc or Emscripten's allocators.
 - **Create one typed-array view per allocation-free batch**. Do not retain it
   across a call that may grow memory:
 
@@ -184,8 +180,7 @@ The newer [`WebAssembly.Memory.prototype.toResizableBuffer()`](https://developer
 API lets a pthread-enabled binary keep typed-array views valid across growth
 entirely by returning a `SharedArrayBuffer` that automatically tracks
 `memory.grow`. The shipped `libcascade/multi` binary keeps
-`-sGROWABLE_ARRAYBUFFERS=0` (the default) because the runtime matrix is
-not yet universal:
+`-sGROWABLE_ARRAYBUFFERS=0` (the default) because runtime support is uneven:
 
 | Runtime | Supports `toResizableBuffer()` |
 |---|---|

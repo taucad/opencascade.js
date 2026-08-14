@@ -29,7 +29,7 @@ An honest, public backlog. Items here are either next-cut work or known investig
 
 ## Community
 
-- **Featured community projects**: confirm the projects listed in `README.md` (`ArchiYou`, `BitByBit`, `CascadeStudio`, `RepliCAD`, `Tau`) are still active and accepting contributors; add new ones if discovered.
+- **Featured community projects**: confirm the projects listed in `README.md` (`ArchiYou`, `BitByBit`, `CascadeStudio`, `Replicad`, `Tau`) are still active and accepting contributors; add new ones if discovered.
 - **Discussions vs Issues triage**: current convention is unclear. Document on the GitHub Discussions front page whether feature requests should land as Discussions or Issues.
 
 ## Upstream Contributions (Deferred — Production Stabilization First)

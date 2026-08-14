@@ -4,6 +4,6 @@ export const usedByProjects = [
   { name: 'BitByBit', href: 'https://bitbybit.dev/' },
   { name: 'CascadeStudio', href: 'https://github.com/zalo/CascadeStudio' },
   { name: 'Polygonjs', href: 'https://polygonjs.com' },
-  { name: 'RepliCAD', href: 'https://replicad.xyz/' },
+  { name: 'Replicad', href: 'https://replicad.xyz/' },
   { name: 'Tau', href: 'https://tau.new' },
 ] as const;

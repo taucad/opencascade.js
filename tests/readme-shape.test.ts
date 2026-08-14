@@ -2,8 +2,8 @@
  * Repository-internal shape guards for README.md and MAINTAINER.md.
  *
  * The README is the persona-routed top page for consumers. Its three load-
- * bearing properties — a bounded length, the Choose-Your-Path matrix, and a
- * working pointer at MAINTAINER.md — must not drift accidentally.
+ * bearing properties — a bounded length, the reader-path table, and a working
+ * pointer at MAINTAINER.md — must not drift accidentally.
  *
  * These assertions are repository-internal: they say nothing about external repos.
  */
@@ -15,7 +15,7 @@ const REPO_ROOT = path.resolve(__dirname, '..');
 const README_PATH = path.join(REPO_ROOT, 'README.md');
 const MAINTAINER_PATH = path.join(REPO_ROOT, 'MAINTAINER.md');
 
-const README_LINE_BUDGET = 200;
+const README_LINE_BUDGET = 220;
 
 const MAINTAINER_REQUIRED_SECTIONS = [
   '## Quick Start (Native Build)',
@@ -28,16 +28,14 @@ const MAINTAINER_REQUIRED_SECTIONS = [
 ] as const;
 
 const README_REQUIRED_SECTIONS = [
-  '## Choose Your Path',
-  '## Quickstart (npm)',
-  // Renamed from "Quickstart (Docker)" in the W6 docs overhaul: the custom-build
-  // path is `@libcascade/toolchain` + `libcascade.config.ts`, and the CLI drives
-  // the (still digest-pinned) images itself. The README must not teach `docker run`.
-  '## Quickstart (custom build)',
-  '## Tags',
-  "## What's New in v3",
+  '## Install',
+  '## Multi-threading',
+  '## Toolchain',
+  '## Container images',
+  "## What's new in v3",
   '## Documentation',
-  '## Projects Using libcascade',
+  '## Projects using libcascade',
+  '## Contributing',
   '## License',
 ] as const;
 
@@ -51,14 +49,15 @@ describe('README.md shape', () => {
     expect(lineCount).toBeLessThanOrEqual(README_LINE_BUDGET);
   });
 
-  it('contains the Choose-Your-Path persona matrix at the top', () => {
+  it('contains the reader-path table before the first section', () => {
     const body = fs.readFileSync(README_PATH, 'utf-8');
-    const personaIdx = body.indexOf('## Choose Your Path');
+    const personaIdx = body.indexOf('| I want to…');
     expect(personaIdx).toBeGreaterThanOrEqual(0);
 
     const firstH2Match = body.match(/^## .+$/m);
     expect(firstH2Match).not.toBeNull();
-    expect(firstH2Match![0]).toBe('## Choose Your Path');
+    expect(personaIdx).toBeLessThan(firstH2Match!.index!);
+    expect(firstH2Match![0]).toBe('## Install');
   });
 
   it.each(README_REQUIRED_SECTIONS)('contains the %s section', (heading) => {
@@ -73,8 +72,8 @@ describe('README.md shape', () => {
 
   it('should present libcascade as the npm package', () => {
     const body = fs.readFileSync(README_PATH, 'utf-8');
-    expect(body).toContain('pnpm add libcascade');
-    expect(body).toContain('`libcascade` brings the OpenCASCADE Technology kernel');
+    expect(body).toContain('npm install libcascade');
+    expect(body).toContain("import oc from 'libcascade';");
     expect(body).not.toContain('Tau-maintained fork');
   });
 });

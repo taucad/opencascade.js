@@ -9,7 +9,11 @@ export const metadata: Metadata = {
   title: { default: SITE_TITLE, template: '%s — libcascade' },
   description: SITE_DESCRIPTION,
   icons: {
-    icon: '/favicon.ico',
+    // SVG first for anything modern; the .ico stays as the fallback.
+    icon: [
+      { url: '/favicon.svg', type: 'image/svg+xml' },
+      { url: '/favicon.ico', sizes: '32x32' },
+    ],
     apple: '/favicon.ico',
   },
 };

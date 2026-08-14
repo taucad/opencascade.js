@@ -98,7 +98,7 @@ const capped = await createInstance({ variant: 'multi', threadCount: 4 });
 | `wasmBinary` | Pre-fetched bytes, instead of a network fetch. |
 | `wasmMemory` | A `WebAssembly.Memory` you own. |
 
-It owns the plumbing every consumer used to reimplement:
+It owns the plumbing every consumer would otherwise reimplement:
 
 - **Glue self-reference.** Emscripten spawns pthread workers from the glue's
   own URL; `createInstance` passes it as `mainScriptUrlOrBlob` so you do not
@@ -285,11 +285,12 @@ The generated `init` entries reference each glue with `new URL(…,
 import.meta.url)`, so bundlers emit it as a first-class asset, but load it
 through an import that is deliberately opaque to them
 (`import(/* webpackIgnore: true */ /* @vite-ignore */ href)`). Cutting that
-graph edge is what keeps the `.wasm` out: a statically analysable import makes
+graph edge is what keeps the `.wasm` out. A statically analysable import makes
 a bundler follow the glue, and a pthread build contains
 `new Worker(new URL(<glue>, import.meta.url))`, so the glue gets re-bundled as
-a worker entry and every variant's binary comes with it. No configuration is
-needed either way. The glue resolves its `.wasm` sibling relative to its own
+a worker entry and every variant's binary comes with it.
+
+No configuration is needed either way. The glue resolves its `.wasm` sibling relative to its own
 URL; pass `locateFile` only when your deployment moves the binary away from the
 glue. See
 [Bundler and locateFile](../../package/guides/bundler-locatefile) for

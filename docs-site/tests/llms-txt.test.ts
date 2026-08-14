@@ -23,21 +23,21 @@ import { getLlmRefText } from '../lib/get-llms-text';
 
 describe('llms.txt reference', () => {
   it('should emit a heading with the site title and a bullet per page', () => {
-    const out = getLlmRefText({ siteTitle: 'libcascade', siteUrl: 'https://opencascade-js.vercel.app' });
+    const out = getLlmRefText({ siteTitle: 'libcascade', siteUrl: 'https://libcascade.xyz' });
     expect(out).toMatch(/^# libcascade$/m);
-    expect(out).toContain('[Home](https://opencascade-js.vercel.app/docs)');
-    expect(out).toContain('[Quick start (npm)](https://opencascade-js.vercel.app/docs/getting-started/quick-start-npm)');
-    expect(out).toContain('[Render GLB with three.js](https://opencascade-js.vercel.app/docs/guides/render-with-three-js)');
+    expect(out).toContain('[Home](https://libcascade.xyz/docs)');
+    expect(out).toContain('[Quick start (npm)](https://libcascade.xyz/docs/getting-started/quick-start-npm)');
+    expect(out).toContain('[Render GLB with three.js](https://libcascade.xyz/docs/guides/render-with-three-js)');
   });
 
   it('should include the page description suffixed with a colon when present', () => {
-    const out = getLlmRefText({ siteTitle: 'libcascade', siteUrl: 'https://opencascade-js.vercel.app' });
+    const out = getLlmRefText({ siteTitle: 'libcascade', siteUrl: 'https://libcascade.xyz' });
     expect(out).toContain('): Install and run.');
     expect(out).toContain('): Hook GLB into three.');
   });
 
   it('should group pages by their first URL segment with Title Case headings', () => {
-    const out = getLlmRefText({ siteTitle: 'libcascade', siteUrl: 'https://opencascade-js.vercel.app' });
+    const out = getLlmRefText({ siteTitle: 'libcascade', siteUrl: 'https://libcascade.xyz' });
     expect(out).toContain('## Getting Started');
     expect(out).toContain('## Guides');
   });
