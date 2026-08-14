@@ -24,6 +24,8 @@ quick links, and search indexes. Those are derived locally. In this repository,
 `npm exec nx -- run ocjs:docs-sync` reads the installed package by default, or
 accepts an already-downloaded package directory or tarball:
 
+Replace `{{version}}` with the package version in the downloaded filename.
+
 ```bash
 npm exec nx -- run ocjs:docs-sync -- --from ./libcascade-{{version}}.tgz
 ```

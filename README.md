@@ -202,7 +202,7 @@ against native C++, threading speedup, embind dispatch cost, and RBV overhead.
 ## Projects using libcascade
 
 - [ArchiYou](https://archiyou.com/) — library, code-CAD design tool, community hub
-- [BitByBit](https://bitbybit.dev/) — code- and node-based CAD design tool
+- [BitByBit](https://bitbybit.dev/) — code- and node-based CAD tool
 - [CascadeStudio](https://github.com/zalo/CascadeStudio) — library and code-CAD design tool
 - [Replicad](https://replicad.xyz/) — library and code-CAD design tool
 - [Tau](https://tau.new/) — AI-native CAD platform for the web

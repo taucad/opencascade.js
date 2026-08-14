@@ -44,40 +44,42 @@ async function expectColoredGlb(
   expectArtifacts(workDir, base);
 
   const oc = await loadModule(workDir, `${base}.js`);
-  using box = new oc.BRepPrimAPI_MakeBox(10, 20, 30);
-  using shape = box.Shape();
-  using documentName = new oc.TCollection_ExtendedString();
-  using document = new oc.TDocStd_Document(documentName);
-  using mainLabel = document.Main();
-  using shapeTool = oc.XCAFDoc_DocumentTool.ShapeTool(mainLabel);
-  using colorTool = oc.XCAFDoc_DocumentTool.ColorTool(mainLabel);
-  using shapeLabel = shapeTool.NewShape();
-  shapeTool.SetShape(shapeLabel, shape);
-  using color = new oc.Quantity_ColorRGBA(1, 0, 0, 0.5);
-  colorTool.SetColor(shapeLabel, color, oc.XCAFDoc_ColorType.XCAFDoc_ColorSurf);
-  using mesh = new oc.BRepMesh_IncrementalMesh(shape, 0.1, false, 0.1, false);
+  try {
+    using box = new oc.BRepPrimAPI_MakeBox(10, 20, 30);
+    using shape = box.Shape();
+    using documentName = new oc.TCollection_ExtendedString();
+    using document = new oc.TDocStd_Document(documentName);
+    using mainLabel = document.Main();
+    using shapeTool = oc.XCAFDoc_DocumentTool.ShapeTool(mainLabel);
+    using colorTool = oc.XCAFDoc_DocumentTool.ColorTool(mainLabel);
+    using shapeLabel = shapeTool.NewShape();
+    shapeTool.SetShape(shapeLabel, shape);
+    using color = new oc.Quantity_ColorRGBA(1, 0, 0, 0.5);
+    colorTool.SetColor(shapeLabel, color, oc.XCAFDoc_ColorType.XCAFDoc_ColorSurf);
+    using mesh = new oc.BRepMesh_IncrementalMesh(shape, 0.1, false, 0.1, false);
 
-  const glbPath = '/colored.glb';
-  using pathValue = new oc.TCollection_AsciiString(glbPath);
-  using writer = new oc.RWGltf_CafWriter(pathValue, true);
-  using metadata = new oc.TColStd_IndexedDataMapOfStringString();
-  using progress = new oc.Message_ProgressRange();
-  expect(writer.Perform(document, metadata, progress)).toBe(true);
+    const glbPath = '/colored.glb';
+    using pathValue = new oc.TCollection_AsciiString(glbPath);
+    using writer = new oc.RWGltf_CafWriter(pathValue, true);
+    using metadata = new oc.TColStd_IndexedDataMapOfStringString();
+    using progress = new oc.Message_ProgressRange();
+    expect(writer.Perform(document, metadata, progress)).toBe(true);
 
-  const glb = oc.FS.readFile(glbPath) as Uint8Array;
-  const parsed = await new NodeIO().readBinary(glb);
-  const primitives = parsed
-    .getRoot()
-    .listMeshes()
-    .flatMap((entry) => entry.listPrimitives());
-  expect(primitives.length).toBeGreaterThan(0);
-  expect(primitives.every((entry) => entry.getIndices()?.getCount())).toBe(true);
-  expect(
-    primitives.every((entry) => (entry.getAttribute('POSITION')?.getCount() ?? 0) > 0),
-  ).toBe(true);
-  expect(primitives[0]?.getMaterial()?.getBaseColorFactor()).toStrictEqual([1, 0, 0, 0.5]);
-
-  oc.PThread?.terminateAllThreads?.();
+    const glb = oc.FS.readFile(glbPath) as Uint8Array;
+    const parsed = await new NodeIO().readBinary(glb);
+    const primitives = parsed
+      .getRoot()
+      .listMeshes()
+      .flatMap((entry) => entry.listPrimitives());
+    expect(primitives.length).toBeGreaterThan(0);
+    expect(primitives.every((entry) => entry.getIndices()?.getCount())).toBe(true);
+    expect(
+      primitives.every((entry) => (entry.getAttribute('POSITION')?.getCount() ?? 0) > 0),
+    ).toBe(true);
+    expect(primitives[0]?.getMaterial()?.getBaseColorFactor()).toStrictEqual([1, 0, 0, 0.5]);
+  } finally {
+    oc.PThread?.terminateAllThreads?.();
+  }
 }
 
 describe.skipIf(!dockerTestsEnabled() || !['all', 'final-single'].includes(STAGE))('Docker build flow (single candidate)', () => {
