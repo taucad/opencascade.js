@@ -326,9 +326,13 @@ const normalizeThreadedGlue = (
 
     const gluePath = path.join(distDirectory, `${asset.outputName}.js`);
     const source = fs.readFileSync(gluePath, 'utf8');
-    const original = `new Worker(new URL("${asset.outputName}.js",import.meta.url),`;
+    const escapedOutputName = asset.outputName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const original = new RegExp(
+      `new Worker\\(new URL\\("${escapedOutputName}\\.js",\\s*import\\.meta\\.url\\),`,
+      'g',
+    );
     const normalized = 'new Worker(new URL(import.meta.url),';
-    const originalCount = source.split(original).length - 1;
+    const originalCount = [...source.matchAll(original)].length;
     const normalizedCount = source.split(normalized).length - 1;
 
     if (originalCount === 0 && normalizedCount === 1) return [];

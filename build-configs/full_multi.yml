@@ -4508,9 +4508,7 @@ mainBuild:
   - -sINITIAL_MEMORY=128MB
   - -sMAXIMUM_MEMORY=4GB
   - -sUSE_FREETYPE=1
-  - -sERROR_ON_UNDEFINED_SYMBOLS=0
   - --no-entry
-  - -Wl,--allow-undefined
   - --emit-symbol-map
   - -sSTACK_SIZE=8388608
   - -sWASM_BIGINT

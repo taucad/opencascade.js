@@ -4523,8 +4523,6 @@ export default defineBuild({
     INITIAL_MEMORY: '128MB',
     MAXIMUM_MEMORY: '4GB',
     USE_FREETYPE: true,
-    // OCCT's OSD_MemInfo references mallinfo, which Emscripten does not provide.
-    ERROR_ON_UNDEFINED_SYMBOLS: false,
     STACK_SIZE: 8_388_608,
     WASM_BIGINT: true,
     // Pre-evaluate global constructors to cut single-threaded startup work.
@@ -4533,7 +4531,7 @@ export default defineBuild({
     EVAL_CTORS: 2,
   },
   compilerFlags: { exceptions: 'wasm', noEntry: true, simd: true, optimize: 'O3' },
-  rawFlags: ['-Wl,--allow-undefined', '--emit-symbol-map'],
+  rawFlags: ['--emit-symbol-map'],
   variants: [
     { name: 'single' },
     {

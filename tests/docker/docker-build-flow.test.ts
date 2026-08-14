@@ -14,6 +14,7 @@
 import { describe, it, expect } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { NodeIO } from '@gltf-transform/core';
 import {
   SINGLE_IMAGE,
   MULTI_IMAGE,
@@ -32,7 +33,66 @@ function expectArtifacts(workDir: string, base: string): void {
   }
 }
 
+async function expectColoredGlb(
+  image: string,
+  fixture: string,
+  workName: string,
+  base: string,
+): Promise<void> {
+  const { status, workDir, stderr } = runLink(image, fixture, workName);
+  expect(status, stderr).toBe(0);
+  expectArtifacts(workDir, base);
+
+  const oc = await loadModule(workDir, `${base}.js`);
+  using box = new oc.BRepPrimAPI_MakeBox(10, 20, 30);
+  using shape = box.Shape();
+  using documentName = new oc.TCollection_ExtendedString();
+  using document = new oc.TDocStd_Document(documentName);
+  using mainLabel = document.Main();
+  using shapeTool = oc.XCAFDoc_DocumentTool.ShapeTool(mainLabel);
+  using colorTool = oc.XCAFDoc_DocumentTool.ColorTool(mainLabel);
+  using shapeLabel = shapeTool.NewShape();
+  shapeTool.SetShape(shapeLabel, shape);
+  using color = new oc.Quantity_ColorRGBA(1, 0, 0, 0.5);
+  colorTool.SetColor(shapeLabel, color, oc.XCAFDoc_ColorType.XCAFDoc_ColorSurf);
+  using mesh = new oc.BRepMesh_IncrementalMesh(shape, 0.1, false, 0.1, false);
+
+  const glbPath = '/colored.glb';
+  using pathValue = new oc.TCollection_AsciiString(glbPath);
+  using writer = new oc.RWGltf_CafWriter(pathValue, true);
+  using metadata = new oc.TColStd_IndexedDataMapOfStringString();
+  using progress = new oc.Message_ProgressRange();
+  expect(writer.Perform(document, metadata, progress)).toBe(true);
+
+  const glb = oc.FS.readFile(glbPath) as Uint8Array;
+  const parsed = await new NodeIO().readBinary(glb);
+  const primitives = parsed
+    .getRoot()
+    .listMeshes()
+    .flatMap((entry) => entry.listPrimitives());
+  expect(primitives.length).toBeGreaterThan(0);
+  expect(primitives.every((entry) => entry.getIndices()?.getCount())).toBe(true);
+  expect(
+    primitives.every((entry) => (entry.getAttribute('POSITION')?.getCount() ?? 0) > 0),
+  ).toBe(true);
+  expect(primitives[0]?.getMaterial()?.getBaseColorFactor()).toStrictEqual([1, 0, 0, 0.5]);
+
+  oc.PThread?.terminateAllThreads?.();
+}
+
 describe.skipIf(!dockerTestsEnabled() || !['all', 'final-single'].includes(STAGE))('Docker build flow (single candidate)', () => {
+  it(
+    'single image: strictly links and exports indexed colored GLB',
+    async () => {
+      await expectColoredGlb(
+        SINGLE_IMAGE,
+        'colored-gltf-single.yml',
+        'colored-gltf-single',
+        'customBuild.colored-gltf-single',
+      );
+    },
+  );
+
   it(
     'single image: builds a custom module that loads and instantiates OCCT',
     async () => {
@@ -74,6 +134,18 @@ describe.skipIf(!dockerTestsEnabled() || !['all', 'final-single'].includes(STAGE
 });
 
 describe.skipIf(!dockerTestsEnabled() || !['all', 'final-multi'].includes(STAGE))('Docker build flow (multi candidate)', () => {
+  it(
+    'multi image: strictly links and exports indexed colored GLB',
+    async () => {
+      await expectColoredGlb(
+        MULTI_IMAGE,
+        'colored-gltf-multi.yml',
+        'colored-gltf-multi',
+        'customBuild.colored-gltf-multi',
+      );
+    },
+  );
+
   it(
     'multi image: builds a pthread module that reports parallel mode and meshes in parallel',
     async () => {

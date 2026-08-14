@@ -109,7 +109,7 @@ const makePackage = (multiSymbols: readonly string[] = ['gp_Pnt', 'BRepPrimAPI_M
       path.join(root, 'dist', `demo_${variant}.js`),
       `${
         variant === 'multi'
-          ? 'const spawnWorker = () => new Worker(new URL("demo_multi.js",import.meta.url),{type:"module"});\n'
+          ? 'const spawnWorker = () => new Worker(new URL("demo_multi.js",\nimport.meta.url),{type:"module"});\n'
           : ''
       }export default async (options) => ({ variant: '${variant}', options });\n`,
     );
