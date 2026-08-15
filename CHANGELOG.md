@@ -1,3 +1,13 @@
+## 3.0.1 (2026-08-15)
+
+### 🩹 Fixes
+
+- Restore the complete immutable OCCT archive closure for custom builds, including strict single- and multi-threaded colored GLB export through `RWGltf_CafWriter`. Keep strict undefined-symbol linking enabled for every allocator by making OCCT's optional `mallinfo` integration weak, restore the remaining declared OCCT definitions, and refresh libcascade's public branding and documentation. ([#31](https://github.com/taucad/opencascade.js/pull/31))
+
+### ❤️ Thank You
+
+- Richard Fontein @rifont
+
 # 3.0.0 (2026-08-13)
 
 ### ⚠️  Breaking Changes
