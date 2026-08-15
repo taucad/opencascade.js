@@ -562,7 +562,7 @@ jobs:
           sbom: false
 
       - name: Docker consumer behavior
-        if: matrix.arch == 'amd64'
+        if: matrix.arch == 'arm64'
         env:
           IMAGE: ocjs:e2e-${{ matrix.stage }}
           OCJS_DOCKER_STAGE: ${{ matrix.stage }}
