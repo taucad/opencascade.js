@@ -421,6 +421,10 @@ describe('CI contracts', () => {
       const step = ci.jobs[jobName].steps.find(({ name }: { name?: string }) => name === 'Docker consumer behavior');
       expect(step.env.OCJS_DOCKER_OUTPUT_DIR).toBe('${{ runner.temp }}/e2e');
     }
+    const releaseStep = ci.jobs['candidate-build'].steps.find(
+      ({ name }: { name?: string }) => name === 'Docker consumer behavior',
+    );
+    expect(releaseStep.if).toBe("matrix.arch == 'arm64'");
   });
 
   it('should provision pnpm for isolated docs lifecycle scripts', () => {
