@@ -329,14 +329,88 @@ def is_collision_resolvable_via_val(b, m_a, m_b, lo, hi, template_decl=None, tem
   return False
 
 
+def _is_deprecated(method):
+  return getattr(method, "availability", None) == clang.cindex.AvailabilityKind.DEPRECATED
+
+
+def _typedef_preference_score(method):
+  score = 0
+  for arg in method.get_arguments():
+    kind = arg.type.get_canonical().kind
+    if kind in (
+      clang.cindex.TypeKind.ULONGLONG,
+      clang.cindex.TypeKind.ULONG,
+      clang.cindex.TypeKind.UINT,
+      clang.cindex.TypeKind.USHORT,
+    ):
+      score += 10
+    if kind in (clang.cindex.TypeKind.ULONGLONG, clang.cindex.TypeKind.LONGLONG):
+      score += 4
+    elif kind in (clang.cindex.TypeKind.ULONG, clang.cindex.TypeKind.LONG):
+      score += 2
+    elif kind in (clang.cindex.TypeKind.UINT, clang.cindex.TypeKind.INT):
+      score += 1
+  return score
+
+
+def _prefer_raw_equivalent(candidate, existing):
+  if _is_deprecated(candidate) != _is_deprecated(existing):
+    return not _is_deprecated(candidate)
+  candidate_score = _typedef_preference_score(candidate)
+  existing_score = _typedef_preference_score(existing)
+  if candidate_score != existing_score:
+    return candidate_score > existing_score
+  return candidate.is_const_method() and not existing.is_const_method()
+
+
+def js_effective_signature(b, method, template_decl=None, template_args=None):
+  args = list(method.get_arguments())
+  if any(isOutputParam(arg.type) for arg in args) and can_do_rbv(method):
+    args = [
+      arg
+      for arg in args
+      if not shouldStripParam(arg.type, method) and not isRawPointerParam(arg.type)
+    ]
+  return tuple(
+    b._classify_js_type(arg.type, template_decl, template_args)
+    for arg in args
+  )
+
+
+def select_js_effective_overload_survivors(b, methods, template_decl=None, template_args=None):
+  """Select one callable for every JavaScript-effective overload signature."""
+  raw_survivors = {}
+  for method in methods:
+    key = tuple(
+      b._classify_js_type(arg.type, template_decl, template_args)
+      for arg in method.get_arguments()
+    )
+    existing = raw_survivors.get(key)
+    if existing is None or _prefer_raw_equivalent(method, existing):
+      raw_survivors[key] = method
+
+  effective_survivors = {}
+  for method in raw_survivors.values():
+    key = js_effective_signature(b, method, template_decl, template_args)
+    existing = effective_survivors.get(key)
+    if existing is None:
+      effective_survivors[key] = method
+      continue
+    if _is_deprecated(method) != _is_deprecated(existing):
+      if not _is_deprecated(method):
+        effective_survivors[key] = method
+      continue
+    if envelope_richness(b, method) > envelope_richness(b, existing):
+      effective_survivors[key] = method
+  return list(effective_survivors.values())
+
+
 def envelope_richness(b, method):
   """Rank methods that share a JS-effective signature.
 
-  Higher = richer envelope = preferred survivor. The RBV-envelope variant's
-  ``returnValue`` field strictly subsumes the bare-return variant's return,
-  and the envelope additionally surfaces elided ``Handle<T>`` outputs that
-  would otherwise be unreachable from JS — there is no scenario where the
-  bare-return form is functionally superior to the envelope form.
+  Higher = richer envelope = preferred survivor among equally current
+  overloads. A non-deprecated direct-return overload remains preferable to
+  its deprecated output-parameter compatibility overload.
   """
   args = list(method.get_arguments())
   if not any(isOutputParam(a.type) for a in args) or not can_do_rbv(method):

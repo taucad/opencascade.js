@@ -446,48 +446,9 @@ def process_method_group(b, theClass, methods, templateDecl=None, templateArgs=N
   if not bindable:
     return output
 
-  def _typedef_preference_score(m):
-    score = 0
-    for a in m.get_arguments():
-      k = a.type.get_canonical().kind
-      if k in (clang.cindex.TypeKind.ULONGLONG, clang.cindex.TypeKind.ULONG,
-               clang.cindex.TypeKind.UINT, clang.cindex.TypeKind.USHORT):
-        score += 10
-      if k in (clang.cindex.TypeKind.ULONGLONG, clang.cindex.TypeKind.LONGLONG):
-        score += 4
-      elif k in (clang.cindex.TypeKind.ULONG, clang.cindex.TypeKind.LONG):
-        score += 2
-      elif k in (clang.cindex.TypeKind.UINT, clang.cindex.TypeKind.INT):
-        score += 1
-    return score
-
-  deduped = {}
-  for m in bindable:
-    js_key = tuple(
-      b._classify_js_type(a.type, templateDecl, templateArgs)
-      for a in m.get_arguments()
-    )
-    existing = deduped.get(js_key)
-    if existing is None:
-      deduped[js_key] = m
-      continue
-    cur_score = _typedef_preference_score(m)
-    prev_score = _typedef_preference_score(existing)
-    if cur_score > prev_score:
-      deduped[js_key] = m
-    elif cur_score == prev_score and m.is_const_method() and not existing.is_const_method():
-      deduped[js_key] = m
-  bindable = list(deduped.values())
-  if not bindable:
-    return output
-
-  js_effective = {}
-  for m in bindable:
-    key = b._js_effective_sig(m, templateDecl, templateArgs)
-    prev = js_effective.get(key)
-    if prev is None or b._envelope_richness(m) > b._envelope_richness(prev):
-      js_effective[key] = m
-  bindable = list(js_effective.values())
+  bindable = _rbv.select_js_effective_overload_survivors(
+    b, bindable, templateDecl, templateArgs
+  )
   if not bindable:
     return output
 

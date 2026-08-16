@@ -2039,22 +2039,6 @@ class EmbindBindings(Bindings):
       return [(i, a) for i, a in enumerate(args)]
     return [(i, a) for i, a in enumerate(args) if not shouldStripParam(a.type, method) and not isRawPointerParam(a.type)]
 
-  def _js_effective_sig(self, method, templateDecl=None, templateArgs=None):
-    """JS-effective signature tuple for dedup keying.
-
-    Keys on `_classify_js_type` over the JS-visible (kept) args after RBV
-    elision, so two C++ overloads that collapse to the same JS-callable
-    signature are detected as duplicates. Distinct from the existing
-    JS-type-tuple dedup which keys on ALL C++ args.
-    """
-    return tuple(
-      self._classify_js_type(a.type, templateDecl, templateArgs)
-      for _i, a in self._getJsVisibleArgs(method)
-    )
-
-  def _envelope_richness(self, method):
-    return _rbv.envelope_richness(self, method)
-
   def _jsEffectiveArityRange(self, method):
     """Rule 3 helper: return ``(min_arity, max_arity)`` post-RBV-elision +
     post-default-expansion. See :func:`ocjs_bindgen.codegen.rbv.js_effective_arity_range`.
@@ -2685,71 +2669,9 @@ class EmbindBindings(Bindings):
     if not bindable:
       return output
 
-    # Deduplicate overloads that are JS-indistinguishable.
-    #
-    # The key is the JS-classified type tuple, not the C++ canonical spelling,
-    # so V8's parallel `size_t`/`int` NCollection overloads (size_t API
-    # migration #1212) collapse to one entry. Without this, both survive into
-    # the dispatch tree as a doubly-ambiguous group and no primary method is
-    # emitted (RC-B). Tie-breakers:
-    #   1. Prefer the wider / unsigned integer (V8-modern `size_t` over
-    #      legacy `int`).
-    #   2. On equal score, prefer the const version (JS has no const `this`).
-    def _typedef_preference_score(m):
-      score = 0
-      for a in m.get_arguments():
-        k = a.type.get_canonical().kind
-        if k in (clang.cindex.TypeKind.ULONGLONG, clang.cindex.TypeKind.ULONG,
-                 clang.cindex.TypeKind.UINT, clang.cindex.TypeKind.USHORT):
-          score += 10
-        if k in (clang.cindex.TypeKind.ULONGLONG, clang.cindex.TypeKind.LONGLONG):
-          score += 4
-        elif k in (clang.cindex.TypeKind.ULONG, clang.cindex.TypeKind.LONG):
-          score += 2
-        elif k in (clang.cindex.TypeKind.UINT, clang.cindex.TypeKind.INT):
-          score += 1
-      return score
-
-    deduped = {}
-    for m in bindable:
-      js_key = tuple(
-        self._classify_js_type(a.type, templateDecl, templateArgs)
-        for a in m.get_arguments()
-      )
-      existing = deduped.get(js_key)
-      if existing is None:
-        deduped[js_key] = m
-        continue
-      cur_score = _typedef_preference_score(m)
-      prev_score = _typedef_preference_score(existing)
-      if cur_score > prev_score:
-        deduped[js_key] = m
-      elif cur_score == prev_score and m.is_const_method() and not existing.is_const_method():
-        deduped[js_key] = m
-    bindable = list(deduped.values())
-    if not bindable:
-      return output
-
-    # Second dedup pass: collapse overloads that share an identical JS-EFFECTIVE
-    # signature (after RBV elision). Two C++ overloads can have distinct
-    # type tuples over ALL args yet identical type tuples over only the
-    # JS-visible (kept) args — e.g. `Read(path, doc, progress)` (arity 3)
-    # vs `Read(path, doc, Handle<TShape>&, progress)` (arity 4 → JS arity 3
-    # after stripping the Handle output). The runtime patched dispatcher's
-    # `signaturesArray` keys on the same JS-effective tuple, so identical
-    # tuples leave nothing to discriminate the two overloads — the last to
-    # register silently shadows the first. Picking the highest-richness
-    # survivor keeps the RBV-envelope variant (whose `returnValue` field
-    # subsumes the bare-return variant's return) and drops the shadowing
-    # bare-return registration. The TS `.d.ts` continues to expose both
-    # shapes via the existing `processMethodOrProperty` overload-index path.
-    js_effective = {}
-    for m in bindable:
-      key = self._js_effective_sig(m, templateDecl, templateArgs)
-      prev = js_effective.get(key)
-      if prev is None or self._envelope_richness(m) > self._envelope_richness(prev):
-        js_effective[key] = m
-    bindable = list(js_effective.values())
+    bindable = _rbv.select_js_effective_overload_survivors(
+      self, bindable, templateDecl, templateArgs
+    )
     if not bindable:
       return output
 
@@ -4254,48 +4176,9 @@ class TypescriptBindings(Bindings):
     if not bindable:
       return output
 
-    # Deduplicate overloads that are JS-indistinguishable.
-    #
-    # The key is the JS-classified type tuple, not the C++ canonical spelling,
-    # so V8's parallel `size_t`/`int` NCollection overloads (size_t API
-    # migration #1212) collapse to one entry. Without this, both survive into
-    # the dispatch tree as a doubly-ambiguous group and no primary method is
-    # emitted (RC-B). Tie-breakers:
-    #   1. Prefer the wider / unsigned integer (V8-modern `size_t` over
-    #      legacy `int`).
-    #   2. On equal score, prefer the const version (JS has no const `this`).
-    def _typedef_preference_score(m):
-      score = 0
-      for a in m.get_arguments():
-        k = a.type.get_canonical().kind
-        if k in (clang.cindex.TypeKind.ULONGLONG, clang.cindex.TypeKind.ULONG,
-                 clang.cindex.TypeKind.UINT, clang.cindex.TypeKind.USHORT):
-          score += 10
-        if k in (clang.cindex.TypeKind.ULONGLONG, clang.cindex.TypeKind.LONGLONG):
-          score += 4
-        elif k in (clang.cindex.TypeKind.ULONG, clang.cindex.TypeKind.LONG):
-          score += 2
-        elif k in (clang.cindex.TypeKind.UINT, clang.cindex.TypeKind.INT):
-          score += 1
-      return score
-
-    deduped = {}
-    for m in bindable:
-      js_key = tuple(
-        self._classify_js_type(a.type, templateDecl, templateArgs)
-        for a in m.get_arguments()
-      )
-      existing = deduped.get(js_key)
-      if existing is None:
-        deduped[js_key] = m
-        continue
-      cur_score = _typedef_preference_score(m)
-      prev_score = _typedef_preference_score(existing)
-      if cur_score > prev_score:
-        deduped[js_key] = m
-      elif cur_score == prev_score and m.is_const_method() and not existing.is_const_method():
-        deduped[js_key] = m
-    bindable = list(deduped.values())
+    bindable = _rbv.select_js_effective_overload_survivors(
+      self, bindable, templateDecl, templateArgs
+    )
     if not bindable:
       return output
 

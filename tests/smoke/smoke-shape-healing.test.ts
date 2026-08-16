@@ -4,6 +4,27 @@ import { initOC, getOC, wasmExists } from './helpers.js';
 describe.skipIf(!wasmExists)('Smoke: Shape healing', () => {
   beforeAll(async () => { await initOC(); });
 
+  it('connects edges through the modern direct-return overload', () => {
+    const oc = getOC();
+    using p1 = new oc.gp_Pnt(0, 0, 0);
+    using p2 = new oc.gp_Pnt(10, 0, 0);
+    using p3 = new oc.gp_Pnt(10, 10, 0);
+    using edgeBuilder1 = new oc.BRepBuilderAPI_MakeEdge(p1, p2);
+    using edge1 = edgeBuilder1.Edge();
+    using edgeBuilder2 = new oc.BRepBuilderAPI_MakeEdge(p2, p3);
+    using edge2 = edgeBuilder2.Edge();
+    using edges = new oc.NCollection_HSequence_TopoDS_Shape();
+    edges.Append(edge1);
+    edges.Append(edge2);
+
+    using wires = oc.ShapeAnalysis_FreeBounds.ConnectEdgesToWires(edges, 1e-6, false);
+
+    expect(typeof wires.delete).toBe('function');
+    expect(Object.hasOwn(wires, 'wires')).toBe(false);
+    using sequence = wires.Sequence();
+    expect(sequence.Length()).toBe(1);
+  });
+
   it('should fix a valid shape without error with ShapeFix_Shape', () => {
     const oc = getOC();
     using box = new oc.BRepPrimAPI_MakeBox(10, 20, 30);
