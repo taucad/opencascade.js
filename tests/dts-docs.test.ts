@@ -519,12 +519,36 @@ describe('JSDoc documentation coverage', () => {
       () => {
         const unitsAPI = findClass(sourceFile!, 'UnitsAPI');
         expect(unitsAPI).toBeDefined();
-        for (const baseName of ['AnyToLS', 'AnyToSI']) {
+
+        const numberedMethods = new Map<string, ts.MethodDeclaration[]>();
+        for (const member of unitsAPI!.members) {
+          if (!ts.isMethodDeclaration(member) || !ts.isIdentifier(member.name)) continue;
+          const match = member.name.text.match(/^(.*)_\d+$/);
+          if (!match) continue;
+          const methods = numberedMethods.get(match[1]) ?? [];
+          methods.push(member);
+          numberedMethods.set(match[1], methods);
+        }
+        const relevantGroups = [...numberedMethods.entries()].filter(([, methods]) => {
+          const arities = new Set(methods.map((method) => method.parameters.length));
+          const docs = new Set(methods.map(getJSDocText));
+          return methods.length > 1 && arities.size === 1 && docs.size > 1;
+        });
+
+        expect(relevantGroups.map(([baseName]) => baseName).sort()).toEqual([
+          'AnyToLS',
+          'AnyToSI',
+        ]);
+        for (const [baseName] of relevantGroups) {
+          const survivor = findMethod(unitsAPI!, baseName);
           const direct = findMethod(unitsAPI!, `${baseName}_1`);
           const withDimension = findMethod(unitsAPI!, `${baseName}_2`);
+          expect(survivor).toBeDefined();
           expect(direct).toBeDefined();
           expect(withDimension).toBeDefined();
+          expect(getJSDocText(survivor!)).toBe(getJSDocText(direct!));
           expect(getJSDocText(direct!)).not.toBe(getJSDocText(withDimension!));
+          expect(getJSDocText(survivor!)).not.toContain('@deprecated');
         }
       },
     );
