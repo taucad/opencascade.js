@@ -22,7 +22,7 @@ describe.skipIf(!wasmExists)('Smoke: Shape healing', () => {
     expect(typeof wires.delete).toBe('function');
     expect(Object.hasOwn(wires, 'wires')).toBe(false);
     using sequence = wires.Sequence();
-    expect(sequence.Length()).toBeGreaterThan(0);
+    expect(sequence.Length()).toBe(1);
   });
 
   it('should fix a valid shape without error with ShapeFix_Shape', () => {
