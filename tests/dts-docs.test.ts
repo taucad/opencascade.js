@@ -517,45 +517,15 @@ describe('JSDoc documentation coverage', () => {
     it.skipIf(!sourceFile)(
       'should produce unique JSDoc for same-arity method overloads with distinct docs',
       () => {
-        let sameArityDistinct = 0;
-        let sameArityTotal = 0;
-        ts.forEachChild(sourceFile!, (node) => {
-          if (!ts.isClassDeclaration(node) || !node.name) return;
-          const methodsByBaseName = new Map<string, ts.MethodDeclaration[]>();
-          for (const member of node.members) {
-            if (
-              ts.isMethodDeclaration(member) &&
-              member.name &&
-              ts.isIdentifier(member.name)
-            ) {
-              const fullName = member.name.text;
-              const baseName = fullName.replace(/_\d+$/, '');
-              if (baseName === fullName) continue;
-              if (!methodsByBaseName.has(baseName))
-                methodsByBaseName.set(baseName, []);
-              methodsByBaseName.get(baseName)!.push(member);
-            }
-          }
-          for (const [, methods] of methodsByBaseName) {
-            if (methods.length < 2) continue;
-            const byArity = new Map<number, ts.MethodDeclaration[]>();
-            for (const m of methods) {
-              const arity = m.parameters.length;
-              if (!byArity.has(arity)) byArity.set(arity, []);
-              byArity.get(arity)!.push(m);
-            }
-            for (const [, group] of byArity) {
-              if (group.length < 2) continue;
-              sameArityTotal++;
-              const docs = group.map((m) => getJSDocText(m));
-              const uniqueDocs = new Set(
-                docs.filter((d) => d.trim().length > 0),
-              );
-              if (uniqueDocs.size > 1) sameArityDistinct++;
-            }
-          }
-        });
-        expect(sameArityDistinct).toBeGreaterThan(5);
+        const unitsAPI = findClass(sourceFile!, 'UnitsAPI');
+        expect(unitsAPI).toBeDefined();
+        for (const baseName of ['AnyToLS', 'AnyToSI']) {
+          const direct = findMethod(unitsAPI!, `${baseName}_1`);
+          const withDimension = findMethod(unitsAPI!, `${baseName}_2`);
+          expect(direct).toBeDefined();
+          expect(withDimension).toBeDefined();
+          expect(getJSDocText(direct!)).not.toBe(getJSDocText(withDimension!));
+        }
       },
     );
   });

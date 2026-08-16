@@ -17,7 +17,7 @@ describe.skipIf(!wasmExists)('Smoke: Shape healing', () => {
     edges.Append(edge1);
     edges.Append(edge2);
 
-    using wires = oc.ShapeAnalysis_FreeBounds.ConnectEdgesToWires(edges, 1e-6, true);
+    using wires = oc.ShapeAnalysis_FreeBounds.ConnectEdgesToWires(edges, 1e-6, false);
 
     expect(typeof wires.delete).toBe('function');
     expect(Object.hasOwn(wires, 'wires')).toBe(false);
