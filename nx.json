@@ -71,6 +71,7 @@
             "experiments/**",
             ".github/ISSUE_TEMPLATE/**",
             ".github/PULL_REQUEST_TEMPLATE.md",
+            ".github/workflows/claude.yml",
             ".github/workflows/ghcr-retention.yml",
             ".github/workflows/mirror-upstream-pr-head.yml",
             "BENCHMARKS.md",
