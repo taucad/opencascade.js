@@ -37,11 +37,19 @@ def identity(root: Path) -> str:
     "files": patch_state["dependencyFiles"],
   }
 
+  def dependency_path(env_name: str, default_relative: str) -> Path:
+    configured = os.environ.get(env_name)
+    return Path(configured) if configured else root / default_relative
+
   def git_commit(name: str) -> str:
     return subprocess.check_output(
-      ["git", "-C", str(root / "deps" / name), "rev-parse", "HEAD"],
+      ["git", "-C", str(name), "rev-parse", "HEAD"],
       text=True,
     ).strip()
+
+  freetype_root = dependency_path("FREETYPE_ROOT", "deps/freetype")
+  rapidjson_root = dependency_path("RAPIDJSON_ROOT", "deps/rapidjson")
+  emsdk_root = dependency_path("EMSDK", "deps/emsdk")
 
   payload = {
     "schema": "ocjs-cmake-identity-v1",
@@ -49,13 +57,13 @@ def identity(root: Path) -> str:
       json.dumps(occt_state, sort_keys=True, separators=(",", ":")).encode()
     ).hexdigest(),
     "headerDependencies": {
-      "freetype": git_commit("freetype"),
-      "rapidjson": git_commit("rapidjson"),
+      "freetype": git_commit(freetype_root),
+      "rapidjson": git_commit(rapidjson_root),
     },
     "flags": {name: os.environ.get(name, "") for name in _SEMANTIC_ENV},
     "cmake": subprocess.check_output(["cmake", "--version"], text=True).splitlines()[0],
     "emcc": subprocess.check_output(
-      [str(root / "deps" / "emsdk" / "upstream" / "emscripten" / "emcc"), "--version"],
+      [str(emsdk_root / "upstream" / "emscripten" / "emcc"), "--version"],
       text=True,
     ).splitlines()[0],
   }
