@@ -208,6 +208,12 @@ if [ ! -x "$OCJS_PYTHON" ]; then
   echo "ERROR: $OCJS_PYTHON not found. Run scripts/clone-deps.sh first." >&2
   exit 1
 fi
+# The venv also pins cmake (pyproject.toml). Put it first on PATH: npm/npx
+# prepend node's own directory, which on the Docker image is /usr/bin and
+# holds the emsdk image's cmake 3.28, so `nx run` and a plain shell would
+# otherwise configure OCCT with different cmakes and disagree on the
+# cmake-state identity.
+export PATH="$SCRIPT_DIR/.venv/bin:$PATH"
 
 export OCJS_ROOT="$SCRIPT_DIR"
 export OCCT_ROOT="${OCCT_ROOT:-$(cd "$SCRIPT_DIR/deps/OCCT" 2>/dev/null && pwd || { cd "$SCRIPT_DIR/../OCCT" 2>/dev/null && pwd; } || echo "")}"

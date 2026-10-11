@@ -29,7 +29,10 @@ _SEMANTIC_ENV = (
 )
 
 
-def identity(root: Path) -> str:
+IDENTITY_INPUTS = "identity-inputs.json"
+
+
+def identity_inputs(root: Path) -> dict[str, object]:
   patch_manifest = root / "build" / "patches-applied.json"
   patch_state = json.loads(patch_manifest.read_text())
   occt_state = {
@@ -59,9 +62,26 @@ def identity(root: Path) -> str:
       text=True,
     ).splitlines()[0],
   }
+  return payload
+
+
+def identity(root: Path) -> str:
   return hashlib.sha256(
-    json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+    json.dumps(identity_inputs(root), sort_keys=True, separators=(",", ":")).encode()
   ).hexdigest()
+
+
+def _differences(published: object, current: object, prefix: str = "") -> list[str]:
+  if isinstance(published, dict) and isinstance(current, dict):
+    lines: list[str] = []
+    for key in sorted(set(published) | set(current)):
+      lines.extend(
+        _differences(published.get(key), current.get(key), f"{prefix}{key}.")
+      )
+    return lines
+  if published == current:
+    return []
+  return [f"    {prefix.rstrip('.')}: published {published!r}, current {current!r}"]
 
 
 def main() -> None:
@@ -104,6 +124,15 @@ def main() -> None:
         f"current {args.identity[:12]}); compiling OCCT.",
         file=sys.stderr,
       )
+      inputs_path = args.destination / IDENTITY_INPUTS
+      if inputs_path.is_file():
+        differences = _differences(
+          json.loads(inputs_path.read_text()),
+          identity_inputs(args.root.resolve()),
+        )
+        if differences:
+          print("  Identity inputs that differ:", file=sys.stderr)
+          print("\n".join(differences), file=sys.stderr)
     sys.exit(1)
   if args.source is None or args.destination is None:
     parser.error("publish requires --source and --destination")
@@ -111,6 +140,11 @@ def main() -> None:
     args.source,
     args.destination,
     identity=args.identity,
+  )
+  # Kept beside the manifest, outside its ledger, so a later identity mismatch
+  # can name the input that changed instead of two opaque hashes.
+  (args.destination / IDENTITY_INPUTS).write_text(
+    json.dumps(identity_inputs(args.root.resolve()), indent=2, sort_keys=True) + "\n"
   )
 
 

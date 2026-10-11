@@ -69,7 +69,10 @@ class CMakeState:
       return False
     if not any(destination.glob("*.a")):
       return False
-    ledger = build_content_ledger(destination, include=lambda path: path.name != "manifest.json")
+    ledger = build_content_ledger(
+      destination,
+      include=lambda path: path.name not in {"manifest.json", "identity-inputs.json"},
+    )
     return ledger["sha256"] == manifest.get("sha256") and ledger["files"] == manifest.get("files")
 
   @staticmethod
