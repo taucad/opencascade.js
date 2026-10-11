@@ -79,8 +79,8 @@ describe.each(variants)('Smoke: NurbsConvert of a meshed B-spline shape ($name)'
       const faces = subShapes(converted, 'TopAbs_FACE');
       expect(faces.length).toBe(subShapes(nurbs, 'TopAbs_FACE').length);
       for (const face of faces) {
-        const surface = oc().BRep_Tool.Surface(oc().TopoDS.Face(face));
-        expect(surface.IsNull()).toBe(false);
+        // Handle-returning accessors are elided: a missing surface comes back as null.
+        expect(oc().BRep_Tool.Surface(oc().TopoDS.Face(face))).not.toBeNull();
       }
     },
   );
