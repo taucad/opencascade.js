@@ -268,6 +268,21 @@ RUN --mount=type=cache,target=/emsdk/upstream/emscripten/cache,id=ocjs-emsdk-mul
     rm -rf build/occt-cmake
 
 # ═════════════════════════════════════════════════════════════════════════════
+# Stage 1d: binding-objects-seed-{single,multi}-threaded
+# Empty by default. CI points these at the latest release image of the same
+# threading mode (`--build-context binding-objects-seed-…=docker-image://…`),
+# and compiled-* copies that image's build/compiled-bindings/ in before
+# compiling. compileBindings.py keeps a seeded object only when its .identity
+# matches the content hash of the new .cpp, the compile command, the PCH, the
+# patched OCCT state and the compiler; it rebuilds the rest and deletes objects
+# whose source is gone. So a bindgen change recompiles only the bindings it
+# changed instead of all ~5,300 (57-101 min). Release reproducibility builds
+# pass no seed and compile everything cold.
+# ═════════════════════════════════════════════════════════════════════════════
+FROM scratch AS binding-objects-seed-single-threaded
+FROM scratch AS binding-objects-seed-multi-threaded
+
+# ═════════════════════════════════════════════════════════════════════════════
 # Stage 1c: npm-manifests
 # package.json and package-lock.json with the root version pinned to 0.0.0.
 # Every release bumps that version and nothing else in the build reads it, so
@@ -475,10 +490,17 @@ ENV THREADING=single-threaded
 # .o files for bindings + OCCT static .a libs are kept (needed for link).
 # The OCCT libraries come from occt-libs-{threading} (Stage 1b) through a bind
 # mount, so they land in this layer exactly as a local compile would, and
-# build-wasm.sh skips CMake because their identity matches.
+# build-wasm.sh skips CMake because their identity matches. Binding objects
+# from binding-objects-seed-{threading} (Stage 1d), when CI provides one, are
+# copied the same way and reused only where their identity matches.
 RUN --mount=type=cache,target=/emsdk/upstream/emscripten/cache,id=ocjs-emsdk-${OCJS_CONFIG},sharing=locked \
     --mount=type=bind,from=occt-libs-single-threaded,source=/opencascade.js/build/occt-libraries,target=/tmp/occt-libraries \
+    --mount=type=bind,from=binding-objects-seed-single-threaded,target=/tmp/binding-objects-seed \
     cp -R /tmp/occt-libraries build/occt-libraries && \
+    if [ -d /tmp/binding-objects-seed/opencascade.js/build/compiled-bindings ]; then \
+      echo "── Seeding binding objects from the previous image (identity-checked) ──" && \
+      cp -R /tmp/binding-objects-seed/opencascade.js/build/compiled-bindings build/compiled-bindings; \
+    fi && \
     npx nx run ocjs:compile && \
     echo "── Pruning compile intermediates (kept: .o files + OCCT .a libs) ──" && \
     find build/bindings -type f -name '*.cpp' -delete && \
@@ -501,7 +523,12 @@ ENV THREADING=multi-threaded
 
 RUN --mount=type=cache,target=/emsdk/upstream/emscripten/cache,id=ocjs-emsdk-${OCJS_CONFIG},sharing=locked \
     --mount=type=bind,from=occt-libs-multi-threaded,source=/opencascade.js/build/occt-libraries,target=/tmp/occt-libraries \
+    --mount=type=bind,from=binding-objects-seed-multi-threaded,target=/tmp/binding-objects-seed \
     cp -R /tmp/occt-libraries build/occt-libraries && \
+    if [ -d /tmp/binding-objects-seed/opencascade.js/build/compiled-bindings ]; then \
+      echo "── Seeding binding objects from the previous image (identity-checked) ──" && \
+      cp -R /tmp/binding-objects-seed/opencascade.js/build/compiled-bindings build/compiled-bindings; \
+    fi && \
     npx nx run ocjs:compile && \
     echo "── Pruning compile intermediates (kept: .o files + OCCT .a libs) ──" && \
     find build/bindings -type f -name '*.cpp' -delete && \
