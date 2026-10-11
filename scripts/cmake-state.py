@@ -38,12 +38,14 @@ def identity(root: Path) -> str:
   }
 
   def dependency_path(env_name: str, default_relative: str) -> Path:
+    # Relative overrides resolve against the checkout, as build-wasm.sh
+    # (which cds there first) resolves them.
     configured = os.environ.get(env_name)
-    return Path(configured) if configured else root / default_relative
+    return root / configured if configured else root / default_relative
 
-  def git_commit(name: str) -> str:
+  def git_commit(path: Path) -> str:
     return subprocess.check_output(
-      ["git", "-C", str(name), "rev-parse", "HEAD"],
+      ["git", "-C", str(path), "rev-parse", "HEAD"],
       text=True,
     ).strip()
 
