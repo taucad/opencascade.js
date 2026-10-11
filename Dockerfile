@@ -226,6 +226,64 @@ RUN ln -s /opencascade.js/deps/OCCT      /occt && \
     ln -s /opencascade.js/deps/llvm-17   /llvm-17
 
 # ═════════════════════════════════════════════════════════════════════════════
+# Stage 1b: occt-libs-{single,multi}-threaded
+# OCCT static libraries, compiled from deps-base plus only the files that
+# decide their bytes: the OCCT patches, the libembind snapshot the patch step
+# verifies, the named flag configurations, build-wasm.sh, and the two state
+# scripts. Bindgen, filter, YAML and package changes leave these layers cached,
+# so they no longer recompile OCCT (30-57 min per threading mode). BuildKit
+# also builds them alongside bindgen-content's generate on a cold cache.
+#
+# compiled-* copies build/occt-libraries/ in; build-wasm.sh then sees libraries
+# already published for the identical cmake-state identity (patched OCCT tree,
+# header deps, semantic flags, cmake and emcc versions) and skips CMake. If any
+# of those differ, the identity check fails and compiled-* compiles OCCT itself.
+# ═════════════════════════════════════════════════════════════════════════════
+FROM deps-base AS occt-sources
+
+COPY build-wasm.sh ./build-wasm.sh
+COPY build-configs/configurations.json ./build-configs/configurations.json
+COPY src/patches ./src/patches
+COPY src/vendor ./src/vendor
+COPY src/ocjs_bindgen/__init__.py src/ocjs_bindgen/build_state.py src/ocjs_bindgen/cmake_state.py \
+     ./src/ocjs_bindgen/
+COPY scripts/patch-state.py scripts/cmake-state.py ./scripts/
+ENV OCCT_ROOT=/occt \
+    RAPIDJSON_ROOT=/rapidjson \
+    FREETYPE_ROOT=/freetype \
+    EMSDK=/emsdk
+
+FROM occt-sources AS occt-libs-single-threaded
+ENV OCJS_CONFIG=single-threaded
+RUN --mount=type=cache,target=/emsdk/upstream/emscripten/cache,id=ocjs-emsdk-single-threaded,sharing=locked \
+    mkdir -p build && \
+    ./build-wasm.sh apply-patches occt-libraries && \
+    rm -rf build/occt-cmake
+
+FROM occt-sources AS occt-libs-multi-threaded
+ENV OCJS_CONFIG=multi-threaded
+RUN --mount=type=cache,target=/emsdk/upstream/emscripten/cache,id=ocjs-emsdk-multi-threaded,sharing=locked \
+    mkdir -p build && \
+    ./build-wasm.sh apply-patches occt-libraries && \
+    rm -rf build/occt-cmake
+
+# ═════════════════════════════════════════════════════════════════════════════
+# Stage 1c: npm-manifests
+# package.json and package-lock.json with the root version pinned to 0.0.0.
+# Every release bumps that version and nothing else in the build reads it, so
+# installing from these copies keeps `npm ci` and every layer after it cached
+# across releases. The real manifests are COPYed late into the published
+# stages, where generate-api-reference.mjs and consumers read the version.
+# ═════════════════════════════════════════════════════════════════════════════
+FROM deps-base AS npm-manifests
+WORKDIR /npm-manifests
+COPY package.json package-lock.json ./
+RUN jq '.version = "0.0.0"' package.json > package.json.tmp && \
+    mv package.json.tmp package.json && \
+    jq '.version = "0.0.0" | .packages[""].version = "0.0.0"' package-lock.json > package-lock.json.tmp && \
+    mv package-lock.json.tmp package-lock.json
+
+# ═════════════════════════════════════════════════════════════════════════════
 # Stage 2: bindgen-base
 # In-repo build system + npm ci + apply-patches + pch + generate, with
 # generated .cpp/.h sources pruned in-RUN. Published as :bindgen-base — the
@@ -247,7 +305,8 @@ RUN ln -s /opencascade.js/deps/OCCT      /occt && \
 FROM deps-base AS bindgen-content
 
 # Install Nx CLI + project devDeps deterministically from package-lock.json
-COPY package.json package-lock.json nx.json .nxignore project.json /opencascade.js/
+COPY --from=npm-manifests /npm-manifests/package.json /npm-manifests/package-lock.json /opencascade.js/
+COPY nx.json .nxignore project.json /opencascade.js/
 RUN --mount=type=cache,target=/root/.npm,id=ocjs-npm,sharing=locked \
     npm ci --no-audit --no-fund
 
@@ -378,6 +437,10 @@ LABEL org.opencontainers.image.title="libcascade (bindgen-base)" \
       org.opencontainers.image.licenses="LGPL-2.1-only" \
       org.opencontainers.image.vendor="taucad"
 
+# The real manifests: bindgen-content installed from version-free copies (see
+# npm-manifests), so a release version bump only rebuilds these late layers.
+COPY package.json package-lock.json /opencascade.js/
+
 # R17: :bindgen-base ships with the same docker-entrypoint dispatcher as the
 # final-{threading} images so consumers get a consistent UX across all
 # published tags. Consumers wanting interactive shell override the entrypoint:
@@ -410,7 +473,12 @@ ENV THREADING=single-threaded
 # generate (cheap given PCH + patches are cached) to materialise the .cpp
 # files, then compiles them, then prunes the source files + CMake scratch.
 # .o files for bindings + OCCT static .a libs are kept (needed for link).
+# The OCCT libraries come from occt-libs-{threading} (Stage 1b) through a bind
+# mount, so they land in this layer exactly as a local compile would, and
+# build-wasm.sh skips CMake because their identity matches.
 RUN --mount=type=cache,target=/emsdk/upstream/emscripten/cache,id=ocjs-emsdk-${OCJS_CONFIG},sharing=locked \
+    --mount=type=bind,from=occt-libs-single-threaded,source=/opencascade.js/build/occt-libraries,target=/tmp/occt-libraries \
+    cp -R /tmp/occt-libraries build/occt-libraries && \
     npx nx run ocjs:compile && \
     echo "── Pruning compile intermediates (kept: .o files + OCCT .a libs) ──" && \
     find build/bindings -type f -name '*.cpp' -delete && \
@@ -432,6 +500,8 @@ ENV OCJS_CONFIG=multi-threaded
 ENV THREADING=multi-threaded
 
 RUN --mount=type=cache,target=/emsdk/upstream/emscripten/cache,id=ocjs-emsdk-${OCJS_CONFIG},sharing=locked \
+    --mount=type=bind,from=occt-libs-multi-threaded,source=/opencascade.js/build/occt-libraries,target=/tmp/occt-libraries \
+    cp -R /tmp/occt-libraries build/occt-libraries && \
     npx nx run ocjs:compile && \
     echo "── Pruning compile intermediates (kept: .o files + OCCT .a libs) ──" && \
     find build/bindings -type f -name '*.cpp' -delete && \
@@ -471,6 +541,10 @@ LABEL org.opencontainers.image.title="libcascade (single-threaded)" \
       org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.licenses="LGPL-2.1-only" \
       org.opencontainers.image.vendor="taucad"
+
+# The real manifests: bindgen-content installed from version-free copies (see
+# npm-manifests), so a release version bump only rebuilds these late layers.
+COPY package.json package-lock.json /opencascade.js/
 
 # WORKDIR /src makes the consumer's bind-mounted YAML directory the working
 # directory at runtime. Combined with `ENV OCJS_OUTPUT_DIR=/src` in
@@ -521,6 +595,10 @@ LABEL org.opencontainers.image.title="libcascade (multi-threaded)" \
       org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.licenses="LGPL-2.1-only" \
       org.opencontainers.image.vendor="taucad"
+
+# The real manifests: bindgen-content installed from version-free copies (see
+# npm-manifests), so a release version bump only rebuilds these late layers.
+COPY package.json package-lock.json /opencascade.js/
 
 # Late-COPY of docker-entrypoint.sh: see bindgen-base for the rationale —
 # any future entrypoint patch only invalidates this terminal layer, not the

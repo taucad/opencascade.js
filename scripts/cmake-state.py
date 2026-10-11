@@ -66,7 +66,10 @@ def identity(root: Path) -> str:
 
 def main() -> None:
   parser = argparse.ArgumentParser()
-  parser.add_argument("command", choices=("identity", "prepare", "complete", "publish"))
+  parser.add_argument(
+    "command",
+    choices=("identity", "prepare", "complete", "publish", "verify-published"),
+  )
   parser.add_argument("--root", required=True, type=Path)
   parser.add_argument("--scratch", type=Path)
   parser.add_argument("--source", type=Path)
@@ -88,6 +91,20 @@ def main() -> None:
     else:
       state.complete(args.identity)
     return
+  if args.command == "verify-published":
+    if args.destination is None:
+      parser.error("verify-published requires --destination")
+    if CMakeState.published_matches(args.destination, identity=args.identity):
+      return
+    manifest_path = args.destination / "manifest.json"
+    if manifest_path.is_file():
+      published = json.loads(manifest_path.read_text()).get("identity", "<none>")
+      print(
+        f"  Published OCCT libraries not reusable (identity {published[:12]}, "
+        f"current {args.identity[:12]}); compiling OCCT.",
+        file=sys.stderr,
+      )
+    sys.exit(1)
   if args.source is None or args.destination is None:
     parser.error("publish requires --source and --destination")
   CMakeState.publish_libraries(

@@ -62,6 +62,9 @@ Commands:
   generate              Generate binding .cpp files from OCCT headers
   bindings              Compile bindings only
   sources               Compile OCCT sources only
+  occt-libraries        Compile OCCT sources into a build/ that holds nothing else
+                        (the Docker occt-libs-* stages; skips the build-flags guard,
+                        which needs the bindgen package)
   validate <yaml>       Validate YAML config without building
   clean-generated       Remove all generated .d.ts.json and .cpp files (handles symlinks)
   clean-objects         Remove all compiled .o files from compiled-bindings/ (handles symlinks)
@@ -458,6 +461,19 @@ step_sources_cmake() {
   local lib_dir="$cmake_build_dir/lin32/clang/lib"
   local cmake_identity
   cmake_identity="$("$OCJS_PYTHON" scripts/cmake-state.py identity --root "$OCJS_ROOT")"
+  echo "  OCCT library identity: $cmake_identity"
+  # Libraries already published for this exact identity (patched OCCT, header
+  # deps, semantic flags, cmake and emcc versions) and still matching their
+  # ledger are reused as-is. The Docker build compiles OCCT in its own
+  # occt-libs-* stage and copies the result here, so changes to bindgen,
+  # filters or package metadata never recompile OCCT.
+  if "$OCJS_PYTHON" scripts/cmake-state.py verify-published \
+    --root "$OCJS_ROOT" \
+    --destination "$BUILD_DIR/occt-libraries" \
+    --identity "$cmake_identity"; then
+    echo "  Reusing published OCCT libraries for identity ${cmake_identity:0:12}; skipping CMake."
+    return 0
+  fi
   "$OCJS_PYTHON" scripts/cmake-state.py prepare \
     --root "$OCJS_ROOT" \
     --scratch "$cmake_build_dir" \
@@ -891,7 +907,7 @@ while [ $# -gt 0 ]; do
       export OCJS_CONFIG="$1"
       shift
       ;;
-    pch|docs|generate|bindings|sources|apply-patches|patch-embind)
+    pch|docs|generate|bindings|sources|occt-libraries|apply-patches|patch-embind)
       COMMANDS+=("$1")
       shift
       ;;
@@ -939,6 +955,7 @@ for cmd in "${COMMANDS[@]}"; do
     generate)  step_generate ;;
     bindings)  validate_build_flags && step_bindings ;;
     sources)   validate_build_flags && step_sources ;;
+    occt-libraries) step_sources ;;
     dts)       step_dts "$YAML_CONFIG" ;;
     bind-symbols) step_bind_symbols "$YAML_CONFIG" ;;
     link-core)
