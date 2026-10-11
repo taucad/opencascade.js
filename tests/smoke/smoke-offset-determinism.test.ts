@@ -135,10 +135,10 @@ describe.each(variants)('Smoke: offset determinism under heap history ($name)', 
     return maker.Shape();
   };
 
-  const offsetShape = (): unknown => {
+  const offsetShape = (shape: unknown): unknown => {
     const maker = new (oc().BRepOffsetAPI_MakeOffsetShape)();
     maker.PerformByJoin(
-      vase(),
+      shape,
       2,
       1e-3,
       oc().BRepOffset_Mode.BRepOffset_Skin,
@@ -151,9 +151,47 @@ describe.each(variants)('Smoke: offset determinism under heap history ($name)', 
     return maker.Shape();
   };
 
+  // Two cone apexes: CorrectConicalFaces adds one apex sphere per apex to the
+  // result, so its map order reaches the face order too.
+  const rhombus = (): unknown => {
+    const polygon = new (oc().BRepBuilderAPI_MakePolygon)(
+      new (oc().gp_Pnt)(0, 0, 0),
+      new (oc().gp_Pnt)(10, 0, 15),
+      new (oc().gp_Pnt)(0, 0, 30),
+      true,
+    );
+    const face = new (oc().BRepBuilderAPI_MakeFace)(polygon.Wire(), true).Face();
+    const axis = new (oc().gp_Ax1)(new (oc().gp_Pnt)(0, 0, 0), new (oc().gp_Dir)(0, 0, 1));
+    return new (oc().BRepPrimAPI_MakeRevol)(face, axis, 2 * Math.PI, false).Shape();
+  };
+
+  const filletedBox = (): unknown => {
+    const box = new (oc().BRepPrimAPI_MakeBox)(40, 30, 20).Shape();
+    const fillet = new (oc().BRepFilletAPI_MakeFillet)(
+      box,
+      oc().ChFi3d_FilletShape.ChFi3d_Rational,
+    );
+    const explorer = new (oc().TopExp_Explorer)(
+      box,
+      oc().TopAbs_ShapeEnum.TopAbs_EDGE,
+      oc().TopAbs_ShapeEnum.TopAbs_SHAPE,
+    );
+    for (; explorer.More(); explorer.Next()) {
+      const edge = oc().TopoDS.Edge(explorer.Current());
+      const first = oc().BRep_Tool.Pnt(oc().TopExp.FirstVertex(edge, false));
+      const last = oc().BRep_Tool.Pnt(oc().TopExp.LastVertex(edge, false));
+      // The four vertical edges; each appears twice in the explorer, and
+      // MakeFillet ignores a repeated edge.
+      if (Math.abs(first.Z() - last.Z()) > 19) fillet.Add(4, edge);
+    }
+    return fillet.Shape();
+  };
+
   it.skipIf(!variant.exists).each([
     ['MakeThickSolid (shell)', thickSolid],
-    ['MakeOffsetShape', offsetShape],
+    ['MakeOffsetShape (vase)', () => offsetShape(vase())],
+    ['MakeOffsetShape (two cone apexes)', () => offsetShape(rhombus())],
+    ['MakeOffsetShape (filleted box)', () => offsetShape(filletedBox())],
   ] as const)('%s is byte-identical on one instance across heap histories', (_name, build) => {
     const hashes = new Set<string>();
     for (let round = 0; round < ROUNDS; round++) {
