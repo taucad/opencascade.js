@@ -538,7 +538,7 @@ describe('CI contracts', () => {
     });
     expect(validation.if).toBe("github.event_name == 'pull_request'");
     expect(validation['runs-on']).toBe('ubuntu-24.04-arm');
-    expect(validation.needs).toEqual(['preflight', 'quality', 'docs-prose']);
+    expect(validation.needs).toBe('preflight');
     expect(build.if).toBe("github.event_name == 'push' || github.event_name == 'workflow_dispatch'");
 
     const rows = build.strategy.matrix.stage.flatMap((stage: string) =>
@@ -1011,7 +1011,7 @@ sleep 1
     const ci = workflow('docker.yml');
     expect(ci.jobs.quality.needs).toBe('preflight');
     expect(ci.jobs['candidate-build'].needs).toBe('preflight');
-    expect(ci.jobs['candidate-validation'].needs).toEqual(['preflight', 'quality', 'docs-prose']);
+    expect(ci.jobs['candidate-validation'].needs).toBe('preflight');
     expect(ci.jobs['release-reproducibility'].needs).toEqual(['preflight', 'quality', 'docs-prose']);
     expect(ci.jobs['package-assemble'].needs).toEqual(['preflight', 'quality', 'candidate-gate']);
     expect(ci.jobs['ghcr-promote'].needs).toContain('package-gate');

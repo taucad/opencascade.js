@@ -247,7 +247,7 @@ RUN ln -s /opencascade.js/deps/OCCT      /occt && \
 FROM deps-base AS bindgen-content
 
 # Install Nx CLI + project devDeps deterministically from package-lock.json
-COPY package.json package-lock.json nx.json project.json /opencascade.js/
+COPY package.json package-lock.json nx.json .nxignore project.json /opencascade.js/
 RUN --mount=type=cache,target=/root/.npm,id=ocjs-npm,sharing=locked \
     npm ci --no-audit --no-fund
 

@@ -272,7 +272,7 @@ jobs:
   candidate-validation:
     name: candidate · ${{ matrix.stage }} · arm64
     if: github.event_name == 'pull_request'
-    needs: [preflight, quality, docs-prose]
+    needs: preflight
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 240
     permissions:
@@ -351,6 +351,9 @@ jobs:
           OCJS_E2E_IMAGE: ocjs:e2e-${{ matrix.stage }}
           OCJS_E2E_STAGE: ${{ matrix.stage }}
           OCJS_E2E_BUILD_CONFIG: ${{ matrix.stage == 'final-multi' && 'build-configs/full_multi.yml' || 'build-configs/full.yml' }}
+          # compiled-single-threaded already compiles this content; main keeps
+          # bindgen-base's from-scratch custom build before publishing.
+          OCJS_E2E_BINDGEN_CUSTOM_BUILD: '0'
           OCJS_E2E_OUTPUT_DIR: ${{ runner.temp }}/e2e
           OCJS_EXPECTED_SHA: ${{ needs.preflight.outputs.full_sha }}
           SOURCE_DATE_EPOCH: ${{ needs.preflight.outputs.source_date_epoch }}
