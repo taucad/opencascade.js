@@ -1,0 +1,80 @@
+--- ../../../../../../occt/src/ModelingAlgorithms/TKOffset/BRepOffset/BRepOffset_MakeOffset.cxx	2026-10-11 20:15:10.500567216 +0000
++++ BRepOffset_MakeOffset.cxx	2026-10-11 20:24:42.288601205 +0000
+@@ -2089,17 +2089,52 @@
+   {
+     RT = ChFiDS_Convex;
+   }
+-  NCollection_DataMap<TopoDS_Shape, BRepOffset_Offset, TopTools_ShapeMapHasher>::Iterator It(MapSF);
+-  Message_ProgressScope aPS3(aPSOuter.Next(), nullptr, MapSF.Length());
+-  for (; It.More(); It.Next(), aPS3.Next())
++  // libcascade #35: visit MapSF in a structural (heap-address-independent) order.
++  // NCollection_DataMap iterates by bucket = std::hash<TopoDS_Shape> = TShape
++  // address, which made the roots of myImageOffset -- and so the face order of
++  // the result -- depend on allocation history.
++  NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> anOrderedKeys;
++  {
++    for (Exp.Init(myFaceComp, TopAbs_FACE); Exp.More(); Exp.Next())
++    {
++      if (MapSF.IsBound(Exp.Current()))
++        anOrderedKeys.Add(Exp.Current());
++    }
++    for (NCollection_List<TopoDS_Shape>::Iterator aItNF(myAnalyse.NewFaces()); aItNF.More();
++         aItNF.Next())
++    {
++      if (MapSF.IsBound(aItNF.Value()))
++        anOrderedKeys.Add(aItNF.Value());
++    }
++    for (Exp.Init(myFaceComp, TopAbs_EDGE); Exp.More(); Exp.Next())
++    {
++      if (MapSF.IsBound(Exp.Current()))
++        anOrderedKeys.Add(Exp.Current());
++    }
++    for (Exp.Init(myFaceComp, TopAbs_VERTEX); Exp.More(); Exp.Next())
++    {
++      if (MapSF.IsBound(Exp.Current()))
++        anOrderedKeys.Add(Exp.Current());
++    }
++    // Safety net: keep every key even if a future change binds something else.
++    for (NCollection_DataMap<TopoDS_Shape, BRepOffset_Offset, TopTools_ShapeMapHasher>::Iterator
++           aItM(MapSF);
++         aItM.More();
++         aItM.Next())
++    {
++      anOrderedKeys.Add(aItM.Key());
++    }
++  }
++  Message_ProgressScope aPS3(aPSOuter.Next(), nullptr, anOrderedKeys.Extent());
++  for (int anOrdIdx = 1; anOrdIdx <= anOrderedKeys.Extent(); ++anOrdIdx, aPS3.Next())
+   {
+     if (!aPS3.More())
+     {
+       myError = BRepOffset_UserBreak;
+       return;
+     }
+-    const TopoDS_Shape&      SI = It.Key();
+-    const BRepOffset_Offset& SF = It.Value();
++    const TopoDS_Shape&      SI = anOrderedKeys(anOrdIdx);
++    const BRepOffset_Offset& SF = MapSF(SI);
+     if (SF.Status() == BRepOffset_Reversed || SF.Status() == BRepOffset_Degenerated)
+     {
+       //------------------------------------------------
+@@ -2108,7 +2143,7 @@
+       continue;
+     }
+ 
+-    const TopoDS_Face& OF = It.Value().Face();
++    const TopoDS_Face& OF = SF.Face();
+     myInitOffsetFace.Bind(SI, OF);
+     myInitOffsetFace.SetRoot(SI); // Initial<-> Offset
+     myImageOffset.SetRoot(OF);    // FaceOffset root of images
+@@ -2127,9 +2162,8 @@
+         if (!L.IsEmpty() && L.First().Type() != RT)
+         {
+           TopAbs_Orientation OO          = E.Orientation();
+-          TopoDS_Shape       aLocalShape = It.Value().Generated(E);
++          TopoDS_Shape       aLocalShape = SF.Generated(E);
+           TopoDS_Edge        OE          = TopoDS::Edge(aLocalShape);
+-          //          TopoDS_Edge        OE  = TopoDS::Edge(It.Value().Generated(E));
+           myAsDes->Add(OF, OE.Oriented(OO));
+         }
+       }

@@ -1,0 +1,13 @@
+import { createInstance } from 'libcascade/single/init';
+const oc = await createInstance();
+const mb = new oc.BRepPrimAPI_MakeBox(1,2,3);
+const s1 = mb.Shape(), s2 = mb.Shape();
+console.log('MakeBox', mb.mb.tb, 'Shape() ptrs', s1.mb.tb, s2.mb.tb, s1.mb.tb===s2.mb.tb ? 'SAME -> borrowed':'distinct -> copies');
+const ex = new oc.TopExp_Explorer(s1, oc.TopAbs_ShapeEnum.TopAbs_EDGE, oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
+const c1 = ex.Current(), c2 = ex.Current();
+console.log('Explorer', ex.mb.tb, 'Current()', c1.mb.tb, c2.mb.tb, c1.mb.tb===c2.mb.tb ? 'SAME -> borrowed':'distinct');
+const arr = new oc.NCollection_Array1_gp_Pnt(1,3);
+const v1 = arr.Value(1), v2=arr.Value(1), f1 = arr.ChangeFirst(), f2=arr.ChangeFirst();
+console.log('Array', arr.mb.tb, 'Value', v1.mb.tb, v2.mb.tb, 'ChangeFirst', f1.mb.tb, f2.mb.tb);
+const pnt = new oc.gp_Pnt(1,2,3); const x1 = pnt.XYZ(), x2 = pnt.ChangeCoord?.();
+console.log('gp_Pnt', pnt.mb.tb, 'XYZ', x1.mb.tb, 'ChangeCoord', x2?.mb.tb);
