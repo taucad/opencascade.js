@@ -38,7 +38,9 @@ describe.skipIf(!wasmExists)('Smoke: memory ownership', () => {
   describe('delete() frees the C++ object', () => {
     it('NCollection_Array1 releases its buffer (2.4 MB x 300)', async () => {
       const growth = await heapGrowth((oc) => {
-        new oc.NCollection_Array1_gp_Pnt(1, 100_000).delete();
+        // eslint-disable-next-line ocjs-lint/require-using-on-disposable -- the test exercises an explicit `.delete()` call.
+        const points = new oc.NCollection_Array1_gp_Pnt(1, 100_000);
+        points.delete();
       }, 300);
       expect(growth).toBeLessThan(16 * MB);
     });
@@ -80,6 +82,7 @@ describe.skipIf(!wasmExists)('Smoke: memory ownership', () => {
         using range = new oc.Message_ProgressRange();
         using cut = new oc.BRepAlgoAPI_Cut(box, sphere, range);
 
+        // eslint-disable-next-line ocjs-lint/require-using-on-disposable -- the test deletes this borrowed handle and its clone explicitly.
         const builder = cut.Builder();
         const alias = builder.clone();
         builder.delete();
@@ -108,6 +111,7 @@ describe.skipIf(!wasmExists)('Smoke: memory ownership', () => {
 
     it('constructors still return owning handles', async () => {
       const growth = await heapGrowth((oc) => {
+        // eslint-disable-next-line ocjs-lint/require-using-on-disposable -- the test deletes the handle and its clone explicitly.
         const values = new oc.NCollection_Array1_double(1, 1_000_000);
         const alias = values.clone();
         values.delete();
