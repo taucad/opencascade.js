@@ -13,6 +13,13 @@ import init from '../../dist/opencascade_single.js';
 import { initOC, getOC, wasmExists } from './helpers.js';
 
 const MB = 2 ** 20;
+
+/** Embind's handle methods, which the generated declarations leave out. */
+interface EmbindHandle {
+  clone(): EmbindHandle;
+  delete(): void;
+  isDeleted(): boolean;
+}
 const DIST_DIR = path.resolve(import.meta.dirname, '../../dist');
 
 /**
@@ -83,7 +90,7 @@ describe.skipIf(!wasmExists)('Smoke: memory ownership', () => {
         using cut = new oc.BRepAlgoAPI_Cut(box, sphere, range);
 
         // eslint-disable-next-line ocjs-lint/require-using-on-disposable -- the test deletes this borrowed handle and its clone explicitly.
-        const builder = cut.Builder();
+        const builder = cut.Builder() as unknown as EmbindHandle;
         const alias = builder.clone();
         builder.delete();
         alias.delete();
@@ -112,7 +119,7 @@ describe.skipIf(!wasmExists)('Smoke: memory ownership', () => {
     it('constructors still return owning handles', async () => {
       const growth = await heapGrowth((oc) => {
         // eslint-disable-next-line ocjs-lint/require-using-on-disposable -- the test deletes the handle and its clone explicitly.
-        const values = new oc.NCollection_Array1_double(1, 1_000_000);
+        const values = new oc.NCollection_Array1_double(1, 1_000_000) as unknown as EmbindHandle;
         const alias = values.clone();
         values.delete();
         alias.delete();
