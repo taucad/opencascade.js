@@ -18,7 +18,7 @@ trap 'rm -f "$LOG"' EXIT
 npx --yes wrangler@4.155.0 pages deploy "$ROOT/docs-site/out" \
   --project-name="$PROJECT" --branch="$BRANCH" \
   --commit-hash="$FULL_SHA" --commit-dirty=true | tee "$LOG"
-url="$(grep -Eo 'https://[^ ]+\.pages\.dev' "$LOG" | tail -1)"
+url="$(grep -Eo 'https://[^ ]+\.pages\.dev' "$LOG" | head -1)"
 feed_hash="$(
   tar -xOf "$TARBALL" package/dist/api-reference.json |
     node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>process.stdout.write(JSON.parse(s).inputs.bindings.sha256))"

@@ -1136,7 +1136,7 @@ sleep 1
     }
   });
 
-  it('should finalize releases and deploy Vercel only from the verified candidate', () => {
+  it('should finalize releases and deploy Pages only from the verified candidate', () => {
     const ci = workflow('docker.yml');
     const source = fs.readFileSync(path.join(ROOT, '.github/workflows/docker.yml'), 'utf8');
     expect(ci.jobs['release-finalize'].needs).toEqual([
@@ -1147,19 +1147,22 @@ sleep 1
     expect(ci.jobs['release-finalize'].permissions).toEqual({ contents: 'write' });
     expect(ci.jobs['release-finalize'].if).toContain("needs.registry-verify.result == 'success'");
     expect(ci.jobs['release-finalize'].if).toContain("needs.toolchain-registry-verify.result == 'success'");
-    expect(ci.jobs['vercel-preview'].needs).toEqual(['preflight', 'package-assemble', 'ci-gate']);
-    expect(ci.jobs['vercel-preview'].if).toContain(
+    expect(ci.jobs['pages-preview'].needs).toEqual(['preflight', 'package-assemble', 'ci-gate']);
+    expect(ci.jobs['pages-preview'].if).toContain(
       'github.event.pull_request.head.repo.full_name == github.repository',
     );
-    expect(ci.jobs['vercel-production'].needs).toEqual(['preflight', 'package-assemble', 'ci-gate']);
-    expect(ci.jobs['vercel-production'].concurrency).toEqual({
-      group: 'vercel-production',
+    expect(ci.jobs['pages-production'].needs).toEqual(['preflight', 'package-assemble', 'ci-gate']);
+    expect(ci.jobs['pages-production'].concurrency).toEqual({
+      group: 'pages-production',
       'cancel-in-progress': false,
     });
-    expect(source).toContain('vercel@56.5.0 deploy --prebuilt --archive=tgz --token=');
-    expect(source).toContain('vercel@56.5.0 deploy --prebuilt --archive=tgz --prod --token=');
+    expect(source).toContain('scripts/deploy-docs-site.sh preview');
+    expect(source).toContain('scripts/deploy-docs-site.sh production');
     expect(source).toContain('git/ref/heads/main');
-    expect(source).toContain('export OCJS_API_REFERENCE_SOURCE="$TARBALL"');
+    expect(source).toContain('scripts/build-docs-site.sh');
+    expect(fs.readFileSync(path.join(ROOT, 'scripts/build-docs-site.sh'), 'utf8')).toContain(
+      'OCJS_API_REFERENCE_SOURCE="$TARBALL"',
+    );
   });
 
   it('should launch the registry runtime check without worker-unsafe Node flags', () => {

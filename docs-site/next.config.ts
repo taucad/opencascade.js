@@ -11,10 +11,10 @@ const withMDX = createMDX();
  * Next server, so the redirects and the `.mdx` rewrites below apply to
  * `next dev` only: `scripts/emit-pages-config.mjs` writes the same redirects
  * to `out/_redirects`, and `scripts/emit-mdx-aliases.mjs` moves the generated
- * Markdown to the `.mdx` URLs the rewrites expose.
+ * Markdown to the `.mdx` URLs the rewrites expose. `next dev` runs without
+ * `output: 'export'`, so the rewrites can reach slugs the export never lists.
  */
 const config: NextConfig = {
-  output: 'export',
   reactStrictMode: true,
   turbopack: {
     root: resolve(import.meta.dirname, '..'),
@@ -47,6 +47,6 @@ const devRoutes: NextConfig = {
 };
 
 const nextConfig = (phase: string): NextConfig =>
-  withMDX({ ...config, ...(phase === PHASE_DEVELOPMENT_SERVER ? devRoutes : {}) });
+  withMDX(phase === PHASE_DEVELOPMENT_SERVER ? { ...config, ...devRoutes } : { ...config, output: 'export' });
 
 export default nextConfig;

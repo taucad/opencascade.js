@@ -20,11 +20,20 @@ const API_RESULT_LIMIT = 20;
 
 let symbolsPromise: Promise<readonly ApiSymbol[]> | undefined;
 
-/** Fetch the API symbol list once per page load, on first use. */
+/**
+ * Fetch the API symbol list on first use and keep it for the page load. A
+ * failed request resolves to no symbols and is retried on the next search.
+ */
 const loadSymbols = (): Promise<readonly ApiSymbol[]> => {
   symbolsPromise ??= fetch('/api/search-api.json')
-    .then(async (response) => (response.ok ? ((await response.json()) as ApiSymbol[]) : []))
-    .catch(() => []);
+    .then(async (response) => {
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      return (await response.json()) as ApiSymbol[];
+    })
+    .catch(() => {
+      symbolsPromise = undefined;
+      return [];
+    });
   return symbolsPromise;
 };
 
