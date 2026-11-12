@@ -861,7 +861,7 @@ jobs:
       always() &&
       needs.preflight.result == 'success' &&
       needs.package-assemble.result == 'success'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -887,7 +887,7 @@ jobs:
       always() &&
       needs.preflight.result == 'success' &&
       needs.package-assemble.result == 'success'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -1814,24 +1814,23 @@ jobs:
             test "$RELEASE" = skipped
           fi
 
-  vercel-preview:
-    name: vercel · preview
+  # The docs site is a static export uploaded to Cloudflare Pages from the exact
+  # tested package candidate. CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID and
+  # CLOUDFLARE_PAGES_PROJECT are written by tau-cloud (stacks/sites).
+  pages-preview:
+    name: pages · preview
     if: >-
       always() &&
       github.event_name == 'pull_request' &&
       github.event.pull_request.head.repo.full_name == github.repository &&
+      github.actor != 'dependabot[bot]' &&
       needs.preflight.result == 'success' &&
       needs.package-assemble.result == 'success' &&
       needs.ci-gate.result == 'success'
     needs: [preflight, package-assemble, ci-gate]
     runs-on: ubuntu-latest
-    environment: Preview
     permissions:
       contents: read
-    env:
-      VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
-      VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
-      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
     steps:
       - name: Checkout
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -1844,41 +1843,23 @@ jobs:
           name: ${{ needs.package-assemble.outputs.artifact }}
           path: ${{ runner.temp }}/candidate
 
-      - name: Build and deploy prebuilt preview
+      - name: Build the static site from the candidate
         env:
+          TARBALL: ${{ runner.temp }}/candidate/candidate.tgz
+        run: bash scripts/build-docs-site.sh "$TARBALL"
+
+      - name: Deploy preview to Cloudflare Pages
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          PROJECT: ${{ vars.CLOUDFLARE_PAGES_PROJECT }}
+          BRANCH: ${{ github.head_ref }}
           FULL_SHA: ${{ needs.preflight.outputs.full_sha }}
           TARBALL: ${{ runner.temp }}/candidate/candidate.tgz
-        run: |
-          node - "$PWD/docs-site/package.json" "$TARBALL" <<'NODE'
-          const fs = require('node:fs');
-          const path = require('node:path');
-          const [manifestPath, tarball] = process.argv.slice(2);
-          const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-          manifest.dependencies.libcascade = `file:${path.resolve(tarball)}`;
-          fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
-          NODE
-          cd docs-site
-          corepack enable
-          corepack pnpm@9.15.9 install --ignore-workspace --no-frozen-lockfile --ignore-scripts
-          cd ..
-          export OCJS_API_REFERENCE_SOURCE="$TARBALL"
-          npx --yes vercel@56.5.0 pull --yes --environment=preview --token="$VERCEL_TOKEN"
-          npx --yes vercel@56.5.0 build --token="$VERCEL_TOKEN"
-          url="$(npx --yes vercel@56.5.0 deploy --prebuilt --archive=tgz --token="$VERCEL_TOKEN")"
-          feed_hash="$(
-            tar -xOf "$TARBALL" package/dist/api-reference.json |
-              node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>process.stdout.write(JSON.parse(s).inputs.bindings.sha256))"
-          )"
-          {
-            echo "## Vercel preview"
-            echo
-            echo "- URL: $url"
-            echo "- Source: \`$FULL_SHA\`"
-            echo "- API bindings: \`$feed_hash\`"
-          } >> "$GITHUB_STEP_SUMMARY"
+        run: bash scripts/deploy-docs-site.sh preview
 
-  vercel-production:
-    name: vercel · production
+  pages-production:
+    name: pages · production
     if: >-
       always() &&
       github.event_name == 'push' &&
@@ -1888,16 +1869,11 @@ jobs:
       needs.ci-gate.result == 'success'
     needs: [preflight, package-assemble, ci-gate]
     runs-on: ubuntu-latest
-    environment: Production
     concurrency:
-      group: vercel-production
+      group: pages-production
       cancel-in-progress: false
     permissions:
       contents: read
-    env:
-      VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
-      VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
-      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
     steps:
       - name: Checkout
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -1910,28 +1886,17 @@ jobs:
           name: ${{ needs.package-assemble.outputs.artifact }}
           path: ${{ runner.temp }}/candidate
 
-      - name: Build exact production candidate
+      - name: Build the static site from the candidate
         env:
           TARBALL: ${{ runner.temp }}/candidate/candidate.tgz
-        run: |
-          node - "$PWD/docs-site/package.json" "$TARBALL" <<'NODE'
-          const fs = require('node:fs');
-          const path = require('node:path');
-          const [manifestPath, tarball] = process.argv.slice(2);
-          const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-          manifest.dependencies.libcascade = `file:${path.resolve(tarball)}`;
-          fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
-          NODE
-          cd docs-site
-          corepack enable
-          corepack pnpm@9.15.9 install --ignore-workspace --no-frozen-lockfile --ignore-scripts
-          cd ..
-          export OCJS_API_REFERENCE_SOURCE="$TARBALL"
-          npx --yes vercel@56.5.0 pull --yes --environment=production --token="$VERCEL_TOKEN"
-          npx --yes vercel@56.5.0 build --prod --token="$VERCEL_TOKEN"
+        run: bash scripts/build-docs-site.sh "$TARBALL"
 
       - name: Deploy only while this run is current main
         env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          PROJECT: ${{ vars.CLOUDFLARE_PAGES_PROJECT }}
+          BRANCH: main
           FULL_SHA: ${{ needs.preflight.outputs.full_sha }}
           GH_TOKEN: ${{ github.token }}
           TARBALL: ${{ runner.temp }}/candidate/candidate.tgz
@@ -1939,21 +1904,10 @@ jobs:
           current="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq .object.sha)"
           if [ "$current" != "$FULL_SHA" ]; then
             {
-              echo "## Vercel production skipped"
+              echo "## Cloudflare Pages production skipped"
               echo
               echo "Run source \`$FULL_SHA\` is stale; current main is \`$current\`."
             } >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
-          url="$(npx --yes vercel@56.5.0 deploy --prebuilt --archive=tgz --prod --token="$VERCEL_TOKEN")"
-          feed_hash="$(
-            tar -xOf "$TARBALL" package/dist/api-reference.json |
-              node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>process.stdout.write(JSON.parse(s).inputs.bindings.sha256))"
-          )"
-          {
-            echo "## Vercel production"
-            echo
-            echo "- URL: $url"
-            echo "- Source: \`$FULL_SHA\`"
-            echo "- API bindings: \`$feed_hash\`"
-          } >> "$GITHUB_STEP_SUMMARY"
+          bash scripts/deploy-docs-site.sh production

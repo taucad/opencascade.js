@@ -2,7 +2,7 @@ node_modules
 .next
 out
 .source
-.vercel
+.wrangler
 .env*.local
 *.tsbuildinfo
 next-env.d.ts

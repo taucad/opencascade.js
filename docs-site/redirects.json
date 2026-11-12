@@ -24,5 +24,11 @@
   { "source": "/docs/advanced/progress-indicators-user-break/derive-class", "destination": "/docs/toolchain/guides/derive-cpp-class-in-js", "permanent": true },
   { "source": "/docs/faq", "destination": "/docs/package/getting-started/faq", "permanent": true },
   { "source": "/starter-templates", "destination": "/docs/package/getting-started/quick-start-npm", "permanent": true },
-  { "source": "/download-starter-templates/:path*", "destination": "/docs/package/getting-started/quick-start-npm", "permanent": true }
+  { "source": "/download-starter-templates/:path*", "destination": "/docs/package/getting-started/quick-start-npm", "permanent": true },
+  { "source": "/docs-site/:path*", "destination": "/docs/package/api/:path*", "permanent": true },
+  { "source": "/docs-site", "destination": "/docs/package/api", "permanent": true },
+  { "source": "/docs/api", "destination": "/docs/package/api", "permanent": true },
+  { "source": "/docs/api/:path*", "destination": "/docs/package/api/:path*", "permanent": true },
+  { "source": "/reference-docs", "destination": "/docs/package/api", "permanent": true },
+  { "source": "/reference-docs/:path*", "destination": "/docs/package/api/:path*", "permanent": true }
 ]

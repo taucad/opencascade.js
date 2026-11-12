@@ -1,10 +1,19 @@
 import type { NextConfig } from 'next';
+import { PHASE_DEVELOPMENT_SERVER } from 'next/constants';
 import { createMDX } from 'fumadocs-mdx/next';
 import { resolve } from 'node:path';
 import redirectsJson from './redirects.json' with { type: 'json' };
 
 const withMDX = createMDX();
 
+/**
+ * The site is a static export served by Cloudflare Pages. Production has no
+ * Next server, so the redirects and the `.mdx` rewrites below apply to
+ * `next dev` only: `scripts/emit-pages-config.mjs` writes the same redirects
+ * to `out/_redirects`, and `scripts/emit-mdx-aliases.mjs` moves the generated
+ * Markdown to the `.mdx` URLs the rewrites expose. `next dev` runs without
+ * `output: 'export'`, so the rewrites can reach slugs the export never lists.
+ */
 const config: NextConfig = {
   reactStrictMode: true,
   turbopack: {
@@ -13,16 +22,11 @@ const config: NextConfig = {
   experimental: {
     optimizePackageImports: ['fumadocs-ui', 'fumadocs-core'],
   },
+};
+
+const devRoutes: NextConfig = {
   async redirects() {
-    return [
-      ...redirectsJson,
-      { source: '/docs-site/:path*', destination: '/docs/package/api/:path*', permanent: true },
-      { source: '/docs-site', destination: '/docs/package/api', permanent: true },
-      { source: '/docs/api', destination: '/docs/package/api', permanent: true },
-      { source: '/docs/api/:path*', destination: '/docs/package/api/:path*', permanent: true },
-      { source: '/reference-docs', destination: '/docs/package/api', permanent: true },
-      { source: '/reference-docs/:path*', destination: '/docs/package/api/:path*', permanent: true },
-    ];
+    return redirectsJson;
   },
   /**
    * Expose raw-Markdown URLs ending in `.mdx` that route into the
@@ -42,4 +46,7 @@ const config: NextConfig = {
   },
 };
 
-export default withMDX(config);
+const nextConfig = (phase: string): NextConfig =>
+  withMDX(phase === PHASE_DEVELOPMENT_SERVER ? { ...config, ...devRoutes } : { ...config, output: 'export' });
+
+export default nextConfig;

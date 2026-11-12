@@ -59,12 +59,28 @@ describe('redirects.json', () => {
   });
 });
 
-describe('next.config redirects()', () => {
-  it('should include reference-docs and legacy /docs/api catch-alls', () => {
-    expect(nextConfigSource).toContain("source: '/reference-docs'");
-    expect(nextConfigSource).toContain("source: '/reference-docs/:path*'");
-    expect(nextConfigSource).toContain("destination: '/docs/package/api/:path*'");
-    expect(nextConfigSource).toContain("source: '/docs/api'");
-    expect(nextConfigSource).toContain("source: '/docs/api/:path*'");
+describe('Cloudflare Pages redirects', () => {
+  it('should carry the reference-docs and legacy /docs/api catch-alls in redirects.json', () => {
+    const pairs = redirects.map((r) => `${r.source} -> ${r.destination}`);
+    expect(pairs).toContain('/reference-docs -> /docs/package/api');
+    expect(pairs).toContain('/reference-docs/:path* -> /docs/package/api/:path*');
+    expect(pairs).toContain('/docs/api -> /docs/package/api');
+    expect(pairs).toContain('/docs/api/:path* -> /docs/package/api/:path*');
+  });
+
+  it('should serve redirects.json from next dev only, since the export has no server', () => {
+    expect(nextConfigSource).toContain("output: 'export'");
+    expect(nextConfigSource).toContain('return redirectsJson;');
+    expect(nextConfigSource).toContain('PHASE_DEVELOPMENT_SERVER');
+  });
+
+  it('should translate every entry to a Pages _redirects line, turning :path* into a splat', async () => {
+    const { toPagesRedirects } = await import('../scripts/emit-pages-config.mjs');
+    const lines = toPagesRedirects(redirects);
+    expect(lines).toHaveLength(redirects.length);
+    expect(lines).toContain('/docs/api/* /docs/package/api/:splat 301');
+    expect(lines).toContain('/download-starter-templates/* /docs/package/getting-started/quick-start-npm 301');
+    expect(lines).toContain('/docs/faq /docs/package/getting-started/faq 301');
+    expect(() => toPagesRedirects([{ source: '/a/:id', destination: '/b', permanent: true }])).toThrow();
   });
 });
