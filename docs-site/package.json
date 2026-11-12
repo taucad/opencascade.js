@@ -9,7 +9,7 @@
     "predev": "pnpm docs:sync",
     "dev": "next dev",
     "prebuild": "pnpm docs:sync",
-    "build": "next build",
+    "build": "next build && node ./scripts/emit-mdx-aliases.mjs && node ./scripts/emit-pages-config.mjs",
     "start": "next start",
     "prelint": "pnpm docs:sync && fumadocs-mdx",
     "lint": "eslint .",

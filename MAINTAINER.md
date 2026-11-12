@@ -107,14 +107,16 @@ The bare-default column is only relevant if you invoke `build-wasm.sh` without `
 | --- | --- |
 | Source, workflow, shell, Python, ST/MT, bindgen, browser, package, template, docs, and prose checks | `.github/workflows/docker.yml` → `CI gate` |
 | Branch and release GHCR images, SBOM/provenance, signing, npm publication, registry verification, annotated tags, and GitHub Releases | `.github/workflows/docker.yml` |
-| Vercel preview and production deployment from the exact tested package candidate | `.github/workflows/docker.yml` after `CI gate` |
+| Cloudflare Pages preview and production deployment of the docs site's static export, built from the exact tested package candidate | `.github/workflows/docker.yml` after `CI gate` |
 | GHCR branch/cache expiry without deleting releases or referrers | `.github/workflows/ghcr-retention.yml` |
 | Fast-forward-only `main` mirror for the historical upstream PR | `.github/workflows/mirror-upstream-pr-head.yml` |
 | Dependency and pinned-action updates | `.github/dependabot.yml` |
 
-`CI gate` is the required aggregate. Vercel's Git integration is disabled in
-`docs-site/vercel.json`; it must not create an independent build from a source
-push. The long candidate workflow is the sole deployment owner because the
+`CI gate` is the required aggregate. The Cloudflare Pages project has no Git
+source, so nothing builds the site independently of a source push. The Pages
+project, the deploy token and the account are declared in tau-cloud
+(`stacks/sites`, `docs/sites-stack.md`). The long candidate workflow is the
+sole deployment owner because the
 site consumes `api-reference.json` generated from the built WASM/declaration
 artifacts. Production deployment rechecks the remote `main` SHA immediately
 before promotion, so a completed older run cannot overwrite a newer main.
@@ -134,12 +136,12 @@ outputs are the canonical npm inputs while both tested image digests are
 required for GHCR promotion. The workflow packs those outputs plus the
 deterministic API-reference feed into one immutable tarball. The same tarball
 then drives installed-package, browser, starter-template, docs, publication,
-registry, and Vercel jobs. Pull-request runs cancel superseded attempts;
+registry, and Cloudflare Pages jobs. Pull-request runs cancel superseded attempts;
 publishing runs queue and are never canceled.
 
 ### Publication Channels
 
-| Event | npm packages | GHCR | Vercel |
+| Event | npm packages | GHCR | Cloudflare Pages |
 | --- | --- | --- | --- |
 | Pull request targeting `main` | none | validation only | same-repository PR preview after `CI gate` |
 | Feature-branch push without a PR | no workflow | no workflow | no workflow |
@@ -211,7 +213,7 @@ gh workflow run docker.yml --repo taucad/opencascade.js --ref <branch>
 
 The run summary reports the exact `libcascade` and `@libcascade/toolchain`
 install commands and immutable single-threaded, multi-threaded, and
-bindgen-base GHCR pull commands. It does not deploy Vercel.
+bindgen-base GHCR pull commands. It does not deploy the docs site.
 
 Use the project skill to inspect or prepare a release:
 

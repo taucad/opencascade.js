@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
 import { source } from '../../../../lib/source';
 import { getLlmText } from '../../../../lib/get-llms-text';
+import { withMdxSuffix, withoutMdxSuffix } from '../../../../lib/mdx-slug';
 
 type RouteParams = { readonly params: Promise<{ readonly slug?: string[] }> };
 
@@ -18,7 +19,8 @@ export const revalidate = false;
  * `app/llms.mdx/docs/api/[[...slug]]/route.ts`.
  */
 export const GET = async (_request: Request, { params }: RouteParams): Promise<Response> => {
-  const resolved = (await params) ?? {};
+  const { slug } = (await params) ?? {};
+  const resolved = { slug: withoutMdxSuffix(slug) };
   if (resolved.slug?.[0] === 'package' && resolved.slug?.[1] === 'api') notFound();
   const page = source.getPage(resolved.slug);
   if (!page || page.type !== 'docs') notFound();
@@ -36,4 +38,5 @@ export const generateStaticParams = (): Array<{ slug: string[] }> =>
         Array.isArray(entry.slug) &&
         entry.slug.length > 0 &&
         !(entry.slug[0] === 'package' && entry.slug[1] === 'api'),
-    );
+    )
+    .map((entry) => ({ slug: withMdxSuffix(entry.slug) }));

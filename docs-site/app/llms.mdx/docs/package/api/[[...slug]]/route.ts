@@ -4,6 +4,7 @@ import { slicePackageClasses } from '../../../../../../lib/api-package-paginatio
 import { loadShard } from '../../../../../../components/api/api-data';
 import { shardToMarkdown } from '../../../../../../lib/shard-to-markdown';
 import { apiTree } from '../../../../../../lib/api-source';
+import { withMdxSuffix, withoutMdxSuffix } from '../../../../../../lib/mdx-slug';
 
 type RouteParams = { readonly params: Promise<{ readonly slug?: string[] }> };
 
@@ -35,7 +36,7 @@ const renderListing = (title: string, url: string, links: ReadonlyArray<{ name: 
  */
 export const GET = async (_request: Request, { params }: RouteParams): Promise<Response> => {
   const resolved = (await params) ?? {};
-  const resolution = resolveApiRoute(resolved.slug);
+  const resolution = resolveApiRoute(withoutMdxSuffix(resolved.slug));
   if (!resolution) notFound();
 
   let body: string;
@@ -93,4 +94,6 @@ export const GET = async (_request: Request, { params }: RouteParams): Promise<R
 };
 
 export const generateStaticParams = (): Array<{ slug: string[] }> =>
-  enumerateApiRoutes().filter((entry) => entry.slug.length > 0);
+  enumerateApiRoutes()
+    .filter((entry) => entry.slug.length > 0)
+    .map((entry) => ({ slug: withMdxSuffix(entry.slug) }));

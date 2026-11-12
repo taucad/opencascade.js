@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import type { Metadata } from 'next';
 import { RootProvider } from 'fumadocs-ui/provider/next';
+import StaticSearchDialog from '../components/search-dialog';
 import { SITE_TITLE, SITE_DESCRIPTION, SITE_URL } from '../lib/site';
 import './global.css';
 
@@ -22,7 +23,7 @@ const RootLayout = ({ children }: { readonly children: ReactNode }): React.JSX.E
   return (
     <html lang="en" suppressHydrationWarning>
       <body>
-        <RootProvider>{children}</RootProvider>
+        <RootProvider search={{ SearchDialog: StaticSearchDialog }}>{children}</RootProvider>
       </body>
     </html>
   );
